@@ -1,158 +1,177 @@
 # tf-migrate
 
-A Terraform configuration and state migration tool that transforms HCL configuration files and JSON state files through a customizable pipeline architecture.
+A command-line tool for migrating Terraform configurations and state files between different provider versions or resource schemas.
 
-## Overview
+## What it does
 
-tf-migrate is a command-line tool that provides a framework for migrating Terraform configurations between different provider versions or resource schemas. It processes both configuration files (.tf) and state files (terraform.tfstate) using a pipeline of transformation handlers.
+tf-migrate helps you update your Terraform files when:
+- A provider changes resource names or attributes
+- You need to split one resource into multiple resources
+- You need to update deprecated resource configurations
+- You need to transform both `.tf` configuration files and `terraform.tfstate` files
 
+## Installation
+
+```bash
+go build -o tf-migrate cmd/tf-migrate/main.go
+```
 
 ## Usage
 
-### Basic Commands
+### Basic Migration
 
 ```bash
 # Migrate all .tf files in current directory
 tf-migrate migrate
 
-# Migrate specific directory
+# Migrate a specific directory
 tf-migrate --config-dir ./terraform migrate
 
 # Migrate with state file
 tf-migrate --config-dir ./terraform --state-file terraform.tfstate migrate
 
-# Preview changes without modifying files
+# Preview changes without modifying files (dry run)
 tf-migrate --dry-run migrate
 
-# Output to different directory
-tf-migrate migrate --output-dir ./migrated --output-state ./migrated/terraform.tfstate
+# Output to different directory instead of in-place
+tf-migrate migrate --output-dir ./migrated
 
-# Skip backup creation
+# Skip backup creation (not recommended)
 tf-migrate migrate --backup=false
 ```
 
-### Command-Line Flags
+### Command-Line Options
 
-#### Global Flags
-- `--config-dir` - Directory containing Terraform configuration files (default: current directory)
-- `--state-file` - Path to Terraform state file (optional)
-- `--resources` - Comma-separated list of resources to migrate (not yet implemented)
+**Global Flags:**
+- `--config-dir` - Directory containing Terraform files (default: current directory)
+- `--state-file` - Path to terraform.tfstate file (optional)
 - `--dry-run` - Preview changes without modifying files
 - `-v, --verbose` - Enable verbose output
 - `--debug` - Enable debug output
-- `-q, --quiet` - Suppress all output except errors
+- `-q, --quiet` - Suppress output except errors
 
-#### Migrate Command Flags
-- `--output-dir` - Output directory for migrated configuration files (default: in-place)
-- `--output-state` - Output path for migrated state file (default: in-place)
-- `--backup` - Create backup of original files before migration (default: true)
+**Migrate Command Flags:**
+- `--output-dir` - Output directory for migrated files (default: in-place)
+- `--output-state` - Output path for migrated state (default: in-place)
+- `--backup` - Create `.backup` files before migration (default: true)
 
-## Architecture
+## How it Works
 
-### Pipeline Structure
+The tool processes files through two pipelines:
 
-The tool uses a pipeline architecture with two separate pipelines:
+### Configuration Pipeline (for .tf files)
+1. **Preprocess** - Apply string transformations before parsing
+2. **Parse** - Convert HCL to Abstract Syntax Tree (AST)
+3. **Transform** - Modify resources in the AST
+4. **Format** - Convert AST back to formatted HCL
 
-#### Configuration Pipeline (HCL Files)
-1. **PreprocessHandler** - String-level transformations before parsing
-2. **ParseHandler** - Parse HCL text into Abstract Syntax Tree (AST)
-3. **ResourceTransformHandler** - Transform resource blocks in the AST
-4. **FormatterHandler** - Format AST back to HCL text
+### State Pipeline (for .tfstate files)
+1. **Transform** - Modify resource instances in JSON
+2. **Format** - Pretty-print the JSON output
 
-#### State Pipeline (JSON Files)
-1. **StateTransformHandler** - Transform resources in state JSON
-2. **StateFormatterHandler** - Pretty-print JSON output
+## Adding Resource Transformers
 
-### Key Components
+**Note:** No resource transformers are implemented yet. This tool provides the framework for transformations.
 
-- **Handlers** - Implement the Chain of Responsibility pattern for pipeline stages
-- **ResourceTransformer** - Strategy pattern interface for resource-specific transformations
-- **StrategyRegistry** - Thread-safe registry for transformation strategies
-- **PipelineBuilder** - Fluent builder for custom pipeline construction
+### Step 1: Create Your Transformer
 
-## Extending tf-migrate
-
-### Creating a Custom Resource Transformer
-
-Implement the `ResourceTransformer` interface:
+Create a new file in `internal/resources/` for your resource type:
 
 ```go
-type MyResourceTransformer struct{}
+package resources
 
-func (t *MyResourceTransformer) CanHandle(resourceType string) bool {
-    return resourceType == "my_resource_type"
+import (
+    "github.com/hashicorp/hcl/v2/hclwrite"
+    "github.com/tidwall/gjson"
+    "github.com/cloudflare/tf-migrate/internal/transforms"
+)
+
+type DNSRecordTransformer struct {
+    BaseResourceTransformer
 }
 
-func (t *MyResourceTransformer) GetResourceType() string {
-    return "my_resource_type"
+func NewDNSRecordTransformer() *DNSRecordTransformer {
+    return &DNSRecordTransformer{
+        BaseResourceTransformer: BaseResourceTransformer{
+            ResourceType: "cloudflare_record", // Old resource name
+            
+            // Transform the HCL configuration
+            ConfigTransformer: func(block *hclwrite.Block) (*transforms.TransformResult, error) {
+                // Example: Rename resource type
+                newBlock := hclwrite.NewBlock("resource", []string{"cloudflare_dns_record", block.Labels()[1]})
+                
+                // Copy and transform attributes
+                body := block.Body()
+                newBody := newBlock.Body()
+                
+                for name, attr := range body.Attributes() {
+                    // Example: Rename 'domain' to 'zone_id'
+                    if name == "domain" {
+                        newBody.SetAttributeRaw("zone_id", attr.Expr().BuildTokens(nil))
+                    } else {
+                        newBody.SetAttributeRaw(name, attr.Expr().BuildTokens(nil))
+                    }
+                }
+                
+                return &transform.TransformResult{
+                    Blocks:         []*hclwrite.Block{newBlock},
+                    RemoveOriginal: true, // Remove old block, add new one
+                }, nil
+            },
+            
+            // Transform the state file
+            StateTransformer: func(json gjson.Result, path string) (string, error) {
+                // Transform the JSON representation of the resource
+                // Return the modified JSON string
+                return json.String(), nil
+            },
+        },
+    }
 }
 
-func (t *MyResourceTransformer) Preprocess(content string) string {
-    // Optional: String-level transformations
-    return content
-}
-
-func (t *MyResourceTransformer) TransformConfig(block *hclwrite.Block) (*interfaces.TransformResult, error) {
-    // Transform HCL configuration
-    // Options:
-    // - In-place: return {Blocks: [modifiedBlock], RemoveOriginal: false}
-    // - Split: return {Blocks: [block1, block2], RemoveOriginal: true}
-    // - Remove: return {Blocks: [], RemoveOriginal: true}
-    return &interfaces.TransformResult{
-        Blocks:         []*hclwrite.Block{block},
-        RemoveOriginal: false,
-    }, nil
-}
-
-func (t *MyResourceTransformer) TransformState(json gjson.Result, resourcePath string) (string, error) {
-    // Transform state JSON
-    return modifiedJSON, nil
+// CanHandle determines if this transformer handles the given resource type
+func (t *DNSRecordTransformer) CanHandle(resourceType string) bool {
+    return resourceType == "cloudflare_record" || resourceType == "cloudflare_dns_record"
 }
 ```
 
-### Registering Transformers
+### Step 2: Register Your Transformer
+
+Add your transformer to `internal/transformers/registry.go`:
 
 ```go
-func init() {
-    resources.RegisterResourceFactory("my_resource_type", func() interfaces.ResourceTransformer {
-        return &MyResourceTransformer{}
-    })
+func CreateRegistry(resourceFilter ...string) *registry.Registry {
+    reg := registry.NewRegistry()
+    
+    // Add your transformer here
+    reg.Register(NewDNSRecordTransformer())
+    // reg.Register(NewLoadBalancerTransformer())
+    // reg.Register(NewFirewallTransformer())
+    
+    return reg
 }
 ```
 
-### Creating Custom Pipelines
-
-```go
-pipeline := pipeline.NewPipelineBuilder(registry).
-    With(pipeline.Preprocess).
-    WithHandler(customHandler).
-    With(pipeline.Parse).
-    With(pipeline.TransformResources).
-    With(pipeline.Format).
-    Build()
-```
+That's it! Your transformer will now be used when processing files.
 
 ## Project Structure
 
 ```
 tf-migrate/
 ├── cmd/tf-migrate/         # CLI application
-│   ├── main.go
-│   └── root/
-│       ├── root.go         # Command definitions
-│       └── migrate.go      # Migration logic
+│   └── main.go            # Entry point with command definitions
 ├── internal/
-│   ├── handlers/           # Pipeline handlers
-│   ├── interfaces/         # Core interfaces
-│   ├── pipeline/           # Pipeline orchestration
-│   ├── registry/           # Strategy registry
-│   ├── resources/          # Resource transformers
-│   ├── hcl/               # HCL utilities
-│   └── logger/            # Logging
+│   ├── migrate/           # Core migration logic
+│   ├── processor/         # Processing logic
+│   ├── registry/          # Transformer registry
+│   ├── resources/         # Resource transformers (add yours here)
+│   ├── transform/         # Core transformation interfaces
+│   ├── transformers/      # Base transformer implementations
+│   └── logger/            # Logging utilities
 └── go.mod
 ```
 
-## Getting Started
+## Development
 
 ### Running Tests
 
@@ -166,20 +185,49 @@ go test ./...
 go build -o tf-migrate cmd/tf-migrate/main.go
 ```
 
+### Adding a New Transformer - Complete Example
+
+Let's say Cloudflare changes `cloudflare_load_balancer` to separate resources. Here's how you'd handle it:
+
+```go
+// internal/resources/load_balancer.go
+package resources
+
+type LoadBalancerTransformer struct {
+    transformers.BaseTransformer
+}
+
+func NewLoadBalancerTransformer() *LoadBalancerTransformer {
+    return &LoadBalancerTransformer{
+        BaseTransformer: transformers.BaseTransformer{
+            ResourceType: "cloudflare_load_balancer",
+            
+            ConfigTransformer: func(block *hclwrite.Block) (*transform.TransformResult, error) {
+                // Split into two resources: pool and load_balancer
+                poolBlock := hclwrite.NewBlock("resource", []string{"cloudflare_load_balancer_pool", block.Labels()[1] + "_pool"})
+                lbBlock := hclwrite.NewBlock("resource", []string{"cloudflare_load_balancer", block.Labels()[1]})
+                
+                // Move pool-related attributes to pool block
+                // Keep load balancer attributes in lb block
+                // ... transformation logic ...
+                
+                return &transform.TransformResult{
+                    Blocks:         []*hclwrite.Block{poolBlock, lbBlock},
+                    RemoveOriginal: true, // Remove original, add two new blocks
+                }, nil
+            },
+        },
+    }
+}
+```
+
 ## Contributing
 
-### Adding New Resource Transformers
+1. Create your transformer in `internal/resources/`
+2. Register it in `internal/transformers/registry.go`
+3. Add tests for your transformer
+4. Submit a pull request
 
-1. Create a new file in `internal/resources/` for your resource type
-2. Implement the `ResourceTransformer` interface
-3. Register your transformer in an `init()` function
-4. Add tests in `internal/resources/` with `_test.go` suffix
-5. Submit a pull request with your changes
+## License
 
-### Development Guidelines
-
-- Follow Go conventions and idioms
-- Add tests for new functionality
-- Use the existing handler pattern for new pipeline stages
-- Update documentation for new features
-- Ensure all tests pass before submitting PRs
+[Your License Here]
