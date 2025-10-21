@@ -1,4 +1,4 @@
-module github.com/vaishak/tf-migrate
+module github.com/cloudflare/tf-migrate
 
 go 1.21
 

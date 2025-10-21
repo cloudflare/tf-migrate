@@ -4,10 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vaishak/tf-migrate/internal/handlers"
-	"github.com/vaishak/tf-migrate/internal/interfaces"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
+
+	"github.com/cloudflare/tf-migrate/internal/handlers"
+	"github.com/cloudflare/tf-migrate/internal/interfaces"
 )
 
 func TestFormatterHandler(t *testing.T) {

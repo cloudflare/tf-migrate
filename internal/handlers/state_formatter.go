@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/vaishak/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/interfaces"
 )
 
 type StateFormatterHandler struct {

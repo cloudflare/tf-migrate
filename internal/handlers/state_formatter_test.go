@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/vaishak/tf-migrate/internal/handlers"
-	"github.com/vaishak/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/handlers"
+	"github.com/cloudflare/tf-migrate/internal/interfaces"
 )
 
 func TestStateFormatterHandler(t *testing.T) {
@@ -48,7 +48,7 @@ func TestStateFormatterHandler(t *testing.T) {
 			},
 		},
 		{
-			name:  "Handle already formatted JSON",
+			name: "Handle already formatted JSON",
 			input: `{
   "version": 4,
   "resources": []

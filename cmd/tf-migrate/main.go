@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/vaishak/tf-migrate/cmd/tf-migrate/root"
+	"github.com/cloudflare/tf-migrate/cmd/tf-migrate/root"
 )
 
 func main() {

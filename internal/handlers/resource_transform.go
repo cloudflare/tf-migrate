@@ -6,9 +6,9 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
-	"github.com/vaishak/tf-migrate/internal/interfaces"
-	"github.com/vaishak/tf-migrate/internal/logger"
-	"github.com/vaishak/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/logger"
+	"github.com/cloudflare/tf-migrate/internal/registry"
 )
 
 type ResourceTransformHandler struct {

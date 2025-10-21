@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/vaishak/tf-migrate/internal/logger"
-	"github.com/vaishak/tf-migrate/internal/pipeline"
-	"github.com/vaishak/tf-migrate/internal/registry"
-	"github.com/vaishak/tf-migrate/internal/resources"
+	"github.com/cloudflare/tf-migrate/internal/logger"
+	"github.com/cloudflare/tf-migrate/internal/pipeline"
+	"github.com/cloudflare/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/resources"
 )
 
 // runMigration performs the actual migration using the pipeline

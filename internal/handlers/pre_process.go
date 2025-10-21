@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"github.com/vaishak/tf-migrate/internal/interfaces"
-	"github.com/vaishak/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/registry"
 )
 
 type PreprocessHandler struct {

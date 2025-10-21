@@ -5,18 +5,19 @@ import (
 	"testing"
 
 	"github.com/tidwall/gjson"
-	"github.com/vaishak/tf-migrate/internal/handlers"
-	"github.com/vaishak/tf-migrate/internal/interfaces"
-	"github.com/vaishak/tf-migrate/internal/registry"
+	
+	"github.com/cloudflare/tf-migrate/internal/handlers"
+	"github.com/cloudflare/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/registry"
 )
 
 func TestStateTransformHandler(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         string
-		transformer   *MockResourceTransformer
-		expectError   bool
-		checkResult   func(*testing.T, *interfaces.TransformContext)
+		name        string
+		input       string
+		transformer *MockResourceTransformer
+		expectError bool
+		checkResult func(*testing.T, *interfaces.TransformContext)
 	}{
 		{
 			name: "Transform simple state resource",
@@ -72,13 +73,13 @@ func TestStateTransformHandler(t *testing.T) {
 			},
 		},
 		{
-			name: "Handle invalid JSON",
-			input: `{invalid json`,
+			name:        "Handle invalid JSON",
+			input:       `{invalid json`,
 			expectError: true,
 		},
 		{
-			name: "Handle empty state",
-			input: `{}`,
+			name:        "Handle empty state",
+			input:       `{}`,
 			expectError: false,
 			checkResult: func(t *testing.T, ctx *interfaces.TransformContext) {
 				var result map[string]interface{}

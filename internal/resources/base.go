@@ -4,7 +4,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 
-	"github.com/vaishak/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/interfaces"
 )
 
 // BaseResourceTransformer provides common functionality for all resource transformers

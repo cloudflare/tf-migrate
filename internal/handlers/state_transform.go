@@ -6,9 +6,9 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
-	"github.com/vaishak/tf-migrate/internal/interfaces"
-	"github.com/vaishak/tf-migrate/internal/logger"
-	"github.com/vaishak/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/logger"
+	"github.com/cloudflare/tf-migrate/internal/registry"
 )
 
 type StateTransformHandler struct {

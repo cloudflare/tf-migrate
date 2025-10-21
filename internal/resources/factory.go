@@ -1,9 +1,9 @@
 package resources
 
 import (
-	"github.com/vaishak/tf-migrate/internal/interfaces"
-	"github.com/vaishak/tf-migrate/internal/logger"
-	"github.com/vaishak/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/logger"
+	"github.com/cloudflare/tf-migrate/internal/registry"
 )
 
 // ResourceFactory is a function that creates a new resource transformer

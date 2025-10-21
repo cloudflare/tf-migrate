@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vaishak/tf-migrate/internal/handlers"
-	"github.com/vaishak/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/handlers"
+	"github.com/cloudflare/tf-migrate/internal/interfaces"
 )
 
 func TestParseHandler(t *testing.T) {
@@ -85,8 +85,8 @@ data "data_source" "example" {
 			errorContains: "failed to parse",
 		},
 		{
-			name: "Empty file",
-			input: "",
+			name:        "Empty file",
+			input:       "",
 			expectError: false,
 			checkAST: func(t *testing.T, ctx *interfaces.TransformContext) {
 				if ctx.AST == nil {

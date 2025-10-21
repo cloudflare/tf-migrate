@@ -2,7 +2,8 @@ package root
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/vaishak/tf-migrate/internal/logger"
+
+	"github.com/cloudflare/tf-migrate/internal/logger"
 )
 
 var (

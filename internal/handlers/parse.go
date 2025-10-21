@@ -5,7 +5,8 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/vaishak/tf-migrate/internal/interfaces"
+
+	"github.com/cloudflare/tf-migrate/internal/interfaces"
 )
 
 type ParseHandler struct {
