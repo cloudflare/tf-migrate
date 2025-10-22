@@ -4,18 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
+	"github.com/hashicorp/go-hclog"
+
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 type StateFormatterHandler struct {
-	interfaces.BaseHandler
+	transform.BaseHandler
+	log hclog.Logger
 }
 
-func NewStateFormatterHandler() interfaces.TransformationHandler {
-	return &StateFormatterHandler{}
+func NewStateFormatterHandler(log hclog.Logger) transform.TransformationHandler {
+	return &StateFormatterHandler{
+		log: log,
+	}
 }
 
-func (h *StateFormatterHandler) Handle(ctx *interfaces.TransformContext) (*interfaces.TransformContext, error) {
+func (h *StateFormatterHandler) Handle(ctx *transform.Context) (*transform.Context, error) {
 	if len(ctx.Content) == 0 {
 		return ctx, fmt.Errorf("state content is empty - cannot format")
 	}
@@ -23,15 +28,15 @@ func (h *StateFormatterHandler) Handle(ctx *interfaces.TransformContext) (*inter
 
 	if err := json.Unmarshal(ctx.Content, &formatted); err != nil {
 		// If we can't parse it, leave it as is
-		return h.CallNext(ctx)
+		return h.Next(ctx)
 	}
 
 	prettyJSON, err := json.MarshalIndent(formatted, "", "  ")
 	if err != nil {
 		// If we can't format it, leave it as is
-		return h.CallNext(ctx)
+		return h.Next(ctx)
 	}
 
 	ctx.Content = prettyJSON
-	return h.CallNext(ctx)
+	return h.Next(ctx)
 }

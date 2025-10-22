@@ -1,34 +1,30 @@
 package handlers
 
 import (
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
-	"github.com/cloudflare/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 type PreprocessHandler struct {
-	interfaces.BaseHandler
-	registry *registry.StrategyRegistry
+	transform.BaseHandler
+	provider transform.Provider
 }
 
-func NewPreprocessHandler(reg *registry.StrategyRegistry) interfaces.TransformationHandler {
+func NewPreprocessHandler(provider transform.Provider) transform.TransformationHandler {
 	return &PreprocessHandler{
-		registry: reg,
+		provider: provider,
 	}
 }
 
-func (h *PreprocessHandler) Handle(ctx *interfaces.TransformContext) (*interfaces.TransformContext, error) {
+func (h *PreprocessHandler) Handle(ctx *transform.Context) (*transform.Context, error) {
 	contentStr := string(ctx.Content)
 	contentStr = h.applyAllPreprocessors(contentStr)
 	ctx.Content = []byte(contentStr)
-	return h.CallNext(ctx)
+	return h.Next(ctx)
 }
 
 func (h *PreprocessHandler) applyAllPreprocessors(content string) string {
-	strategies := h.registry.GetAll()
-
-	for _, strategy := range strategies {
-		content = strategy.Preprocess(content)
+	for _, migrator := range h.provider.GetAllMigrators() {
+		content = migrator.Preprocess(content)
 	}
-
 	return content
 }

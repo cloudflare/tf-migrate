@@ -3,72 +3,27 @@ package handlers_test
 import (
 	"testing"
 
-	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
-
 	"github.com/cloudflare/tf-migrate/internal/handlers"
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
-	"github.com/cloudflare/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
-
-type MockResourceTransformer struct {
-	resourceType       string
-	preprocessCalls    int
-	preprocessFunc     func(content string) string
-	transformFunc      func(block *hclwrite.Block) (*interfaces.TransformResult, error)
-	stateTransformFunc func(json gjson.Result, resourcePath string) (string, error)
-}
-
-func (m *MockResourceTransformer) CanHandle(resourceType string) bool {
-	return resourceType == m.resourceType
-}
-
-func (m *MockResourceTransformer) GetResourceType() string {
-	return m.resourceType
-}
-
-func (m *MockResourceTransformer) TransformConfig(block *hclwrite.Block) (*interfaces.TransformResult, error) {
-	if m.transformFunc != nil {
-		return m.transformFunc(block)
-	}
-	return &interfaces.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
-	}, nil
-}
-
-func (m *MockResourceTransformer) TransformState(json gjson.Result, resourcePath string) (string, error) {
-	if m.stateTransformFunc != nil {
-		return m.stateTransformFunc(json, resourcePath)
-	}
-	return "", nil
-}
-
-func (m *MockResourceTransformer) Preprocess(content string) string {
-	m.preprocessCalls++
-	if m.preprocessFunc != nil {
-		return m.preprocessFunc(content)
-	}
-	return content
-}
 
 func TestPreprocessHandler(t *testing.T) {
 	tests := []struct {
 		name           string
 		input          string
-		resources      []MockResourceTransformer
+		resources      []*MockResourceTransformer
 		expectedOutput string
 	}{
 		{
 			name:           "No registered resources",
 			input:          `resource "cloudflare_record" "test" {}`,
-			resources:      []MockResourceTransformer{},
+			resources:      []*MockResourceTransformer{},
 			expectedOutput: `resource "cloudflare_record" "test" {}`,
 		},
 		{
 			name:  "Single resource preprocessor",
 			input: `resource "old_resource" "test" {}`,
-			resources: []MockResourceTransformer{
+			resources: []*MockResourceTransformer{
 				{
 					resourceType: "old_resource",
 					preprocessFunc: func(content string) string {
@@ -81,7 +36,7 @@ func TestPreprocessHandler(t *testing.T) {
 		{
 			name:  "Multiple resource preprocessors applied in order",
 			input: `resource "resource_a" "test" {} resource "resource_b" "test2" {}`,
-			resources: []MockResourceTransformer{
+			resources: []*MockResourceTransformer{
 				{
 					resourceType: "resource_a",
 					preprocessFunc: func(content string) string {
@@ -102,7 +57,7 @@ func TestPreprocessHandler(t *testing.T) {
 		{
 			name:  "Preprocessor that returns content unchanged",
 			input: `resource "some_resource" "test" {}`,
-			resources: []MockResourceTransformer{
+			resources: []*MockResourceTransformer{
 				{
 					resourceType: "other_resource",
 					preprocessFunc: func(content string) string {
@@ -117,34 +72,22 @@ func TestPreprocessHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create registry and register mock resources
-			reg := registry.NewStrategyRegistry()
-			for i := range tt.resources {
-				// Need to get pointer to avoid loop variable issues
-				resource := &tt.resources[i]
-				reg.Register(resource)
-			}
+			provider := NewMockMigratorProvider(tt.resources)
+			handler := handlers.NewPreprocessHandler(provider)
 
-			// Create handler
-			handler := handlers.NewPreprocessHandler(reg)
-
-			// Create context
-			ctx := &interfaces.TransformContext{
+			ctx := &transform.Context{
 				Content: []byte(tt.input),
 			}
 
-			// Process
 			result, err := handler.Handle(ctx)
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}
 
-			// Check output
 			if string(result.Content) != tt.expectedOutput {
 				t.Errorf("Expected output:\n%s\nGot:\n%s", tt.expectedOutput, string(result.Content))
 			}
 
-			// Verify all preprocessors were called
 			for i, resource := range tt.resources {
 				if resource.preprocessCalls != 1 {
 					t.Errorf("Resource %d preprocessor called %d times, expected 1", i, resource.preprocessCalls)
@@ -184,27 +127,18 @@ func TestPreprocessHandlerCallsAllRegisteredPreprocessors(t *testing.T) {
 		},
 	}
 
-	// Create registry and register resources
-	reg := registry.NewStrategyRegistry()
-	reg.Register(resource1)
-	reg.Register(resource2)
-	reg.Register(resource3)
+	provider := NewMockMigratorProvider([]*MockResourceTransformer{resource1, resource2, resource3})
+	handler := handlers.NewPreprocessHandler(provider)
 
-	// Create handler
-	handler := handlers.NewPreprocessHandler(reg)
-
-	// Content that doesn't mention any of these resource types
-	ctx := &interfaces.TransformContext{
+	ctx := &transform.Context{
 		Content: []byte(`resource "completely_different" "test" {}`),
 	}
 
-	// Process
 	_, err := handler.Handle(ctx)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	// Verify all preprocessors were called in registration order
 	expectedOrder := []string{"resource_1", "resource_2", "resource_3"}
 	if len(callOrder) != len(expectedOrder) {
 		t.Errorf("Expected %d preprocessor calls, got %d", len(expectedOrder), len(callOrder))

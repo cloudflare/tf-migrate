@@ -5,10 +5,9 @@ import (
 	"testing"
 
 	"github.com/tidwall/gjson"
-	
+
 	"github.com/cloudflare/tf-migrate/internal/handlers"
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
-	"github.com/cloudflare/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestStateTransformHandler(t *testing.T) {
@@ -17,7 +16,7 @@ func TestStateTransformHandler(t *testing.T) {
 		input       string
 		transformer *MockResourceTransformer
 		expectError bool
-		checkResult func(*testing.T, *interfaces.TransformContext)
+		checkResult func(*testing.T, *transform.Context)
 	}{
 		{
 			name: "Transform simple state resource",
@@ -51,7 +50,7 @@ func TestStateTransformHandler(t *testing.T) {
 					}`, nil
 				},
 			},
-			checkResult: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkResult: func(t *testing.T, ctx *transform.Context) {
 				var result map[string]interface{}
 				if err := json.Unmarshal(ctx.Content, &result); err != nil {
 					t.Fatalf("Failed to parse result JSON: %v", err)
@@ -81,7 +80,7 @@ func TestStateTransformHandler(t *testing.T) {
 			name:        "Handle empty state",
 			input:       `{}`,
 			expectError: false,
-			checkResult: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkResult: func(t *testing.T, ctx *transform.Context) {
 				var result map[string]interface{}
 				if err := json.Unmarshal(ctx.Content, &result); err != nil {
 					t.Fatalf("Failed to parse result JSON: %v", err)
@@ -105,7 +104,7 @@ func TestStateTransformHandler(t *testing.T) {
 			transformer: &MockResourceTransformer{
 				resourceType: "different_resource",
 			},
-			checkResult: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkResult: func(t *testing.T, ctx *transform.Context) {
 				// Should pass through unchanged
 				var result map[string]interface{}
 				json.Unmarshal(ctx.Content, &result)
@@ -122,13 +121,14 @@ func TestStateTransformHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reg := registry.NewStrategyRegistry()
+			var transformers []*MockResourceTransformer
 			if tt.transformer != nil {
-				reg.Register(tt.transformer)
+				transformers = []*MockResourceTransformer{tt.transformer}
 			}
+			provider := NewMockMigratorProvider(transformers)
 
-			handler := handlers.NewStateTransformHandler(reg)
-			ctx := &interfaces.TransformContext{
+			handler := handlers.NewStateTransformHandler(log, provider)
+			ctx := &transform.Context{
 				Content:  []byte(tt.input),
 				Filename: "terraform.tfstate",
 				Metadata: make(map[string]interface{}),

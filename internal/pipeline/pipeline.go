@@ -1,33 +1,58 @@
 package pipeline
 
 import (
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
-	"github.com/cloudflare/tf-migrate/internal/registry"
+	"github.com/hashicorp/go-hclog"
+
+	"github.com/cloudflare/tf-migrate/internal"
+	"github.com/cloudflare/tf-migrate/internal/handlers"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 type Pipeline struct {
-	handler  interfaces.TransformationHandler
-	registry *registry.StrategyRegistry
+	handler transform.TransformationHandler
+	log     hclog.Logger
 }
 
-func BuildConfigPipeline(reg *registry.StrategyRegistry) *Pipeline {
-	return NewPipelineBuilder(reg).
-		With(Preprocess).
-		With(Parse).
-		With(TransformResources).
-		With(Format).
-		Build()
+// BuildConfigPipeline creates the standard pipeline for HCL configuration files
+// Pipeline: Preprocess → Parse → Transform → Format
+// No registry needed anymore!
+func BuildConfigPipeline(log hclog.Logger) *Pipeline {
+	providers := transform.NewMigratorProvider(internal.GetMigrator, internal.GetAllMigrators)
+	preprocess := handlers.NewPreprocessHandler(providers)
+	parse := handlers.NewParseHandler(log)
+	resourceTransformer := handlers.NewResourceTransformHandler(log, providers)
+	format := handlers.NewFormatterHandler(log)
+
+	// Chain handlers
+	preprocess.SetNext(parse)
+	parse.SetNext(resourceTransformer)
+	resourceTransformer.SetNext(format)
+
+	return &Pipeline{
+		handler: preprocess,
+		log:     log,
+	}
 }
 
-func BuildStatePipeline(reg *registry.StrategyRegistry) *Pipeline {
-	return NewPipelineBuilder(reg).
-		With(TransformState).
-		With(FormatState).
-		Build()
+// BuildStatePipeline creates the standard pipeline for JSON state files
+// Pipeline: Transform → Format
+func BuildStatePipeline(log hclog.Logger) *Pipeline {
+	providers := transform.NewMigratorProvider(internal.GetMigrator, internal.GetAllMigrators)
+	stateTransformer := handlers.NewStateTransformHandler(log, providers)
+	format := handlers.NewStateFormatterHandler(log)
+
+	// Chain handlers
+	stateTransformer.SetNext(format)
+
+	return &Pipeline{
+		handler: stateTransformer,
+		log:     log,
+	}
 }
 
+// Transform executes the pipeline on the given content
 func (p *Pipeline) Transform(content []byte, filename string) ([]byte, error) {
-	ctx := &interfaces.TransformContext{
+	ctx := &transform.Context{
 		Content:     content,
 		Filename:    filename,
 		Diagnostics: nil,
@@ -45,50 +70,4 @@ func (p *Pipeline) Transform(content []byte, filename string) ([]byte, error) {
 	}
 
 	return result.Content, nil
-}
-
-type PipelineBuilder struct {
-	handlers []interfaces.TransformationHandler
-	registry *registry.StrategyRegistry
-}
-
-func NewPipelineBuilder(reg *registry.StrategyRegistry) *PipelineBuilder {
-	return &PipelineBuilder{
-		handlers: make([]interfaces.TransformationHandler, 0),
-		registry: reg,
-	}
-}
-
-// With adds a handler using a factory function
-func (b *PipelineBuilder) With(factory HandlerFactory) *PipelineBuilder {
-	handler := factory(b.registry)
-	b.handlers = append(b.handlers, handler)
-	return b
-}
-
-// WithHandler adds a pre-created handler instance
-func (b *PipelineBuilder) WithHandler(handler interfaces.TransformationHandler) *PipelineBuilder {
-	b.handlers = append(b.handlers, handler)
-	return b
-}
-
-// WithHandlers adds multiple pre-created handler instances
-func (b *PipelineBuilder) WithHandlers(handlers ...interfaces.TransformationHandler) *PipelineBuilder {
-	b.handlers = append(b.handlers, handlers...)
-	return b
-}
-
-func (b *PipelineBuilder) Build() *Pipeline {
-	if len(b.handlers) == 0 {
-		return nil
-	}
-
-	for i := 0; i < len(b.handlers)-1; i++ {
-		b.handlers[i].SetNext(b.handlers[i+1])
-	}
-
-	return &Pipeline{
-		handler:  b.handlers[0],
-		registry: b.registry,
-	}
 }

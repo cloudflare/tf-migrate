@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/cloudflare/tf-migrate/internal/handlers"
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestParseHandler(t *testing.T) {
@@ -14,7 +14,7 @@ func TestParseHandler(t *testing.T) {
 		input         string
 		expectError   bool
 		errorContains string
-		checkAST      func(*testing.T, *interfaces.TransformContext)
+		checkAST      func(*testing.T, *transform.Context)
 	}{
 		{
 			name: "Valid HCL parsing",
@@ -23,7 +23,7 @@ func TestParseHandler(t *testing.T) {
   count = 5
 }`,
 			expectError: false,
-			checkAST: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkAST: func(t *testing.T, ctx *transform.Context) {
 				if ctx.AST == nil {
 					t.Fatal("AST should not be nil")
 				}
@@ -57,7 +57,7 @@ data "data_source" "example" {
   id = "123"
 }`,
 			expectError: false,
-			checkAST: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkAST: func(t *testing.T, ctx *transform.Context) {
 				blocks := ctx.AST.Body().Blocks()
 				if len(blocks) != 3 {
 					t.Errorf("Expected 3 blocks, got %d", len(blocks))
@@ -88,7 +88,7 @@ data "data_source" "example" {
 			name:        "Empty file",
 			input:       "",
 			expectError: false,
-			checkAST: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkAST: func(t *testing.T, ctx *transform.Context) {
 				if ctx.AST == nil {
 					t.Fatal("AST should not be nil even for empty file")
 				}
@@ -103,7 +103,7 @@ data "data_source" "example" {
 			input: `# This is a comment
 /* Block comment */`,
 			expectError: false,
-			checkAST: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkAST: func(t *testing.T, ctx *transform.Context) {
 				blocks := ctx.AST.Body().Blocks()
 				if len(blocks) != 0 {
 					t.Errorf("Expected 0 blocks for file with only comments, got %d", len(blocks))
@@ -128,7 +128,7 @@ data "data_source" "example" {
   }
 }`,
 			expectError: false,
-			checkAST: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkAST: func(t *testing.T, ctx *transform.Context) {
 				blocks := ctx.AST.Body().Blocks()
 				if len(blocks) != 1 {
 					t.Errorf("Expected 1 block, got %d", len(blocks))
@@ -144,9 +144,9 @@ data "data_source" "example" {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := handlers.NewParseHandler()
+			handler := handlers.NewParseHandler(log)
 
-			ctx := &interfaces.TransformContext{
+			ctx := &transform.Context{
 				Content:  []byte(tt.input),
 				Filename: "test.tf",
 			}
@@ -182,8 +182,8 @@ func TestParseHandlerPreservesContent(t *testing.T) {
   name = "test"
 }`
 
-	handler := handlers.NewParseHandler()
-	ctx := &interfaces.TransformContext{
+	handler := handlers.NewParseHandler(log)
+	ctx := &transform.Context{
 		Content: []byte(input),
 	}
 
@@ -201,7 +201,7 @@ func TestParseHandlerChaining(t *testing.T) {
 	nextHandlerCalled := false
 
 	mockNext := &mockHandler{
-		handleFunc: func(ctx *interfaces.TransformContext) (*interfaces.TransformContext, error) {
+		handleFunc: func(ctx *transform.Context) (*transform.Context, error) {
 			nextHandlerCalled = true
 			if ctx.AST == nil {
 				t.Error("AST should be set when next handler is called")
@@ -210,10 +210,10 @@ func TestParseHandlerChaining(t *testing.T) {
 		},
 	}
 
-	handler := handlers.NewParseHandler()
+	handler := handlers.NewParseHandler(log)
 	handler.SetNext(mockNext)
 
-	ctx := &interfaces.TransformContext{
+	ctx := &transform.Context{
 		Content: []byte(`resource "test" "example" {}`),
 	}
 
@@ -228,13 +228,13 @@ func TestParseHandlerChaining(t *testing.T) {
 }
 
 type mockHandler struct {
-	interfaces.BaseHandler
-	handleFunc func(*interfaces.TransformContext) (*interfaces.TransformContext, error)
+	transform.BaseHandler
+	handleFunc func(*transform.Context) (*transform.Context, error)
 }
 
-func (m *mockHandler) Handle(ctx *interfaces.TransformContext) (*interfaces.TransformContext, error) {
+func (m *mockHandler) Handle(ctx *transform.Context) (*transform.Context, error) {
 	if m.handleFunc != nil {
 		return m.handleFunc(ctx)
 	}
-	return m.CallNext(ctx)
+	return m.Next(ctx)
 }

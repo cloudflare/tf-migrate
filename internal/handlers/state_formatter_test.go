@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/cloudflare/tf-migrate/internal/handlers"
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestStateFormatterHandler(t *testing.T) {
@@ -83,8 +83,8 @@ func TestStateFormatterHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := handlers.NewStateFormatterHandler()
-			ctx := &interfaces.TransformContext{
+			handler := handlers.NewStateFormatterHandler(log)
+			ctx := &transform.Context{
 				Content: []byte(tt.input),
 			}
 
@@ -112,7 +112,7 @@ func TestStateFormatterHandlerChaining(t *testing.T) {
 	nextHandlerCalled := false
 
 	mockNext := &mockHandler{
-		handleFunc: func(ctx *interfaces.TransformContext) (*interfaces.TransformContext, error) {
+		handleFunc: func(ctx *transform.Context) (*transform.Context, error) {
 			nextHandlerCalled = true
 			// Content should be formatted when next handler is called
 			if len(ctx.Content) == 0 {
@@ -125,10 +125,10 @@ func TestStateFormatterHandlerChaining(t *testing.T) {
 		},
 	}
 
-	handler := handlers.NewStateFormatterHandler()
+	handler := handlers.NewStateFormatterHandler(log)
 	handler.SetNext(mockNext)
 
-	ctx := &interfaces.TransformContext{
+	ctx := &transform.Context{
 		Content: []byte(`{"test":true}`),
 	}
 

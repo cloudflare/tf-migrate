@@ -3,21 +3,25 @@ package handlers
 import (
 	"fmt"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 type ParseHandler struct {
-	interfaces.BaseHandler
+	transform.BaseHandler
+	log hclog.Logger
 }
 
-func NewParseHandler() interfaces.TransformationHandler {
-	return &ParseHandler{}
+func NewParseHandler(log hclog.Logger) transform.TransformationHandler {
+	return &ParseHandler{
+		log: log,
+	}
 }
 
-func (h *ParseHandler) Handle(ctx *interfaces.TransformContext) (*interfaces.TransformContext, error) {
+func (h *ParseHandler) Handle(ctx *transform.Context) (*transform.Context, error) {
 	file, diags := hclwrite.ParseConfig(ctx.Content, ctx.Filename, hcl.Pos{Line: 1, Column: 1})
 
 	if diags.HasErrors() {
@@ -31,5 +35,5 @@ func (h *ParseHandler) Handle(ctx *interfaces.TransformContext) (*interfaces.Tra
 		ctx.Diagnostics = append(ctx.Diagnostics, diags...)
 	}
 
-	return h.CallNext(ctx)
+	return h.Next(ctx)
 }

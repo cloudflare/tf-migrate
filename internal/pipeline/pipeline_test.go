@@ -4,35 +4,38 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+
 	"github.com/tidwall/gjson"
+
 	"github.com/zclconf/go-cty/cty"
-	
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
+
+	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
-	"github.com/cloudflare/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 type MockHandler struct {
-	interfaces.BaseHandler
+	transform.BaseHandler
 	name   string
 	called bool
 }
 
-func (m *MockHandler) Handle(ctx *interfaces.TransformContext) (*interfaces.TransformContext, error) {
+func (m *MockHandler) Handle(ctx *transform.Context) (*transform.Context, error) {
 	m.called = true
 	if ctx.Metadata == nil {
 		ctx.Metadata = make(map[string]interface{})
 	}
 	ctx.Metadata[m.name] = true
-	return m.CallNext(ctx)
+	return m.Next(ctx)
 }
 
 type MockResourceTransformer struct {
 	resourceType        string
 	canHandleFunc       func(string) bool
 	preprocessFunc      func(string) string
-	transformFunc       func(*hclwrite.Block) (*interfaces.TransformResult, error)
+	transformFunc       func(*transform.Context, *hclwrite.Block) (*transform.TransformResult, error)
 	transformStateCalls int
 	preprocessCalls     int
 	transformCalls      int
@@ -49,18 +52,18 @@ func (m *MockResourceTransformer) GetResourceType() string {
 	return m.resourceType
 }
 
-func (m *MockResourceTransformer) TransformConfig(block *hclwrite.Block) (*interfaces.TransformResult, error) {
+func (m *MockResourceTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	m.transformCalls++
 	if m.transformFunc != nil {
-		return m.transformFunc(block)
+		return m.transformFunc(ctx, block)
 	}
-	return &interfaces.TransformResult{
+	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
 }
 
-func (m *MockResourceTransformer) TransformState(json gjson.Result, resourcePath string) (string, error) {
+func (m *MockResourceTransformer) TransformState(ctx *transform.Context, json gjson.Result, resourcePath string) (string, error) {
 	m.transformStateCalls++
 	return "", nil
 }
@@ -71,6 +74,20 @@ func (m *MockResourceTransformer) Preprocess(content string) string {
 		return m.preprocessFunc(content)
 	}
 	return content
+}
+
+var log = hclog.New(&hclog.LoggerOptions{})
+
+func setupTestMigrators(t *testing.T, transformers ...transform.ResourceTransformer) {
+	t.Helper()
+
+	for _, resourceTransformer := range transformers {
+		rt := resourceTransformer
+		resourceType := rt.GetResourceType()
+		internal.Register(resourceType, func() transform.ResourceTransformer {
+			return rt
+		})
+	}
 }
 
 func TestPipelineEndToEnd(t *testing.T) {
@@ -161,11 +178,14 @@ resource "cloudflare_lb" "example2" {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			reg := registry.NewStrategyRegistry()
-			for _, transformer := range tt.transformers {
-				reg.Register(transformer)
+			// Convert slice to interface slice for variadic function
+			var transformers []transform.ResourceTransformer
+			for _, t := range tt.transformers {
+				transformers = append(transformers, t)
 			}
-			p := pipeline.BuildConfigPipeline(reg)
+			setupTestMigrators(t, transformers...)
+
+			p := pipeline.BuildConfigPipeline(log)
 
 			result, err := p.Transform([]byte(tt.input), "test.tf")
 
@@ -193,53 +213,6 @@ resource "cloudflare_lb" "example2" {
 	}
 }
 
-func TestPipelineBuilder(t *testing.T) {
-	reg := registry.NewStrategyRegistry()
-
-	p := pipeline.NewPipelineBuilder(reg).
-		With(pipeline.Preprocess).
-		With(pipeline.Parse).
-		With(pipeline.TransformResources).
-		With(pipeline.Format).
-		Build()
-
-	input := `resource "test" "example" { }`
-	result, err := p.Transform([]byte(input), "test.tf")
-
-	if err != nil {
-		t.Fatalf("Pipeline failed: %v", err)
-	}
-
-	if len(result) == 0 {
-		t.Error("Pipeline returned empty result")
-	}
-}
-
-func TestPartialPipeline(t *testing.T) {
-	p := pipeline.NewPipelineBuilder(nil).
-		With(pipeline.Parse).
-		With(pipeline.Format).
-		Build()
-
-	input := `resource   "test"   "example"   {
-  name="test"
-}`
-
-	result, err := p.Transform([]byte(input), "test.tf")
-	if err != nil {
-		t.Fatalf("Pipeline failed: %v", err)
-	}
-
-	// Should be formatted properly
-	expected := `resource "test" "example" {
-  name = "test"
-}`
-
-	if strings.TrimSpace(string(result)) != strings.TrimSpace(expected) {
-		t.Errorf("Expected formatted output:\n%s\nGot:\n%s", expected, string(result))
-	}
-}
-
 func TestTransformerCallOrder(t *testing.T) {
 	callLog := []string{}
 
@@ -249,19 +222,18 @@ func TestTransformerCallOrder(t *testing.T) {
 			callLog = append(callLog, "preprocess")
 			return content
 		},
-		transformFunc: func(block *hclwrite.Block) (*interfaces.TransformResult, error) {
+		transformFunc: func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 			callLog = append(callLog, "transform")
-			return &interfaces.TransformResult{
+			return &transform.TransformResult{
 				Blocks:         []*hclwrite.Block{block},
 				RemoveOriginal: false,
 			}, nil
 		},
 	}
 
-	reg := registry.NewStrategyRegistry()
-	reg.Register(transformer)
+	setupTestMigrators(t, transformer)
 
-	p := pipeline.BuildConfigPipeline(reg)
+	p := pipeline.BuildConfigPipeline(log)
 
 	input := `resource "test_resource" "example" { }`
 	_, err := p.Transform([]byte(input), "test.tf")
@@ -286,19 +258,18 @@ func TestTransformerCallOrder(t *testing.T) {
 func TestResourceTransformationWithRemoval(t *testing.T) {
 	transformer := &MockResourceTransformer{
 		resourceType: "deprecated_resource",
-		transformFunc: func(block *hclwrite.Block) (*interfaces.TransformResult, error) {
+		transformFunc: func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 			// Remove the block entirely
-			return &interfaces.TransformResult{
+			return &transform.TransformResult{
 				Blocks:         []*hclwrite.Block{},
 				RemoveOriginal: true,
 			}, nil
 		},
 	}
 
-	reg := registry.NewStrategyRegistry()
-	reg.Register(transformer)
+	setupTestMigrators(t, transformer)
 
-	p := pipeline.BuildConfigPipeline(reg)
+	p := pipeline.BuildConfigPipeline(log)
 
 	input := `resource "deprecated_resource" "to_remove" {
   name = "remove_me"
@@ -327,7 +298,7 @@ resource "other_resource" "to_keep" {
 func TestResourceTransformationWithSplitting(t *testing.T) {
 	transformer := &MockResourceTransformer{
 		resourceType: "combined_resource",
-		transformFunc: func(block *hclwrite.Block) (*interfaces.TransformResult, error) {
+		transformFunc: func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 			// Split into two blocks
 			block1 := hclwrite.NewBlock("resource", []string{"split_resource_1", "part1"})
 			block1.Body().SetAttributeValue("name", cty.StringVal("part1"))
@@ -335,17 +306,16 @@ func TestResourceTransformationWithSplitting(t *testing.T) {
 			block2 := hclwrite.NewBlock("resource", []string{"split_resource_2", "part2"})
 			block2.Body().SetAttributeValue("name", cty.StringVal("part2"))
 
-			return &interfaces.TransformResult{
+			return &transform.TransformResult{
 				Blocks:         []*hclwrite.Block{block1, block2},
 				RemoveOriginal: true,
 			}, nil
 		},
 	}
 
-	reg := registry.NewStrategyRegistry()
-	reg.Register(transformer)
+	setupTestMigrators(t, transformer)
 
-	p := pipeline.BuildConfigPipeline(reg)
+	p := pipeline.BuildConfigPipeline(log)
 
 	input := `resource "combined_resource" "original" {
   name = "combined"
@@ -371,7 +341,7 @@ func TestResourceTransformationWithSplitting(t *testing.T) {
 // Test error propagation through pipeline
 func TestPipelineErrorPropagation(t *testing.T) {
 	// Test with nil content - should handle gracefully as empty content
-	p := pipeline.BuildConfigPipeline(registry.NewStrategyRegistry())
+	p := pipeline.BuildConfigPipeline(log)
 
 	result, err := p.Transform(nil, "test.tf")
 	if err != nil {
@@ -390,134 +360,9 @@ func TestPipelineErrorPropagation(t *testing.T) {
 	}
 }
 
-func TestGenericPipelineBuilder(t *testing.T) {
-	t.Run("Custom handler factory", func(t *testing.T) {
-		reg := registry.NewStrategyRegistry()
-
-		handler1 := &MockHandler{name: "handler1"}
-		handler2 := &MockHandler{name: "handler2"}
-
-		customFactory1 := func(_ *registry.StrategyRegistry) interfaces.TransformationHandler {
-			return handler1
-		}
-		customFactory2 := func(_ *registry.StrategyRegistry) interfaces.TransformationHandler {
-			return handler2
-		}
-
-		p := pipeline.NewPipelineBuilder(reg).
-			With(customFactory1).
-			With(customFactory2).
-			With(pipeline.Parse).
-			With(pipeline.Format).
-			Build()
-
-		// Test the pipeline
-		result, err := p.Transform([]byte(`resource "test" "example" {}`), "test.tf")
-		if err != nil {
-			t.Fatalf("Pipeline failed: %v", err)
-		}
-
-		// Verify handlers were called
-		if !handler1.called {
-			t.Error("Handler1 was not called")
-		}
-		if !handler2.called {
-			t.Error("Handler2 was not called")
-		}
-
-		if len(result) == 0 {
-			t.Error("Pipeline returned empty result")
-		}
-	})
-
-	t.Run("WithHandler for pre-created instances", func(t *testing.T) {
-		reg := registry.NewStrategyRegistry()
-
-		handler := &MockHandler{name: "custom"}
-
-		p := pipeline.NewPipelineBuilder(reg).
-			WithHandler(handler).
-			With(pipeline.Parse).
-			With(pipeline.Format).
-			Build()
-
-		_, err := p.Transform([]byte(`resource "test" "example" {}`), "test.tf")
-		if err != nil {
-			t.Fatalf("Pipeline failed: %v", err)
-		}
-
-		if !handler.called {
-			t.Error("Custom handler was not called")
-		}
-	})
-
-	t.Run("WithHandlers for multiple instances", func(t *testing.T) {
-		reg := registry.NewStrategyRegistry()
-
-		handlers := []interfaces.TransformationHandler{
-			&MockHandler{name: "h1"},
-			&MockHandler{name: "h2"},
-			&MockHandler{name: "h3"},
-		}
-
-		p := pipeline.NewPipelineBuilder(reg).
-			WithHandlers(handlers...).
-			With(pipeline.Parse).
-			With(pipeline.Format).
-			Build()
-
-		// Test the pipeline
-		_, err := p.Transform([]byte(`resource "test" "example" {}`), "test.tf")
-		if err != nil {
-			t.Fatalf("Pipeline failed: %v", err)
-		}
-
-		// Check all were called
-		for i, h := range handlers {
-			if mock, ok := h.(*MockHandler); ok {
-				if !mock.called {
-					t.Errorf("Handler %d was not called", i)
-				}
-			}
-		}
-	})
-
-	t.Run("Dynamic pipeline construction", func(t *testing.T) {
-		reg := registry.NewStrategyRegistry()
-
-		builder := pipeline.NewPipelineBuilder(reg)
-
-		// Dynamically add handlers based on conditions
-		needPreprocess := true
-		needTransform := true
-
-		if needPreprocess {
-			builder = builder.With(pipeline.Preprocess)
-		}
-
-		builder = builder.With(pipeline.Parse)
-
-		if needTransform {
-			builder = builder.With(pipeline.TransformResources)
-		}
-
-		builder = builder.With(pipeline.Format)
-
-		p := builder.Build()
-
-		// Test the pipeline
-		_, err := p.Transform([]byte(`resource "test" "example" {}`), "test.tf")
-		if err != nil {
-			t.Fatalf("Pipeline failed: %v", err)
-		}
-	})
-}
-
-func TestPredefinedPipelines(t *testing.T) {
-	reg := registry.NewStrategyRegistry()
-
+func TestStandardPipelines(t *testing.T) {
 	t.Run("BuildConfigPipeline uses correct handlers", func(t *testing.T) {
-		p := pipeline.BuildConfigPipeline(reg)
+		p := pipeline.BuildConfigPipeline(log)
 		if p == nil {
 			t.Fatal("BuildConfigPipeline returned nil")
 		}
@@ -530,7 +375,7 @@ func TestPredefinedPipelines(t *testing.T) {
 	})
 
 	t.Run("BuildStatePipeline uses correct handlers", func(t *testing.T) {
-		p := pipeline.BuildStatePipeline(reg)
+		p := pipeline.BuildStatePipeline(log)
 		if p == nil {
 			t.Fatal("BuildStatePipeline returned nil")
 		}

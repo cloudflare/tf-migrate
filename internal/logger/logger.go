@@ -2,55 +2,38 @@ package logger
 
 import (
 	"os"
+	"strings"
 
 	"github.com/hashicorp/go-hclog"
 )
 
-var log hclog.Logger
+// New creates a new logger instance with the specified level
+// Valid levels: "debug", "info", "warn", "error", "off"
+// Empty string defaults to "warn"
+func New(level string) hclog.Logger {
+	var logLevel hclog.Level
 
-func Init(verbose bool, debug bool, quiet bool) {
-	level := hclog.Info
-	if quiet {
-		level = hclog.Error
-	} else if debug {
-		level = hclog.Debug
-	} else if verbose {
-		level = hclog.Trace
+	switch strings.ToLower(level) {
+	case "debug":
+		logLevel = hclog.Debug
+	case "info":
+		logLevel = hclog.Info
+	case "warn", "":
+		logLevel = hclog.Warn
+	case "error":
+		logLevel = hclog.Error
+	case "off":
+		logLevel = hclog.Off
+	default:
+		// Default to warn for unknown levels
+		logLevel = hclog.Warn
 	}
 
-	log = hclog.New(&hclog.LoggerOptions{
+	return hclog.New(&hclog.LoggerOptions{
 		Name:       "tf-migrate",
-		Level:      level,
+		Level:      logLevel,
 		Output:     os.Stderr,
 		JSONFormat: false,
 		Color:      hclog.AutoColor,
 	})
-}
-
-func Debug(msg string, args ...interface{}) {
-	if log == nil {
-		return
-	}
-	log.Debug(msg, args...)
-}
-
-func Info(msg string, args ...interface{}) {
-	if log == nil {
-		return
-	}
-	log.Info(msg, args...)
-}
-
-func Warn(msg string, args ...interface{}) {
-	if log == nil {
-		return
-	}
-	log.Warn(msg, args...)
-}
-
-func Error(msg string, args ...interface{}) {
-	if log == nil {
-		return
-	}
-	log.Error(msg, args...)
 }

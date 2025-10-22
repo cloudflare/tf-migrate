@@ -5,13 +5,84 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/tidwall/gjson"
 	"github.com/zclconf/go-cty/cty"
-	
+
 	"github.com/cloudflare/tf-migrate/internal/handlers"
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
-	"github.com/cloudflare/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
+
+type MockResourceTransformer struct {
+	resourceType       string
+	preprocessCalls    int
+	preprocessFunc     func(content string) string
+	transformFunc      func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error)
+	stateTransformFunc func(json gjson.Result, resourcePath string) (string, error)
+}
+
+func (m *MockResourceTransformer) CanHandle(resourceType string) bool {
+	return resourceType == m.resourceType
+}
+
+func (m *MockResourceTransformer) GetResourceType() string {
+	return m.resourceType
+}
+
+func (m *MockResourceTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	if m.transformFunc != nil {
+		return m.transformFunc(ctx, block)
+	}
+	return &transform.TransformResult{
+		Blocks:         []*hclwrite.Block{block},
+		RemoveOriginal: false,
+	}, nil
+}
+
+func (m *MockResourceTransformer) TransformState(_ *transform.Context, json gjson.Result, resourcePath string) (string, error) {
+	if m.stateTransformFunc != nil {
+		return m.stateTransformFunc(json, resourcePath)
+	}
+	return "", nil
+}
+
+func (m *MockResourceTransformer) Preprocess(content string) string {
+	m.preprocessCalls++
+	if m.preprocessFunc != nil {
+		return m.preprocessFunc(content)
+	}
+	return content
+}
+
+type MockMigratorProvider struct {
+	transformers        map[string]transform.ResourceTransformer
+	orderedTransformers []transform.ResourceTransformer
+}
+
+func NewMockMigratorProvider(transformers []*MockResourceTransformer) *MockMigratorProvider {
+	m := &MockMigratorProvider{
+		transformers:        make(map[string]transform.ResourceTransformer),
+		orderedTransformers: make([]transform.ResourceTransformer, 0, len(transformers)),
+	}
+	for _, t := range transformers {
+		if t != nil {
+			m.transformers[t.GetResourceType()] = t
+			m.orderedTransformers = append(m.orderedTransformers, t)
+		}
+	}
+	return m
+}
+
+func (m *MockMigratorProvider) GetMigrator(resourceType string) transform.ResourceTransformer {
+	return m.transformers[resourceType]
+}
+
+func (m *MockMigratorProvider) GetAllMigrators() []transform.ResourceTransformer {
+	return m.orderedTransformers
+}
+
+var log = hclog.New(&hclog.LoggerOptions{})
 
 func TestResourceTransformHandler(t *testing.T) {
 	tests := []struct {
@@ -19,7 +90,7 @@ func TestResourceTransformHandler(t *testing.T) {
 		input        string
 		transformers []*MockResourceTransformer
 		expectError  bool
-		checkResult  func(*testing.T, *interfaces.TransformContext)
+		checkResult  func(*testing.T, *transform.Context)
 	}{
 		{
 			name: "Transform single resource",
@@ -29,21 +100,21 @@ func TestResourceTransformHandler(t *testing.T) {
 			transformers: []*MockResourceTransformer{
 				{
 					resourceType: "old_resource",
-					transformFunc: func(block *hclwrite.Block) (*interfaces.TransformResult, error) {
+					transformFunc: func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 						// Change the resource type
 						newBlock := hclwrite.NewBlock("resource", []string{"new_resource", block.Labels()[1]})
 						// Copy attributes
 						for name, attr := range block.Body().Attributes() {
 							newBlock.Body().SetAttributeRaw(name, attr.Expr().BuildTokens(nil))
 						}
-						return &interfaces.TransformResult{
+						return &transform.TransformResult{
 							Blocks:         []*hclwrite.Block{newBlock},
 							RemoveOriginal: true,
 						}, nil
 					},
 				},
 			},
-			checkResult: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkResult: func(t *testing.T, ctx *transform.Context) {
 				blocks := ctx.AST.Body().Blocks()
 				if len(blocks) != 1 {
 					t.Errorf("Expected 1 block after transformation, got %d", len(blocks))
@@ -64,15 +135,15 @@ resource "keep_me" "example" {
 			transformers: []*MockResourceTransformer{
 				{
 					resourceType: "deprecated",
-					transformFunc: func(block *hclwrite.Block) (*interfaces.TransformResult, error) {
-						return &interfaces.TransformResult{
+					transformFunc: func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+						return &transform.TransformResult{
 							Blocks:         []*hclwrite.Block{},
 							RemoveOriginal: true,
 						}, nil
 					},
 				},
 			},
-			checkResult: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkResult: func(t *testing.T, ctx *transform.Context) {
 				blocks := ctx.AST.Body().Blocks()
 				if len(blocks) != 1 {
 					t.Errorf("Expected 1 block after removal, got %d", len(blocks))
@@ -90,21 +161,21 @@ resource "keep_me" "example" {
 			transformers: []*MockResourceTransformer{
 				{
 					resourceType: "combined",
-					transformFunc: func(block *hclwrite.Block) (*interfaces.TransformResult, error) {
+					transformFunc: func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 						block1 := hclwrite.NewBlock("resource", []string{"split_a", "part_a"})
 						block1.Body().SetAttributeValue("name", cty.StringVal("part_a"))
 
 						block2 := hclwrite.NewBlock("resource", []string{"split_b", "part_b"})
 						block2.Body().SetAttributeValue("name", cty.StringVal("part_b"))
 
-						return &interfaces.TransformResult{
+						return &transform.TransformResult{
 							Blocks:         []*hclwrite.Block{block1, block2},
 							RemoveOriginal: true,
 						}, nil
 					},
 				},
 			},
-			checkResult: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkResult: func(t *testing.T, ctx *transform.Context) {
 				blocks := ctx.AST.Body().Blocks()
 				if len(blocks) != 2 {
 					t.Errorf("Expected 2 blocks after split, got %d", len(blocks))
@@ -124,19 +195,19 @@ resource "keep_me" "example" {
 			transformers: []*MockResourceTransformer{
 				{
 					resourceType: "modify_me",
-					transformFunc: func(block *hclwrite.Block) (*interfaces.TransformResult, error) {
+					transformFunc: func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 						// Modify the block in place
 						block.Body().RemoveAttribute("old_attribute")
 						block.Body().SetAttributeValue("new_attribute", cty.StringVal("new_value"))
 
-						return &interfaces.TransformResult{
+						return &transform.TransformResult{
 							Blocks:         []*hclwrite.Block{block},
 							RemoveOriginal: false, // Keep in same position
 						}, nil
 					},
 				},
 			},
-			checkResult: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkResult: func(t *testing.T, ctx *transform.Context) {
 				blocks := ctx.AST.Body().Blocks()
 				if len(blocks) != 1 {
 					t.Errorf("Expected 1 block, got %d", len(blocks))
@@ -161,7 +232,7 @@ resource "keep_me" "example" {
 					resourceType: "different_type",
 				},
 			},
-			checkResult: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkResult: func(t *testing.T, ctx *transform.Context) {
 				// Should remain unchanged
 				blocks := ctx.AST.Body().Blocks()
 				if len(blocks) != 1 {
@@ -180,12 +251,12 @@ resource "keep_me" "example" {
 			transformers: []*MockResourceTransformer{
 				{
 					resourceType: "error_resource",
-					transformFunc: func(block *hclwrite.Block) (*interfaces.TransformResult, error) {
+					transformFunc: func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 						return nil, fmt.Errorf("transformation failed")
 					},
 				},
 			},
-			checkResult: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkResult: func(t *testing.T, ctx *transform.Context) {
 				// Check that diagnostics were added
 				if !ctx.Diagnostics.HasErrors() {
 					t.Error("Expected diagnostics to contain error")
@@ -212,9 +283,9 @@ resource "type_c" "c" {
 			transformers: []*MockResourceTransformer{
 				{
 					resourceType: "type_a",
-					transformFunc: func(block *hclwrite.Block) (*interfaces.TransformResult, error) {
+					transformFunc: func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 						block.Body().SetAttributeValue("transformed", cty.BoolVal(true))
-						return &interfaces.TransformResult{
+						return &transform.TransformResult{
 							Blocks:         []*hclwrite.Block{block},
 							RemoveOriginal: false,
 						}, nil
@@ -222,9 +293,9 @@ resource "type_c" "c" {
 				},
 				{
 					resourceType: "type_b",
-					transformFunc: func(block *hclwrite.Block) (*interfaces.TransformResult, error) {
+					transformFunc: func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 						// Remove type_b
-						return &interfaces.TransformResult{
+						return &transform.TransformResult{
 							Blocks:         []*hclwrite.Block{},
 							RemoveOriginal: true,
 						}, nil
@@ -232,7 +303,7 @@ resource "type_c" "c" {
 				},
 				// No transformer for type_c - should remain unchanged
 			},
-			checkResult: func(t *testing.T, ctx *interfaces.TransformContext) {
+			checkResult: func(t *testing.T, ctx *transform.Context) {
 				blocks := ctx.AST.Body().Blocks()
 				if len(blocks) != 2 {
 					t.Errorf("Expected 2 blocks (a and c), got %d", len(blocks))
@@ -252,15 +323,10 @@ resource "type_c" "c" {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create registry and register transformers
-			reg := registry.NewStrategyRegistry()
-			for _, transformer := range tt.transformers {
-				reg.Register(transformer)
-			}
+			provider := NewMockMigratorProvider(tt.transformers)
 
-			// Parse the input first to get AST
-			parseHandler := handlers.NewParseHandler()
-			ctx := &interfaces.TransformContext{
+			parseHandler := handlers.NewParseHandler(log)
+			ctx := &transform.Context{
 				Content:  []byte(tt.input),
 				Filename: "test.tf",
 				Metadata: make(map[string]interface{}),
@@ -271,8 +337,7 @@ resource "type_c" "c" {
 				t.Fatalf("Failed to parse input: %v", err)
 			}
 
-			// Create and run ResourceTransformHandler
-			handler := handlers.NewResourceTransformHandler(reg)
+			handler := handlers.NewResourceTransformHandler(log, provider)
 			result, err := handler.Handle(ctx)
 
 			if tt.expectError {
@@ -295,10 +360,9 @@ resource "type_c" "c" {
 }
 
 func TestResourceTransformHandlerRequiresAST(t *testing.T) {
-	reg := registry.NewStrategyRegistry()
-	handler := handlers.NewResourceTransformHandler(reg)
+	handler := handlers.NewResourceTransformHandler(log, nil)
 
-	ctx := &interfaces.TransformContext{
+	ctx := &transform.Context{
 		Content: []byte("some content"),
 	}
 
@@ -315,31 +379,29 @@ func TestResourceTransformHandlerRequiresAST(t *testing.T) {
 func TestResourceTransformHandlerMetadata(t *testing.T) {
 	transformer := &MockResourceTransformer{
 		resourceType: "tracked_resource",
-		transformFunc: func(block *hclwrite.Block) (*interfaces.TransformResult, error) {
-			return &interfaces.TransformResult{
+		transformFunc: func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+			return &transform.TransformResult{
 				Blocks:         []*hclwrite.Block{block},
 				RemoveOriginal: false,
 			}, nil
 		},
 	}
 
-	reg := registry.NewStrategyRegistry()
-	reg.Register(transformer)
+	provider := NewMockMigratorProvider([]*MockResourceTransformer{transformer})
 
 	input := `resource "tracked_resource" "one" {}
 resource "tracked_resource" "two" {}
 resource "tracked_resource" "three" {}`
 
-	// Parse first
-	parseHandler := handlers.NewParseHandler()
-	ctx := &interfaces.TransformContext{
+	parseHandler := handlers.NewParseHandler(log)
+	ctx := &transform.Context{
 		Content:  []byte(input),
 		Metadata: make(map[string]interface{}),
 	}
 
 	ctx, _ = parseHandler.Handle(ctx)
 
-	handler := handlers.NewResourceTransformHandler(reg)
+	handler := handlers.NewResourceTransformHandler(log, provider)
 	result, err := handler.Handle(ctx)
 
 	if err != nil {

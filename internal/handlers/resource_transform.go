@@ -3,26 +3,27 @@ package handlers
 import (
 	"fmt"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
-	"github.com/cloudflare/tf-migrate/internal/logger"
-	"github.com/cloudflare/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 type ResourceTransformHandler struct {
-	interfaces.BaseHandler
-	registry *registry.StrategyRegistry
+	transform.BaseHandler
+	log      hclog.Logger
+	provider transform.Provider
 }
 
-func NewResourceTransformHandler(reg *registry.StrategyRegistry) interfaces.TransformationHandler {
+func NewResourceTransformHandler(log hclog.Logger, provider transform.Provider) transform.TransformationHandler {
 	return &ResourceTransformHandler{
-		registry: reg,
+		log:      log,
+		provider: provider,
 	}
 }
 
-func (h *ResourceTransformHandler) Handle(ctx *interfaces.TransformContext) (*interfaces.TransformContext, error) {
+func (h *ResourceTransformHandler) Handle(ctx *transform.Context) (*transform.Context, error) {
 	if ctx.AST == nil {
 		return ctx, fmt.Errorf("AST is nil - ParseHandler must run before ResourceTransformHandler")
 	}
@@ -44,16 +45,15 @@ func (h *ResourceTransformHandler) Handle(ctx *interfaces.TransformContext) (*in
 		}
 
 		resourceType := labels[0]
-		strategy := h.registry.Find(resourceType)
-
-		if strategy == nil {
-			logger.Debug("No strategy found for resource type", "type", resourceType)
+		migrator := h.provider.GetMigrator(resourceType)
+		if migrator == nil {
+			h.log.Debug("No migrator found for resource type", "type", resourceType)
 			continue
 		}
 
-		result, err := strategy.TransformConfig(block)
+		result, err := migrator.TransformConfig(ctx, block)
 		if err != nil {
-			logger.Error("Error transforming resource", "type", resourceType, "error", err)
+			h.log.Error("Error transforming resource", "type", resourceType, "error", err)
 			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 				Severity: hcl.DiagError,
 				Summary:  fmt.Sprintf("Failed to transform %s resource", resourceType),
@@ -84,5 +84,5 @@ func (h *ResourceTransformHandler) Handle(ctx *interfaces.TransformContext) (*in
 		body.AppendBlock(block)
 	}
 
-	return h.CallNext(ctx)
+	return h.Next(ctx)
 }

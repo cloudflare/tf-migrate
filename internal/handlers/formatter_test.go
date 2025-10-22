@@ -8,7 +8,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal/handlers"
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestFormatterHandler(t *testing.T) {
@@ -148,10 +148,10 @@ resource "resource_b" "b" {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create handler
-			handler := handlers.NewFormatterHandler()
+			handler := handlers.NewFormatterHandler(log)
 
 			// Create context with AST
-			ctx := &interfaces.TransformContext{
+			ctx := &transform.Context{
 				AST:      tt.setupAST(),
 				Filename: "test.tf",
 			}
@@ -183,9 +183,9 @@ resource "resource_b" "b" {
 }
 
 func TestFormatterHandlerRequiresAST(t *testing.T) {
-	handler := handlers.NewFormatterHandler()
+	handler := handlers.NewFormatterHandler(log)
 
-	ctx := &interfaces.TransformContext{
+	ctx := &transform.Context{
 		Content: []byte("some content"),
 	}
 
@@ -203,7 +203,7 @@ func TestFormatterHandlerChaining(t *testing.T) {
 	nextHandlerCalled := false
 
 	mockNext := &mockHandler{
-		handleFunc: func(ctx *interfaces.TransformContext) (*interfaces.TransformContext, error) {
+		handleFunc: func(ctx *transform.Context) (*transform.Context, error) {
 			nextHandlerCalled = true
 			if len(ctx.Content) == 0 {
 				t.Error("Content should be set when next handler is called")
@@ -212,13 +212,13 @@ func TestFormatterHandlerChaining(t *testing.T) {
 		},
 	}
 
-	handler := handlers.NewFormatterHandler()
+	handler := handlers.NewFormatterHandler(log)
 	handler.SetNext(mockNext)
 
 	f := hclwrite.NewEmptyFile()
 	f.Body().AppendNewBlock("resource", []string{"test", "example"})
 
-	ctx := &interfaces.TransformContext{
+	ctx := &transform.Context{
 		AST: f,
 	}
 
@@ -233,13 +233,13 @@ func TestFormatterHandlerChaining(t *testing.T) {
 }
 
 func TestFormatterPreservesAST(t *testing.T) {
-	handler := handlers.NewFormatterHandler()
+	handler := handlers.NewFormatterHandler(log)
 
 	f := hclwrite.NewEmptyFile()
 	originalBlock := f.Body().AppendNewBlock("resource", []string{"test", "example"})
 	originalBlock.Body().SetAttributeValue("name", cty.StringVal("test"))
 
-	ctx := &interfaces.TransformContext{
+	ctx := &transform.Context{
 		AST: f,
 	}
 
@@ -260,7 +260,7 @@ func TestFormatterPreservesAST(t *testing.T) {
 }
 
 func TestFormatterSpecialCharacters(t *testing.T) {
-	handler := handlers.NewFormatterHandler()
+	handler := handlers.NewFormatterHandler(log)
 
 	f := hclwrite.NewEmptyFile()
 	block := f.Body().AppendNewBlock("resource", []string{"test", "example"})
@@ -270,7 +270,7 @@ func TestFormatterSpecialCharacters(t *testing.T) {
 	block.Body().SetAttributeValue("newlines", cty.StringVal("line1\nline2"))
 	block.Body().SetAttributeValue("tabs", cty.StringVal("col1\tcol2"))
 
-	ctx := &interfaces.TransformContext{
+	ctx := &transform.Context{
 		AST: f,
 	}
 

@@ -3,26 +3,27 @@ package handlers
 import (
 	"fmt"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
-	"github.com/cloudflare/tf-migrate/internal/interfaces"
-	"github.com/cloudflare/tf-migrate/internal/logger"
-	"github.com/cloudflare/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 type StateTransformHandler struct {
-	interfaces.BaseHandler
-	registry *registry.StrategyRegistry
+	transform.BaseHandler
+	log      hclog.Logger
+	provider transform.Provider
 }
 
-func NewStateTransformHandler(reg *registry.StrategyRegistry) interfaces.TransformationHandler {
+func NewStateTransformHandler(log hclog.Logger, provider transform.Provider) transform.TransformationHandler {
 	return &StateTransformHandler{
-		registry: reg,
+		log:      log,
+		provider: provider,
 	}
 }
 
-func (h *StateTransformHandler) Handle(ctx *interfaces.TransformContext) (*interfaces.TransformContext, error) {
+func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Context, error) {
 	if len(ctx.Content) == 0 {
 		return ctx, fmt.Errorf("state content is empty")
 	}
@@ -35,8 +36,8 @@ func (h *StateTransformHandler) Handle(ctx *interfaces.TransformContext) (*inter
 
 	resources := result.Get("resources")
 	if !resources.Exists() {
-		logger.Warn("No resources found in state file")
-		return h.CallNext(ctx)
+		h.log.Warn("No resources found in state file")
+		return h.Next(ctx)
 	}
 
 	modifiedState := stateJSON
@@ -45,26 +46,26 @@ func (h *StateTransformHandler) Handle(ctx *interfaces.TransformContext) (*inter
 	resources.ForEach(func(key, resource gjson.Result) bool {
 		resourceType := resource.Get("type").String()
 		if resourceType == "" {
-			return true // continue
+			return true
 		}
 
-		strategy := h.registry.Find(resourceType)
-		if strategy == nil {
-			logger.Debug("No strategy found for state resource", "type", resourceType)
+		migrator := h.provider.GetMigrator(resourceType)
+		if migrator == nil {
+			h.log.Debug("No migrator found for state resource", "type", resourceType)
 			return true
 		}
 
 		instances := resource.Get("instances")
 		if !instances.Exists() {
-			return true // continue
+			return true
 		}
 
 		instances.ForEach(func(instKey, instance gjson.Result) bool {
 			resourcePath := fmt.Sprintf("resources.%d.instances.%d", key.Int(), instKey.Int())
 
-			transformedJSON, err := strategy.TransformState(instance, resourcePath)
+			transformedJSON, err := migrator.TransformState(ctx, instance, resourcePath)
 			if err != nil {
-				logger.Error("Error transforming state resource",
+				h.log.Error("Error transforming state resource",
 					"type", resourceType,
 					"path", resourcePath,
 					"error", err)
@@ -74,7 +75,7 @@ func (h *StateTransformHandler) Handle(ctx *interfaces.TransformContext) (*inter
 			if transformedJSON != "" {
 				newState, err := sjson.SetRaw(modifiedState, resourcePath, transformedJSON)
 				if err != nil {
-					logger.Error("Failed to update state JSON",
+					h.log.Error("Failed to update state JSON",
 						"path", resourcePath,
 						"error", err)
 					return true
@@ -91,11 +92,11 @@ func (h *StateTransformHandler) Handle(ctx *interfaces.TransformContext) (*inter
 
 	if transformedCount > 0 {
 		ctx.Content = []byte(modifiedState)
-		logger.Info("Transformed state resources", "count", transformedCount)
+		h.log.Debug("Transformed state resources", "count", transformedCount)
 	}
 
 	ctx.StateJSON = modifiedState
 	ctx.Metadata["state_transformations"] = transformedCount
 
-	return h.CallNext(ctx)
+	return h.Next(ctx)
 }
