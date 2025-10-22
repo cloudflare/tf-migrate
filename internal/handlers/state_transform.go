@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/hcl/v2"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
@@ -51,6 +52,11 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 
 		migrator := h.provider.GetMigrator(resourceType)
 		if migrator == nil {
+			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+				Severity: hcl.DiagWarning,
+				Summary:  fmt.Sprintf("Failed to transform resource: %s", resourceType),
+				Detail:   fmt.Sprintf("\"No migrator found for state resource: %s", resourceType),
+			})
 			h.log.Debug("No migrator found for state resource", "type", resourceType)
 			return true
 		}
@@ -69,6 +75,11 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 					"type", resourceType,
 					"path", resourcePath,
 					"error", err)
+				ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+					Severity: hcl.DiagError,
+					Summary:  fmt.Sprintf("Failed to transform resource: %s", resourceType),
+					Detail:   err.Error(),
+				})
 				return true
 			}
 
@@ -78,6 +89,11 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 					h.log.Error("Failed to update state JSON",
 						"path", resourcePath,
 						"error", err)
+					ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+						Severity: hcl.DiagError,
+						Summary:  fmt.Sprintf("Failed to update state JSON for resource: %s", resourceType),
+						Detail:   err.Error(),
+					})
 					return true
 				}
 				modifiedState = newState
