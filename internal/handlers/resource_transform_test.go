@@ -74,11 +74,11 @@ func NewMockMigratorProvider(transformers []*MockResourceTransformer) *MockMigra
 	return m
 }
 
-func (m *MockMigratorProvider) GetMigrator(resourceType string) transform.ResourceTransformer {
+func (m *MockMigratorProvider) GetMigrator(resourceType string, sourceVersion string, targetVersion string) transform.ResourceTransformer {
 	return m.transformers[resourceType]
 }
 
-func (m *MockMigratorProvider) GetAllMigrators() []transform.ResourceTransformer {
+func (m *MockMigratorProvider) GetAllMigrators(sourceVersion string, targetVersion string) []transform.ResourceTransformer {
 	return m.orderedTransformers
 }
 

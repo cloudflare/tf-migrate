@@ -50,14 +50,14 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 			return true
 		}
 
-		migrator := h.provider.GetMigrator(resourceType)
+		migrator := h.provider.GetMigrator(resourceType, ctx.SourceVersion, ctx.TargetVersion)
 		if migrator == nil {
 			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 				Severity: hcl.DiagWarning,
 				Summary:  fmt.Sprintf("Failed to transform resource: %s", resourceType),
-				Detail:   fmt.Sprintf("\"No migrator found for state resource: %s", resourceType),
+				Detail:   fmt.Sprintf("No migrator found for state resource: %s (v%s -> v%s)", resourceType, ctx.SourceVersion, ctx.TargetVersion),
 			})
-			h.log.Debug("No migrator found for state resource", "type", resourceType)
+			h.log.Debug("No migrator found for state resource", "type", resourceType, "source", ctx.SourceVersion, "target", ctx.TargetVersion)
 			return true
 		}
 

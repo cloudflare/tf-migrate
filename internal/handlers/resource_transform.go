@@ -45,9 +45,9 @@ func (h *ResourceTransformHandler) Handle(ctx *transform.Context) (*transform.Co
 		}
 
 		resourceType := labels[0]
-		migrator := h.provider.GetMigrator(resourceType)
+		migrator := h.provider.GetMigrator(resourceType, ctx.SourceVersion, ctx.TargetVersion)
 		if migrator == nil {
-			h.log.Debug("No migrator found for resource type", "type", resourceType)
+			h.log.Debug("No migrator found for resource type", "type", resourceType, "source", ctx.SourceVersion, "target", ctx.TargetVersion)
 			continue
 		}
 

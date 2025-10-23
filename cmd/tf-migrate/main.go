@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cloudflare/tf-migrate/internal"
+	_ "github.com/cloudflare/tf-migrate/internal/init" // Import to register all resource migrators
 	"github.com/cloudflare/tf-migrate/internal/logger"
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
 )
@@ -167,7 +168,7 @@ func runMigration(log hclog.Logger, cfg config) error {
 	if len(cfg.resourcesToMigrate) > 0 {
 		// Optional: validate that requested resources exist
 		for _, resourceType := range cfg.resourcesToMigrate {
-			if internal.GetMigrator(resourceType) == nil {
+			if internal.GetMigrator(resourceType, cfg.sourceVersion, cfg.targetVersion) == nil {
 				log.Warn("Unknown resource type", "type", resourceType)
 			}
 		}
@@ -175,15 +176,15 @@ func runMigration(log hclog.Logger, cfg config) error {
 		log.Debug("Resource filter applied", "resources", cfg.resourcesToMigrate)
 	}
 
-	// Create pipelines without registry
-	configPipeline := pipeline.BuildConfigPipeline(log)
+	// Create pipelines with version information
+	configPipeline := pipeline.BuildConfigPipeline(log, cfg.sourceVersion, cfg.targetVersion)
 	if cfg.configDir != "" {
 		if err := processConfigFiles(log, configPipeline, cfg); err != nil {
 			return fmt.Errorf("failed to process configuration files: %w", err)
 		}
 	}
 
-	statePipeline := pipeline.BuildStatePipeline(log)
+	statePipeline := pipeline.BuildStatePipeline(log, cfg.sourceVersion, cfg.targetVersion)
 	if cfg.stateFile != "" {
 		if err := processStateFile(log, statePipeline, cfg); err != nil {
 			return fmt.Errorf("failed to process state file: %w", err)
@@ -328,11 +329,11 @@ func validateVersions(c config) error {
 	}
 
 	if !validVersions[source] {
-		return fmt.Errorf("unsupported source version: %s (supported: v4, v5, v6)", c.sourceVersion)
+		return fmt.Errorf("unsupported source version: %s (supported: v4, v5)", c.sourceVersion)
 	}
 
 	if !validVersions[target] {
-		return fmt.Errorf("unsupported target version: %s (supported: v4, v5, v6)", c.targetVersion)
+		return fmt.Errorf("unsupported target version: %s (supported: v4, v5)", c.targetVersion)
 	}
 
 	sourceInt, err := strconv.Atoi(source)
