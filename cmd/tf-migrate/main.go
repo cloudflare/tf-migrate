@@ -4,16 +4,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/hcl/v2"
 
 	"github.com/spf13/cobra"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/logger"
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 type config struct {
@@ -63,6 +64,10 @@ This tool provides automated transformations for:
   tf-migrate --log-level debug migrate`,
 	}
 )
+
+var validVersionPath = map[string]struct{}{
+	"4-5": {},
+}
 
 func main() {
 	cfg := &config{}
@@ -163,32 +168,22 @@ func runMigration(log hclog.Logger, cfg config) error {
 		return err
 	}
 
-	// No registry needed! Just validate resource types if filtering
-	if len(cfg.resourcesToMigrate) > 0 {
-		// Optional: validate that requested resources exist
-		for _, resourceType := range cfg.resourcesToMigrate {
-			if internal.GetMigrator(resourceType) == nil {
-				log.Warn("Unknown resource type", "type", resourceType)
-			}
-		}
-		fmt.Printf("Filtering for resources: %v\n", cfg.resourcesToMigrate)
-		log.Debug("Resource filter applied", "resources", cfg.resourcesToMigrate)
-	}
-
-	// Create pipelines without registry
-	configPipeline := pipeline.BuildConfigPipeline(log)
+	providers := getProviders(cfg.resourcesToMigrate...)
+	configPipeline := pipeline.BuildConfigPipeline(log, providers)
 	if cfg.configDir != "" {
 		if err := processConfigFiles(log, configPipeline, cfg); err != nil {
 			return fmt.Errorf("failed to process configuration files: %w", err)
 		}
 	}
+	log.Debug("Finished processing configuration files")
 
-	statePipeline := pipeline.BuildStatePipeline(log)
+	statePipeline := pipeline.BuildStatePipeline(log, providers)
 	if cfg.stateFile != "" {
 		if err := processStateFile(log, statePipeline, cfg); err != nil {
 			return fmt.Errorf("failed to process state file: %w", err)
 		}
 	}
+	log.Debug("Finished processing state file")
 
 	return nil
 }
@@ -227,7 +222,16 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) erro
 			log.Debug("Created backup", "path", backupPath)
 		}
 
-		transformed, err := p.Transform(content, filepath.Base(file))
+		ctx := &transform.Context{
+			Content:       content,
+			Filename:      filepath.Base(file),
+			Diagnostics:   make(hcl.Diagnostics, 0),
+			Metadata:      make(map[string]interface{}),
+			SourceVersion: cfg.sourceVersion,
+			TargetVersion: cfg.targetVersion,
+			Resources:     cfg.resourcesToMigrate,
+		}
+		transformed, err := p.Transform(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to transform %s: %w", file, err)
 		}
@@ -280,7 +284,16 @@ func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config) error 
 		log.Debug("Created state backup", "path", backupPath)
 	}
 
-	transformedContent, err := p.Transform(content, filepath.Base(cfg.stateFile))
+	ctx := &transform.Context{
+		Content:       content,
+		Filename:      filepath.Base(cfg.stateFile),
+		Diagnostics:   make(hcl.Diagnostics, 0),
+		Metadata:      make(map[string]interface{}),
+		SourceVersion: cfg.sourceVersion,
+		TargetVersion: cfg.targetVersion,
+		Resources:     cfg.resourcesToMigrate,
+	}
+	transformedContent, err := p.Transform(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to transform state file: %w", err)
 	}
@@ -317,40 +330,22 @@ func findTerraformFiles(dir string) ([]string, error) {
 }
 
 func validateVersions(c config) error {
-	// Normalize versions (remove 'v' prefix if present)
 	source := strings.TrimPrefix(c.sourceVersion, "v")
 	target := strings.TrimPrefix(c.targetVersion, "v")
-
-	// Check if versions are valid
-	validVersions := map[string]bool{
-		"4": true,
-		"5": true,
-	}
-
-	if !validVersions[source] {
-		return fmt.Errorf("unsupported source version: %s (supported: v4, v5, v6)", c.sourceVersion)
-	}
-
-	if !validVersions[target] {
-		return fmt.Errorf("unsupported target version: %s (supported: v4, v5, v6)", c.targetVersion)
-	}
-
-	sourceInt, err := strconv.Atoi(source)
-	if err != nil {
-		return err
-	}
-	targetInt, err := strconv.Atoi(target)
-	if err != nil {
-		return err
-	}
-
-	if targetInt <= sourceInt {
-		return fmt.Errorf("target version (%s) must be greater than source version (%s)", c.targetVersion, c.sourceVersion)
-	}
-
-	if targetInt-sourceInt > 1 {
-		return fmt.Errorf("multi-step migrations not supported (from %s to %s). Please migrate one version at a time", c.sourceVersion, c.targetVersion)
+	versionPath := fmt.Sprintf("%s-%s", source, target)
+	if _, ok := validVersionPath[versionPath]; !ok {
+		return fmt.Errorf("unsupported migration path: %s", versionPath)
 	}
 
 	return nil
+}
+
+func getProviders(resources ...string) transform.Provider {
+	getFunc := func(resourceType string, source string, target string) transform.ResourceTransformer {
+		return internal.GetMigrator(resourceType, source, target)
+	}
+	getAllFunc := func(source string, target string, resourcesToMigrate ...string) []transform.ResourceTransformer {
+		return internal.GetAllMigrators(source, target, resources...)
+	}
+	return transform.NewMigratorProvider(getFunc, getAllFunc)
 }

@@ -17,13 +17,13 @@ func NewPreprocessHandler(provider transform.Provider) transform.TransformationH
 
 func (h *PreprocessHandler) Handle(ctx *transform.Context) (*transform.Context, error) {
 	contentStr := string(ctx.Content)
-	contentStr = h.applyAllPreprocessors(contentStr)
+	contentStr = h.applyAllPreprocessors(ctx, contentStr)
 	ctx.Content = []byte(contentStr)
 	return h.Next(ctx)
 }
 
-func (h *PreprocessHandler) applyAllPreprocessors(content string) string {
-	for _, migrator := range h.provider.GetAllMigrators() {
+func (h *PreprocessHandler) applyAllPreprocessors(ctx *transform.Context, content string) string {
+	for _, migrator := range h.provider.GetAllMigrators(ctx.SourceVersion, ctx.TargetVersion, ctx.Resources...) {
 		content = migrator.Preprocess(content)
 	}
 	return content

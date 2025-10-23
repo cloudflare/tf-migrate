@@ -1,11 +1,9 @@
 package pipeline
 
 import (
-	"github.com/hashicorp/go-hclog"
-
-	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/handlers"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	"github.com/hashicorp/go-hclog"
 )
 
 type Pipeline struct {
@@ -15,9 +13,7 @@ type Pipeline struct {
 
 // BuildConfigPipeline creates the standard pipeline for HCL configuration files
 // Pipeline: Preprocess → Parse → Transform → Format
-// No registry needed anymore!
-func BuildConfigPipeline(log hclog.Logger) *Pipeline {
-	providers := transform.NewMigratorProvider(internal.GetMigrator, internal.GetAllMigrators)
+func BuildConfigPipeline(log hclog.Logger, providers transform.Provider) *Pipeline {
 	preprocess := handlers.NewPreprocessHandler(providers)
 	parse := handlers.NewParseHandler(log)
 	resourceTransformer := handlers.NewResourceTransformHandler(log, providers)
@@ -36,8 +32,7 @@ func BuildConfigPipeline(log hclog.Logger) *Pipeline {
 
 // BuildStatePipeline creates the standard pipeline for JSON state files
 // Pipeline: Transform → Format
-func BuildStatePipeline(log hclog.Logger) *Pipeline {
-	providers := transform.NewMigratorProvider(internal.GetMigrator, internal.GetAllMigrators)
+func BuildStatePipeline(log hclog.Logger, providers transform.Provider) *Pipeline {
 	stateTransformer := handlers.NewStateTransformHandler(log, providers)
 	format := handlers.NewStateFormatterHandler(log)
 
@@ -51,15 +46,7 @@ func BuildStatePipeline(log hclog.Logger) *Pipeline {
 }
 
 // Transform executes the pipeline on the given content
-func (p *Pipeline) Transform(content []byte, filename string) ([]byte, error) {
-	ctx := &transform.Context{
-		Content:     content,
-		Filename:    filename,
-		Diagnostics: nil,
-		Metadata:    make(map[string]interface{}),
-		DryRun:      false,
-	}
-
+func (p *Pipeline) Transform(ctx *transform.Context) ([]byte, error) {
 	result, err := p.handler.Handle(ctx)
 	if err != nil {
 		return nil, err
