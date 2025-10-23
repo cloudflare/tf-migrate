@@ -1,6 +1,7 @@
 package pipeline_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -11,7 +12,6 @@ import (
 
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 )
@@ -76,18 +76,41 @@ func (m *MockResourceTransformer) Preprocess(content string) string {
 	return content
 }
 
-var log = hclog.New(&hclog.LoggerOptions{})
+type MockProvider struct {
+	mockProviders map[string]transform.ResourceTransformer
+}
 
-func setupTestMigrators(t *testing.T, transformers ...transform.ResourceTransformer) {
+func (mp *MockProvider) GetMigrator(resourceType string, sourceVersion string, targetVersion string) transform.ResourceTransformer {
+	m, ok := mp.mockProviders[fmt.Sprintf("%s:%s:%s", resourceType, sourceVersion, targetVersion)]
+	if ok {
+		return m
+	}
+	return nil
+}
+
+func (mp *MockProvider) GetAllMigrators(sourceVersion string, targetVersion string, resources ...string) []transform.ResourceTransformer {
+	transformers := []transform.ResourceTransformer{}
+	for _, m := range mp.mockProviders {
+		transformers = append(transformers, m)
+	}
+	return transformers
+}
+
+var (
+	log           = hclog.New(&hclog.LoggerOptions{})
+	sourceVersion = "v100"
+	targetVersion = "v200"
+)
+
+func setupTestMigrators(t *testing.T, transformers ...transform.ResourceTransformer) *MockProvider {
 	t.Helper()
-
+	provider := &MockProvider{mockProviders: make(map[string]transform.ResourceTransformer)}
 	for _, resourceTransformer := range transformers {
 		rt := resourceTransformer
 		resourceType := rt.GetResourceType()
-		internal.Register(resourceType, func() transform.ResourceTransformer {
-			return rt
-		})
+		provider.mockProviders[fmt.Sprintf("%s:%s:%s", resourceType, sourceVersion, targetVersion)] = rt
 	}
+	return provider
 }
 
 func TestPipelineEndToEnd(t *testing.T) {
@@ -180,14 +203,19 @@ resource "cloudflare_lb" "example2" {
 		t.Run(tt.name, func(t *testing.T) {
 			// Convert slice to interface slice for variadic function
 			var transformers []transform.ResourceTransformer
-			for _, t := range tt.transformers {
-				transformers = append(transformers, t)
+			for _, tr := range tt.transformers {
+				transformers = append(transformers, tr)
 			}
-			setupTestMigrators(t, transformers...)
+			providers := setupTestMigrators(t, transformers...)
+			p := pipeline.BuildConfigPipeline(log, providers)
 
-			p := pipeline.BuildConfigPipeline(log, "v4", "v5")
-
-			result, err := p.Transform([]byte(tt.input), "test.tf")
+			ctx := &transform.Context{
+				Content:       []byte(tt.input),
+				Filename:      "test.tf",
+				SourceVersion: sourceVersion,
+				TargetVersion: targetVersion,
+			}
+			result, err := p.Transform(ctx)
 
 			if tt.expectError {
 				if err == nil {
@@ -231,12 +259,18 @@ func TestTransformerCallOrder(t *testing.T) {
 		},
 	}
 
-	setupTestMigrators(t, transformer)
-
-	p := pipeline.BuildConfigPipeline(log, "v4", "v5")
+	providers := setupTestMigrators(t, transformer)
+	p := pipeline.BuildConfigPipeline(log, providers)
 
 	input := `resource "test_resource" "example" { }`
-	_, err := p.Transform([]byte(input), "test.tf")
+	ctx := &transform.Context{
+		Content:       []byte(input),
+		Filename:      "test.tf",
+		SourceVersion: sourceVersion,
+		TargetVersion: targetVersion,
+		Metadata:      make(map[string]interface{}),
+	}
+	_, err := p.Transform(ctx)
 
 	if err != nil {
 		t.Fatalf("Pipeline failed: %v", err)
@@ -267,9 +301,8 @@ func TestResourceTransformationWithRemoval(t *testing.T) {
 		},
 	}
 
-	setupTestMigrators(t, transformer)
-
-	p := pipeline.BuildConfigPipeline(log, "v4", "v5")
+	providers := setupTestMigrators(t, transformer)
+	p := pipeline.BuildConfigPipeline(log, providers)
 
 	input := `resource "deprecated_resource" "to_remove" {
   name = "remove_me"
@@ -279,7 +312,14 @@ resource "other_resource" "to_keep" {
   name = "keep_me"
 }`
 
-	result, err := p.Transform([]byte(input), "test.tf")
+	ctx := &transform.Context{
+		Content:       []byte(input),
+		Filename:      "test.tf",
+		SourceVersion: sourceVersion,
+		TargetVersion: targetVersion,
+		Metadata:      make(map[string]interface{}),
+	}
+	result, err := p.Transform(ctx)
 	if err != nil {
 		t.Fatalf("Pipeline failed: %v", err)
 	}
@@ -313,15 +353,21 @@ func TestResourceTransformationWithSplitting(t *testing.T) {
 		},
 	}
 
-	setupTestMigrators(t, transformer)
-
-	p := pipeline.BuildConfigPipeline(log, "v4", "v5")
+	providers := setupTestMigrators(t, transformer)
+	p := pipeline.BuildConfigPipeline(log, providers)
 
 	input := `resource "combined_resource" "original" {
   name = "combined"
 }`
 
-	result, err := p.Transform([]byte(input), "test.tf")
+	ctx := &transform.Context{
+		Content:       []byte(input),
+		Filename:      "test.tf",
+		SourceVersion: sourceVersion,
+		TargetVersion: targetVersion,
+		Metadata:      make(map[string]interface{}),
+	}
+	result, err := p.Transform(ctx)
 	if err != nil {
 		t.Fatalf("Pipeline failed: %v", err)
 	}
@@ -341,9 +387,14 @@ func TestResourceTransformationWithSplitting(t *testing.T) {
 // Test error propagation through pipeline
 func TestPipelineErrorPropagation(t *testing.T) {
 	// Test with nil content - should handle gracefully as empty content
-	p := pipeline.BuildConfigPipeline(log, "v4", "v5")
-
-	result, err := p.Transform(nil, "test.tf")
+	providers := setupTestMigrators(t)
+	p := pipeline.BuildConfigPipeline(log, providers)
+	ctx := &transform.Context{
+		SourceVersion: sourceVersion,
+		TargetVersion: targetVersion,
+		Metadata:      make(map[string]interface{}),
+	}
+	result, err := p.Transform(ctx)
 	if err != nil {
 		t.Errorf("Unexpected error for nil content: %v", err)
 	}
@@ -354,34 +405,54 @@ func TestPipelineErrorPropagation(t *testing.T) {
 
 	// Test with invalid HCL
 	invalidHCL := `resource "test" {{{`
-	_, err = p.Transform([]byte(invalidHCL), "test.tf")
+	ctx = &transform.Context{
+		Content:       []byte(invalidHCL),
+		Filename:      "test.tf",
+		SourceVersion: sourceVersion,
+		TargetVersion: targetVersion,
+		Metadata:      make(map[string]interface{}),
+	}
+	_, err = p.Transform(ctx)
 	if err == nil {
 		t.Error("Expected error for invalid HCL")
 	}
 }
 
 func TestStandardPipelines(t *testing.T) {
+	providers := setupTestMigrators(t)
 	t.Run("BuildConfigPipeline uses correct handlers", func(t *testing.T) {
-		p := pipeline.BuildConfigPipeline(log, "v4", "v5")
+		p := pipeline.BuildConfigPipeline(log, providers)
 		if p == nil {
 			t.Fatal("BuildConfigPipeline returned nil")
 		}
 
 		// Should work on HCL
-		_, err := p.Transform([]byte(`resource "test" "example" {}`), "test.tf")
+		ctx := &transform.Context{
+			Content:       []byte(`resource "test" "example" {}`),
+			Filename:      "test.tf",
+			SourceVersion: sourceVersion,
+			TargetVersion: targetVersion,
+		}
+		_, err := p.Transform(ctx)
 		if err != nil {
 			t.Errorf("Config pipeline failed on valid HCL: %v", err)
 		}
 	})
 
 	t.Run("BuildStatePipeline uses correct handlers", func(t *testing.T) {
-		p := pipeline.BuildStatePipeline(log, "v4", "v5")
+		p := pipeline.BuildStatePipeline(log, providers)
 		if p == nil {
 			t.Fatal("BuildStatePipeline returned nil")
 		}
 
 		// Should work on JSON
-		_, err := p.Transform([]byte(`{"version":4}`), "terraform.tfstate")
+		ctx := &transform.Context{
+			Content:       []byte(`{"version":4}`),
+			Filename:      "terraform.tfstate",
+			SourceVersion: sourceVersion,
+			TargetVersion: targetVersion,
+		}
+		_, err := p.Transform(ctx)
 		if err != nil {
 			t.Errorf("State pipeline failed on valid JSON: %v", err)
 		}

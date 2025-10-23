@@ -14,7 +14,7 @@ type Context struct {
 	StateJSON     string
 	Diagnostics   hcl.Diagnostics
 	Metadata      map[string]interface{}
-	DryRun        bool
+	Resources     []string
 	SourceVersion string // Source provider version (e.g., "v4")
 	TargetVersion string // Target provider version (e.g., "v5")
 }
@@ -47,17 +47,17 @@ type ResourceTransformer interface {
 // from a source version to target version
 type Provider interface {
 	GetMigrator(resourceType string, sourceVersion string, targetVersion string) ResourceTransformer
-	GetAllMigrators(sourceVersion string, targetVersion string) []ResourceTransformer
+	GetAllMigrators(sourceVersion string, targetVersion string, resources ...string) []ResourceTransformer
 }
 
 type DefaultMigratorProvider struct {
 	getFunc    func(string, string, string) ResourceTransformer
-	getAllFunc func(string, string) []ResourceTransformer
+	getAllFunc func(string, string, ...string) []ResourceTransformer
 }
 
 func NewMigratorProvider(
 	getFunc func(string, string, string) ResourceTransformer,
-	getAllFunc func(string, string) []ResourceTransformer,
+	getAllFunc func(string, string, ...string) []ResourceTransformer,
 ) Provider {
 	return &DefaultMigratorProvider{
 		getFunc:    getFunc,
@@ -72,9 +72,9 @@ func (p *DefaultMigratorProvider) GetMigrator(resourceType string, sourceVersion
 	return nil
 }
 
-func (p *DefaultMigratorProvider) GetAllMigrators(sourceVersion string, targetVersion string) []ResourceTransformer {
+func (p *DefaultMigratorProvider) GetAllMigrators(sourceVersion string, targetVersion string, resources ...string) []ResourceTransformer {
 	if p.getAllFunc != nil {
-		return p.getAllFunc(sourceVersion, targetVersion)
+		return p.getAllFunc(sourceVersion, targetVersion, resources...)
 	}
 	return []ResourceTransformer{}
 }

@@ -78,7 +78,7 @@ func (m *MockMigratorProvider) GetMigrator(resourceType string, sourceVersion st
 	return m.transformers[resourceType]
 }
 
-func (m *MockMigratorProvider) GetAllMigrators(sourceVersion string, targetVersion string) []transform.ResourceTransformer {
+func (m *MockMigratorProvider) GetAllMigrators(sourceVersion string, targetVersion string, resources ...string) []transform.ResourceTransformer {
 	return m.orderedTransformers
 }
 

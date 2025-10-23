@@ -23,7 +23,7 @@ func (h *PreprocessHandler) Handle(ctx *transform.Context) (*transform.Context, 
 }
 
 func (h *PreprocessHandler) applyAllPreprocessors(ctx *transform.Context, content string) string {
-	for _, migrator := range h.provider.GetAllMigrators(ctx.SourceVersion, ctx.TargetVersion) {
+	for _, migrator := range h.provider.GetAllMigrators(ctx.SourceVersion, ctx.TargetVersion, ctx.Resources...) {
 		content = migrator.Preprocess(content)
 	}
 	return content
