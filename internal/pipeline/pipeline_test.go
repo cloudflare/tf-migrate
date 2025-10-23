@@ -185,7 +185,7 @@ resource "cloudflare_lb" "example2" {
 			}
 			setupTestMigrators(t, transformers...)
 
-			p := pipeline.BuildConfigPipeline(log)
+			p := pipeline.BuildConfigPipeline(log, "v4", "v5")
 
 			result, err := p.Transform([]byte(tt.input), "test.tf")
 
@@ -233,7 +233,7 @@ func TestTransformerCallOrder(t *testing.T) {
 
 	setupTestMigrators(t, transformer)
 
-	p := pipeline.BuildConfigPipeline(log)
+	p := pipeline.BuildConfigPipeline(log, "v4", "v5")
 
 	input := `resource "test_resource" "example" { }`
 	_, err := p.Transform([]byte(input), "test.tf")
@@ -269,7 +269,7 @@ func TestResourceTransformationWithRemoval(t *testing.T) {
 
 	setupTestMigrators(t, transformer)
 
-	p := pipeline.BuildConfigPipeline(log)
+	p := pipeline.BuildConfigPipeline(log, "v4", "v5")
 
 	input := `resource "deprecated_resource" "to_remove" {
   name = "remove_me"
@@ -315,7 +315,7 @@ func TestResourceTransformationWithSplitting(t *testing.T) {
 
 	setupTestMigrators(t, transformer)
 
-	p := pipeline.BuildConfigPipeline(log)
+	p := pipeline.BuildConfigPipeline(log, "v4", "v5")
 
 	input := `resource "combined_resource" "original" {
   name = "combined"
@@ -341,7 +341,7 @@ func TestResourceTransformationWithSplitting(t *testing.T) {
 // Test error propagation through pipeline
 func TestPipelineErrorPropagation(t *testing.T) {
 	// Test with nil content - should handle gracefully as empty content
-	p := pipeline.BuildConfigPipeline(log)
+	p := pipeline.BuildConfigPipeline(log, "v4", "v5")
 
 	result, err := p.Transform(nil, "test.tf")
 	if err != nil {
@@ -362,7 +362,7 @@ func TestPipelineErrorPropagation(t *testing.T) {
 
 func TestStandardPipelines(t *testing.T) {
 	t.Run("BuildConfigPipeline uses correct handlers", func(t *testing.T) {
-		p := pipeline.BuildConfigPipeline(log)
+		p := pipeline.BuildConfigPipeline(log, "v4", "v5")
 		if p == nil {
 			t.Fatal("BuildConfigPipeline returned nil")
 		}
@@ -375,7 +375,7 @@ func TestStandardPipelines(t *testing.T) {
 	})
 
 	t.Run("BuildStatePipeline uses correct handlers", func(t *testing.T) {
-		p := pipeline.BuildStatePipeline(log)
+		p := pipeline.BuildStatePipeline(log, "v4", "v5")
 		if p == nil {
 			t.Fatal("BuildStatePipeline returned nil")
 		}

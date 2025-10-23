@@ -194,11 +194,15 @@ func SetAttributeValue(body *hclwrite.Body, name string, val interface{}) {
 	case bool:
 		body.SetAttributeValue(name, cty.BoolVal(v))
 	case []string:
-		values := make([]cty.Value, len(v))
-		for i, s := range v {
-			values[i] = cty.StringVal(s)
+		if len(v) == 0 {
+			body.SetAttributeValue(name, cty.ListValEmpty(cty.String))
+		} else {
+			values := make([]cty.Value, len(v))
+			for i, s := range v {
+				values[i] = cty.StringVal(s)
+			}
+			body.SetAttributeValue(name, cty.ListVal(values))
 		}
-		body.SetAttributeValue(name, cty.ListVal(values))
 	case map[string]string:
 		values := make(map[string]cty.Value)
 		for k, v := range v {

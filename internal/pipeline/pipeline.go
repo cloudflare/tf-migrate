@@ -9,15 +9,23 @@ import (
 )
 
 type Pipeline struct {
-	handler transform.TransformationHandler
-	log     hclog.Logger
+	handler       transform.TransformationHandler
+	log           hclog.Logger
+	sourceVersion string
+	targetVersion string
 }
 
 // BuildConfigPipeline creates the standard pipeline for HCL configuration files
 // Pipeline: Preprocess → Parse → Transform → Format
-// No registry needed anymore!
-func BuildConfigPipeline(log hclog.Logger) *Pipeline {
-	providers := transform.NewMigratorProvider(internal.GetMigrator, internal.GetAllMigrators)
+func BuildConfigPipeline(log hclog.Logger, sourceVersion, targetVersion string) *Pipeline {
+	// Create provider with version-aware functions
+	getFunc := func(resourceType string, source string, target string) transform.ResourceTransformer {
+		return internal.GetMigrator(resourceType, source, target)
+	}
+	getAllFunc := func(source string, target string) []transform.ResourceTransformer {
+		return internal.GetAllMigrators(source, target)
+	}
+	providers := transform.NewMigratorProvider(getFunc, getAllFunc)
 	preprocess := handlers.NewPreprocessHandler(providers)
 	parse := handlers.NewParseHandler(log)
 	resourceTransformer := handlers.NewResourceTransformHandler(log, providers)
@@ -29,15 +37,24 @@ func BuildConfigPipeline(log hclog.Logger) *Pipeline {
 	resourceTransformer.SetNext(format)
 
 	return &Pipeline{
-		handler: preprocess,
-		log:     log,
+		handler:       preprocess,
+		log:           log,
+		sourceVersion: sourceVersion,
+		targetVersion: targetVersion,
 	}
 }
 
 // BuildStatePipeline creates the standard pipeline for JSON state files
 // Pipeline: Transform → Format
-func BuildStatePipeline(log hclog.Logger) *Pipeline {
-	providers := transform.NewMigratorProvider(internal.GetMigrator, internal.GetAllMigrators)
+func BuildStatePipeline(log hclog.Logger, sourceVersion, targetVersion string) *Pipeline {
+	// Create provider with version-aware functions
+	getFunc := func(resourceType string, source string, target string) transform.ResourceTransformer {
+		return internal.GetMigrator(resourceType, source, target)
+	}
+	getAllFunc := func(source string, target string) []transform.ResourceTransformer {
+		return internal.GetAllMigrators(source, target)
+	}
+	providers := transform.NewMigratorProvider(getFunc, getAllFunc)
 	stateTransformer := handlers.NewStateTransformHandler(log, providers)
 	format := handlers.NewStateFormatterHandler(log)
 
@@ -45,19 +62,23 @@ func BuildStatePipeline(log hclog.Logger) *Pipeline {
 	stateTransformer.SetNext(format)
 
 	return &Pipeline{
-		handler: stateTransformer,
-		log:     log,
+		handler:       stateTransformer,
+		log:           log,
+		sourceVersion: sourceVersion,
+		targetVersion: targetVersion,
 	}
 }
 
 // Transform executes the pipeline on the given content
 func (p *Pipeline) Transform(content []byte, filename string) ([]byte, error) {
 	ctx := &transform.Context{
-		Content:     content,
-		Filename:    filename,
-		Diagnostics: nil,
-		Metadata:    make(map[string]interface{}),
-		DryRun:      false,
+		Content:       content,
+		Filename:      filename,
+		Diagnostics:   nil,
+		Metadata:      make(map[string]interface{}),
+		DryRun:        false,
+		SourceVersion: p.sourceVersion,
+		TargetVersion: p.targetVersion,
 	}
 
 	result, err := p.handler.Handle(ctx)
