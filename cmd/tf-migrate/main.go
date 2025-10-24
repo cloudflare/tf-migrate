@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cloudflare/tf-migrate/internal"
+	_ "github.com/cloudflare/tf-migrate/internal/init" // Import to register all resource migrators
 	"github.com/cloudflare/tf-migrate/internal/logger"
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
 	"github.com/cloudflare/tf-migrate/internal/transform"
