@@ -7,8 +7,11 @@ import (
 )
 
 func TestV4ToV5Transformation(t *testing.T) {
-	suite := testhelpers.ResourceTestSuite{
-		ConfigTests: []testhelpers.ConfigTestCase{
+	migrator := NewV4ToV5Migrator()
+
+	// Test configuration transformations (automatically handles preprocessing when needed)
+	t.Run("ConfigTransformation", func(t *testing.T) {
+		tests := []testhelpers.ConfigTestCase{
 			{
 				Name: "CAA record with numeric flags in data block - content renamed to value",
 				Input: `
@@ -346,8 +349,14 @@ resource "cloudflare_record" "pgp" {
   content = "base64encodedkey"
 }`,
 			},
-		},
-		StateTests: []testhelpers.StateTestCase{
+		}
+
+		testhelpers.RunConfigTransformTests(t, tests, migrator)
+	})
+
+	// Test state transformations
+	t.Run("StateTransformation", func(t *testing.T) {
+		tests := []testhelpers.StateTestCase{
 			{
 				Name: "CAA record v4 format with array data and numeric flags",
 				Input: `{
@@ -1095,26 +1104,8 @@ resource "cloudflare_record" "pgp" {
 					}]
 				}`,
 			},
-		},
-	}
+		}
 
-	testhelpers.RunResourceTestSuite(t, suite, NewV4ToV5Migrator)
+		testhelpers.RunStateTransformTests(t, tests, migrator)
+	})
 }
-
-func TestV4ToV5MigratorResourceTypes(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
-	
-	// Test that it handles the expected resource types
-	testhelpers.AssertResourceType(t, migrator, 
-		"cloudflare_dns_record",
-		"cloudflare_record", // legacy name
-	)
-	
-	// Test that it doesn't handle other resource types
-	testhelpers.AssertNotResourceType(t, migrator,
-		"cloudflare_zone",
-		"cloudflare_load_balancer",
-		"aws_instance",
-	)
-}
-

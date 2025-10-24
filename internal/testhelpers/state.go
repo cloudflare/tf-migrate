@@ -17,17 +17,20 @@ type StateTestCase struct {
 	Expected string
 }
 
-// RunStateTransformTest runs a single state transformation test
-func RunStateTransformTest(t *testing.T, tt StateTestCase, migrator transform.ResourceTransformer) {
+// runStateTransformTest runs a single state transformation test
+func runStateTransformTest(t *testing.T, tt StateTestCase, migrator transform.ResourceTransformer) {
 	t.Helper()
 
+	// Parse the input JSON to create the gjson.Result
+	inputResult := gjson.Parse(tt.Input)
+	
 	// Create context
 	ctx := &transform.Context{
 		StateJSON: tt.Input,
 	}
 
-	// Transform the state
-	result, err := migrator.TransformState(ctx, gjson.Result{}, "")
+	// Transform the state - pass the parsed input as the instance
+	result, err := migrator.TransformState(ctx, inputResult, "")
 	require.NoError(t, err, "Failed to transform state")
 
 	// Compare JSON (normalize both for comparison)
@@ -38,23 +41,8 @@ func RunStateTransformTest(t *testing.T, tt StateTestCase, migrator transform.Re
 func RunStateTransformTests(t *testing.T, tests []StateTestCase, migrator transform.ResourceTransformer) {
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			RunStateTransformTest(t, tt, migrator)
+			runStateTransformTest(t, tt, migrator)
 		})
 	}
 }
 
-// RunStateTransformTestWithFactory runs a test with a migrator factory function
-func RunStateTransformTestWithFactory(t *testing.T, tt StateTestCase, factory func() transform.ResourceTransformer) {
-	t.Helper()
-	migrator := factory()
-	RunStateTransformTest(t, tt, migrator)
-}
-
-// RunStateTransformTestsWithFactory runs multiple tests with a migrator factory function
-func RunStateTransformTestsWithFactory(t *testing.T, tests []StateTestCase, factory func() transform.ResourceTransformer) {
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			RunStateTransformTestWithFactory(t, tt, factory)
-		})
-	}
-}

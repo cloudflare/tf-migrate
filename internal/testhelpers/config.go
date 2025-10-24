@@ -19,22 +19,27 @@ type ConfigTestCase struct {
 	Expected string
 }
 
-// RunConfigTransformTest runs a single configuration transformation test
-func RunConfigTransformTest(t *testing.T, tt ConfigTestCase, migrator transform.ResourceTransformer) {
+
+// runConfigTransformTest runs a single configuration transformation test
+// It automatically handles preprocessing when needed (mimics production pipeline)
+func runConfigTransformTest(t *testing.T, tt ConfigTestCase, migrator transform.ResourceTransformer) {
 	t.Helper()
 
-	// Parse the input HCL
-	file, diags := hclwrite.ParseConfig([]byte(tt.Input), "test.tf", hcl.InitialPos)
-	require.False(t, diags.HasErrors(), "Failed to parse input HCL: %v", diags)
+	// Step 1: Preprocess (string-level transformations)
+	processedContent := migrator.Preprocess(tt.Input)
 
-	// Create context
+	// Step 2: Parse the preprocessed HCL
+	file, diags := hclwrite.ParseConfig([]byte(processedContent), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), "Failed to parse preprocessed HCL: %v", diags)
+
+	// Step 3: Create context with preprocessed content
 	ctx := &transform.Context{
-		Content:  []byte(tt.Input),
+		Content:  []byte(processedContent),
 		Filename: "test.tf",
 		AST:      file,
 	}
 
-	// Process each resource block
+	// Step 4: Transform using HCL AST
 	body := file.Body()
 	for _, block := range body.Blocks() {
 		if block.Type() == "resource" && len(block.Labels()) >= 2 {
@@ -54,7 +59,7 @@ func RunConfigTransformTest(t *testing.T, tt ConfigTestCase, migrator transform.
 		}
 	}
 
-	// Get the transformed output
+	// Step 5: Format and get output
 	output := strings.TrimSpace(string(hclwrite.Format(file.Bytes())))
 
 	// Parse expected for comparison
@@ -69,24 +74,9 @@ func RunConfigTransformTest(t *testing.T, tt ConfigTestCase, migrator transform.
 func RunConfigTransformTests(t *testing.T, tests []ConfigTestCase, migrator transform.ResourceTransformer) {
 	for _, tt := range tests {
 		t.Run(tt.Name, func(t *testing.T) {
-			RunConfigTransformTest(t, tt, migrator)
+			runConfigTransformTest(t, tt, migrator)
 		})
 	}
 }
 
-// RunConfigTransformTestWithFactory runs tests with a migrator factory function
-// This is useful when you need a fresh migrator instance for each test
-func RunConfigTransformTestWithFactory(t *testing.T, tt ConfigTestCase, factory func() transform.ResourceTransformer) {
-	t.Helper()
-	migrator := factory()
-	RunConfigTransformTest(t, tt, migrator)
-}
 
-// RunConfigTransformTestsWithFactory runs multiple tests with a migrator factory function
-func RunConfigTransformTestsWithFactory(t *testing.T, tests []ConfigTestCase, factory func() transform.ResourceTransformer) {
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			RunConfigTransformTestWithFactory(t, tt, factory)
-		})
-	}
-}
