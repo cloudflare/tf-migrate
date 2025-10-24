@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/go-hclog"
@@ -14,6 +15,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/logger"
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
+	"github.com/cloudflare/tf-migrate/internal/registry"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
@@ -70,13 +72,16 @@ var validVersionPath = map[string]struct{}{
 }
 
 func main() {
+	// Register all resource migrations
+	registry.RegisterAllMigrations()
+
 	cfg := &config{}
 	rootCmd.PersistentFlags().StringVar(&cfg.configDir, "config-dir", "", "Directory containing Terraform configuration files")
 	rootCmd.PersistentFlags().StringVar(&cfg.stateFile, "state-file", "", "Path to Terraform state file")
 	rootCmd.PersistentFlags().StringSliceVar(&cfg.resourcesToMigrate, "resources", []string{}, "Comma-separated list of resources to migrate (empty = all)")
 	rootCmd.PersistentFlags().BoolVar(&cfg.dryRun, "dry-run", false, "Perform a dry run without making changes")
-	rootCmd.PersistentFlags().StringVar(&cfg.sourceVersion, "source-version", "", "Source provider version (e.g., v4, v5)")
-	rootCmd.PersistentFlags().StringVar(&cfg.targetVersion, "target-version", "", "Target provider version (e.g., v5, v6)")
+	rootCmd.PersistentFlags().StringVar(&cfg.sourceVersion, "source-version", "", "Source provider version (e.g., 4, 5)")
+	rootCmd.PersistentFlags().StringVar(&cfg.targetVersion, "target-version", "", "Target provider version (e.g., 5, 6)")
 
 	rootCmd.PersistentFlags().StringVarP(&cfg.logLevel, "log-level", "l", "warn", "Set log level (debug, info, warn, error, off)")
 
@@ -119,10 +124,10 @@ Uses the global flags --config-dir, --state-file, and --resources to determine w
 				cfg.configDir = "."
 			}
 			if cfg.sourceVersion == "" {
-				cfg.sourceVersion = "v4"
+				cfg.sourceVersion = "4"
 			}
 			if cfg.targetVersion == "" {
-				cfg.targetVersion = "v5"
+				cfg.targetVersion = "5"
 			}
 
 			fmt.Println("Cloudflare Terraform Provider Migration Tool")
@@ -330,22 +335,23 @@ func findTerraformFiles(dir string) ([]string, error) {
 }
 
 func validateVersions(c config) error {
-	source := strings.TrimPrefix(c.sourceVersion, "v")
-	target := strings.TrimPrefix(c.targetVersion, "v")
-	versionPath := fmt.Sprintf("%s-%s", source, target)
+	versionPath := fmt.Sprintf("%s-%s", c.sourceVersion, c.targetVersion)
 	if _, ok := validVersionPath[versionPath]; !ok {
 		return fmt.Errorf("unsupported migration path: %s", versionPath)
 	}
-
 	return nil
 }
 
 func getProviders(resources ...string) transform.Provider {
 	getFunc := func(resourceType string, source string, target string) transform.ResourceTransformer {
-		return internal.GetMigrator(resourceType, source, target)
+		sourceVersion, _ := strconv.Atoi(source)
+		targetVersion, _ := strconv.Atoi(target)
+		return internal.GetMigrator(resourceType, sourceVersion, targetVersion)
 	}
 	getAllFunc := func(source string, target string, resourcesToMigrate ...string) []transform.ResourceTransformer {
-		return internal.GetAllMigrators(source, target, resources...)
+		sourceVersion, _ := strconv.Atoi(source)
+		targetVersion, _ := strconv.Atoi(target)
+		return internal.GetAllMigrators(sourceVersion, targetVersion, resources...)
 	}
 	return transform.NewMigratorProvider(getFunc, getAllFunc)
 }
