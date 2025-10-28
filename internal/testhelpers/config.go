@@ -19,7 +19,6 @@ type ConfigTestCase struct {
 	Expected string
 }
 
-
 // runConfigTransformTest runs a single configuration transformation test
 // It automatically handles preprocessing when needed (mimics production pipeline)
 func runConfigTransformTest(t *testing.T, tt ConfigTestCase, migrator transform.ResourceTransformer) {
@@ -47,7 +46,7 @@ func runConfigTransformTest(t *testing.T, tt ConfigTestCase, migrator transform.
 			if migrator.CanHandle(resourceType) {
 				result, err := migrator.TransformConfig(ctx, block)
 				assert.NoError(t, err, "Failed to transform resource")
-				
+
 				// Handle resource splits or removals
 				if result != nil && result.RemoveOriginal {
 					body.RemoveBlock(block)
@@ -78,5 +77,3 @@ func RunConfigTransformTests(t *testing.T, tests []ConfigTestCase, migrator tran
 		})
 	}
 }
-
-

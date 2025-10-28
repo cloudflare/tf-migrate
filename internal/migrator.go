@@ -6,9 +6,6 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
-// ResourceMigrator is a function that returns a transformer for a resource
-type ResourceMigrator func() transform.ResourceTransformer
-
 // Migrator holds information about a registered migrator
 type Migrator struct {
 	ResourceMigrator transform.ResourceTransformer
@@ -51,8 +48,8 @@ func GetAllMigrators(sourceVersion string, targetVersion string, resources ...st
 	return result
 }
 
-// Register registers a migrator for a specific version transition
-func Register(sourceVersionResourceType string, sourceVersion string, targetVersion string, resourceMigrator transform.ResourceTransformer) {
+// RegisterMigrator registers a migrator for a specific version transition
+func RegisterMigrator(sourceVersionResourceType string, sourceVersion string, targetVersion string, resourceMigrator transform.ResourceTransformer) {
 	key := fmt.Sprintf("%s:%s:%s", sourceVersionResourceType, sourceVersion, targetVersion)
 	migrators[key] = &Migrator{
 		ResourceMigrator: resourceMigrator,

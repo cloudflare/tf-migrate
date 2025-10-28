@@ -363,7 +363,7 @@ resource "cloudflare_record" "pgp" {
 				"version": 4,
 				"terraform_version": "1.5.0",
 				"resources": [{
-					"type": "cloudflare_dns_record",
+					"type": "cloudflare_record",
 					"name": "caa_test",
 					"instances": [{
 						"attributes": {
@@ -415,7 +415,7 @@ resource "cloudflare_record" "pgp" {
 				Input: `{
 				"version": 4,
 				"resources": [{
-					"type": "cloudflare_dns_record",
+					"type": "cloudflare_record",
 					"name": "a_test",
 					"instances": [{
 						"attributes": {
@@ -545,7 +545,7 @@ resource "cloudflare_record" "pgp" {
 				Input: `{
 				"version": 4,
 				"resources": [{
-					"type": "cloudflare_dns_record",
+					"type": "cloudflare_record",
 					"name": "srv_test",
 					"instances": [{
 						"attributes": {
@@ -984,7 +984,7 @@ resource "cloudflare_record" "pgp" {
 				Name: "MX record with integer priority - converts to float64",
 				Input: `{
 					"resources": [{
-						"type": "cloudflare_dns_record",
+						"type": "cloudflare_record",
 						"name": "test",
 						"instances": [{
 							"attributes": {
@@ -1020,7 +1020,7 @@ resource "cloudflare_record" "pgp" {
 				Name: "SRV record with integer fields in data - converts to float64",
 				Input: `{
 					"resources": [{
-						"type": "cloudflare_dns_record",
+						"type": "cloudflare_record",
 						"name": "test",
 						"instances": [{
 							"attributes": {
@@ -1064,7 +1064,7 @@ resource "cloudflare_record" "pgp" {
 				Name: "TLSA record with integer fields in data - converts to float64",
 				Input: `{
 					"resources": [{
-						"type": "cloudflare_dns_record",
+						"type": "cloudflare_record",
 						"name": "test",
 						"instances": [{
 							"attributes": {

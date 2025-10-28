@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
-	"github.com/cloudflare/tf-migrate/internal/resources"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform/state"
@@ -18,29 +18,28 @@ import (
 
 // V4ToV5Migrator handles migration of DNS record resources from v4 to v5
 type V4ToV5Migrator struct {
-	*resources.BaseResourceTransformer
 }
 
-// NewV4ToV5Migrator creates a new DNS record migrator
 func NewV4ToV5Migrator() transform.ResourceTransformer {
 	migrator := &V4ToV5Migrator{}
-	migrator.BaseResourceTransformer = resources.NewBaseResourceTransformer("cloudflare_dns_record", migrator)
+	internal.RegisterMigrator("cloudflare_record", "v4", "v5", migrator)
 	return migrator
 }
 
-// CanHandleResource determines if this migrator can handle the given resource type
-func (m *V4ToV5Migrator) CanHandleResource(resourceType string) bool {
-	return resourceType == "cloudflare_dns_record" || resourceType == "cloudflare_record"
+func (m *V4ToV5Migrator) GetResourceType() string {
+	return "cloudflare_dns_record"
 }
 
-// PreprocessResource handles string-level transformations before HCL parsing
-func (m *V4ToV5Migrator) PreprocessResource(content string) string {
+func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
+	return resourceType == "cloudflare_record"
+}
+
+func (m *V4ToV5Migrator) Preprocess(content string) string {
 	// No preprocessing needed for DNS records
 	return content
 }
 
-// TransformResourceConfig handles configuration file transformations
-func (m *V4ToV5Migrator) TransformResourceConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	// Rename cloudflare_record to cloudflare_dns_record
 	tfhcl.RenameResourceType(block, "cloudflare_record", "cloudflare_dns_record")
 
@@ -134,8 +133,7 @@ func (m *V4ToV5Migrator) processDataAttribute(block *hclwrite.Block, recordType 
 	}
 }
 
-// TransformResourceState handles state file transformations
-func (m *V4ToV5Migrator) TransformResourceState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
 	// This function can receive either:
 	// 1. A full state document (in unit tests)
 	// 2. A single resource instance (in actual migration framework)
@@ -177,7 +175,7 @@ func (m *V4ToV5Migrator) transformFullState(result string, stateJSON gjson.Resul
 		resourceType := resource.Get("type").String()
 
 		// Check if this is a DNS record resource we need to migrate
-		if !m.CanHandleResource(resourceType) {
+		if !m.CanHandle(resourceType) {
 			return true // continue
 		}
 

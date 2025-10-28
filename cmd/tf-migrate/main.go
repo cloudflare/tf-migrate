@@ -339,12 +339,12 @@ func validateVersions(c config) error {
 	return nil
 }
 
-func getProviders(resources ...string) transform.Provider {
+func getProviders(resources ...string) transform.MigrationProvider {
 	getFunc := func(resourceType string, source string, target string) transform.ResourceTransformer {
 		return internal.GetMigrator(resourceType, source, target)
 	}
 	getAllFunc := func(source string, target string, resourcesToMigrate ...string) []transform.ResourceTransformer {
 		return internal.GetAllMigrators(source, target, resources...)
 	}
-	return transform.NewMigratorProvider(getFunc, getAllFunc)
+	return transform.NewMigrationProvider(getFunc, getAllFunc)
 }

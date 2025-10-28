@@ -14,10 +14,10 @@ import (
 type StateTransformHandler struct {
 	transform.BaseHandler
 	log      hclog.Logger
-	provider transform.Provider
+	provider transform.MigrationProvider
 }
 
-func NewStateTransformHandler(log hclog.Logger, provider transform.Provider) transform.TransformationHandler {
+func NewStateTransformHandler(log hclog.Logger, provider transform.MigrationProvider) transform.TransformationHandler {
 	return &StateTransformHandler{
 		log:      log,
 		provider: provider,

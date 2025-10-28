@@ -6,10 +6,10 @@ import (
 
 type PreprocessHandler struct {
 	transform.BaseHandler
-	provider transform.Provider
+	provider transform.MigrationProvider
 }
 
-func NewPreprocessHandler(provider transform.Provider) transform.TransformationHandler {
+func NewPreprocessHandler(provider transform.MigrationProvider) transform.TransformationHandler {
 	return &PreprocessHandler{
 		provider: provider,
 	}

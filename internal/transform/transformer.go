@@ -41,11 +41,11 @@ type ResourceTransformer interface {
 	Preprocess(content string) string
 }
 
-// Provider specifies the interface for a migrator provider
+// MigrationProvider specifies the interface for a migrator provider
 // This is used to provide a way to get migrators for a given resource type
 // a migrator defines the strategy which a resource uses to migrate the resource
 // from a source version to target version
-type Provider interface {
+type MigrationProvider interface {
 	GetMigrator(resourceType string, sourceVersion string, targetVersion string) ResourceTransformer
 	GetAllMigrators(sourceVersion string, targetVersion string, resources ...string) []ResourceTransformer
 }
@@ -55,10 +55,10 @@ type DefaultMigratorProvider struct {
 	getAllFunc func(string, string, ...string) []ResourceTransformer
 }
 
-func NewMigratorProvider(
+func NewMigrationProvider(
 	getFunc func(string, string, string) ResourceTransformer,
 	getAllFunc func(string, string, ...string) []ResourceTransformer,
-) Provider {
+) MigrationProvider {
 	return &DefaultMigratorProvider{
 		getFunc:    getFunc,
 		getAllFunc: getAllFunc,

@@ -36,10 +36,10 @@ func TestVersionBasedMigratorSelection(t *testing.T) {
 	// Clear any existing registrations for clean test
 	migrators = make(map[string]*Migrator)
 
-	// Register migrators for different version pairs
-	Register("test_resource", "v4", "v5", &mockMigrator{version: "4-5"})
+	// RegisterMigrator migrators for different version pairs
+	RegisterMigrator("test_resource", "v4", "v5", &mockMigrator{version: "4-5"})
 
-	Register("test_resource", "v5", "v6", &mockMigrator{version: "5-6"})
+	RegisterMigrator("test_resource", "v5", "v6", &mockMigrator{version: "5-6"})
 
 	// Test v4 to v5 migration
 	migrator := GetMigrator("test_resource", "v4", "v5")

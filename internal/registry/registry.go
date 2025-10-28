@@ -9,5 +9,5 @@ import (
 // Each resource package has its own RegisterMigrations function that defines how to register
 // its specific migrations.
 func RegisterAllMigrations() {
-	dns_record.RegisterMigrations()
+	dns_record.NewV4ToV5Migrator()
 }

@@ -13,7 +13,7 @@ type Pipeline struct {
 
 // BuildConfigPipeline creates the standard pipeline for HCL configuration files
 // Pipeline: Preprocess → Parse → Transform → Format
-func BuildConfigPipeline(log hclog.Logger, providers transform.Provider) *Pipeline {
+func BuildConfigPipeline(log hclog.Logger, providers transform.MigrationProvider) *Pipeline {
 	preprocess := handlers.NewPreprocessHandler(providers)
 	parse := handlers.NewParseHandler(log)
 	resourceTransformer := handlers.NewResourceTransformHandler(log, providers)
@@ -32,7 +32,7 @@ func BuildConfigPipeline(log hclog.Logger, providers transform.Provider) *Pipeli
 
 // BuildStatePipeline creates the standard pipeline for JSON state files
 // Pipeline: Transform → Format
-func BuildStatePipeline(log hclog.Logger, providers transform.Provider) *Pipeline {
+func BuildStatePipeline(log hclog.Logger, providers transform.MigrationProvider) *Pipeline {
 	stateTransformer := handlers.NewStateTransformHandler(log, providers)
 	format := handlers.NewStateFormatterHandler(log)
 
