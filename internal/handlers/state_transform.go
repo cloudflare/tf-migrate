@@ -66,6 +66,17 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 			return true
 		}
 
+		// Check if this migrator can handle the resource and transform the type
+		if migrator.CanHandle(resourceType) {
+			// Update the resource type if it changed (e.g., teams_list -> zero_trust_list)
+			newResourceType := migrator.GetResourceType()
+			if newResourceType != "" && newResourceType != resourceType {
+				resourcePath := fmt.Sprintf("resources.%d.type", key.Int())
+				modifiedState, _ = sjson.Set(modifiedState, resourcePath, newResourceType)
+				h.log.Debug("Updated resource type", "from", resourceType, "to", newResourceType)
+			}
+		}
+
 		instances.ForEach(func(instKey, instance gjson.Result) bool {
 			resourcePath := fmt.Sprintf("resources.%d.instances.%d", key.Int(), instKey.Int())
 

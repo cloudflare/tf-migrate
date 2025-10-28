@@ -136,13 +136,37 @@ func (m *V4ToV5Migrator) processDataAttribute(block *hclwrite.Block, recordType 
 
 // TransformResourceState handles state file transformations
 func (m *V4ToV5Migrator) TransformResourceState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
-	// If no state JSON provided, use the context's state
-	if !stateJSON.Exists() && ctx.StateJSON != "" {
-		stateJSON = gjson.Parse(ctx.StateJSON)
-	}
+	// This function can receive either:
+	// 1. A full state document (in unit tests)
+	// 2. A single resource instance (in actual migration framework)
+	// We need to handle both cases
 
 	result := stateJSON.String()
 
+	// Check if this is a full state document (has "resources" key) or a single instance
+	if stateJSON.Get("resources").Exists() {
+		// Full state document - transform all resources
+		return m.transformFullState(result, stateJSON)
+	}
+
+	// Single instance - check if it's a valid DNS record instance
+	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
+		return result, nil
+	}
+
+	attrs := stateJSON.Get("attributes")
+	if !attrs.Get("name").Exists() || !attrs.Get("type").Exists() || !attrs.Get("zone_id").Exists() {
+		return result, nil
+	}
+
+	// Transform the single instance
+	result = m.transformSingleDNSInstance(result, stateJSON)
+
+	return result, nil
+}
+
+// transformFullState handles transformation of a full state document
+func (m *V4ToV5Migrator) transformFullState(result string, stateJSON gjson.Result) (string, error) {
 	// Process all resources in the state
 	resources := stateJSON.Get("resources")
 	if !resources.Exists() {
@@ -167,7 +191,20 @@ func (m *V4ToV5Migrator) TransformResourceState(ctx *transform.Context, stateJSO
 		instances := resource.Get("instances")
 		instances.ForEach(func(instKey, instance gjson.Result) bool {
 			instPath := "resources." + key.String() + ".instances." + instKey.String()
-			result = m.transformDNSRecordStateJSON(result, instPath, instance)
+
+			// Transform the instance attributes in place
+			attrs := instance.Get("attributes")
+			if attrs.Exists() && attrs.Get("name").Exists() &&
+				attrs.Get("type").Exists() && attrs.Get("zone_id").Exists() {
+				// Get the instance JSON string
+				instJSON := instance.String()
+				// Transform it
+				transformedInst := m.transformSingleDNSInstance(instJSON, instance)
+				// Parse the transformed instance
+				transformedInstParsed := gjson.Parse(transformedInst)
+				// Update the result with the transformed instance
+				result, _ = sjson.SetRaw(result, instPath, transformedInstParsed.Raw)
+			}
 			return true
 		})
 
@@ -177,56 +214,58 @@ func (m *V4ToV5Migrator) TransformResourceState(ctx *transform.Context, stateJSO
 	return result, nil
 }
 
-// transformDNSRecordStateJSON transforms a single DNS record instance in the state
-func (m *V4ToV5Migrator) transformDNSRecordStateJSON(result string, path string, instance gjson.Result) string {
-	// Check if instance exists and has required fields
-	if !instance.Exists() || !instance.Get("attributes").Exists() {
-		return result
-	}
-
+// transformSingleDNSInstance transforms a single DNS record instance
+func (m *V4ToV5Migrator) transformSingleDNSInstance(result string, instance gjson.Result) string {
 	attrs := instance.Get("attributes")
-	if !attrs.Get("name").Exists() || !attrs.Get("type").Exists() || !attrs.Get("zone_id").Exists() {
-		return result
-	}
-
-	attrPath := path + ".attributes"
 
 	// Clean up meta field - remove if empty or invalid
-	result = state.CleanupEmptyField(result, attrPath+".meta", instance.Get("attributes.meta"))
+	result = state.CleanupEmptyField(result, "attributes.meta", instance.Get("attributes.meta"))
 
 	// Clean up settings field - remove if all values are null
-	result = state.RemoveObjectIfAllNull(result, attrPath+".settings",
+	result = state.RemoveObjectIfAllNull(result, "attributes.settings",
 		instance.Get("attributes.settings"),
 		[]string{"flatten_cname", "ipv4_only", "ipv6_only"})
 
 	// Ensure timestamp fields exist
-	result = state.EnsureTimestamps(result, attrPath, attrs, "2024-01-01T00:00:00Z")
+	result = state.EnsureTimestamps(result, "attributes", attrs, "2024-01-01T00:00:00Z")
 
 	// Handle field renames: value -> content
-	result = state.RenameField(result, attrPath, attrs, "value", "content")
+	// If both exist, keep content and remove value
+	// If only value exists, rename it to content
+	recordType := instance.Get("attributes.type").String()
+	valueField := attrs.Get("value")
+	contentField := attrs.Get("content")
+
+	if valueField.Exists() && !contentField.Exists() {
+		// Only value exists - rename it to content
+		result, _ = sjson.Set(result, "attributes.content", valueField.Value())
+		result, _ = sjson.Delete(result, "attributes.value")
+	} else if valueField.Exists() && contentField.Exists() {
+		// Both exist - keep content, remove value
+		result, _ = sjson.Delete(result, "attributes.value")
+	}
 
 	// Ensure TTL is present
-	result = state.EnsureField(result, attrPath, attrs, "ttl", 1.0)
+	result = state.EnsureField(result, "attributes", attrs, "ttl", 1.0)
 
 	// Remove deprecated fields
-	result = state.RemoveFields(result, attrPath, attrs,
+	result = state.RemoveFields(result, "attributes", attrs,
 		"hostname", "allow_overwrite", "timeouts")
 
 	// Handle data field transformation
-	recordType := instance.Get("attributes.type").String()
-	result = m.transformDataField(result, attrPath, instance, recordType)
+	result = m.transformDataFieldForInstance(result, instance, recordType)
 
 	// Convert priority field to float64 if it exists at root level
 	rootPriority := instance.Get("attributes.priority")
 	if rootPriority.Exists() && rootPriority.Type == gjson.Number {
-		result, _ = sjson.Set(result, attrPath+".priority", rootPriority.Float())
+		result, _ = sjson.Set(result, "attributes.priority", rootPriority.Float())
 	}
 
 	return result
 }
 
-// transformDataField handles the transformation of the data field in state
-func (m *V4ToV5Migrator) transformDataField(result string, path string, instance gjson.Result, recordType string) string {
+// transformDataFieldForInstance handles the transformation of the data field for a single instance
+func (m *V4ToV5Migrator) transformDataFieldForInstance(result string, instance gjson.Result, recordType string) string {
 	// Check if data field exists and is an array
 	data := instance.Get("attributes.data")
 	isDataArray := data.IsArray()
@@ -235,7 +274,7 @@ func (m *V4ToV5Migrator) transformDataField(result string, path string, instance
 	// But MX records with data arrays should be processed as complex types
 	if m.isSimpleRecordType(recordType) && (!isDataArray || recordType != "MX") {
 		if data.Exists() {
-			result, _ = sjson.Delete(result, path+".data")
+			result, _ = sjson.Delete(result, "attributes.data")
 		}
 		return result
 	}
@@ -285,7 +324,7 @@ func (m *V4ToV5Migrator) transformDataField(result string, path string, instance
 	}
 
 	// Transform the data field
-	result = state.TransformDataFieldArrayToObject(result, path, instance.Get("attributes"), recordType, options)
+	result = state.TransformDataFieldArrayToObject(result, "attributes", instance.Get("attributes"), recordType, options)
 
 	// Generate content field for CAA records
 	if recordType == "CAA" {
@@ -312,7 +351,7 @@ func (m *V4ToV5Migrator) transformDataField(result string, path string, instance
 
 				if tag.Exists() && value.Exists() {
 					content := fmt.Sprintf("%s %s %s", flagsStr, tag.String(), value.String())
-					result, _ = sjson.Set(result, path+".content", content)
+					result, _ = sjson.Set(result, "attributes.content", content)
 				}
 			}
 		}
@@ -327,7 +366,7 @@ func (m *V4ToV5Migrator) transformDataField(result string, path string, instance
 				priority := array[0].Get("priority")
 				if priority.Exists() {
 					// Convert priority to float64 for v5 compatibility
-					result, _ = sjson.Set(result, path+".priority", priority.Float())
+					result, _ = sjson.Set(result, "attributes.priority", priority.Float())
 				}
 
 				// Generate content field for MX records
@@ -335,7 +374,7 @@ func (m *V4ToV5Migrator) transformDataField(result string, path string, instance
 					target := array[0].Get("target")
 					if priority.Exists() && target.Exists() {
 						content := fmt.Sprintf("%v %s", priority.Value(), target.String())
-						result, _ = sjson.Set(result, path+".content", content)
+						result, _ = sjson.Set(result, "attributes.content", content)
 					}
 				} else if recordType == "URI" {
 					// Generate content for URI records
@@ -343,7 +382,7 @@ func (m *V4ToV5Migrator) transformDataField(result string, path string, instance
 					target := array[0].Get("target")
 					if priority.Exists() && weight.Exists() && target.Exists() {
 						content := fmt.Sprintf("%v %v %s", priority.Value(), weight.Value(), target.String())
-						result, _ = sjson.Set(result, path+".content", content)
+						result, _ = sjson.Set(result, "attributes.content", content)
 					}
 				}
 			}
