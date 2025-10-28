@@ -37,13 +37,9 @@ func TestVersionBasedMigratorSelection(t *testing.T) {
 	migrators = make(map[string]*Migrator)
 
 	// Register migrators for different version pairs
-	Register("test_resource", "v4", "v5", func() transform.ResourceTransformer {
-		return &mockMigrator{version: "4-5"}
-	})
+	Register("test_resource", "v4", "v5", &mockMigrator{version: "4-5"})
 
-	Register("test_resource", "v5", "v6", func() transform.ResourceTransformer {
-		return &mockMigrator{version: "5-6"}
-	})
+	Register("test_resource", "v5", "v6", &mockMigrator{version: "5-6"})
 
 	// Test v4 to v5 migration
 	migrator := GetMigrator("test_resource", "v4", "v5")
