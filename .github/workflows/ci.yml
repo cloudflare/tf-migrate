@@ -57,7 +57,7 @@ jobs:
       - name: Build tf-migrate
         run: |
           go build -o tf-migrate ./cmd/tf-migrate
-          ./tf-migrate --version
+          ./tf-migrate version
 
       - name: Run integration tests for v4 to v5
         run: |

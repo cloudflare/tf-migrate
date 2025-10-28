@@ -86,7 +86,6 @@ func main() {
 
 	// Create logger instance
 	log := logger.New(cfg.logLevel)
-	fmt.Println(fmt.Sprintf("MAIN %+v", cfg))
 	rootCmd.AddCommand(newMigrateCommand(log, cfg))
 	rootCmd.AddCommand(newVersionCommand())
 	if err := rootCmd.Execute(); err != nil {
@@ -118,7 +117,6 @@ Uses the global flags --config-dir, --state-file, and --resources to determine w
   # Run with debug logging
   tf-migrate --log-level debug migrate`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println(fmt.Sprintf("CFG %+v", cfg))
 			if cfg.configDir == "" {
 				cfg.configDir = "."
 			}
