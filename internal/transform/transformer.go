@@ -15,8 +15,8 @@ type Context struct {
 	Diagnostics   hcl.Diagnostics
 	Metadata      map[string]interface{}
 	Resources     []string
-	SourceVersion string // Source provider version (e.g., "v4")
-	TargetVersion string // Target provider version (e.g., "v5")
+	SourceVersion int // Source provider version (e.g., "v4")
+	TargetVersion int // Target provider version (e.g., "v5")
 }
 
 // TransformResult represents the result of a resource transformation
@@ -46,18 +46,18 @@ type ResourceTransformer interface {
 // a migrator defines the strategy which a resource uses to migrate the resource
 // from a source version to target version
 type Provider interface {
-	GetMigrator(resourceType string, sourceVersion string, targetVersion string) ResourceTransformer
-	GetAllMigrators(sourceVersion string, targetVersion string, resources ...string) []ResourceTransformer
+	GetMigrator(resourceType string, sourceVersion int, targetVersion int) ResourceTransformer
+	GetAllMigrators(sourceVersion int, targetVersion int, resources ...string) []ResourceTransformer
 }
 
 type DefaultMigratorProvider struct {
-	getFunc    func(string, string, string) ResourceTransformer
-	getAllFunc func(string, string, ...string) []ResourceTransformer
+	getFunc    func(string, int, int) ResourceTransformer
+	getAllFunc func(int, int, ...string) []ResourceTransformer
 }
 
 func NewMigratorProvider(
-	getFunc func(string, string, string) ResourceTransformer,
-	getAllFunc func(string, string, ...string) []ResourceTransformer,
+	getFunc func(string, int, int) ResourceTransformer,
+	getAllFunc func(int, int, ...string) []ResourceTransformer,
 ) Provider {
 	return &DefaultMigratorProvider{
 		getFunc:    getFunc,
@@ -65,14 +65,14 @@ func NewMigratorProvider(
 	}
 }
 
-func (p *DefaultMigratorProvider) GetMigrator(resourceType string, sourceVersion string, targetVersion string) ResourceTransformer {
+func (p *DefaultMigratorProvider) GetMigrator(resourceType string, sourceVersion int, targetVersion int) ResourceTransformer {
 	if p.getFunc != nil {
 		return p.getFunc(resourceType, sourceVersion, targetVersion)
 	}
 	return nil
 }
 
-func (p *DefaultMigratorProvider) GetAllMigrators(sourceVersion string, targetVersion string, resources ...string) []ResourceTransformer {
+func (p *DefaultMigratorProvider) GetAllMigrators(sourceVersion int, targetVersion int, resources ...string) []ResourceTransformer {
 	if p.getAllFunc != nil {
 		return p.getAllFunc(sourceVersion, targetVersion, resources...)
 	}

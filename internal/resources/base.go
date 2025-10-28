@@ -40,7 +40,6 @@ func (t *BaseResourceTransformer) GetResourceType() string {
 }
 
 // TransformConfig handles configuration file transformations
-// returns the original content if no ConfigTransformer is set
 func (t *BaseResourceTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	if t.ConfigTransformer != nil {
 		return t.ConfigTransformer(ctx, block)
@@ -51,7 +50,6 @@ func (t *BaseResourceTransformer) TransformConfig(ctx *transform.Context, block 
 }
 
 // TransformState handles state file transformations
-// returns the original content if no StateTransformer is set
 func (t *BaseResourceTransformer) TransformState(ctx *transform.Context, json gjson.Result, resourcePath string) (string, error) {
 	if t.StateTransformer != nil {
 		return t.StateTransformer(ctx, json, resourcePath)

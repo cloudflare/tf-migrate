@@ -25,11 +25,11 @@ func NewStateTransformHandler(log hclog.Logger, provider transform.Provider) tra
 }
 
 func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Context, error) {
-	if len(ctx.Content) == 0 {
+	if len(ctx.StateJSON) == 0 {
 		return ctx, fmt.Errorf("state content is empty")
 	}
 
-	stateJSON := string(ctx.Content)
+	stateJSON := ctx.StateJSON
 	if !gjson.Valid(stateJSON) {
 		return ctx, fmt.Errorf("invalid JSON in state file")
 	}
@@ -55,7 +55,7 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 				Severity: hcl.DiagWarning,
 				Summary:  fmt.Sprintf("Failed to transform resource: %s", resourceType),
-				Detail:   fmt.Sprintf("No migrator found for state resource: %s (v%s -> v%s)", resourceType, ctx.SourceVersion, ctx.TargetVersion),
+				Detail:   fmt.Sprintf("No migrator found for state resource: %s (v%d -> v%d)", resourceType, ctx.SourceVersion, ctx.TargetVersion),
 			})
 			h.log.Debug("No migrator found for state resource", "type", resourceType, "source", ctx.SourceVersion, "target", ctx.TargetVersion)
 			return true

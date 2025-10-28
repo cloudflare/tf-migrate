@@ -80,16 +80,16 @@ type MockProvider struct {
 	mockProviders map[string]transform.ResourceTransformer
 }
 
-func (mp *MockProvider) GetMigrator(resourceType string, sourceVersion string, targetVersion string) transform.ResourceTransformer {
-	m, ok := mp.mockProviders[fmt.Sprintf("%s:%s:%s", resourceType, sourceVersion, targetVersion)]
+func (mp *MockProvider) GetMigrator(resourceType string, sourceVersion int, targetVersion int) transform.ResourceTransformer {
+	m, ok := mp.mockProviders[fmt.Sprintf("%s:%d:%d", resourceType, sourceVersion, targetVersion)]
 	if ok {
 		return m
 	}
 	return nil
 }
 
-func (mp *MockProvider) GetAllMigrators(sourceVersion string, targetVersion string, resources ...string) []transform.ResourceTransformer {
-	transformers := []transform.ResourceTransformer{}
+func (mp *MockProvider) GetAllMigrators(sourceVersion int, targetVersion int, resources ...string) []transform.ResourceTransformer {
+	transformers := make([]transform.ResourceTransformer, 0)
 	for _, m := range mp.mockProviders {
 		transformers = append(transformers, m)
 	}
@@ -98,8 +98,8 @@ func (mp *MockProvider) GetAllMigrators(sourceVersion string, targetVersion stri
 
 var (
 	log           = hclog.New(&hclog.LoggerOptions{})
-	sourceVersion = "v100"
-	targetVersion = "v200"
+	sourceVersion = 100
+	targetVersion = 200
 )
 
 func setupTestMigrators(t *testing.T, transformers ...transform.ResourceTransformer) *MockProvider {
@@ -108,7 +108,7 @@ func setupTestMigrators(t *testing.T, transformers ...transform.ResourceTransfor
 	for _, resourceTransformer := range transformers {
 		rt := resourceTransformer
 		resourceType := rt.GetResourceType()
-		provider.mockProviders[fmt.Sprintf("%s:%s:%s", resourceType, sourceVersion, targetVersion)] = rt
+		provider.mockProviders[fmt.Sprintf("%s:%d:%d", resourceType, sourceVersion, targetVersion)] = rt
 	}
 	return provider
 }
@@ -447,7 +447,7 @@ func TestStandardPipelines(t *testing.T) {
 
 		// Should work on JSON
 		ctx := &transform.Context{
-			Content:       []byte(`{"version":4}`),
+			StateJSON:     `{"version":4}`,
 			Filename:      "terraform.tfstate",
 			SourceVersion: sourceVersion,
 			TargetVersion: targetVersion,

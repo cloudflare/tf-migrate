@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
-	"github.com/cloudflare/tf-migrate/internal/resources"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform/state"
@@ -18,30 +18,32 @@ import (
 
 // V4ToV5Migrator handles migration of DNS record resources from v4 to v5
 type V4ToV5Migrator struct {
-	*resources.BaseResourceTransformer
 }
 
-// NewV4ToV5Migrator creates a new DNS record migrator
 func NewV4ToV5Migrator() transform.ResourceTransformer {
-	migrator := &V4ToV5Migrator{
-		BaseResourceTransformer: resources.NewBaseResourceTransformer("cloudflare_dns_record"),
-	}
-
-	// Set custom handlers
-	migrator.BaseResourceTransformer.CanHandleFunc = migrator.canHandle
-	migrator.BaseResourceTransformer.ConfigTransformer = migrator.transformConfig
-	migrator.BaseResourceTransformer.StateTransformer = migrator.transformState
-
-	return migrator
+	return &V4ToV5Migrator{}
 }
 
-// canHandle determines if this migrator can handle the given resource type
-func (m *V4ToV5Migrator) canHandle(resourceType string) bool {
+func RegisterMigrations() {
+	// Register v4 to v5 migrator using numeric versions
+	registerV4ToV5Migrations()
+
+}
+
+func (m *V4ToV5Migrator) GetResourceType() string {
+	return "cloudflare_dns_record"
+}
+
+func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 	return resourceType == "cloudflare_dns_record" || resourceType == "cloudflare_record"
 }
 
-// transformConfig handles configuration file transformations
-func (m *V4ToV5Migrator) transformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+func (m *V4ToV5Migrator) Preprocess(content string) string {
+	// No preprocessing needed for DNS records
+	return content
+}
+
+func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	// Rename cloudflare_record to cloudflare_dns_record
 	tfhcl.RenameResourceType(block, "cloudflare_record", "cloudflare_dns_record")
 
@@ -94,22 +96,13 @@ func (m *V4ToV5Migrator) processDataBlocks(block *hclwrite.Block, recordType str
 		if recordType == "CAA" {
 			// Rename content to value in CAA data blocks
 			tfhcl.RenameAttribute(dataBlock.Body(), "content", "value")
-			// Convert flags from string to number if needed
-			m.convertCAAFlagsInBlock(dataBlock)
+			// In v5, flags format is preserved as-is (string stays string, number stays number)
 		}
 		// Remove priority from data block for SRV/MX/URI since it's hoisted
 		if recordType == "SRV" || recordType == "MX" || recordType == "URI" {
 			dataBlock.Body().RemoveAttribute("priority")
 		}
 	})
-}
-
-// convertCAAFlagsInBlock handles CAA flags - but in v5, we keep the format as-is
-func (m *V4ToV5Migrator) convertCAAFlagsInBlock(dataBlock *hclwrite.Block) {
-	// In v5, flags format is preserved as-is
-	// If it's a string, it stays a string
-	// If it's a number, it stays a number
-	// No conversion needed
 }
 
 // processDataAttribute handles data as an attribute (not a block) for CAA records
@@ -122,7 +115,6 @@ func (m *V4ToV5Migrator) processDataAttribute(block *hclwrite.Block, recordType 
 		newTokens := make(hclwrite.Tokens, 0, len(tokens))
 		for i := 0; i < len(tokens); i++ {
 			token := tokens[i]
-
 
 			// Check if this is "content" identifier inside data - rename to "value"
 			if token.Type == hclsyntax.TokenIdent && string(token.Bytes) == "content" {
@@ -145,8 +137,7 @@ func (m *V4ToV5Migrator) processDataAttribute(block *hclwrite.Block, recordType 
 	}
 }
 
-// transformState handles state file transformations
-func (m *V4ToV5Migrator) transformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
 	// If no state JSON provided, use the context's state
 	if !stateJSON.Exists() && ctx.StateJSON != "" {
 		stateJSON = gjson.Parse(ctx.StateJSON)
@@ -162,9 +153,9 @@ func (m *V4ToV5Migrator) transformState(ctx *transform.Context, stateJSON gjson.
 
 	resources.ForEach(func(key, resource gjson.Result) bool {
 		resourceType := resource.Get("type").String()
-		
+
 		// Check if this is a DNS record resource we need to migrate
-		if !m.canHandle(resourceType) {
+		if !m.CanHandle(resourceType) {
 			return true // continue
 		}
 
@@ -241,7 +232,7 @@ func (m *V4ToV5Migrator) transformDataField(result string, path string, instance
 	// Check if data field exists and is an array
 	data := instance.Get("attributes.data")
 	isDataArray := data.IsArray()
-	
+
 	// Simple record types that don't use data field
 	// But MX records with data arrays should be processed as complex types
 	if m.isSimpleRecordType(recordType) && (!isDataArray || recordType != "MX") {
@@ -255,32 +246,32 @@ func (m *V4ToV5Migrator) transformDataField(result string, path string, instance
 	options := state.ArrayToObjectOptions{
 		SkipFields: []string{"name", "proto"},
 		FieldTransforms: map[string]func(gjson.Result) interface{}{
-			"flags":        m.transformFlagsValue,
-			"algorithm":    m.transformNumericValue,
-			"key_tag":      m.transformNumericValue,
-			"type":         m.transformNumericValue,
-			"usage":        m.transformNumericValue,
-			"selector":     m.transformNumericValue,
-			"matching_type": m.transformNumericValue,
-			"weight":       m.transformNumericValue,
-			"priority":     m.transformNumericValue,
-			"port":         m.transformNumericValue,
-			"protocol":     m.transformNumericValue,
-			"digest_type":  m.transformNumericValue,
-			"order":        m.transformNumericValue,
-			"preference":   m.transformNumericValue,
-			"altitude":     m.transformNumericValue,
-			"lat_degrees":  m.transformNumericValue,
-			"lat_minutes":  m.transformNumericValue,
-			"lat_seconds":  m.transformNumericValue,
-			"long_degrees": m.transformNumericValue,
-			"long_minutes": m.transformNumericValue,
-			"long_seconds": m.transformNumericValue,
+			"flags":          m.transformFlagsValue,
+			"algorithm":      m.transformNumericValue,
+			"key_tag":        m.transformNumericValue,
+			"type":           m.transformNumericValue,
+			"usage":          m.transformNumericValue,
+			"selector":       m.transformNumericValue,
+			"matching_type":  m.transformNumericValue,
+			"weight":         m.transformNumericValue,
+			"priority":       m.transformNumericValue,
+			"port":           m.transformNumericValue,
+			"protocol":       m.transformNumericValue,
+			"digest_type":    m.transformNumericValue,
+			"order":          m.transformNumericValue,
+			"preference":     m.transformNumericValue,
+			"altitude":       m.transformNumericValue,
+			"lat_degrees":    m.transformNumericValue,
+			"lat_minutes":    m.transformNumericValue,
+			"lat_seconds":    m.transformNumericValue,
+			"long_degrees":   m.transformNumericValue,
+			"long_minutes":   m.transformNumericValue,
+			"long_seconds":   m.transformNumericValue,
 			"precision_horz": m.transformNumericValue,
 			"precision_vert": m.transformNumericValue,
-			"size":         m.transformNumericValue,
+			"size":           m.transformNumericValue,
 		},
-		RenameFields: map[string]string{},
+		RenameFields:  map[string]string{},
 		DefaultFields: map[string]interface{}{},
 	}
 
@@ -289,7 +280,7 @@ func (m *V4ToV5Migrator) transformDataField(result string, path string, instance
 		options.RenameFields["content"] = "value"
 		options.DefaultFields["flags"] = nil
 	}
-	
+
 	// For SRV, MX and URI, skip priority field in data as it will be hoisted
 	if recordType == "SRV" || recordType == "MX" || recordType == "URI" {
 		options.SkipFields = append(options.SkipFields, "priority")
@@ -307,7 +298,7 @@ func (m *V4ToV5Migrator) transformDataField(result string, path string, instance
 				flags := array[0].Get("flags")
 				tag := array[0].Get("tag")
 				value := array[0].Get("content")
-				
+
 				// Format the content field
 				flagsStr := "0"
 				if flags.Exists() {
@@ -320,7 +311,7 @@ func (m *V4ToV5Migrator) transformDataField(result string, path string, instance
 						}
 					}
 				}
-				
+
 				if tag.Exists() && value.Exists() {
 					content := fmt.Sprintf("%s %s %s", flagsStr, tag.String(), value.String())
 					result, _ = sjson.Set(result, path+".content", content)
@@ -340,7 +331,7 @@ func (m *V4ToV5Migrator) transformDataField(result string, path string, instance
 					// Convert priority to float64 for v5 compatibility
 					result, _ = sjson.Set(result, path+".priority", priority.Float())
 				}
-				
+
 				// Generate content field for MX records
 				if recordType == "MX" {
 					target := array[0].Get("target")
@@ -419,4 +410,8 @@ func (m *V4ToV5Migrator) isSimpleRecordType(recordType string) bool {
 		"NS": true, "PTR": true, "TXT": true, "OPENPGPKEY": true,
 	}
 	return simpleTypes[recordType]
+}
+
+func registerV4ToV5Migrations() {
+	internal.Register("cloudflare_record", 4, 5, NewV4ToV5Migrator)
 }
