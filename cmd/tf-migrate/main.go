@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/hashicorp/go-hclog"
@@ -68,7 +67,7 @@ This tool provides automated transformations for:
 )
 
 var validVersionPath = map[string]struct{}{
-	"4-5": {},
+	"v4-v5": {},
 }
 
 func main() {
@@ -80,8 +79,8 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&cfg.stateFile, "state-file", "", "Path to Terraform state file")
 	rootCmd.PersistentFlags().StringSliceVar(&cfg.resourcesToMigrate, "resources", []string{}, "Comma-separated list of resources to migrate (empty = all)")
 	rootCmd.PersistentFlags().BoolVar(&cfg.dryRun, "dry-run", false, "Perform a dry run without making changes")
-	rootCmd.PersistentFlags().StringVar(&cfg.sourceVersion, "source-version", "", "Source provider version (e.g., 4, 5)")
-	rootCmd.PersistentFlags().StringVar(&cfg.targetVersion, "target-version", "", "Target provider version (e.g., 5, 6)")
+	rootCmd.PersistentFlags().StringVar(&cfg.sourceVersion, "source-version", "", "Source provider version (e.g., v4, v5)")
+	rootCmd.PersistentFlags().StringVar(&cfg.targetVersion, "target-version", "", "Target provider version (e.g., v5, v6)")
 
 	rootCmd.PersistentFlags().StringVarP(&cfg.logLevel, "log-level", "l", "warn", "Set log level (debug, info, warn, error, off)")
 
@@ -124,10 +123,10 @@ Uses the global flags --config-dir, --state-file, and --resources to determine w
 				cfg.configDir = "."
 			}
 			if cfg.sourceVersion == "" {
-				cfg.sourceVersion = "4"
+				cfg.sourceVersion = "v4"
 			}
 			if cfg.targetVersion == "" {
-				cfg.targetVersion = "5"
+				cfg.targetVersion = "v5"
 			}
 
 			fmt.Println("Cloudflare Terraform Provider Migration Tool")
@@ -344,14 +343,10 @@ func validateVersions(c config) error {
 
 func getProviders(resources ...string) transform.Provider {
 	getFunc := func(resourceType string, source string, target string) transform.ResourceTransformer {
-		sourceVersion, _ := strconv.Atoi(source)
-		targetVersion, _ := strconv.Atoi(target)
-		return internal.GetMigrator(resourceType, sourceVersion, targetVersion)
+		return internal.GetMigrator(resourceType, source, target)
 	}
 	getAllFunc := func(source string, target string, resourcesToMigrate ...string) []transform.ResourceTransformer {
-		sourceVersion, _ := strconv.Atoi(source)
-		targetVersion, _ := strconv.Atoi(target)
-		return internal.GetAllMigrators(sourceVersion, targetVersion, resources...)
+		return internal.GetAllMigrators(source, target, resources...)
 	}
 	return transform.NewMigratorProvider(getFunc, getAllFunc)
 }

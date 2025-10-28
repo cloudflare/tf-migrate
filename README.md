@@ -38,13 +38,13 @@ make
 Migrate all Terraform files in the current directory:
 
 ```bash
-tf-migrate migrate --source-version 4 --target-version 5
+tf-migrate migrate --source-version v4 --target-version v5
 ```
 
 ### Migrate Specific Directory
 
 ```bash
-tf-migrate migrate --config-dir ./terraform --source-version 4 --target-version 5
+tf-migrate migrate --config-dir ./terraform --source-version v4 --target-version v5
 ```
 
 ### Include State File Migration
@@ -53,8 +53,8 @@ tf-migrate migrate --config-dir ./terraform --source-version 4 --target-version 
 tf-migrate migrate \
   --config-dir ./terraform \
   --state-file terraform.tfstate \
-  --source-version 4 \
-  --target-version 5
+  --source-version v4 \
+  --target-version v5
 ```
 
 ### Dry Run Mode
@@ -62,7 +62,7 @@ tf-migrate migrate \
 Preview changes without modifying files:
 
 ```bash
-tf-migrate migrate --dry-run --source-version 4 --target-version 5
+tf-migrate migrate --dry-run --source-version v4 --target-version v5
 ```
 
 ### Migrate Specific Resources Only
@@ -70,8 +70,8 @@ tf-migrate migrate --dry-run --source-version 4 --target-version 5
 ```bash
 tf-migrate migrate \
   --resources dns_record,zero_trust_list \
-  --source-version 4 \
-  --target-version 5
+  --source-version v4 \
+  --target-version v5
 ```
 
 ### Output to Different Directory
@@ -82,8 +82,8 @@ tf-migrate migrate \
   --output-dir ./terraform-v5 \
   --state-file terraform.tfstate \
   --output-state terraform-v5.tfstate \
-  --source-version 4 \
-  --target-version 5
+  --source-version v4 \
+  --target-version v5
 ```
 
 ## Command Reference
@@ -94,8 +94,8 @@ tf-migrate migrate \
 |------|-------------|---------|
 | `--config-dir` | Directory containing Terraform configuration files | Current directory |
 | `--state-file` | Path to Terraform state file | None |
-| `--source-version` | Source provider version (e.g., 4) | Required |
-| `--target-version` | Target provider version (e.g., 5) | Required |
+| `--source-version` | Source provider version (e.g., v4) | Required |
+| `--target-version` | Target provider version (e.g., v5) | Required |
 | `--resources` | Comma-separated list of resources to migrate | All resources |
 | `--dry-run` | Preview changes without modifying files | false |
 | `--log-level` | Set log level (debug, info, warn, error, off) | warn |

@@ -9,7 +9,6 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/registry"
 	// Explicitly import the migrations we want to test
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
-	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 )
 
 // TestMain explicitly registers migrations for this version path
@@ -28,7 +27,7 @@ func TestV4ToV5Migration(t *testing.T) {
 		t.Skip("Skipping integration tests in short mode")
 	}
 
-	runner, err := integration.NewTestRunner("4", "5")
+	runner, err := integration.NewTestRunner("v4", "v5")
 	if err != nil {
 		t.Fatalf("Failed to create test runner: %v", err)
 	}
@@ -60,8 +59,8 @@ func TestSingleResource(t *testing.T) {
 		t.Skip("TEST_RESOURCE not set, skipping single resource test")
 	}
 
-	// For v4_to_v5 tests, we always use version 4 to 5
-	runner, err := integration.NewTestRunner("4", "5")
+	// For v4_to_v5 tests, we always use version v4 to v5
+	runner, err := integration.NewTestRunner("v4", "v5")
 	if err != nil {
 		t.Fatalf("Failed to create test runner: %v", err)
 	}

@@ -12,8 +12,8 @@ type ResourceMigrator func() transform.ResourceTransformer
 // Migrator holds information about a registered migrator
 type Migrator struct {
 	ResourceMigrator ResourceMigrator
-	SourceVersion    int
-	TargetVersion    int
+	SourceVersion    string
+	TargetVersion    string
 }
 
 // Migrators is the map of all available migrators
@@ -21,8 +21,8 @@ type Migrator struct {
 var migrators = make(map[string]*Migrator)
 
 // GetMigrator returns a new instance of the migrator for the given resource type and versions
-func GetMigrator(resourceType string, sourceVersion int, targetVersion int) transform.ResourceTransformer {
-	key := fmt.Sprintf("%s:%d:%d", resourceType, sourceVersion, targetVersion)
+func GetMigrator(resourceType string, sourceVersion string, targetVersion string) transform.ResourceTransformer {
+	key := fmt.Sprintf("%s:%s:%s", resourceType, sourceVersion, targetVersion)
 	if reg, ok := migrators[key]; ok {
 		return reg.ResourceMigrator()
 	}
@@ -30,13 +30,13 @@ func GetMigrator(resourceType string, sourceVersion int, targetVersion int) tran
 }
 
 // GetAllMigrators returns new instances of all migrators for the specified versions
-func GetAllMigrators(sourceVersion int, targetVersion int, resources ...string) []transform.ResourceTransformer {
+func GetAllMigrators(sourceVersion string, targetVersion string, resources ...string) []transform.ResourceTransformer {
 	result := make([]transform.ResourceTransformer, 0)
 
 	// Only return the migrators for the resources specified
 	if len(resources) > 0 {
 		for _, r := range resources {
-			key := fmt.Sprintf("%s:%d:%d", r, sourceVersion, targetVersion)
+			key := fmt.Sprintf("%s:%s:%s", r, sourceVersion, targetVersion)
 			if reg, ok := migrators[key]; ok {
 				result = append(result, reg.ResourceMigrator())
 			}
@@ -52,8 +52,8 @@ func GetAllMigrators(sourceVersion int, targetVersion int, resources ...string) 
 }
 
 // Register registers a migrator for a specific version transition
-func Register(resourceType string, sourceVersion int, targetVersion int, resourceMigrator ResourceMigrator) {
-	key := fmt.Sprintf("%s:%d:%d", resourceType, sourceVersion, targetVersion)
+func Register(resourceType string, sourceVersion string, targetVersion string, resourceMigrator ResourceMigrator) {
+	key := fmt.Sprintf("%s:%s:%s", resourceType, sourceVersion, targetVersion)
 	migrators[key] = &Migrator{
 		ResourceMigrator: resourceMigrator,
 		SourceVersion:    sourceVersion,

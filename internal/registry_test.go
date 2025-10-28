@@ -37,18 +37,18 @@ func TestVersionBasedMigratorSelection(t *testing.T) {
 	migrators = make(map[string]*Migrator)
 
 	// Register migrators for different version pairs
-	Register("test_resource", 4, 5, func() transform.ResourceTransformer {
+	Register("test_resource", "v4", "v5", func() transform.ResourceTransformer {
 		return &mockMigrator{version: "4-5"}
 	})
 
-	Register("test_resource", 5, 6, func() transform.ResourceTransformer {
+	Register("test_resource", "v5", "v6", func() transform.ResourceTransformer {
 		return &mockMigrator{version: "5-6"}
 	})
 
-	// Test 4 to 5 migration
-	migrator := GetMigrator("test_resource", 4, 5)
+	// Test v4 to v5 migration
+	migrator := GetMigrator("test_resource", "v4", "v5")
 	if migrator == nil {
-		t.Fatal("Expected migrator for 4->5, got nil")
+		t.Fatal("Expected migrator for v4->v5, got nil")
 	}
 	if m, ok := migrator.(*mockMigrator); ok {
 		if m.version != "4-5" {
@@ -56,10 +56,10 @@ func TestVersionBasedMigratorSelection(t *testing.T) {
 		}
 	}
 
-	// Test 5 to 6 migration
-	migrator = GetMigrator("test_resource", 5, 6)
+	// Test v5 to v6 migration
+	migrator = GetMigrator("test_resource", "v5", "v6")
 	if migrator == nil {
-		t.Fatal("Expected migrator for 5->6, got nil")
+		t.Fatal("Expected migrator for v5->v6, got nil")
 	}
 	if m, ok := migrator.(*mockMigrator); ok {
 		if m.version != "5-6" {
@@ -68,24 +68,24 @@ func TestVersionBasedMigratorSelection(t *testing.T) {
 	}
 
 	// Test non-existent migration path
-	migrator = GetMigrator("test_resource", 3, 4)
+	migrator = GetMigrator("test_resource", "v3", "v4")
 	if migrator != nil {
-		t.Error("Expected nil for non-existent 3->4 migration")
+		t.Error("Expected nil for non-existent v3->v4 migration")
 	}
 
 	// Test GetAllMigrators with version filtering
-	all := GetAllMigrators(4, 5)
+	all := GetAllMigrators("v4", "v5")
 	if len(all) != 1 {
-		t.Errorf("Expected 1 migrator for 4->5, got %d", len(all))
+		t.Errorf("Expected 1 migrator for v4->v5, got %d", len(all))
 	}
 
-	all = GetAllMigrators(5, 6)
+	all = GetAllMigrators("v5", "v6")
 	if len(all) != 1 {
-		t.Errorf("Expected 1 migrator for 5->6, got %d", len(all))
+		t.Errorf("Expected 1 migrator for v5->v6, got %d", len(all))
 	}
 
-	all = GetAllMigrators(3, 4)
+	all = GetAllMigrators("v3", "v4")
 	if len(all) != 0 {
-		t.Errorf("Expected 0 migrators for 3->4, got %d", len(all))
+		t.Errorf("Expected 0 migrators for v3->v4, got %d", len(all))
 	}
 }
