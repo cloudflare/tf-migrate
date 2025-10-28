@@ -14,10 +14,10 @@ import (
 type StateTransformHandler struct {
 	transform.BaseHandler
 	log      hclog.Logger
-	provider transform.Provider
+	provider transform.MigrationProvider
 }
 
-func NewStateTransformHandler(log hclog.Logger, provider transform.Provider) transform.TransformationHandler {
+func NewStateTransformHandler(log hclog.Logger, provider transform.MigrationProvider) transform.TransformationHandler {
 	return &StateTransformHandler{
 		log:      log,
 		provider: provider,
@@ -64,6 +64,17 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 		instances := resource.Get("instances")
 		if !instances.Exists() {
 			return true
+		}
+
+		// Check if this migrator can handle the resource and transform the type
+		if migrator.CanHandle(resourceType) {
+			// Update the resource type if it changed (e.g., teams_list -> zero_trust_list)
+			newResourceType := migrator.GetResourceType()
+			if newResourceType != "" && newResourceType != resourceType {
+				resourcePath := fmt.Sprintf("resources.%d.type", key.Int())
+				modifiedState, _ = sjson.Set(modifiedState, resourcePath, newResourceType)
+				h.log.Debug("Updated resource type", "from", resourceType, "to", newResourceType)
+			}
 		}
 
 		instances.ForEach(func(instKey, instance gjson.Result) bool {

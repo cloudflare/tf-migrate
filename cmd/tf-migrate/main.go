@@ -14,6 +14,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/logger"
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
+	"github.com/cloudflare/tf-migrate/internal/registry"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
@@ -66,10 +67,13 @@ This tool provides automated transformations for:
 )
 
 var validVersionPath = map[string]struct{}{
-	"4-5": {},
+	"v4-v5": {},
 }
 
 func main() {
+	// Register all resource migrations
+	registry.RegisterAllMigrations()
+
 	cfg := &config{}
 	rootCmd.PersistentFlags().StringVar(&cfg.configDir, "config-dir", "", "Directory containing Terraform configuration files")
 	rootCmd.PersistentFlags().StringVar(&cfg.stateFile, "state-file", "", "Path to Terraform state file")
@@ -82,7 +86,6 @@ func main() {
 
 	// Create logger instance
 	log := logger.New(cfg.logLevel)
-	fmt.Println(fmt.Sprintf("MAIN %+v", cfg))
 	rootCmd.AddCommand(newMigrateCommand(log, cfg))
 	rootCmd.AddCommand(newVersionCommand())
 	if err := rootCmd.Execute(); err != nil {
@@ -114,7 +117,6 @@ Uses the global flags --config-dir, --state-file, and --resources to determine w
   # Run with debug logging
   tf-migrate --log-level debug migrate`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println(fmt.Sprintf("CFG %+v", cfg))
 			if cfg.configDir == "" {
 				cfg.configDir = "."
 			}
@@ -330,22 +332,19 @@ func findTerraformFiles(dir string) ([]string, error) {
 }
 
 func validateVersions(c config) error {
-	source := strings.TrimPrefix(c.sourceVersion, "v")
-	target := strings.TrimPrefix(c.targetVersion, "v")
-	versionPath := fmt.Sprintf("%s-%s", source, target)
+	versionPath := fmt.Sprintf("%s-%s", c.sourceVersion, c.targetVersion)
 	if _, ok := validVersionPath[versionPath]; !ok {
 		return fmt.Errorf("unsupported migration path: %s", versionPath)
 	}
-
 	return nil
 }
 
-func getProviders(resources ...string) transform.Provider {
+func getProviders(resources ...string) transform.MigrationProvider {
 	getFunc := func(resourceType string, source string, target string) transform.ResourceTransformer {
 		return internal.GetMigrator(resourceType, source, target)
 	}
 	getAllFunc := func(source string, target string, resourcesToMigrate ...string) []transform.ResourceTransformer {
 		return internal.GetAllMigrators(source, target, resources...)
 	}
-	return transform.NewMigratorProvider(getFunc, getAllFunc)
+	return transform.NewMigrationProvider(getFunc, getAllFunc)
 }

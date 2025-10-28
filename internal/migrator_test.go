@@ -36,14 +36,10 @@ func TestVersionBasedMigratorSelection(t *testing.T) {
 	// Clear any existing registrations for clean test
 	migrators = make(map[string]*Migrator)
 
-	// Register migrators for different version pairs
-	Register("test_resource", "v4", "v5", func() transform.ResourceTransformer {
-		return &mockMigrator{version: "v4-v5"}
-	})
+	// RegisterMigrator migrators for different version pairs
+	RegisterMigrator("test_resource", "v4", "v5", &mockMigrator{version: "4-5"})
 
-	Register("test_resource", "v5", "v6", func() transform.ResourceTransformer {
-		return &mockMigrator{version: "v5-v6"}
-	})
+	RegisterMigrator("test_resource", "v5", "v6", &mockMigrator{version: "5-6"})
 
 	// Test v4 to v5 migration
 	migrator := GetMigrator("test_resource", "v4", "v5")
@@ -51,8 +47,8 @@ func TestVersionBasedMigratorSelection(t *testing.T) {
 		t.Fatal("Expected migrator for v4->v5, got nil")
 	}
 	if m, ok := migrator.(*mockMigrator); ok {
-		if m.version != "v4-v5" {
-			t.Errorf("Expected v4-v5 migrator, got %s", m.version)
+		if m.version != "4-5" {
+			t.Errorf("Expected 4-5 migrator, got %s", m.version)
 		}
 	}
 
@@ -62,8 +58,8 @@ func TestVersionBasedMigratorSelection(t *testing.T) {
 		t.Fatal("Expected migrator for v5->v6, got nil")
 	}
 	if m, ok := migrator.(*mockMigrator); ok {
-		if m.version != "v5-v6" {
-			t.Errorf("Expected v5-v6 migrator, got %s", m.version)
+		if m.version != "5-6" {
+			t.Errorf("Expected 5-6 migrator, got %s", m.version)
 		}
 	}
 

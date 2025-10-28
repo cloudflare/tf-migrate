@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'  # Run on all branches
+  pull_request:
+    branches:
+      - '**'  # Run on PRs to any branch
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ./go.mod
+
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod tidy
+
+      - name: Run unit tests with coverage
+        run: |
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./internal/...
+          go test -v -race ./cmd/...
+
+      - name: Generate coverage report
+        run: |
+          echo "Coverage Report:"
+          go tool cover -func=coverage.out
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ./go.mod
+
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod tidy
+
+      - name: Build tf-migrate
+        run: |
+          go build -o tf-migrate ./cmd/tf-migrate
+          ./tf-migrate version
+
+      - name: Run integration tests for v4 to v5
+        run: |
+          cd integration/v4_to_v5
+          go test -v -race -timeout 10m

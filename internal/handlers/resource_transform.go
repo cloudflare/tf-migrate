@@ -13,10 +13,10 @@ import (
 type ResourceTransformHandler struct {
 	transform.BaseHandler
 	log      hclog.Logger
-	provider transform.Provider
+	provider transform.MigrationProvider
 }
 
-func NewResourceTransformHandler(log hclog.Logger, provider transform.Provider) transform.TransformationHandler {
+func NewResourceTransformHandler(log hclog.Logger, provider transform.MigrationProvider) transform.TransformationHandler {
 	return &ResourceTransformHandler{
 		log:      log,
 		provider: provider,
