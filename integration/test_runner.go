@@ -91,7 +91,7 @@ func (r *TestRunner) copyDirectory(src, dst string) error {
 
 	for _, entry := range entries {
 		if entry.IsDir() {
-			continue // Skip subdirectories for now
+			return fmt.Errorf("subdirectories are not yet supported: %s", entry.Name())
 		}
 
 		srcFile := filepath.Join(src, entry.Name())
@@ -124,11 +124,6 @@ func (r *TestRunner) runMigration(dir string) error {
 		"--target-version", r.TargetVersion,
 		"--backup=false",
 	)
-
-	// Set KEEP_TEMP for debugging
-	if os.Getenv("KEEP_TEMP") != "" {
-		fmt.Printf("Test directory: %s\n", dir)
-	}
 
 	output, err := migrateCmd.CombinedOutput()
 	if err != nil {
@@ -165,8 +160,7 @@ func (r *TestRunner) compareDirectories(expectedDir, actualDir string) error {
 				errors = append(errors, fmt.Sprintf("%s: %v", entry.Name(), err))
 			}
 		default:
-			// Skip other files
-			continue
+			return fmt.Errorf("unsupported file type: %s", entry.Name())
 		}
 	}
 
