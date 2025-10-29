@@ -9,6 +9,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/registry"
 	// Explicitly import the migrations we want to test
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/zone_dnssec"
 )
 
 // TestMain explicitly registers migrations for this version path
@@ -37,6 +38,11 @@ func TestV4ToV5Migration(t *testing.T) {
 			Name:        "DNSRecord",
 			Description: "Migrate cloudflare_record to cloudflare_dns_record",
 			Resource:    "dns_record",
+		},
+		{
+			Name:        "ZoneDNSSEC",
+			Description: "Migrate cloudflare_zone_dnssec with cross-referencing (status from state, int to float64)",
+			Resource:    "zone_dnssec",
 		},
 		// Add more v4 to v5 migrations here as they are implemented
 	}
