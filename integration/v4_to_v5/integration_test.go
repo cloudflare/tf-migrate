@@ -7,7 +7,9 @@ import (
 
 	"github.com/cloudflare/tf-migrate/integration"
 	"github.com/cloudflare/tf-migrate/internal/registry"
+
 	// Explicitly import the migrations we want to test
+	_ "github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 )
 
@@ -33,6 +35,11 @@ func TestV4ToV5Migration(t *testing.T) {
 	}
 
 	tests := []integration.TestCase{
+		{
+			Name:        "AccountMember",
+			Description: "Migrate cloudflare_account_member email_address to email and role_ids to roles",
+			Resource:    "account_member",
+		},
 		{
 			Name:        "DNSRecord",
 			Description: "Migrate cloudflare_record to cloudflare_dns_record",
