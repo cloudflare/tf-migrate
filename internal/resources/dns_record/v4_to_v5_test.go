@@ -377,7 +377,8 @@ resource "cloudflare_record" "pgp" {
 								"tag": "issue",
 								"content": "letsencrypt.org"
 							}]
-						}
+						},
+						"schema_version": 0
 					}]
 				}]
 			}`,
@@ -405,7 +406,8 @@ resource "cloudflare_record" "pgp" {
 								"tag": "issue",
 								"value": "letsencrypt.org"
 							}
-						}
+						},
+						"schema_version": 0
 					}]
 				}]
 			}`,
@@ -425,7 +427,8 @@ resource "cloudflare_record" "pgp" {
 							"type": "A",
 							"content": "192.168.1.1",
 							"data": []
-						}
+						},
+						"schema_version": 0
 					}]
 				}]
 			}`,
@@ -444,7 +447,53 @@ resource "cloudflare_record" "pgp" {
 							"content": "192.168.1.1",
 							"created_on": "2024-01-01T00:00:00Z",
 							"modified_on": "2024-01-01T00:00:00Z"
-						}
+						},
+						"schema_version": 0
+					}]
+				}]
+			}`,
+			},
+			{
+				Name: "Schema version should be updated from v4 (3) to v5 (0)",
+				Input: `{
+				"version": 4,
+				"terraform_version": "1.5.0",
+				"resources": [{
+					"type": "cloudflare_record",
+					"name": "test",
+					"instances": [{
+						"schema_version": 3,
+						"attributes": {
+							"id": "test-id",
+							"zone_id": "test-zone",
+							"name": "test",
+							"type": "A",
+							"value": "192.168.1.1",
+							"ttl": 300
+						},
+						"schema_version": 0
+					}]
+				}]
+			}`,
+				Expected: `{
+				"version": 4,
+				"terraform_version": "1.5.0",
+				"resources": [{
+					"type": "cloudflare_dns_record",
+					"name": "test",
+					"instances": [{
+						"schema_version": 0,
+						"attributes": {
+							"id": "test-id",
+							"zone_id": "test-zone",
+							"name": "test",
+							"type": "A",
+							"content": "192.168.1.1",
+							"ttl": 300,
+							"created_on": "2024-01-01T00:00:00Z",
+							"modified_on": "2024-01-01T00:00:00Z"
+						},
+						"schema_version": 0
 					}]
 				}]
 			}`,
@@ -468,7 +517,8 @@ resource "cloudflare_record" "pgp" {
 								"tag": "issue",
 								"content": "letsencrypt.org"
 							}]
-						}
+						},
+						"schema_version": 0
 					}]
 				}]
 			}`,
@@ -495,7 +545,8 @@ resource "cloudflare_record" "pgp" {
 								"tag": "issue",
 								"value": "letsencrypt.org"
 							}
-						}
+						},
+						"schema_version": 0
 					}]
 				}]
 			}`,
@@ -516,7 +567,8 @@ resource "cloudflare_record" "pgp" {
 							"value": "192.168.1.1",
 							"hostname": "test.example.com",
 							"allow_overwrite": true
-						}
+						},
+						"schema_version": 0
 					}]
 				}]
 			}`,
@@ -535,7 +587,8 @@ resource "cloudflare_record" "pgp" {
 							"content": "192.168.1.1",
 							"created_on": "2024-01-01T00:00:00Z",
 							"modified_on": "2024-01-01T00:00:00Z"
-						}
+						},
+						"schema_version": 0
 					}]
 				}]
 			}`,
@@ -559,7 +612,8 @@ resource "cloudflare_record" "pgp" {
 								"port": 5060,
 								"target": "sipserver.example.com"
 							}]
-						}
+						},
+						"schema_version": 0
 					}]
 				}]
 			}`,
@@ -579,11 +633,13 @@ resource "cloudflare_record" "pgp" {
 							"created_on": "2024-01-01T00:00:00Z",
 							"modified_on": "2024-01-01T00:00:00Z",
 							"data": {
+								"priority": 10,
 								"weight": 60,
 								"port": 5060,
 								"target": "sipserver.example.com"
 							}
-						}
+						},
+						"schema_version": 0
 					}]
 				}]
 			}`,
@@ -605,7 +661,8 @@ resource "cloudflare_record" "pgp" {
 						"type": "cloudflare_dns_record",
 						"name": "invalid",
 						"instances": [{
-							"attributes": {}
+							"attributes": {},
+							"schema_version": 0
 						}]
 					}]
 				}`,
@@ -665,7 +722,8 @@ resource "cloudflare_record" "pgp" {
 								"ttl": 1,
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
-							}
+							},
+							"schema_version": 0
 						}]
 					}]
 				}`,
@@ -710,7 +768,8 @@ resource "cloudflare_record" "pgp" {
 								"ttl": 1,
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
-							}
+							},
+							"schema_version": 0
 						}]
 					}]
 				}`,
@@ -758,7 +817,8 @@ resource "cloudflare_record" "pgp" {
 								"ttl": 1,
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
-							}
+							},
+							"schema_version": 0
 						}]
 					}]
 				}`,
@@ -803,7 +863,8 @@ resource "cloudflare_record" "pgp" {
 								"ttl": 1,
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
-							}
+							},
+							"schema_version": 0
 						}]
 					}]
 				}`,
@@ -851,7 +912,8 @@ resource "cloudflare_record" "pgp" {
 								"ttl": 1,
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
-							}
+							},
+							"schema_version": 0
 						}]
 					}]
 				}`,
@@ -896,7 +958,8 @@ resource "cloudflare_record" "pgp" {
 								"ttl": 1,
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
-							}
+							},
+							"schema_version": 0
 						}]
 					}]
 				}`,
@@ -940,7 +1003,8 @@ resource "cloudflare_record" "pgp" {
 								"ttl": 1,
 								"created_on": "2023-01-01T00:00:00Z",
 								"modified_on": "2023-01-01T00:00:00Z"
-							}
+							},
+							"schema_version": 0
 						}]
 					}]
 				}`,
@@ -975,7 +1039,8 @@ resource "cloudflare_record" "pgp" {
 								"ttl": 1,
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
-							}
+							},
+							"schema_version": 0
 						}]
 					}]
 				}`,
@@ -1011,7 +1076,8 @@ resource "cloudflare_record" "pgp" {
 								"ttl": 1,
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
-							}
+							},
+							"schema_version": 0
 						}]
 					}]
 				}`,
@@ -1048,6 +1114,7 @@ resource "cloudflare_record" "pgp" {
 								"type": "SRV",
 								"priority": 10,
 								"data": {
+									"priority": 10,
 									"weight": 60,
 									"port": 5060,
 									"target": "sipserver.example.com"
@@ -1055,7 +1122,8 @@ resource "cloudflare_record" "pgp" {
 								"ttl": 1,
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
-							}
+							},
+							"schema_version": 0
 						}]
 					}]
 				}`,
@@ -1099,7 +1167,8 @@ resource "cloudflare_record" "pgp" {
 								"ttl": 1,
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
-							}
+							},
+							"schema_version": 0
 						}]
 					}]
 				}`,
