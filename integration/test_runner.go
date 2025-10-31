@@ -16,9 +16,7 @@ import (
 
 // TestCase represents a single integration test case
 type TestCase struct {
-	Name        string
-	Description string
-	Resource    string // Resource directory name in testdata
+	Resource string // Resource directory name in testdata
 }
 
 // TestRunner manages integration test execution for any version migration
@@ -59,7 +57,7 @@ func NewTestRunner(sourceVersion, targetVersion string) (*TestRunner, error) {
 
 // RunTest executes a single integration test
 func (r *TestRunner) RunTest(t *testing.T, test TestCase) {
-	t.Run(test.Name, func(t *testing.T) {
+	t.Run(test.Resource, func(t *testing.T) {
 		// Create temp directory
 		tempDir := t.TempDir()
 
