@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 )
@@ -10,6 +11,7 @@ import (
 // Each resource package has its own RegisterMigrations function that defines how to register
 // its specific migrations.
 func RegisterAllMigrations() {
+	account_member.NewV4ToV5Migrator()
 	api_token.NewV4ToV5Migrator()
 	dns_record.NewV4ToV5Migrator()
 }
