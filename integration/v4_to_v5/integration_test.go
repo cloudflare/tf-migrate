@@ -12,6 +12,7 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 )
 
 // TestMain explicitly registers migrations for this version path
@@ -50,6 +51,11 @@ func TestV4ToV5Migration(t *testing.T) {
 			Name:        "APIToken",
 			Description: "Migrate cloudflare_api_token policy blocks to policies list",
 			Resource:    "api_token",
+		},
+		{
+			Name:        "ZeroTrustList",
+			Description: "Migrate cloudflare_teams_list to cloudflare_zero_trust_list",
+			Resource:    "zero_trust_list",
 		},
 		// Add more v4 to v5 migrations here as they are implemented
 	}
