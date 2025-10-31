@@ -8,6 +8,7 @@ import (
 	"github.com/cloudflare/tf-migrate/integration"
 	"github.com/cloudflare/tf-migrate/internal/registry"
 	// Explicitly import the migrations we want to test
+	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 )
 
@@ -37,6 +38,11 @@ func TestV4ToV5Migration(t *testing.T) {
 			Name:        "DNSRecord",
 			Description: "Migrate cloudflare_record to cloudflare_dns_record",
 			Resource:    "dns_record",
+		},
+		{
+			Name:        "APIToken",
+			Description: "Migrate cloudflare_api_token policy blocks to policies list",
+			Resource:    "api_token",
 		},
 		// Add more v4 to v5 migrations here as they are implemented
 	}
