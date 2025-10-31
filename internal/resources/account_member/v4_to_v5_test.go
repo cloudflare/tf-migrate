@@ -59,65 +59,41 @@ resource "cloudflare_account_member" "example" {
 			{
 				Name: "minimum state",
 				Input: `{
-					"resources": [{
-						"type": "cloudflare_account_member",
-						"name": "am_test",
-						"instances": [{
-							"attributes": {
-								"id": "test-id",
-								"account_id": "f037e56e89293a057740de681ac9abbe",
-								"email_address": "user@example.com",
-								"role_ids": ["68b329da9893e34099c7d8ad5cb9c940"]
-							}
-						}]
-					}]
+					"attributes": {
+						"id": "test-id",
+						"account_id": "f037e56e89293a057740de681ac9abbe",
+						"email_address": "user@example.com",
+						"role_ids": ["68b329da9893e34099c7d8ad5cb9c940"]
+					}
 				}`,
 				Expected: `{
-					"resources": [{
-						"type": "cloudflare_account_member",
-						"name": "am_test",
-						"instances": [{
-							"attributes": {
-								"id": "test-id",
-								"account_id": "f037e56e89293a057740de681ac9abbe",
-								"email": "user@example.com",
-								"roles": ["68b329da9893e34099c7d8ad5cb9c940"]
-							}
-						}]
-					}]
+					"attributes": {
+						"id": "test-id",
+						"account_id": "f037e56e89293a057740de681ac9abbe",
+						"email": "user@example.com",
+						"roles": ["68b329da9893e34099c7d8ad5cb9c940"]
+					}
 				}`,
 			},
 			{
 				Name: "full state",
 				Input: `{
-					"resources": [{
-						"type": "cloudflare_account_member",
-						"name": "am_test",
-						"instances": [{
-							"attributes": {
-								"id": "test-id",
-								"account_id": "f037e56e89293a057740de681ac9abbe",
-								"email_address": "user@example.com",
-								"status": "accepted",
-								"role_ids": ["68b329da9893e34099c7d8ad5cb9c940", "d784fa8b6d98d27699781bd9a7cf19f0"]
-							}
-						}]
-					}]
+					"attributes": {
+						"id": "test-id",
+						"account_id": "f037e56e89293a057740de681ac9abbe",
+						"email_address": "user@example.com",
+						"status": "accepted",
+						"role_ids": ["68b329da9893e34099c7d8ad5cb9c940", "d784fa8b6d98d27699781bd9a7cf19f0"]
+					}
 				}`,
 				Expected: `{
-					"resources": [{
-						"type": "cloudflare_account_member",
-						"name": "am_test",
-						"instances": [{
-							"attributes": {
-								"id": "test-id",
-								"account_id": "f037e56e89293a057740de681ac9abbe",
-								"email": "user@example.com",
-								"status": "accepted",
-								"roles": ["68b329da9893e34099c7d8ad5cb9c940", "d784fa8b6d98d27699781bd9a7cf19f0"]
-							}
-						}]
-					}]
+					"attributes": {
+						"id": "test-id",
+						"account_id": "f037e56e89293a057740de681ac9abbe",
+						"email": "user@example.com",
+						"status": "accepted",
+						"roles": ["68b329da9893e34099c7d8ad5cb9c940", "d784fa8b6d98d27699781bd9a7cf19f0"]
+					}
 				}`,
 			},
 		}
