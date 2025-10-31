@@ -37,6 +37,11 @@ func TestV4ToV5Migration(t *testing.T) {
 
 	tests := []integration.TestCase{
 		{
+			Name:        "DNSRecord",
+			Description: "Migrate cloudflare_record to cloudflare_dns_record",
+			Resource:    "dns_record",
+		},
+		{
 			Name:        "AccountMember",
 			Description: "Migrate cloudflare_account_member email_address to email and role_ids to roles",
 			Resource:    "account_member",
@@ -45,6 +50,11 @@ func TestV4ToV5Migration(t *testing.T) {
 			Name:        "DNSRecord",
 			Description: "Migrate cloudflare_record to cloudflare_dns_record",
 			Resource:    "dns_record",
+		},
+		{
+			Name:        "ZeroTrustAccessServiceToken",
+			Description: "Migrate zero_trust_access_service_token to zero_trust_access_service_token v5",
+			Resource:    "zero_trust_access_service_token",
 		},
 		{
 			Name:        "APIToken",
