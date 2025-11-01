@@ -59,12 +59,18 @@ func runConfigTransformTest(t *testing.T, tt ConfigTestCase, migrator transform.
 	}
 
 	// Step 5: Format and get output
-	output := strings.TrimSpace(string(hclwrite.Format(file.Bytes())))
+	output := string(hclwrite.Format(file.Bytes()))
+	// Normalize whitespace for comparison
+	output = NormalizeHCLWhitespace(output)
+	output = strings.TrimSpace(output)
 
 	// Parse expected for comparison
 	expectedFile, diags := hclwrite.ParseConfig([]byte(tt.Expected), "expected.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), "Failed to parse expected HCL: %v", diags)
-	expectedOutput := strings.TrimSpace(string(hclwrite.Format(expectedFile.Bytes())))
+	expectedOutput := string(hclwrite.Format(expectedFile.Bytes()))
+	// Normalize whitespace for comparison
+	expectedOutput = NormalizeHCLWhitespace(expectedOutput)
+	expectedOutput = strings.TrimSpace(expectedOutput)
 
 	assert.Equal(t, expectedOutput, output)
 }

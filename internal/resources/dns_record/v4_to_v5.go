@@ -165,6 +165,8 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 
 	attrs := stateJSON.Get("attributes")
 	if !attrs.Get("name").Exists() || !attrs.Get("type").Exists() || !attrs.Get("zone_id").Exists() {
+		// Even for invalid/incomplete instances, we need to set schema_version for v5
+		result, _ = sjson.Set(result, "schema_version", 0)
 		return result, nil
 	}
 
