@@ -12,6 +12,7 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 )
 
@@ -56,6 +57,11 @@ func TestV4ToV5Migration(t *testing.T) {
 			Name:        "ZeroTrustList",
 			Description: "Migrate cloudflare_teams_list to cloudflare_zero_trust_list",
 			Resource:    "zero_trust_list",
+		},
+		{
+			Name:        "WorkersKVNamespace",
+			Description: "Migrate cloudflare_workers_kv_namespace (no transformations needed)",
+			Resource:    "workers_kv_namespace",
 		},
 		// Add more v4 to v5 migrations here as they are implemented
 	}
