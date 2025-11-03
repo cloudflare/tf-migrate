@@ -13,6 +13,7 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 )
 
 // TestMain explicitly registers migrations for this version path
@@ -56,6 +57,11 @@ func TestV4ToV5Migration(t *testing.T) {
 			Name:        "LogpullRetention",
 			Description: "Migrate cloudflare_logpull_retention enabled to flag",
 			Resource:    "logpull_retention",
+    },
+    {
+			Name:        "ZeroTrustList",
+			Description: "Migrate cloudflare_teams_list to cloudflare_zero_trust_list",
+			Resource:    "zero_trust_list",
 		},
 		// Add more v4 to v5 migrations here as they are implemented
 	}
