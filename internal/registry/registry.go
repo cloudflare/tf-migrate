@@ -5,6 +5,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 )
 
@@ -18,4 +19,5 @@ func RegisterAllMigrations() {
 	dns_record.NewV4ToV5Migrator()
 	logpull_retention.NewV4ToV5Migrator()
 	zero_trust_list.NewV4ToV5Migrator()
+	zero_trust_access_service_token.NewV4ToV5Migrator()
 }

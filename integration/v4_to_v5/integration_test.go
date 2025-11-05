@@ -44,14 +44,19 @@ func TestV4ToV5Migration(t *testing.T) {
 			Resource:    "account_member",
 		},
 		{
+			Name:        "APIToken",
+			Description: "Migrate cloudflare_api_token policy blocks to policies list",
+			Resource:    "api_token",
+		},
+		{
 			Name:        "DNSRecord",
 			Description: "Migrate cloudflare_record to cloudflare_dns_record",
 			Resource:    "dns_record",
 		},
 		{
-			Name:        "APIToken",
-			Description: "Migrate cloudflare_api_token policy blocks to policies list",
-			Resource:    "api_token",
+			Name:        "ZeroTrustAccessServiceToken",
+			Description: "Migrate zero_trust_access_service_token to zero_trust_access_service_token v5",
+			Resource:    "zero_trust_access_service_token",
 		},
 		{
 			Name:        "LogpullRetention",
