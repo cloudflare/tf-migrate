@@ -12,6 +12,8 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/logpush_job"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 )
 
@@ -61,6 +63,11 @@ func TestV4ToV5Migration(t *testing.T) {
 			Name:        "ZeroTrustList",
 			Description: "Migrate cloudflare_teams_list to cloudflare_zero_trust_list",
 			Resource:    "zero_trust_list",
+		},
+		{
+			Name:        "LogpushJob",
+			Description: "Migrate cloudflare_logpush_job output_options block to attribute and rename fields",
+			Resource:    "logpush_job",
 		},
 		// Add more v4 to v5 migrations here as they are implemented
 	}
