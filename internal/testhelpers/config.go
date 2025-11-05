@@ -35,10 +35,10 @@ func runConfigTransformTest(t *testing.T, tt ConfigTestCase, migrator transform.
 	ctx := &transform.Context{
 		Content:  []byte(processedContent),
 		Filename: "test.tf",
-		AST:      file,
+		CFGFile:  file,
 	}
 
-	// Step 4: Transform using HCL AST
+	// Step 4: Transform using HCL CFGFile
 	body := file.Body()
 	for _, block := range body.Blocks() {
 		if block.Type() == "resource" && len(block.Labels()) >= 2 {

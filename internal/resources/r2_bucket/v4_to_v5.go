@@ -50,7 +50,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 // TransformState transforms the JSON state from v4 to v5.
 // For r2_bucket, we need to add the new v5 fields with their default values
 // to prevent plan changes after migration.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
 	result := stateJSON.String()
 
 	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {

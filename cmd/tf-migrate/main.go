@@ -9,7 +9,7 @@ import (
 	"github.com/cloudflare/cloudflare-go/v6"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2"
-
+	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/spf13/cobra"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -213,8 +213,10 @@ func runMigration(log hclog.Logger, cfg config) error {
 
 	providers := getProviders(cfg.resourcesToMigrate...)
 	configPipeline := pipeline.BuildConfigPipeline(log, providers)
+	parsedConfigs := make(map[string]*hclwrite.File)
 	if cfg.configDir != "" {
-		if err := processConfigFiles(log, configPipeline, cfg, stateJSON, apiClient); err != nil {
+		parsedConfigs, err = processConfigFiles(log, configPipeline, cfg, stateJSON, apiClient)
+		if err != nil {
 			return fmt.Errorf("failed to process configuration files: %w", err)
 		}
 	}
@@ -222,7 +224,7 @@ func runMigration(log hclog.Logger, cfg config) error {
 
 	statePipeline := pipeline.BuildStatePipeline(log, providers)
 	if cfg.stateFile != "" {
-		if err := processStateFile(log, statePipeline, cfg, apiClient); err != nil {
+		if err := processStateFile(log, statePipeline, cfg, apiClient, parsedConfigs); err != nil {
 			return fmt.Errorf("failed to process state file: %w", err)
 		}
 	}
@@ -231,19 +233,19 @@ func runMigration(log hclog.Logger, cfg config) error {
 	return nil
 }
 
-func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stateJSON string, apiClient *cloudflare.Client) error {
+func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stateJSON string, apiClient *cloudflare.Client) (map[string]*hclwrite.File, error) {
 	if cfg.outputDir == "" {
 		cfg.outputDir = cfg.configDir
 	}
 
 	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
 	if err != nil {
-		return fmt.Errorf("failed to list .tf files: %w", err)
+		return nil, fmt.Errorf("failed to list .tf files: %w", err)
 	}
 
 	if len(files) == 0 {
 		fmt.Printf("No .tf files found in %s\n", cfg.configDir)
-		return nil
+		return nil, nil
 	}
 
 	fmt.Printf("\nFound %d configuration files to migrate\n", len(files))
@@ -251,19 +253,20 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 	// Store file paths for global postprocessing
 	outputPaths := make([]string, 0, len(files))
 
+	parsedConfigs := make(map[string]*hclwrite.File)
 	for i, file := range files {
 		fmt.Printf("[%d/%d] Processing %s... ", i+1, len(files), filepath.Base(file))
 		log.Debug("Processing file", "file", file, "index", i+1)
 
 		content, err := os.ReadFile(file)
 		if err != nil {
-			return fmt.Errorf("failed to read %s: %w", file, err)
+			return nil, fmt.Errorf("failed to read %s: %w", file, err)
 		}
 
 		if cfg.backup && !cfg.dryRun && cfg.outputDir == cfg.configDir {
 			backupPath := file + ".backup"
 			if err := os.WriteFile(backupPath, content, 0644); err != nil {
-				return fmt.Errorf("failed to create backup %s: %w", backupPath, err)
+				return nil, fmt.Errorf("failed to create backup %s: %w", backupPath, err)
 			}
 			log.Debug("Created backup", "path", backupPath)
 		}
@@ -281,7 +284,11 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 		}
 		transformed, err := p.Transform(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to transform %s: %w", file, err)
+			return nil, fmt.Errorf("failed to transform %s: %w", file, err)
+		}
+
+		if ctx.CFGFile != nil {
+			parsedConfigs[file] = ctx.CFGFile
 		}
 
 		// Calculate output path maintaining directory structure when recursive
@@ -290,7 +297,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 			// Preserve directory structure relative to config dir
 			relPath, err := filepath.Rel(cfg.configDir, file)
 			if err != nil {
-				return fmt.Errorf("failed to compute relative path: %w", err)
+				return nil, fmt.Errorf("failed to compute relative path: %w", err)
 			}
 			outputPath = filepath.Join(cfg.outputDir, relPath)
 		} else {
@@ -307,25 +314,26 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 		// Create output directory (including subdirectories if needed)
 		outputDir := filepath.Dir(outputPath)
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
-			return fmt.Errorf("failed to create output directory: %w", err)
+			return nil, fmt.Errorf("failed to create output directory: %w", err)
 		}
 
 		if err := os.WriteFile(outputPath, transformed, 0644); err != nil {
-			return fmt.Errorf("failed to write %s: %w", outputPath, err)
+			return nil, fmt.Errorf("failed to write %s: %w", outputPath, err)
 		}
 		fmt.Println("✓")
 		log.Debug("Migrated file", "output", outputPath)
 		outputPaths = append(outputPaths, outputPath)
+
 	}
 
 	// Apply global postprocessing for cross-file reference updates
 	if !cfg.dryRun && len(outputPaths) > 0 {
 		if err := applyGlobalPostprocessing(log, cfg, outputPaths); err != nil {
-			return fmt.Errorf("failed to apply global postprocessing: %w", err)
+			return nil, fmt.Errorf("failed to apply global postprocessing: %w", err)
 		}
 	}
 
-	return nil
+	return parsedConfigs, nil
 }
 
 // applyGlobalPostprocessing applies cross-file reference updates for resource renames
@@ -402,7 +410,7 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 	return nil
 }
 
-func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config, apiClient *cloudflare.Client) error {
+func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config, apiClient *cloudflare.Client, parsedConfigs map[string]*hclwrite.File) error {
 	if p == nil {
 		return fmt.Errorf("state pipeline is nil")
 	}
@@ -438,6 +446,7 @@ func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config, apiCli
 		TargetVersion: cfg.targetVersion,
 		Resources:     cfg.resourcesToMigrate,
 		APIClient:     apiClient,
+		CFGFiles:      parsedConfigs,
 	}
 	transformedContent, err := p.Transform(ctx)
 	if err != nil {

@@ -50,7 +50,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 // For workers_kv_namespace, the state is identical between v4 and v5.
 // The id field exists in both v4 (implicit) and v5 (explicit in schema).
 // The supports_url_encoding field is new in v5 and will be populated by the provider on first refresh.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
 	result := stateJSON.String()
 
 	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {

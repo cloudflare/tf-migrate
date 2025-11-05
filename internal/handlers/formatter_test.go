@@ -96,7 +96,7 @@ resource "resource_b" "b" {
 				block := f.Body().AppendNewBlock("resource", []string{"test", "example"})
 				block.Body().SetAttributeValue("name", cty.StringVal("test"))
 
-				// Note: hclwrite doesn't preserve comments in the AST,
+				// Note: hclwrite doesn't preserve comments in the CFGFile,
 				// so this test mainly ensures formatting doesn't break
 				return f
 			},
@@ -150,9 +150,9 @@ resource "resource_b" "b" {
 			// Create handler
 			handler := handlers.NewFormatterHandler(log)
 
-			// Create context with AST
+			// Create context with CFGFile
 			ctx := &transform.Context{
-				AST:      tt.setupAST(),
+				CFGFile:  tt.setupAST(),
 				Filename: "test.tf",
 			}
 
@@ -191,11 +191,11 @@ func TestFormatterHandlerRequiresAST(t *testing.T) {
 
 	_, err := handler.Handle(ctx)
 	if err == nil {
-		t.Fatal("Expected error when AST is nil")
+		t.Fatal("Expected error when CFGFile is nil")
 	}
 
-	if !strings.Contains(err.Error(), "AST is nil") {
-		t.Errorf("Expected error about nil AST, got: %v", err)
+	if !strings.Contains(err.Error(), "CFGFile is nil") {
+		t.Errorf("Expected error about nil CFGFile, got: %v", err)
 	}
 }
 
@@ -219,7 +219,7 @@ func TestFormatterHandlerChaining(t *testing.T) {
 	f.Body().AppendNewBlock("resource", []string{"test", "example"})
 
 	ctx := &transform.Context{
-		AST: f,
+		CFGFile: f,
 	}
 
 	_, err := handler.Handle(ctx)
@@ -240,7 +240,7 @@ func TestFormatterPreservesAST(t *testing.T) {
 	originalBlock.Body().SetAttributeValue("name", cty.StringVal("test"))
 
 	ctx := &transform.Context{
-		AST: f,
+		CFGFile: f,
 	}
 
 	originalBlockCount := len(f.Body().Blocks())
@@ -250,12 +250,12 @@ func TestFormatterPreservesAST(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	if result.AST != f {
-		t.Error("AST reference should be unchanged")
+	if result.CFGFile != f {
+		t.Error("CFGFile reference should be unchanged")
 	}
 
-	if len(result.AST.Body().Blocks()) != originalBlockCount {
-		t.Error("AST structure should be unchanged after formatting")
+	if len(result.CFGFile.Body().Blocks()) != originalBlockCount {
+		t.Error("CFGFile structure should be unchanged after formatting")
 	}
 }
 
@@ -271,7 +271,7 @@ func TestFormatterSpecialCharacters(t *testing.T) {
 	block.Body().SetAttributeValue("tabs", cty.StringVal("col1\tcol2"))
 
 	ctx := &transform.Context{
-		AST: f,
+		CFGFile: f,
 	}
 
 	result, err := handler.Handle(ctx)
