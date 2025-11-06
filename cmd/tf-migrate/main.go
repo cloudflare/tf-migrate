@@ -300,6 +300,7 @@ func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config) error 
 
 	ctx := &transform.Context{
 		Content:       content,
+		StateJSON:     string(content),
 		Filename:      filepath.Base(cfg.stateFile),
 		Diagnostics:   make(hcl.Diagnostics, 0),
 		Metadata:      make(map[string]interface{}),

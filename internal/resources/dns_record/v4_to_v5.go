@@ -5,23 +5,31 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
+	"github.com/cloudflare/tf-migrate/internal"
+
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform/state"
+	"github.com/cloudflare/tf-migrate/internal/transform/structural"
 )
 
 // V4ToV5Migrator handles migration of DNS record resources from v4 to v5
 type V4ToV5Migrator struct {
+	typeUpdater *structural.ResourceTypeUpdater
 }
 
 func NewV4ToV5Migrator() transform.ResourceTransformer {
-	migrator := &V4ToV5Migrator{}
+	migrator := &V4ToV5Migrator{
+		typeUpdater: &structural.ResourceTypeUpdater{
+			OldType: "cloudflare_record",
+			NewType: "cloudflare_dns_record",
+		},
+	}
 	internal.RegisterMigrator("cloudflare_record", "v4", "v5", migrator)
 	return migrator
 }
@@ -82,7 +90,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 func (m *V4ToV5Migrator) processDataBlocks(block *hclwrite.Block, recordType string) {
 	body := block.Body()
 
-	// For SRV, MX, and URI records, hoist priority from data block
+	// For SRV, MX, and URI records, hoist priority from data block to root
+	// Note: SRV will keep priority in BOTH places (root and data)
 	if recordType == "SRV" || recordType == "MX" || recordType == "URI" {
 		tfhcl.HoistAttributeFromBlock(body, "data", "priority")
 	}
@@ -94,10 +103,12 @@ func (m *V4ToV5Migrator) processDataBlocks(block *hclwrite.Block, recordType str
 			tfhcl.RenameAttribute(dataBlock.Body(), "content", "value")
 			// In v5, flags format is preserved as-is (string stays string, number stays number)
 		}
-		// Remove priority from data block for SRV/MX/URI since it's hoisted
-		if recordType == "SRV" || recordType == "MX" || recordType == "URI" {
+		// Remove priority from data block for MX/URI since it's hoisted to root only
+		// SRV keeps priority in BOTH the data block AND root
+		if recordType == "MX" || recordType == "URI" {
 			dataBlock.Body().RemoveAttribute("priority")
 		}
+		// Note: For SRV, we do NOT remove priority from data block
 	})
 }
 
@@ -154,11 +165,16 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 
 	attrs := stateJSON.Get("attributes")
 	if !attrs.Get("name").Exists() || !attrs.Get("type").Exists() || !attrs.Get("zone_id").Exists() {
+		// Even for invalid/incomplete instances, we need to set schema_version for v5
+		result, _ = sjson.Set(result, "schema_version", 0)
 		return result, nil
 	}
 
 	// Transform the single instance
 	result = m.transformSingleDNSInstance(result, stateJSON)
+	
+	// Ensure schema_version is set to 0 for v5
+	result, _ = sjson.Set(result, "schema_version", 0)
 
 	return result, nil
 }
@@ -198,10 +214,17 @@ func (m *V4ToV5Migrator) transformFullState(result string, stateJSON gjson.Resul
 				instJSON := instance.String()
 				// Transform it
 				transformedInst := m.transformSingleDNSInstance(instJSON, instance)
-				// Parse the transformed instance
-				transformedInstParsed := gjson.Parse(transformedInst)
+				
+				// Ensure schema_version is set to 0 for v5
+				transformedInst, _ = sjson.Set(transformedInst, "schema_version", 0)
+				
 				// Update the result with the transformed instance
-				result, _ = sjson.SetRaw(result, instPath, transformedInstParsed.Raw)
+				// Using the raw JSON string directly to preserve all fields including schema_version
+				result, _ = sjson.SetRaw(result, instPath, transformedInst)
+			} else {
+				// Even if attributes don't exist or are incomplete, update schema_version
+				schemaPath := instPath + ".schema_version"
+				result, _ = sjson.Set(result, schemaPath, 0)
 			}
 			return true
 		})
@@ -228,19 +251,31 @@ func (m *V4ToV5Migrator) transformSingleDNSInstance(result string, instance gjso
 	result = state.EnsureTimestamps(result, "attributes", attrs, "2024-01-01T00:00:00Z")
 
 	// Handle field renames: value -> content
-	// If both exist, keep content and remove value
-	// If only value exists, rename it to content
+	// But only for record types that use content (not data)
 	recordType := instance.Get("attributes.type").String()
 	valueField := attrs.Get("value")
 	contentField := attrs.Get("content")
+	
+	// Records that use data field don't have content
+	usesDataField := recordType == "SRV" || recordType == "CAA" || 
+		recordType == "CERT" || recordType == "DNSKEY" || recordType == "DS" ||
+		recordType == "LOC" || recordType == "NAPTR" || recordType == "SMIMEA" ||
+		recordType == "SSHFP" || recordType == "SVCB" || recordType == "HTTPS" ||
+		recordType == "TLSA" || recordType == "URI"
 
-	if valueField.Exists() && !contentField.Exists() {
-		// Only value exists - rename it to content
-		result, _ = sjson.Set(result, "attributes.content", valueField.Value())
+	if !usesDataField {
+		if valueField.Exists() && !contentField.Exists() {
+			// Only value exists - rename it to content
+			result, _ = sjson.Set(result, "attributes.content", valueField.Value())
+			result, _ = sjson.Delete(result, "attributes.value")
+		} else if valueField.Exists() && contentField.Exists() {
+			// Both exist - keep content, remove value
+			result, _ = sjson.Delete(result, "attributes.value")
+		}
+	} else {
+		// For records that use data field, remove both value and content if they exist
 		result, _ = sjson.Delete(result, "attributes.value")
-	} else if valueField.Exists() && contentField.Exists() {
-		// Both exist - keep content, remove value
-		result, _ = sjson.Delete(result, "attributes.value")
+		result, _ = sjson.Delete(result, "attributes.content")
 	}
 
 	// Ensure TTL is present
@@ -256,7 +291,7 @@ func (m *V4ToV5Migrator) transformSingleDNSInstance(result string, instance gjso
 	// Convert priority field to float64 if it exists at root level
 	rootPriority := instance.Get("attributes.priority")
 	if rootPriority.Exists() && rootPriority.Type == gjson.Number {
-		result, _ = sjson.Set(result, "attributes.priority", rootPriority.Float())
+		result, _ = sjson.Set(result, "attributes.priority", state.ConvertToFloat64(rootPriority))
 	}
 
 	return result
@@ -316,8 +351,9 @@ func (m *V4ToV5Migrator) transformDataFieldForInstance(result string, instance g
 		options.DefaultFields["flags"] = nil
 	}
 
-	// For SRV, MX and URI, skip priority field in data as it will be hoisted
-	if recordType == "SRV" || recordType == "MX" || recordType == "URI" {
+	// For MX and URI, skip priority field in data as it will be hoisted
+	// SRV keeps priority in the data field
+	if recordType == "MX" || recordType == "URI" {
 		options.SkipFields = append(options.SkipFields, "priority")
 	}
 
@@ -355,32 +391,50 @@ func (m *V4ToV5Migrator) transformDataFieldForInstance(result string, instance g
 		}
 	}
 
-	// For SRV, MX and URI records, ensure priority is at root level and generate content
+	// For SRV, MX and URI records, ensure priority is at root level
 	if recordType == "SRV" || recordType == "MX" || recordType == "URI" {
-		dataArray := instance.Get("attributes.data")
-		if dataArray.IsArray() {
-			array := dataArray.Array()
-			if len(array) > 0 {
-				priority := array[0].Get("priority")
-				if priority.Exists() {
-					// Convert priority to float64 for v5 compatibility
-					result, _ = sjson.Set(result, "attributes.priority", priority.Float())
-				}
-
-				// Generate content field for MX records
-				if recordType == "MX" {
-					target := array[0].Get("target")
-					if priority.Exists() && target.Exists() {
-						content := fmt.Sprintf("%v %s", priority.Value(), target.String())
-						result, _ = sjson.Set(result, "attributes.content", content)
+		// Check original instance for priority (before transformation)
+		originalPriority := instance.Get("attributes.priority")
+		
+		if originalPriority.Exists() {
+			// Preserve the original priority at root level
+			result, _ = sjson.Set(result, "attributes.priority", originalPriority.Float())
+		} else {
+			// If not at root in original, check data array
+			dataArray := instance.Get("attributes.data")
+			if dataArray.IsArray() {
+				array := dataArray.Array()
+				if len(array) > 0 {
+					priority := array[0].Get("priority")
+					if priority.Exists() {
+						// Set priority at root level for v5 compatibility
+						result, _ = sjson.Set(result, "attributes.priority", priority.Float())
 					}
-				} else if recordType == "URI" {
-					// Generate content for URI records
-					weight := array[0].Get("weight")
-					target := array[0].Get("target")
-					if priority.Exists() && weight.Exists() && target.Exists() {
-						content := fmt.Sprintf("%v %v %s", priority.Value(), weight.Value(), target.String())
-						result, _ = sjson.Set(result, "attributes.content", content)
+				}
+			}
+		}
+		
+		// Generate content field for MX and URI records (not SRV)
+		if recordType == "MX" || recordType == "URI" {
+			dataArray := instance.Get("attributes.data")
+			if dataArray.IsArray() {
+				array := dataArray.Array()
+				if len(array) > 0 {
+					priority := array[0].Get("priority")
+					
+					if recordType == "MX" {
+						target := array[0].Get("target")
+						if priority.Exists() && target.Exists() {
+							content := fmt.Sprintf("%v %s", priority.Value(), target.String())
+							result, _ = sjson.Set(result, "attributes.content", content)
+						}
+					} else if recordType == "URI" {
+						weight := array[0].Get("weight")
+						target := array[0].Get("target")
+						if priority.Exists() && weight.Exists() && target.Exists() {
+							content := fmt.Sprintf("%v %v %s", priority.Value(), weight.Value(), target.String())
+							result, _ = sjson.Set(result, "attributes.content", content)
+						}
 					}
 				}
 			}

@@ -51,9 +51,10 @@ resource "cloudflare_dns_record" "example_srv" {
   ttl      = 1
   priority = 5
   data = {
-    weight = 10
-    port   = 5060
-    target = "sip.example.com"
+    priority = 5
+    weight   = 10
+    port     = 5060
+    target   = "sip.example.com"
   }
 }
 

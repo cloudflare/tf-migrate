@@ -7,9 +7,15 @@ import (
 
 	"github.com/cloudflare/tf-migrate/integration"
 	"github.com/cloudflare/tf-migrate/internal/registry"
+
 	// Explicitly import the migrations we want to test
+	_ "github.com/cloudflare/tf-migrate/internal/resources/account_member"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zone_dnssec"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 )
 
 // TestMain explicitly registers migrations for this version path
@@ -35,6 +41,16 @@ func TestV4ToV5Migration(t *testing.T) {
 
 	tests := []integration.TestCase{
 		{
+			Name:        "AccountMember",
+			Description: "Migrate cloudflare_account_member email_address to email and role_ids to roles",
+			Resource:    "account_member",
+		},
+		{
+			Name:        "APIToken",
+			Description: "Migrate cloudflare_api_token policy blocks to policies list",
+			Resource:    "api_token",
+		},
+		{
 			Name:        "DNSRecord",
 			Description: "Migrate cloudflare_record to cloudflare_dns_record",
 			Resource:    "dns_record",
@@ -43,6 +59,26 @@ func TestV4ToV5Migration(t *testing.T) {
 			Name:        "ZoneDNSSEC",
 			Description: "Migrate cloudflare_zone_dnssec with cross-referencing (status from state, int to float64)",
 			Resource:    "zone_dnssec",
+    },
+    {
+			Name:        "ZeroTrustAccessServiceToken",
+			Description: "Migrate zero_trust_access_service_token to zero_trust_access_service_token v5",
+			Resource:    "zero_trust_access_service_token",
+		},
+		{
+			Name:        "LogpullRetention",
+			Description: "Migrate cloudflare_logpull_retention enabled to flag",
+			Resource:    "logpull_retention",
+    },
+    {
+			Name:        "ZeroTrustList",
+			Description: "Migrate cloudflare_teams_list to cloudflare_zero_trust_list",
+			Resource:    "zero_trust_list",
+		},
+		{
+			Name:        "WorkersKVNamespace",
+			Description: "Migrate cloudflare_workers_kv_namespace (no transformations needed)",
+			Resource:    "workers_kv_namespace",
 		},
 		// Add more v4 to v5 migrations here as they are implemented
 	}
