@@ -23,7 +23,6 @@ func RegisterAllMigrations() {
 	logpull_retention.NewV4ToV5Migrator()
 	logpush_job.NewV4ToV5Migrator()
 	workers_kv_namespace.NewV4ToV5Migrator()
-	zero_trust_list.NewV4ToV5Migrator()
 	zero_trust_access_service_token.NewV4ToV5Migrator()
 	zero_trust_gateway_policy.NewV4ToV5Migrator()
 	zero_trust_list.NewV4ToV5Migrator()
