@@ -15,6 +15,7 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_policy"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 )
 
@@ -49,6 +50,7 @@ func TestV4ToV5Migration(t *testing.T) {
 		"zero_trust_access_service_token",
 		"zero_trust_gateway_policy",
 		"zero_trust_list",
+		"zero_trust_dlp_custom_profile",
 	}
 
 	for _, resource := range resources {
