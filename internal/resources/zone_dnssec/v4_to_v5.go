@@ -1,26 +1,18 @@
 package zone_dnssec
 
 import (
-	"time"
-
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
-	"github.com/cloudflare/tf-migrate/internal/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 // V4ToV5Migrator handles the migration of cloudflare_zone_dnssec from v4 to v5.
 // This migration requires converting flags and key_tag from TypeInt (v4) to Float64 (v5).
 type V4ToV5Migrator struct {
-}
-
-// init registers the migrator on package initialization
-func init() {
-	NewV4ToV5Migrator()
 }
 
 // NewV4ToV5Migrator creates a new migrator for cloudflare_zone_dnssec v4 to v5.
@@ -86,15 +78,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 				// Only add status if it's a valid v5 value ("active" or "disabled")
 				// The v5 schema only accepts these two values, not "pending" or other intermediate states
 				if status.Exists() && status.Type != gjson.Null && statusValue != "" {
-					if statusValue == "active" || statusValue == "disabled" {
+					if statusValue == "active" || statusValue == "pending" {
 						// Add status attribute to config using the value from state
-						tokens := hcl.TokensForSimpleValue(statusValue)
-						if tokens != nil {
-							body.SetAttributeRaw("status", tokens)
-						}
-					} else if statusValue == "pending" {
 						body.SetAttributeValue("status", cty.StringVal("active"))
-					} else if statusValue == "pending-disabled" {
+					} else if statusValue == "disabled" || statusValue == "pending-disabled" {
 						body.SetAttributeValue("status", cty.StringVal("disabled"))
 					}
 				}
@@ -111,82 +98,20 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 }
 
 // TransformState handles state file transformations.
+// This function receives a single resource instance and returns the transformed instance JSON.
 // Converts flags and key_tag from TypeInt (v4) to Float64 (v5).
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
-	// This function can receive either:
-	// 1. A full state document (in unit tests)
-	// 2. A single resource instance (in actual migration framework)
-	// We need to handle both cases
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath string) (string, error) {
+	result := instance.String()
 
-	result := stateJSON.String()
-
-	// Check if this is a full state document (has "resources" key) or a single instance
-	if stateJSON.Get("resources").Exists() {
-		// Full state document - transform all cloudflare_zone_dnssec resources
-		return m.transformFullState(result, stateJSON)
-	}
-
-	// Single instance - check if it's a valid zone_dnssec instance
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
+	// Check if it's a valid zone_dnssec instance
+	if !instance.Exists() || !instance.Get("attributes").Exists() {
 		return result, nil
 	}
 
-	attrs := stateJSON.Get("attributes")
+	attrs := instance.Get("attributes")
 	if !attrs.Get("zone_id").Exists() {
 		return result, nil
 	}
-
-	// Transform the single instance
-	result = m.transformSingleInstance(result, stateJSON)
-
-	return result, nil
-}
-
-// transformFullState handles transformation of a full state document
-func (m *V4ToV5Migrator) transformFullState(result string, stateJSON gjson.Result) (string, error) {
-	// Process all resources in the state
-	resources := stateJSON.Get("resources")
-	if !resources.Exists() {
-		return result, nil
-	}
-
-	resources.ForEach(func(key, resource gjson.Result) bool {
-		resourceType := resource.Get("type").String()
-
-		// Check if this is a zone_dnssec resource we need to migrate
-		if !m.CanHandle(resourceType) {
-			return true // continue
-		}
-
-		// Process each instance
-		instances := resource.Get("instances")
-		instances.ForEach(func(instKey, instance gjson.Result) bool {
-			instPath := "resources." + key.String() + ".instances." + instKey.String()
-
-			// Transform the instance attributes in place
-			attrs := instance.Get("attributes")
-			if attrs.Exists() && attrs.Get("zone_id").Exists() {
-				// Get the instance JSON string
-				instJSON := instance.String()
-				// Transform it
-				transformedInst := m.transformSingleInstance(instJSON, instance)
-				// Parse the transformed instance
-				transformedInstParsed := gjson.Parse(transformedInst)
-				// Update the result with the transformed instance
-				result, _ = sjson.SetRaw(result, instPath, transformedInstParsed.Raw)
-			}
-			return true
-		})
-
-		return true
-	})
-
-	return result, nil
-}
-
-// transformSingleInstance transforms a single zone_dnssec instance
-func (m *V4ToV5Migrator) transformSingleInstance(result string, instance gjson.Result) string {
-	attrs := instance.Get("attributes")
 
 	// Convert flags from int to float64 if it exists
 	flags := attrs.Get("flags")
@@ -205,7 +130,7 @@ func (m *V4ToV5Migrator) transformSingleInstance(result string, instance gjson.R
 	// v5 format (RFC3339): "2025-11-04T21:52:44Z"
 	modifiedOn := attrs.Get("modified_on")
 	if modifiedOn.Exists() && modifiedOn.Type == gjson.String && modifiedOn.String() != "" {
-		result = transformModifiedOnFormat(result, modifiedOn.String())
+		result = transform.ConvertDateToRFC3339(result, "attributes.modified_on", modifiedOn.String())
 	}
 	// Handle status field: v5 only accepts "active" or "disabled"
 	// If status is "pending" or any other invalid value, set it to null
@@ -225,25 +150,5 @@ func (m *V4ToV5Migrator) transformSingleInstance(result string, instance gjson.R
 		}
 	}
 
-	return result
-}
-
-// transformModifiedOnFormat converts modified_on from v4 format to RFC3339
-func transformModifiedOnFormat(result, modifiedOn string) string {
-	// Try to parse the v4 format (RFC1123Z)
-	t, err := time.Parse(time.RFC1123Z, modifiedOn)
-	if err != nil {
-		// If parsing fails, try RFC1123 without timezone
-		t, err = time.Parse(time.RFC1123, modifiedOn)
-		if err != nil {
-			// If still fails, keep original value
-			return result
-		}
-	}
-
-	// Convert to RFC3339 format
-	rfc3339 := t.Format(time.RFC3339)
-	result, _ = sjson.Set(result, "attributes.modified_on", rfc3339)
-
-	return result
+	return result, nil
 }
