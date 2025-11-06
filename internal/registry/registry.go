@@ -4,6 +4,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
+	"github.com/cloudflare/tf-migrate/internal/resources/load_balancer_monitor"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	"github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
@@ -22,7 +23,7 @@ func RegisterAllMigrations() {
 	account_member.NewV4ToV5Migrator()
 	api_token.NewV4ToV5Migrator()
 	dns_record.NewV4ToV5Migrator()
-	zone_dnssec.NewV4ToV5Migrator()
+	load_balancer_monitor.NewV4ToV5Migrator()
 	logpull_retention.NewV4ToV5Migrator()
 	r2_bucket.NewV4ToV5Migrator()
 	workers_kv.NewV4ToV5Migrator()
@@ -31,4 +32,5 @@ func RegisterAllMigrations() {
 	zero_trust_dlp_custom_profile.NewV4ToV5Migrator()
 	zero_trust_gateway_policy.NewV4ToV5Migrator()
 	zero_trust_list.NewV4ToV5Migrator()
+	zone_dnssec.NewV4ToV5Migrator()
 }

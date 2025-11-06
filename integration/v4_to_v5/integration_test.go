@@ -11,13 +11,14 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/load_balancer_monitor"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
-	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_policy"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_policy"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zone_dnssec"
 )
@@ -48,6 +49,7 @@ func TestV4ToV5Migration(t *testing.T) {
 		"account_member",
 		"api_token",
 		"dns_record",
+		"load_balancer_monitor",
 		"logpull_retention",
 		"r2_bucket",
 		"workers_kv",
