@@ -144,26 +144,16 @@ func (m *V4ToV5Migrator) processDataAttribute(block *hclwrite.Block, recordType 
 	}
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
-	// This function can receive either:
-	// 1. A full state document (in unit tests)
-	// 2. A single resource instance (in actual migration framework)
-	// We need to handle both cases
-
-	result := stateJSON.String()
-
-	// Check if this is a full state document (has "resources" key) or a single instance
-	if stateJSON.Get("resources").Exists() {
-		// Full state document - transform all resources
-		return m.transformFullState(result, stateJSON)
-	}
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath string) (string, error) {
+	// This function receives a single instance and needs to return the transformed instance JSON
+	result := instance.String()
 
 	// Single instance - check if it's a valid DNS record instance
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
+	if !instance.Exists() || !instance.Get("attributes").Exists() {
 		return result, nil
 	}
 
-	attrs := stateJSON.Get("attributes")
+	attrs := instance.Get("attributes")
 	if !attrs.Get("name").Exists() || !attrs.Get("type").Exists() || !attrs.Get("zone_id").Exists() {
 		// Even for invalid/incomplete instances, we need to set schema_version for v5
 		result, _ = sjson.Set(result, "schema_version", 0)
@@ -171,66 +161,10 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	}
 
 	// Transform the single instance
-	result = m.transformSingleDNSInstance(result, stateJSON)
-	
+	result = m.transformSingleDNSInstance(result, instance)
+
 	// Ensure schema_version is set to 0 for v5
 	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
-}
-
-// transformFullState handles transformation of a full state document
-func (m *V4ToV5Migrator) transformFullState(result string, stateJSON gjson.Result) (string, error) {
-	// Process all resources in the state
-	resources := stateJSON.Get("resources")
-	if !resources.Exists() {
-		return result, nil
-	}
-
-	resources.ForEach(func(key, resource gjson.Result) bool {
-		resourceType := resource.Get("type").String()
-
-		// Check if this is a DNS record resource we need to migrate
-		if !m.CanHandle(resourceType) {
-			return true // continue
-		}
-
-		// Rename cloudflare_record to cloudflare_dns_record
-		if resourceType == "cloudflare_record" {
-			resourcePath := "resources." + key.String() + ".type"
-			result, _ = sjson.Set(result, resourcePath, "cloudflare_dns_record")
-		}
-
-		// Process each instance
-		instances := resource.Get("instances")
-		instances.ForEach(func(instKey, instance gjson.Result) bool {
-			instPath := "resources." + key.String() + ".instances." + instKey.String()
-
-			// Transform the instance attributes in place
-			attrs := instance.Get("attributes")
-			if attrs.Exists() && attrs.Get("name").Exists() &&
-				attrs.Get("type").Exists() && attrs.Get("zone_id").Exists() {
-				// Get the instance JSON string
-				instJSON := instance.String()
-				// Transform it
-				transformedInst := m.transformSingleDNSInstance(instJSON, instance)
-				
-				// Ensure schema_version is set to 0 for v5
-				transformedInst, _ = sjson.Set(transformedInst, "schema_version", 0)
-				
-				// Update the result with the transformed instance
-				// Using the raw JSON string directly to preserve all fields including schema_version
-				result, _ = sjson.SetRaw(result, instPath, transformedInst)
-			} else {
-				// Even if attributes don't exist or are incomplete, update schema_version
-				schemaPath := instPath + ".schema_version"
-				result, _ = sjson.Set(result, schemaPath, 0)
-			}
-			return true
-		})
-
-		return true
-	})
 
 	return result, nil
 }
