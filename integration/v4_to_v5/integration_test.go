@@ -39,44 +39,6 @@ func TestV4ToV5Migration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test runner: %v", err)
 	}
-
-	tests := []integration.TestCase{
-		{
-			Name:        "AccountMember",
-			Description: "Migrate cloudflare_account_member email_address to email and role_ids to roles",
-			Resource:    "account_member",
-		},
-		{
-			Name:        "APIToken",
-			Description: "Migrate cloudflare_api_token policy blocks to policies list",
-			Resource:    "api_token",
-		},
-		{
-			Name:        "DNSRecord",
-			Description: "Migrate cloudflare_record to cloudflare_dns_record",
-			Resource:    "dns_record",
-		},
-		{
-			Name:        "LogpullRetention",
-			Description: "Migrate cloudflare_logpull_retention enabled to flag",
-			Resource:    "logpull_retention",
-    },
-		{
-			Name:        "LogpushJob",
-			Description: "Migrate cloudflare_logpush_job output_options block to attribute and rename fields",
-			Resource:    "logpush_job",
-		},
-		{
-			Name:        "ZeroTrustAccessServiceToken",
-			Description: "Migrate zero_trust_access_service_token to zero_trust_access_service_token v5",
-			Resource:    "zero_trust_access_service_token",
-		},
-    {
-			Name:        "ZeroTrustList",
-			Description: "Migrate cloudflare_teams_list to cloudflare_zero_trust_list",
-			Resource:    "zero_trust_list",
-		},
-  } 
   
 	// List of resources to test for v4 to v5 migration
 	resources := []string{
@@ -84,6 +46,7 @@ func TestV4ToV5Migration(t *testing.T) {
 		"api_token",
 		"dns_record",
 		"logpull_retention",
+		"logpush_job",
 		"workers_kv_namespace",
 		"zero_trust_access_service_token",
 		"zero_trust_gateway_policy",
