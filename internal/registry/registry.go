@@ -8,6 +8,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_policy"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 )
@@ -24,6 +25,7 @@ func RegisterAllMigrations() {
 	workers_kv.NewV4ToV5Migrator()
 	workers_kv_namespace.NewV4ToV5Migrator()
 	zero_trust_access_service_token.NewV4ToV5Migrator()
+	zero_trust_dlp_custom_profile.NewV4ToV5Migrator()
 	zero_trust_gateway_policy.NewV4ToV5Migrator()
 	zero_trust_list.NewV4ToV5Migrator()
 }
