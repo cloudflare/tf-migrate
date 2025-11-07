@@ -12,9 +12,11 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_policy"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zone_dnssec"
 )
@@ -46,11 +48,13 @@ func TestV4ToV5Migration(t *testing.T) {
 		"api_token",
 		"dns_record",
 		"logpull_retention",
+		"workers_kv",
 		"workers_kv_namespace",
 		"zero_trust_access_service_token",
 		"zero_trust_gateway_policy",
 		"zero_trust_list",
 		"zone_dnssec",
+		"zero_trust_dlp_custom_profile",
 	}
 
 	for _, resource := range resources {
