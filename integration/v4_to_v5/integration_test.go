@@ -12,6 +12,7 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
@@ -47,6 +48,7 @@ func TestV4ToV5Migration(t *testing.T) {
 		"api_token",
 		"dns_record",
 		"logpull_retention",
+		"r2_bucket",
 		"workers_kv",
 		"workers_kv_namespace",
 		"zero_trust_access_service_token",
