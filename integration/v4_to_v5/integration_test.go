@@ -11,6 +11,7 @@ import (
 	// Explicitly import the migrations we want to test
 	_ "github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/custom_pages"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
@@ -47,6 +48,11 @@ func TestV4ToV5Migration(t *testing.T) {
 			Name:        "APIToken",
 			Description: "Migrate cloudflare_api_token policy blocks to policies list",
 			Resource:    "api_token",
+		},
+		{
+			Name:        "CustomPages",
+			Description: "Migrate cloudflare_custom_pages type to identifier",
+			Resource:    "custom_pages",
 		},
 		{
 			Name:        "DNSRecord",
