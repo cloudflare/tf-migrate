@@ -4,8 +4,6 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
-	"github.com/cloudflare/tf-migrate/internal/resources/zone_dnssec"
-	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
@@ -13,6 +11,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_policy"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
+	"github.com/cloudflare/tf-migrate/internal/resources/zone_dnssec"
 )
 
 // RegisterAllMigrations registers all resource migrations with the internal registry.
