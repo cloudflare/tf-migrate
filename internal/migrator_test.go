@@ -3,9 +3,10 @@ package internal
 import (
 	"testing"
 
-	"github.com/cloudflare/tf-migrate/internal/transform"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
+
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 type mockMigrator struct {

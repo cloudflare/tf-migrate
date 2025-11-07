@@ -15,21 +15,13 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform/state"
-	"github.com/cloudflare/tf-migrate/internal/transform/structural"
 )
 
 // V4ToV5Migrator handles migration of DNS record resources from v4 to v5
-type V4ToV5Migrator struct {
-	typeUpdater *structural.ResourceTypeUpdater
-}
+type V4ToV5Migrator struct{}
 
 func NewV4ToV5Migrator() transform.ResourceTransformer {
-	migrator := &V4ToV5Migrator{
-		typeUpdater: &structural.ResourceTypeUpdater{
-			OldType: "cloudflare_record",
-			NewType: "cloudflare_dns_record",
-		},
-	}
+	migrator := &V4ToV5Migrator{}
 	internal.RegisterMigrator("cloudflare_record", "v4", "v5", migrator)
 	return migrator
 }
@@ -45,6 +37,12 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 func (m *V4ToV5Migrator) Preprocess(content string) string {
 	// No preprocessing needed for DNS records
 	return content
+}
+
+// GetResourceRename implements the ResourceRenamer interface
+// This allows the migration tool to collect all resource renames and apply them globally
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_record", "cloudflare_dns_record"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
@@ -68,7 +66,14 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// When type is missing, we still need to rename value to content
 	if recordType == "" || m.isSimpleRecordType(recordType) {
 		// Rename value to content for simple record types
-		tfhcl.RenameAttribute(body, "value", "content")
+		if valueAttr := body.GetAttribute("value"); valueAttr != nil {
+			// Get the expression from value attribute
+			tokens := valueAttr.Expr().BuildTokens(nil)
+			// Set content with the same expression
+			body.SetAttributeRaw("content", tokens)
+			// Remove the old value attribute
+			body.RemoveAttribute("value")
+		}
 	}
 
 	// Remove deprecated attributes
@@ -189,9 +194,9 @@ func (m *V4ToV5Migrator) transformSingleDNSInstance(result string, instance gjso
 	recordType := instance.Get("attributes.type").String()
 	valueField := attrs.Get("value")
 	contentField := attrs.Get("content")
-	
+
 	// Records that use data field don't have content
-	usesDataField := recordType == "SRV" || recordType == "CAA" || 
+	usesDataField := recordType == "SRV" || recordType == "CAA" ||
 		recordType == "CERT" || recordType == "DNSKEY" || recordType == "DS" ||
 		recordType == "LOC" || recordType == "NAPTR" || recordType == "SMIMEA" ||
 		recordType == "SSHFP" || recordType == "SVCB" || recordType == "HTTPS" ||
@@ -329,7 +334,7 @@ func (m *V4ToV5Migrator) transformDataFieldForInstance(result string, instance g
 	if recordType == "SRV" || recordType == "MX" || recordType == "URI" {
 		// Check original instance for priority (before transformation)
 		originalPriority := instance.Get("attributes.priority")
-		
+
 		if originalPriority.Exists() {
 			// Preserve the original priority at root level
 			result, _ = sjson.Set(result, "attributes.priority", originalPriority.Float())
@@ -347,7 +352,7 @@ func (m *V4ToV5Migrator) transformDataFieldForInstance(result string, instance g
 				}
 			}
 		}
-		
+
 		// Generate content field for MX and URI records (not SRV)
 		if recordType == "MX" || recordType == "URI" {
 			dataArray := instance.Get("attributes.data")
@@ -355,7 +360,7 @@ func (m *V4ToV5Migrator) transformDataFieldForInstance(result string, instance g
 				array := dataArray.Array()
 				if len(array) > 0 {
 					priority := array[0].Get("priority")
-					
+
 					if recordType == "MX" {
 						target := array[0].Get("target")
 						if priority.Exists() && target.Exists() {

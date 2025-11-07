@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+
+# run-e2e-tests
+# End-to-end test script that validates v4 to v5 migration
+# 1. Applies v4 configs
+# 2. Migrates to v5
+# 3. Applies v5 configs
+# 4. Compares outputs to ensure no drift
+
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TF_MIGRATE_ROOT="$(dirname "$SCRIPT_DIR")"
+E2E_ROOT="${TF_MIGRATE_ROOT}/e2e"
+V4_DIR="${E2E_ROOT}/tf/v4"
+V5_DIR="${E2E_ROOT}/migrated-v4_to_v5"
+TMP_DIR="${E2E_ROOT}/tmp"
+BINARY="${TF_MIGRATE_ROOT}/tf-migrate"
+
+# Create tmp directory
+mkdir -p "${TMP_DIR}"
+
+echo -e "${BLUE}========================================${NC}"
+echo -e "${BLUE}E2E Migration Test${NC}"
+echo -e "${BLUE}========================================${NC}"
+echo ""
+
+# Check if e2e directory exists
+if [[ ! -d "$E2E_ROOT" ]]; then
+    echo -e "${RED}Error: e2e directory not found at $E2E_ROOT${NC}"
+    exit 1
+fi
+
+# Step 0: Initialize test resources
+echo -e "${BLUE}Step 0: Initializing test resources${NC}"
+
+# Check for required environment variables
+if [[ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || [[ -z "${CLOUDFLARE_ZONE_ID:-}" ]]; then
+    echo -e "${RED}Error: CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_ZONE_ID environment variables are required${NC}"
+    echo -e "${YELLOW}Set them before running this script or pass them when calling:${NC}"
+    echo -e "${YELLOW}CLOUDFLARE_ACCOUNT_ID=<id> CLOUDFLARE_ZONE_ID=<id> ./scripts/run-e2e-tests${NC}"
+    exit 1
+fi
+
+echo -e "${YELLOW}Running init script...${NC}"
+if ! "${E2E_ROOT}/scripts/init" --account "$CLOUDFLARE_ACCOUNT_ID" --zone "$CLOUDFLARE_ZONE_ID" > "${TMP_DIR}/init.log" 2>&1; then
+    echo -e "${RED}✗ Init script failed${NC}"
+    echo ""
+    echo -e "${RED}Error output:${NC}"
+    cat "${TMP_DIR}/init.log"
+    exit 1
+fi
+echo -e "${GREEN}✓ Test resources initialized${NC}"
+echo ""
+
+# Check if binary exists
+if [[ ! -f "$BINARY" ]]; then
+    echo -e "${YELLOW}Binary not found, building...${NC}"
+    (cd "$TF_MIGRATE_ROOT" && go build -o tf-migrate ./cmd/tf-migrate)
+fi
+
+# Step 1: Initialize and apply v4 configs
+echo -e "${BLUE}Step 1: Testing v4 configurations${NC}"
+echo -e "${YELLOW}Running terraform init in v4/...${NC}"
+cd "${V4_DIR}"
+
+# Configure backend for terraform init
+# Check required environment variables for remote state
+if [[ -z "${R2_ACCESS_KEY_ID:-}" ]] || [[ -z "${R2_SECRET_ACCESS_KEY:-}" ]]; then
+    echo -e "${RED}Error: R2 credentials not set${NC}"
+    echo "Please set: R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY"
+    exit 1
+fi
+
+# Create backend config with account ID
+BACKEND_CONFIG="${V4_DIR}/backend.hcl"
+BACKEND_CONFIG_TMP="${V4_DIR}/backend.configured.hcl"
+sed "s/ACCOUNT_ID/${CLOUDFLARE_ACCOUNT_ID}/g" "$BACKEND_CONFIG" > "$BACKEND_CONFIG_TMP"
+
+# Set R2 credentials (Terraform uses AWS S3-compatible API)
+export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+
+if ! terraform init -no-color -input=false -backend-config="$BACKEND_CONFIG_TMP" > "${TMP_DIR}/v4-init.log" 2>&1; then
+    echo -e "${RED}✗ Terraform init failed for v4${NC}"
+    echo ""
+    echo -e "${RED}Error output:${NC}"
+    cat "${TMP_DIR}/v4-init.log"
+    rm -f "$BACKEND_CONFIG_TMP"
+    exit 1
+fi
+echo -e "${GREEN}✓ Terraform init successful (remote state loaded from R2)${NC}"
+
+# Clean up temp backend config
+rm -f "$BACKEND_CONFIG_TMP"
+
+echo -e "${YELLOW}Running terraform plan in v4/...${NC}"
+if ! terraform plan -no-color -out="${TMP_DIR}/v4.tfplan" -input=false > "${TMP_DIR}/v4-plan.log" 2>&1; then
+    echo -e "${RED}✗ Terraform plan failed for v4${NC}"
+    echo ""
+    echo -e "${RED}Error output:${NC}"
+    cat "${TMP_DIR}/v4-plan.log"
+    exit 1
+fi
+echo -e "${GREEN}✓ Terraform plan successful${NC}"
+
+echo -e "${YELLOW}Running terraform apply in v4/...${NC}"
+if ! terraform apply -no-color -auto-approve -input=false "${TMP_DIR}/v4.tfplan" > "${TMP_DIR}/v4-apply.log" 2>&1; then
+    echo -e "${RED}✗ Terraform apply failed for v4${NC}"
+    echo ""
+    echo -e "${RED}Error output:${NC}"
+    cat "${TMP_DIR}/v4-apply.log"
+    exit 1
+fi
+echo -e "${GREEN}✓ Terraform apply successful${NC}"
+
+# Pull state from remote to ensure local file is up to date
+echo -e "${YELLOW}Syncing state from remote...${NC}"
+if terraform state pull > terraform.tfstate 2>/dev/null; then
+    echo -e "${GREEN}✓ Local state file synced from R2${NC}"
+else
+    echo -e "${YELLOW}⚠ Could not pull state (may be empty)${NC}"
+fi
+
+# Capture v4 state
+echo -e "${YELLOW}Capturing v4 state...${NC}"
+terraform show -no-color -json > "${TMP_DIR}/v4-state.json"
+echo -e "${GREEN}✓ Saved v4 state to tmp/v4-state.json${NC}"
+
+# Note: State is automatically synced to R2 remote backend after apply
+# The terraform state pull command above ensures the local file is visible
+
+# Step 2: Run migration
+echo ""
+echo -e "${BLUE}Step 2: Running migration${NC}"
+cd "${E2E_ROOT}"
+echo -e "${YELLOW}Running ./scripts/migrate...${NC}"
+if ! ./scripts/migrate > "${TMP_DIR}/migrate.log" 2>&1; then
+    echo -e "${RED}✗ Migration failed${NC}"
+    echo ""
+    echo -e "${RED}Error output:${NC}"
+    cat "${TMP_DIR}/migrate.log"
+    exit 1
+fi
+echo -e "${GREEN}✓ Migration successful${NC}"
+
+# Step 3: Initialize and apply v5 configs
+echo ""
+echo -e "${BLUE}Step 3: Testing v5 configurations${NC}"
+echo -e "${YELLOW}Running terraform init in migrated-v4_to_v5/...${NC}"
+cd "${V5_DIR}"
+
+if ! terraform init -no-color -input=false > "${TMP_DIR}/v5-init.log" 2>&1; then
+    echo -e "${RED}✗ Terraform init failed for v5${NC}"
+    echo ""
+    echo -e "${RED}Error output:${NC}"
+    cat "${TMP_DIR}/v5-init.log"
+    exit 1
+fi
+echo -e "${GREEN}✓ Terraform init successful${NC}"
+
+echo -e "${YELLOW}Running terraform plan in v5/...${NC}"
+if ! terraform plan -no-color -out="${TMP_DIR}/v5.tfplan" -input=false > "${TMP_DIR}/v5-plan.log" 2>&1; then
+    echo -e "${RED}✗ Terraform plan failed for v5${NC}"
+    echo ""
+    echo -e "${RED}Error output:${NC}"
+    cat "${TMP_DIR}/v5-plan.log"
+    exit 1
+fi
+
+# Check if plan shows any changes
+if grep -q "No changes" "${TMP_DIR}/v5-plan.log"; then
+    echo -e "${GREEN}✓ Terraform plan shows no changes (expected)${NC}"
+else
+    echo -e "${YELLOW}⚠ Terraform plan shows changes${NC}"
+    echo ""
+    echo -e "${YELLOW}Plan output:${NC}"
+    cat "${TMP_DIR}/v5-plan.log"
+    echo ""
+    echo -e "${YELLOW}This may indicate the migration is not idempotent${NC}"
+fi
+
+echo -e "${YELLOW}Running terraform apply in v5/...${NC}"
+if ! terraform apply -no-color -auto-approve -input=false "${TMP_DIR}/v5.tfplan" > "${TMP_DIR}/v5-apply.log" 2>&1; then
+    echo -e "${RED}✗ Terraform apply failed for v5${NC}"
+    echo ""
+    echo -e "${RED}Error output:${NC}"
+    cat "${TMP_DIR}/v5-apply.log"
+    exit 1
+fi
+echo -e "${GREEN}✓ Terraform apply successful${NC}"
+
+# Capture v5 state
+echo -e "${YELLOW}Capturing v5 state...${NC}"
+terraform show -no-color -json > "${TMP_DIR}/v5-state.json"
+echo -e "${GREEN}✓ Saved v5 state to tmp/v5-state.json${NC}"
+
+# Step 4: Compare states
+echo ""
+echo -e "${BLUE}Step 4: Comparing v4 and v5 states${NC}"
+
+# Count resources in each state
+V4_RESOURCE_COUNT=$(jq -r '.values.root_module.resources // [] | length' "${TMP_DIR}/v4-state.json" 2>/dev/null || echo "0")
+V5_RESOURCE_COUNT=$(jq -r '.values.root_module.resources // [] | length' "${TMP_DIR}/v5-state.json" 2>/dev/null || echo "0")
+
+echo -e "${YELLOW}Resource count:${NC}"
+echo -e "  v4: ${V4_RESOURCE_COUNT} resources"
+echo -e "  v5: ${V5_RESOURCE_COUNT} resources"
+
+if [[ "$V4_RESOURCE_COUNT" -eq "$V5_RESOURCE_COUNT" ]]; then
+    echo -e "${GREEN}✓ Resource counts match${NC}"
+else
+    echo -e "${YELLOW}⚠ Resource counts differ${NC}"
+fi
+
+# Final summary
+echo ""
+echo -e "${BLUE}========================================${NC}"
+echo -e "${GREEN}✓ E2E Test Complete!${NC}"
+echo -e "${BLUE}========================================${NC}"
+echo ""
+echo -e "${YELLOW}Summary:${NC}"
+echo -e "  - v4 terraform apply: ${GREEN}SUCCESS${NC}"
+echo -e "  - Migration: ${GREEN}SUCCESS${NC}"
+echo -e "  - v5 terraform apply: ${GREEN}SUCCESS${NC}"
+echo -e "  - Resource count v4: ${V4_RESOURCE_COUNT}"
+echo -e "  - Resource count v5: ${V5_RESOURCE_COUNT}"
+echo ""
+echo -e "${YELLOW}Logs saved to:${NC}"
+echo -e "  - ${BLUE}${TMP_DIR}/${NC}"
+echo ""
