@@ -170,10 +170,21 @@ func runMigration(log hclog.Logger, cfg config) error {
 		return err
 	}
 
+	// Load state file first if present (needed for cross-referencing in config transformations)
+	var stateJSON string
+	if cfg.stateFile != "" {
+		content, err := os.ReadFile(cfg.stateFile)
+		if err != nil {
+			log.Debug("failed to read state file: %w", err)
+		}
+		stateJSON = string(content)
+		log.Debug("Loaded state file for cross-referencing", "file", cfg.stateFile)
+	}
+
 	providers := getProviders(cfg.resourcesToMigrate...)
 	configPipeline := pipeline.BuildConfigPipeline(log, providers)
 	if cfg.configDir != "" {
-		if err := processConfigFiles(log, configPipeline, cfg); err != nil {
+		if err := processConfigFiles(log, configPipeline, cfg, stateJSON); err != nil {
 			return fmt.Errorf("failed to process configuration files: %w", err)
 		}
 	}
@@ -190,7 +201,7 @@ func runMigration(log hclog.Logger, cfg config) error {
 	return nil
 }
 
-func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) error {
+func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stateJSON string) error {
 	if cfg.outputDir == "" {
 		cfg.outputDir = cfg.configDir
 	}
@@ -232,6 +243,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) erro
 			SourceVersion: cfg.sourceVersion,
 			TargetVersion: cfg.targetVersion,
 			Resources:     cfg.resourcesToMigrate,
+			StateJSON:     stateJSON, // For cross-referencing in config transformations
 		}
 		transformed, err := p.Transform(ctx)
 		if err != nil {

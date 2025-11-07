@@ -11,16 +11,17 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_policy"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
+	"github.com/cloudflare/tf-migrate/internal/resources/zone_dnssec"
 )
 
 // RegisterAllMigrations registers all resource migrations with the internal registry.
 // This function should be called once during initialization to set up all available migrations.
-// Each resource package has its own RegisterMigrations function that defines how to register
-// its specific migrations.
+// Each resource package's NewV4ToV5Migrator function registers itself with the internal registry.
 func RegisterAllMigrations() {
 	account_member.NewV4ToV5Migrator()
 	api_token.NewV4ToV5Migrator()
 	dns_record.NewV4ToV5Migrator()
+	zone_dnssec.NewV4ToV5Migrator()
 	logpull_retention.NewV4ToV5Migrator()
 	workers_kv.NewV4ToV5Migrator()
 	workers_kv_namespace.NewV4ToV5Migrator()
