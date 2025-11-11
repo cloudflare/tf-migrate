@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cloudflare/cloudflare-go/v6"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2"
 
@@ -163,6 +164,30 @@ func newVersionCommand() *cobra.Command {
 	}
 }
 
+// initAPIClient initializes a Cloudflare API client if credentials are available
+// It checks for CLOUDFLARE_API_TOKEN first, then falls back to CLOUDFLARE_API_KEY + CLOUDFLARE_EMAIL
+func initAPIClient() *cloudflare.Client {
+	apiToken := os.Getenv("CLOUDFLARE_API_TOKEN")
+	apiKey := os.Getenv("CLOUDFLARE_API_KEY")
+	apiEmail := os.Getenv("CLOUDFLARE_EMAIL")
+
+	if apiToken != "" {
+		fmt.Println("✓ Using Cloudflare API credentials (API token)")
+		return cloudflare.NewClient()
+	}
+
+	if apiKey != "" && apiEmail != "" {
+		fmt.Println("✓ Using Cloudflare API credentials (API key + email)")
+		return cloudflare.NewClient()
+	}
+
+	fmt.Println("ℹ No Cloudflare API credentials found")
+	fmt.Println("  Some migrations may require manual intervention after completion")
+	fmt.Println("  Set CLOUDFLARE_API_TOKEN or (CLOUDFLARE_API_KEY + CLOUDFLARE_EMAIL) for full automation")
+	fmt.Println()
+	return nil
+}
+
 // runMigration performs the actual migration using the pipeline
 func runMigration(log hclog.Logger, cfg config) error {
 	err := validateVersions(cfg)
@@ -181,10 +206,13 @@ func runMigration(log hclog.Logger, cfg config) error {
 		log.Debug("Loaded state file for cross-referencing", "file", cfg.stateFile)
 	}
 
+	// Initialize API client if credentials are available
+	apiClient := initAPIClient()
+
 	providers := getProviders(cfg.resourcesToMigrate...)
 	configPipeline := pipeline.BuildConfigPipeline(log, providers)
 	if cfg.configDir != "" {
-		if err := processConfigFiles(log, configPipeline, cfg, stateJSON); err != nil {
+		if err := processConfigFiles(log, configPipeline, cfg, stateJSON, apiClient); err != nil {
 			return fmt.Errorf("failed to process configuration files: %w", err)
 		}
 	}
@@ -192,7 +220,7 @@ func runMigration(log hclog.Logger, cfg config) error {
 
 	statePipeline := pipeline.BuildStatePipeline(log, providers)
 	if cfg.stateFile != "" {
-		if err := processStateFile(log, statePipeline, cfg); err != nil {
+		if err := processStateFile(log, statePipeline, cfg, apiClient); err != nil {
 			return fmt.Errorf("failed to process state file: %w", err)
 		}
 	}
@@ -201,7 +229,7 @@ func runMigration(log hclog.Logger, cfg config) error {
 	return nil
 }
 
-func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stateJSON string) error {
+func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stateJSON string, apiClient *cloudflare.Client) error {
 	if cfg.outputDir == "" {
 		cfg.outputDir = cfg.configDir
 	}
@@ -244,6 +272,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 			TargetVersion: cfg.targetVersion,
 			Resources:     cfg.resourcesToMigrate,
 			StateJSON:     stateJSON, // For cross-referencing in config transformations
+			APIClient:     apiClient,
 		}
 		transformed, err := p.Transform(ctx)
 		if err != nil {
@@ -272,7 +301,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 	return nil
 }
 
-func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config) error {
+func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config, apiClient *cloudflare.Client) error {
 	if p == nil {
 		return fmt.Errorf("state pipeline is nil")
 	}
@@ -307,6 +336,7 @@ func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config) error 
 		SourceVersion: cfg.sourceVersion,
 		TargetVersion: cfg.targetVersion,
 		Resources:     cfg.resourcesToMigrate,
+		APIClient:     apiClient,
 	}
 	transformedContent, err := p.Transform(ctx)
 	if err != nil {
