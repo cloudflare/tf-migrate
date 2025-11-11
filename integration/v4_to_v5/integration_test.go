@@ -11,6 +11,7 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/load_balancer_monitor"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/notification_policy_webhooks"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
@@ -49,6 +50,7 @@ func TestV4ToV5Migration(t *testing.T) {
 		"account_member",
 		"api_token",
 		"dns_record",
+		"load_balancer_monitor",
 		"logpull_retention",
 		"notification_policy_webhooks",
 		"r2_bucket",
