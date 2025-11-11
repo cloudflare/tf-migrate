@@ -16,33 +16,35 @@ import (
 // Example - Adding required TTL field to DNS record state:
 //
 // Before state JSON:
-//   {
-//     "resources": [{
-//       "instances": [{
-//         "attributes": {
-//           "zone_id": "abc123",
-//           "name": "test",
-//           "type": "A",
-//           "content": "192.0.2.1"
-//         }
-//       }]
-//     }]
-//   }
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "name": "test",
+//	        "type": "A",
+//	        "content": "192.0.2.1"
+//	      }
+//	    }]
+//	  }]
+//	}
 //
 // After calling EnsureField(stateJSON, "resources.0.instances.0.attributes", instance, "ttl", 1):
-//   {
-//     "resources": [{
-//       "instances": [{
-//         "attributes": {
-//           "zone_id": "abc123",
-//           "name": "test",
-//           "type": "A",
-//           "content": "192.0.2.1",
-//           "ttl": 1
-//         }
-//       }]
-//     }]
-//   }
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "name": "test",
+//	        "type": "A",
+//	        "content": "192.0.2.1",
+//	        "ttl": 1
+//	      }
+//	    }]
+//	  }]
+//	}
 func EnsureField(stateJSON string, path string, instance gjson.Result, field string, defaultValue interface{}) string {
 	if !instance.Get(field).Exists() {
 		result, _ := sjson.Set(stateJSON, path+"."+field, defaultValue)
@@ -57,36 +59,38 @@ func EnsureField(stateJSON string, path string, instance gjson.Result, field str
 // Example - Renaming 'value' to 'content' in DNS record state:
 //
 // Before state JSON:
-//   {
-//     "resources": [{
-//       "instances": [{
-//         "attributes": {
-//           "zone_id": "abc123",
-//           "name": "test",
-//           "type": "A",
-//           "value": "192.0.2.1"  // Old field name
-//         }
-//       }]
-//     }]
-//   }
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "name": "test",
+//	        "type": "A",
+//	        "value": "192.0.2.1"  // Old field name
+//	      }
+//	    }]
+//	  }]
+//	}
 //
 // After calling RenameField(stateJSON, "resources.0.instances.0.attributes", instance, "value", "content"):
-//   {
-//     "resources": [{
-//       "instances": [{
-//         "attributes": {
-//           "zone_id": "abc123",
-//           "name": "test",
-//           "type": "A",
-//           "content": "192.0.2.1"  // New field name
-//         }
-//       }]
-//     }]
-//   }
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "name": "test",
+//	        "type": "A",
+//	        "content": "192.0.2.1"  // New field name
+//	      }
+//	    }]
+//	  }]
+//	}
 func RenameField(stateJSON string, path string, instance gjson.Result, oldName, newName string) string {
 	oldField := instance.Get(oldName)
 	newField := instance.Get(newName)
-	
+
 	if oldField.Exists() && !newField.Exists() {
 		// Copy old to new
 		stateJSON, _ = sjson.Set(stateJSON, path+"."+newName, oldField.Value())
@@ -96,7 +100,7 @@ func RenameField(stateJSON string, path string, instance gjson.Result, oldName, 
 		// If both exist, just remove the old one (new takes precedence)
 		stateJSON, _ = sjson.Delete(stateJSON, path+"."+oldName)
 	}
-	
+
 	return stateJSON
 }
 
@@ -105,35 +109,37 @@ func RenameField(stateJSON string, path string, instance gjson.Result, oldName, 
 // Example - Removing deprecated fields from DNS record state:
 //
 // Before state JSON:
-//   {
-//     "resources": [{
-//       "instances": [{
-//         "attributes": {
-//           "zone_id": "abc123",
-//           "name": "test",
-//           "type": "A",
-//           "content": "192.0.2.1",
-//           "hostname": "test.example.com",  // Deprecated
-//           "allow_overwrite": true,         // Deprecated
-//           "timeouts": {}                    // Deprecated
-//         }
-//       }]
-//     }]
-//   }
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "name": "test",
+//	        "type": "A",
+//	        "content": "192.0.2.1",
+//	        "hostname": "test.example.com",  // Deprecated
+//	        "allow_overwrite": true,         // Deprecated
+//	        "timeouts": {}                    // Deprecated
+//	      }
+//	    }]
+//	  }]
+//	}
 //
 // After calling RemoveFields(stateJSON, path, instance, "hostname", "allow_overwrite", "timeouts"):
-//   {
-//     "resources": [{
-//       "instances": [{
-//         "attributes": {
-//           "zone_id": "abc123",
-//           "name": "test",
-//           "type": "A",
-//           "content": "192.0.2.1"
-//         }
-//       }]
-//     }]
-//   }
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "name": "test",
+//	        "type": "A",
+//	        "content": "192.0.2.1"
+//	      }
+//	    }]
+//	  }]
+//	}
 func RemoveFields(stateJSON string, path string, instance gjson.Result, fields ...string) string {
 	for _, field := range fields {
 		if instance.Get(field).Exists() {
@@ -148,39 +154,41 @@ func RemoveFields(stateJSON string, path string, instance gjson.Result, fields .
 // Example - Cleaning up empty meta field:
 //
 // Before state JSON:
-//   {
-//     "resources": [{
-//       "instances": [{
-//         "attributes": {
-//           "zone_id": "abc123",
-//           "name": "test",
-//           "meta": {},  // Empty object
-//           "settings": []  // Empty array
-//         }
-//       }]
-//     }]
-//   }
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "name": "test",
+//	        "meta": {},  // Empty object
+//	        "settings": []  // Empty array
+//	      }
+//	    }]
+//	  }]
+//	}
 //
 // After calling CleanupEmptyField(stateJSON, "resources.0.instances.0.attributes.meta", metaField):
-//   {
-//     "resources": [{
-//       "instances": [{
-//         "attributes": {
-//           "zone_id": "abc123",
-//           "name": "test",
-//           "settings": []  // meta removed, settings still present
-//         }
-//       }]
-//     }]
-//   }
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "name": "test",
+//	        "settings": []  // meta removed, settings still present
+//	      }
+//	    }]
+//	  }]
+//	}
 func CleanupEmptyField(stateJSON string, path string, field gjson.Result) string {
 	if field.Exists() {
 		// Check various empty conditions
-		if field.String() == "{}" || 
-		   field.String() == "[]" ||
-		   field.String() == "" ||
-		   (field.IsObject() && len(field.Map()) == 0) ||
-		   (field.IsArray() && len(field.Array()) == 0) {
+		if field.String() == "{}" ||
+			field.String() == "[]" ||
+			field.String() == "" ||
+			(field.IsObject() && len(field.Map()) == 0) ||
+			(field.IsArray() && len(field.Array()) == 0) {
 			stateJSON, _ = sjson.Delete(stateJSON, path)
 		}
 	}
@@ -192,39 +200,41 @@ func CleanupEmptyField(stateJSON string, path string, field gjson.Result) string
 // Example - Removing settings object with all null values:
 //
 // Before state JSON:
-//   {
-//     "resources": [{
-//       "instances": [{
-//         "attributes": {
-//           "zone_id": "abc123",
-//           "name": "test",
-//           "settings": {
-//             "flatten_cname": null,
-//             "ipv4_only": null,
-//             "ipv6_only": null
-//           }
-//         }
-//       }]
-//     }]
-//   }
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "name": "test",
+//	        "settings": {
+//	          "flatten_cname": null,
+//	          "ipv4_only": null,
+//	          "ipv6_only": null
+//	        }
+//	      }
+//	    }]
+//	  }]
+//	}
 //
 // After calling RemoveObjectIfAllNull(stateJSON, path+".settings", settingsObj, []string{"flatten_cname", "ipv4_only", "ipv6_only"}):
-//   {
-//     "resources": [{
-//       "instances": [{
-//         "attributes": {
-//           "zone_id": "abc123",
-//           "name": "test"
-//           // settings removed because all fields were null
-//         }
-//       }]
-//     }]
-//   }
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "name": "test"
+//	        // settings removed because all fields were null
+//	      }
+//	    }]
+//	  }]
+//	}
 func RemoveObjectIfAllNull(stateJSON string, path string, obj gjson.Result, fields []string) string {
 	if !obj.Exists() {
 		return stateJSON
 	}
-	
+
 	allNull := true
 	for _, field := range fields {
 		val := obj.Get(field)
@@ -233,7 +243,7 @@ func RemoveObjectIfAllNull(stateJSON string, path string, obj gjson.Result, fiel
 			break
 		}
 	}
-	
+
 	if allNull {
 		stateJSON, _ = sjson.Delete(stateJSON, path)
 	}
@@ -246,40 +256,42 @@ func RemoveObjectIfAllNull(stateJSON string, path string, obj gjson.Result, fiel
 // Example - Adding timestamps to DNS record:
 //
 // Before state JSON:
-//   {
-//     "resources": [{
-//       "instances": [{
-//         "attributes": {
-//           "zone_id": "abc123",
-//           "name": "test",
-//           "type": "A",
-//           "content": "192.0.2.1"
-//         }
-//       }]
-//     }]
-//   }
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "name": "test",
+//	        "type": "A",
+//	        "content": "192.0.2.1"
+//	      }
+//	    }]
+//	  }]
+//	}
 //
 // After calling EnsureTimestamps(stateJSON, path, instance, "2024-01-01T00:00:00Z"):
-//   {
-//     "resources": [{
-//       "instances": [{
-//         "attributes": {
-//           "zone_id": "abc123",
-//           "name": "test",
-//           "type": "A",
-//           "content": "192.0.2.1",
-//           "created_on": "2024-01-01T00:00:00Z",
-//           "modified_on": "2024-01-01T00:00:00Z"
-//         }
-//       }]
-//     }]
-//   }
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "name": "test",
+//	        "type": "A",
+//	        "content": "192.0.2.1",
+//	        "created_on": "2024-01-01T00:00:00Z",
+//	        "modified_on": "2024-01-01T00:00:00Z"
+//	      }
+//	    }]
+//	  }]
+//	}
 func EnsureTimestamps(stateJSON string, path string, instance gjson.Result, defaultTime string) string {
 	createdOn := instance.Get("created_on")
 	if !createdOn.Exists() {
 		stateJSON, _ = sjson.Set(stateJSON, path+".created_on", defaultTime)
 	}
-	
+
 	modifiedOn := instance.Get("modified_on")
 	if !modifiedOn.Exists() {
 		if createdOn.Exists() {
@@ -288,7 +300,7 @@ func EnsureTimestamps(stateJSON string, path string, instance gjson.Result, defa
 			stateJSON, _ = sjson.Set(stateJSON, path+".modified_on", defaultTime)
 		}
 	}
-	
+
 	return stateJSON
 }
 
@@ -331,5 +343,43 @@ func ConvertGjsonToJSON(value gjson.Result) interface{} {
 		return nil
 	default:
 		return value.Value()
+	}
+}
+
+// isEmptyValue checks if a gjson.Result value is considered "empty" (default/zero)
+func IsEmptyValue(value gjson.Result) bool {
+	if !value.Exists() {
+		return true
+	}
+
+	switch value.Type {
+	case gjson.Null:
+		return true
+	case gjson.False:
+		return true
+	case gjson.Number:
+		return value.Num == 0
+	case gjson.String:
+		return value.Str == ""
+	case gjson.JSON:
+		// Check if it's an empty array or object
+		if value.IsArray() {
+			return len(value.Array()) == 0
+		}
+		if value.IsObject() {
+			// Empty object or object with all empty values
+			isEmpty := true
+			value.ForEach(func(_, v gjson.Result) bool {
+				if !IsEmptyValue(v) {
+					isEmpty = false
+					return false
+				}
+				return true
+			})
+			return isEmpty
+		}
+		return false
+	default:
+		return false
 	}
 }

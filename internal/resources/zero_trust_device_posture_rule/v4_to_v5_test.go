@@ -141,10 +141,11 @@ resource "cloudflare_zero_trust_device_posture_rule" "test" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "name"
   type       = "os_version"
-  match = [
-    { platform = "windows" },
-    { platform = "mac" }
-  ]
+  match = [{
+    platform = "windows"
+    }, {
+    platform = "mac"
+  }]
 }
 `,
 		},
@@ -288,11 +289,13 @@ resource "cloudflare_zero_trust_device_posture_rule" "test" {
       trust_stores = ["system", "user", "custom"]
     }
   }
-  match = [
-    { platform = "windows" },
-    { platform = "mac" },
-    { platform = "linux" }
-  ]
+  match = [{
+    platform = "windows"
+    }, {
+    platform = "mac"
+    }, {
+    platform = "linux"
+  }]
 }
 `,
 		},
