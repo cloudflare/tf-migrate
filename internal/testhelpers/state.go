@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/cloudflare/cloudflare-go/v6"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -13,9 +14,10 @@ import (
 
 // StateTestCase represents a test case for state transformations
 type StateTestCase struct {
-	Name     string
-	Input    string
-	Expected string
+	Name      string
+	Input     string
+	Expected  string
+	APIClient *cloudflare.Client // Optional: mock API client for testing migrations that need API access
 }
 
 // runStateTransformTest runs a single state transformation test
@@ -25,10 +27,11 @@ func runStateTransformTest(t *testing.T, tt StateTestCase, migrator transform.Re
 	// Parse the input JSON
 	inputResult := gjson.Parse(tt.Input)
 	expectedResult := gjson.Parse(tt.Expected)
-	
-	// Create context
+
+	// Create context with optional API client
 	ctx := &transform.Context{
 		StateJSON: tt.Input,
+		APIClient: tt.APIClient,
 	}
 
 	// Get the output state structure ready

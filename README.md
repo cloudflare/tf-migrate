@@ -33,6 +33,29 @@ make
 
 ## Usage
 
+### Authentication
+
+Some resource migrations require access to the Cloudflare API to complete the migration successfully. The tool supports two authentication methods:
+
+**Option 1: API Token (Recommended)**
+```bash
+export CLOUDFLARE_API_TOKEN="your-api-token"
+```
+
+**Option 2: API Key + Email**
+```bash
+export CLOUDFLARE_API_KEY="your-api-key"
+export CLOUDFLARE_EMAIL="your-email@example.com"
+```
+
+#### Resources Requiring Authentication
+
+The following resources require API credentials for complete migration:
+
+- `cloudflare_tunnel_route` → `cloudflare_zero_trust_tunnel_cloudflared_route`
+  - **Why**: The v4 provider stored network CIDR as the resource ID, but v5 requires the UUID from the API. The migration queries the API to fetch the correct UUID for your tunnel routes.
+  - **Without credentials**: The migration will still update resource types and attributes, but you'll need to run `terraform refresh` after migration to update the IDs.
+
 ### Basic Migration
 
 Migrate all Terraform files in the current directory:
