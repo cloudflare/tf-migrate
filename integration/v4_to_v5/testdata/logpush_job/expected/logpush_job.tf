@@ -1,14 +1,14 @@
 # Minimal logpush job
 resource "cloudflare_logpush_job" "minimal" {
   account_id       = "f037e56e89293a057740de681ac9abbe"
-  dataset          = "http_requests"
+  dataset          = "audit_logs"
   destination_conf = "s3://mybucket/logs?region=us-west-2"
 }
 
 # Job with logpull_options only (no output_options)
 resource "cloudflare_logpush_job" "with_logpull_options" {
   account_id       = "f037e56e89293a057740de681ac9abbe"
-  dataset          = "http_requests"
+  dataset          = "audit_logs"
   destination_conf = "s3://mybucket/logs?region=us-west-2"
   logpull_options  = "fields=ClientIP,EdgeStartTimestamp&timestamps=unixnano"
 }
@@ -16,7 +16,7 @@ resource "cloudflare_logpush_job" "with_logpull_options" {
 # Job with output_options block
 resource "cloudflare_logpush_job" "with_output_options" {
   account_id       = "f037e56e89293a057740de681ac9abbe"
-  dataset          = "http_requests"
+  dataset          = "audit_logs"
   destination_conf = "s3://mybucket/logs?region=us-west-2"
 
   output_options = {
@@ -35,7 +35,7 @@ resource "cloudflare_logpush_job" "with_output_options" {
 # Job with cve20214428 field (should be renamed)
 resource "cloudflare_logpush_job" "with_cve_field" {
   account_id       = "f037e56e89293a057740de681ac9abbe"
-  dataset          = "http_requests"
+  dataset          = "audit_logs"
   destination_conf = "s3://mybucket/logs?region=us-west-2"
 
   output_options = {
@@ -51,7 +51,7 @@ resource "cloudflare_logpush_job" "with_cve_field" {
 
 # Job with instant-logs kind (should become empty string)
 resource "cloudflare_logpush_job" "instant_logs" {
-  account_id       = "f037e56e89293a057740de681ac9abbe"
+  zone_id          = "0da42c8d2132a9ddaf714f9e7c920711"
   dataset          = "http_requests"
   destination_conf = "s3://mybucket/logs?region=us-west-2"
   kind             = ""
@@ -59,7 +59,7 @@ resource "cloudflare_logpush_job" "instant_logs" {
 
 # Job with edge kind (should be preserved)
 resource "cloudflare_logpush_job" "edge_logs" {
-  account_id       = "f037e56e89293a057740de681ac9abbe"
+  zone_id          = "0da42c8d2132a9ddaf714f9e7c920711"
   dataset          = "http_requests"
   destination_conf = "s3://mybucket/logs?region=us-west-2"
   kind             = "edge"
@@ -67,7 +67,7 @@ resource "cloudflare_logpush_job" "edge_logs" {
 
 # Full featured job with all transformations
 resource "cloudflare_logpush_job" "full" {
-  account_id       = "f037e56e89293a057740de681ac9abbe"
+  zone_id          = "0da42c8d2132a9ddaf714f9e7c920711"
   dataset          = "http_requests"
   destination_conf = "s3://mybucket/logs?region=us-west-2"
   kind             = ""
