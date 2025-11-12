@@ -36,7 +36,7 @@ func TestV4ToV5Transformation(t *testing.T) {
 }`,
 			},
 			{
-				Name: "Convert output_options block to attribute",
+				Name: "Convert output_options block to attribute and add v4 defaults",
 				Input: `resource "cloudflare_logpush_job" "example" {
   dataset          = "http_requests"
   destination_conf = "s3://mybucket/logs?region=us-west-2"
@@ -53,15 +53,20 @@ func TestV4ToV5Transformation(t *testing.T) {
   destination_conf = "s3://mybucket/logs?region=us-west-2"
 
   output_options = {
-    batch_prefix = "{"
-    batch_suffix = "}"
-    field_names  = ["ClientIP", "EdgeStartTimestamp"]
-    output_type  = "ndjson"
+    batch_prefix      = "{"
+    batch_suffix      = "}"
+    field_names       = ["ClientIP", "EdgeStartTimestamp"]
+    output_type       = "ndjson"
+    field_delimiter   = ","
+    record_prefix     = "{"
+    record_suffix     = "}\n"
+    timestamp_format  = "unixnano"
+    sample_rate       = 1
   }
 }`,
 			},
 			{
-				Name: "Rename cve20214428 to cve_2021_44228",
+				Name: "Rename cve20214428 to cve_2021_44228 and add v4 defaults",
 				Input: `resource "cloudflare_logpush_job" "example" {
   dataset          = "http_requests"
   destination_conf = "s3://mybucket/logs?region=us-west-2"
@@ -76,8 +81,68 @@ func TestV4ToV5Transformation(t *testing.T) {
   destination_conf = "s3://mybucket/logs?region=us-west-2"
 
   output_options = {
-    output_type    = "ndjson"
-    cve_2021_44228 = true
+    output_type       = "ndjson"
+    cve_2021_44228    = true
+    field_delimiter   = ","
+    record_prefix     = "{"
+    record_suffix     = "}\n"
+    timestamp_format  = "unixnano"
+    sample_rate       = 1
+  }
+}`,
+			},
+			{
+				Name: "Add v4 defaults when some fields are user-configured",
+				Input: `resource "cloudflare_logpush_job" "example" {
+  dataset          = "http_requests"
+  destination_conf = "s3://mybucket/logs?region=us-west-2"
+
+  output_options {
+    output_type      = "ndjson"
+    field_delimiter  = "|"
+    sample_rate      = 0.5
+  }
+}`,
+				Expected: `resource "cloudflare_logpush_job" "example" {
+  dataset          = "http_requests"
+  destination_conf = "s3://mybucket/logs?region=us-west-2"
+
+  output_options = {
+    output_type       = "ndjson"
+    field_delimiter   = "|"
+    sample_rate       = 0.5
+    record_prefix     = "{"
+    record_suffix     = "}\n"
+    timestamp_format  = "unixnano"
+  }
+}`,
+			},
+			{
+				Name: "Preserve all user-configured values over defaults",
+				Input: `resource "cloudflare_logpush_job" "example" {
+  dataset          = "http_requests"
+  destination_conf = "s3://mybucket/logs?region=us-west-2"
+
+  output_options {
+    output_type      = "csv"
+    field_delimiter  = "|"
+    record_prefix    = "["
+    record_suffix    = "]"
+    timestamp_format = "rfc3339"
+    sample_rate      = 0.1
+  }
+}`,
+				Expected: `resource "cloudflare_logpush_job" "example" {
+  dataset          = "http_requests"
+  destination_conf = "s3://mybucket/logs?region=us-west-2"
+
+  output_options = {
+    output_type       = "csv"
+    field_delimiter   = "|"
+    record_prefix     = "["
+    record_suffix     = "]"
+    timestamp_format  = "rfc3339"
+    sample_rate       = 0.1
   }
 }`,
 			},
@@ -154,6 +219,9 @@ func TestV4ToV5Transformation(t *testing.T) {
     sample_rate      = 1.0
     timestamp_format = "unixnano"
     cve_2021_44228   = true
+    field_delimiter  = ","
+    record_prefix    = "{"
+    record_suffix    = "}\n"
   }
 }`,
 			},
@@ -184,8 +252,13 @@ resource "cloudflare_logpush_job" "job2" {
   kind             = ""
 
   output_options = {
-    output_type    = "ndjson"
-    cve_2021_44228 = true
+    output_type       = "ndjson"
+    cve_2021_44228    = true
+    field_delimiter   = ","
+    record_prefix     = "{"
+    record_suffix     = "}\n"
+    timestamp_format  = "unixnano"
+    sample_rate       = 1
   }
 }
 
@@ -194,7 +267,12 @@ resource "cloudflare_logpush_job" "job2" {
   destination_conf = "s3://bucket2/logs?region=us-east-1"
 
   output_options = {
-    output_type = "csv"
+    output_type       = "csv"
+    field_delimiter   = ","
+    record_prefix     = "{"
+    record_suffix     = "}\n"
+    timestamp_format  = "unixnano"
+    sample_rate       = 1
   }
 }`,
 			},
@@ -216,8 +294,13 @@ resource "cloudflare_logpush_job" "job2" {
   destination_conf = var.destination_conf
 
   output_options = {
-    field_names = var.field_names
-    output_type = "ndjson"
+    field_names       = var.field_names
+    output_type       = "ndjson"
+    field_delimiter   = ","
+    record_prefix     = "{"
+    record_suffix     = "}\n"
+    timestamp_format  = "unixnano"
+    sample_rate       = 1
   }
 }`,
 			},
@@ -297,7 +380,12 @@ resource "cloudflare_logpush_job" "job2" {
       "batch_prefix": "{",
       "batch_suffix": "}",
       "field_names": ["ClientIP", "EdgeStartTimestamp"],
-      "output_type": "ndjson"
+      "output_type": "ndjson",
+      "field_delimiter": ",",
+      "record_prefix": "{",
+      "record_suffix": "}\n",
+      "timestamp_format": "unixnano",
+      "sample_rate": 1
     }
   }
 }`,
@@ -322,7 +410,12 @@ resource "cloudflare_logpush_job" "job2" {
     "destination_conf": "s3://mybucket/logs?region=us-west-2",
     "output_options": {
       "cve_2021_44228": true,
-      "output_type": "ndjson"
+      "output_type": "ndjson",
+      "field_delimiter": ",",
+      "record_prefix": "{",
+      "record_suffix": "}\n",
+      "timestamp_format": "unixnano",
+      "sample_rate": 1
     }
   }
 }`,
@@ -345,7 +438,12 @@ resource "cloudflare_logpush_job" "job2" {
     "destination_conf": "s3://mybucket/logs?region=us-west-2",
     "output_options": {
       "cve_2021_44228": true,
-      "output_type": "ndjson"
+      "output_type": "ndjson",
+      "field_delimiter": ",",
+      "record_prefix": "{",
+      "record_suffix": "}\n",
+      "timestamp_format": "unixnano",
+      "sample_rate": 1
     }
   }
 }`,
@@ -368,6 +466,93 @@ resource "cloudflare_logpush_job" "job2" {
     "max_upload_bytes": 5000000.0,
     "max_upload_records": 1000.0,
     "max_upload_interval_seconds": 30.0
+  }
+}`,
+			},
+			{
+				Name: "Remove numeric fields with value 0 (API defaults)",
+				Input: `{
+  "attributes": {
+    "dataset": "http_requests",
+    "destination_conf": "s3://mybucket/logs?region=us-west-2",
+    "max_upload_bytes": 0,
+    "max_upload_records": 0,
+    "max_upload_interval_seconds": 0
+  }
+}`,
+				Expected: `{
+  "attributes": {
+    "dataset": "http_requests",
+    "destination_conf": "s3://mybucket/logs?region=us-west-2"
+  }
+}`,
+			},
+			{
+				Name: "Preserve v4 schema defaults in output_options state",
+				Input: `{
+  "attributes": {
+    "dataset": "http_requests",
+    "destination_conf": "s3://mybucket/logs?region=us-west-2",
+    "output_options": [
+      {
+        "cve20214428": true,
+        "output_type": "ndjson",
+        "field_names": ["ClientIP", "EdgeStartTimestamp"],
+        "field_delimiter": ",",
+        "record_prefix": "{",
+        "record_suffix": "}\n",
+        "sample_rate": 1.0,
+        "timestamp_format": "unixnano"
+      }
+    ]
+  }
+}`,
+				Expected: `{
+  "attributes": {
+    "dataset": "http_requests",
+    "destination_conf": "s3://mybucket/logs?region=us-west-2",
+    "output_options": {
+      "cve_2021_44228": true,
+      "output_type": "ndjson",
+      "field_names": ["ClientIP", "EdgeStartTimestamp"],
+      "field_delimiter": ",",
+      "record_prefix": "{",
+      "record_suffix": "}\n",
+      "sample_rate": 1.0,
+      "timestamp_format": "unixnano"
+    }
+  }
+}`,
+			},
+			{
+				Name: "Preserve user-configured values over v4 defaults in state",
+				Input: `{
+  "attributes": {
+    "dataset": "http_requests",
+    "destination_conf": "s3://mybucket/logs?region=us-west-2",
+    "output_options": [
+      {
+        "output_type": "csv",
+        "field_delimiter": "|",
+        "record_prefix": "[",
+        "sample_rate": 0.5,
+        "timestamp_format": "rfc3339"
+      }
+    ]
+  }
+}`,
+				Expected: `{
+  "attributes": {
+    "dataset": "http_requests",
+    "destination_conf": "s3://mybucket/logs?region=us-west-2",
+    "output_options": {
+      "output_type": "csv",
+      "field_delimiter": "|",
+      "record_prefix": "[",
+      "sample_rate": 0.5,
+      "timestamp_format": "rfc3339",
+      "record_suffix": "}\n"
+    }
   }
 }`,
 			},
@@ -484,7 +669,10 @@ resource "cloudflare_logpush_job" "job2" {
       "field_names": ["ClientIP", "EdgeStartTimestamp", "RayID"],
       "output_type": "ndjson",
       "sample_rate": 1.0,
-      "timestamp_format": "unixnano"
+      "timestamp_format": "unixnano",
+      "field_delimiter": ",",
+      "record_prefix": "{",
+      "record_suffix": "}\n"
     }
   }
 }`,

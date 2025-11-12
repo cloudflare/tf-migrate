@@ -20,10 +20,15 @@ resource "cloudflare_logpush_job" "with_output_options" {
   destination_conf = "s3://mybucket/logs?region=us-west-2"
 
   output_options = {
-    batch_prefix = "{"
-    batch_suffix = "}"
-    field_names  = ["ClientIP", "EdgeStartTimestamp"]
-    output_type  = "ndjson"
+    batch_prefix     = "{"
+    batch_suffix     = "}"
+    field_names      = ["ClientIP", "EdgeStartTimestamp"]
+    output_type      = "ndjson"
+    field_delimiter  = ","
+    record_prefix    = "{"
+    record_suffix    = "}\n"
+    timestamp_format = "unixnano"
+    sample_rate      = 1
   }
 }
 
@@ -34,8 +39,13 @@ resource "cloudflare_logpush_job" "with_cve_field" {
   destination_conf = "s3://mybucket/logs?region=us-west-2"
 
   output_options = {
-    output_type    = "ndjson"
-    cve_2021_44228 = true
+    output_type      = "ndjson"
+    cve_2021_44228   = true
+    field_delimiter  = ","
+    record_prefix    = "{"
+    record_suffix    = "}\n"
+    timestamp_format = "unixnano"
+    sample_rate      = 1
   }
 }
 
@@ -73,5 +83,8 @@ resource "cloudflare_logpush_job" "full" {
     sample_rate      = 1.0
     timestamp_format = "unixnano"
     cve_2021_44228   = true
+    field_delimiter  = ","
+    record_prefix    = "{"
+    record_suffix    = "}\n"
   }
 }
