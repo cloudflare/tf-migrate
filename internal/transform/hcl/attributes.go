@@ -45,6 +45,33 @@ func EnsureAttribute(body *hclwrite.Body, attrName string, defaultValue interfac
 	}
 }
 
+// SetAttribute unconditionally sets an attribute to the specified value.
+// Unlike EnsureAttribute, this will overwrite existing values.
+// This is useful when migrating fields with changed defaults that need explicit values.
+//
+// Example - Explicitly setting fail_open during migration:
+//
+// Before:
+//   deployment_configs {
+//     production {
+//       usage_model = "bundled"
+//     }
+//   }
+//
+// After calling SetAttribute(body, "fail_open", false):
+//   deployment_configs {
+//     production {
+//       usage_model = "bundled"
+//       fail_open   = false
+//     }
+//   }
+func SetAttribute(body *hclwrite.Body, attrName string, value interface{}) {
+	tokens := hcl.TokensForSimpleValue(value)
+	if tokens != nil {
+		body.SetAttributeRaw(attrName, tokens)
+	}
+}
+
 // RenameAttribute renames an attribute from oldName to newName.
 // Also updates any references to the old attribute name in lifecycle blocks (ignore_changes, replace_triggered_by).
 // Returns true if the attribute was found and renamed, false otherwise.
