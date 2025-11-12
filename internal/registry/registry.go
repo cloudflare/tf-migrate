@@ -6,6 +6,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	"github.com/cloudflare/tf-migrate/internal/resources/notification_policy_webhooks"
+	"github.com/cloudflare/tf-migrate/internal/resources/pages_project"
 	"github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
@@ -27,6 +28,7 @@ func RegisterAllMigrations() {
 	zone_dnssec.NewV4ToV5Migrator()
 	logpull_retention.NewV4ToV5Migrator()
 	notification_policy_webhooks.NewV4ToV5Migrator()
+	pages_project.NewV4ToV5Migrator()
 	r2_bucket.NewV4ToV5Migrator()
 	workers_kv.NewV4ToV5Migrator()
 	workers_kv_namespace.NewV4ToV5Migrator()
