@@ -42,8 +42,15 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// 1. Convert output_options block to attribute (block → attribute syntax)
 	// This handles: output_options { ... } → output_options = { ... }
 	if outputBlock := tfhcl.FindBlockByType(body, "output_options"); outputBlock != nil {
+		outputBody := outputBlock.Body()
+
 		// Rename cve20214428 → cve_2021_44228 BEFORE conversion
-		tfhcl.RenameAttribute(outputBlock.Body(), "cve20214428", "cve_2021_44228")
+		tfhcl.RenameAttribute(outputBody, "cve20214428", "cve_2021_44228")
+
+		// Add v4 schema defaults if not already present (to preserve v4 behavior in v5)
+		// v5 does not have defaults for these fields, so we must make them explicit
+		m.ensureV4SchemaDefaults(outputBody)
+
 		tfhcl.ConvertSingleBlockToAttribute(body, "output_options", "output_options")
 	}
 
@@ -64,6 +71,34 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
+}
+
+// ensureV4SchemaDefaults adds v4 schema defaults to output_options if not present
+// This preserves v4 behavior in v5, which has no defaults for these fields
+func (m *V4ToV5Migrator) ensureV4SchemaDefaults(body *hclwrite.Body) {
+	// Use a slice to ensure deterministic ordering of defaults
+	type defaultPair struct {
+		field string
+		value interface{}
+	}
+
+	v4Defaults := []defaultPair{
+		{"field_delimiter", ","},
+		{"record_prefix", "{"},
+		{"record_suffix", "}\n"},
+		{"timestamp_format", "unixnano"},
+		{"sample_rate", 1.0},
+	}
+
+	for _, pair := range v4Defaults {
+		if body.GetAttribute(pair.field) == nil {
+			// Field not present, add the v4 default
+			tokens := hcl.TokensForSimpleValue(pair.value)
+			if tokens != nil {
+				body.SetAttributeRaw(pair.field, tokens)
+			}
+		}
+	}
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
@@ -94,6 +129,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 }
 
 // convertNumericFields converts integer fields to float64 for int64 compatibility
+// and removes fields with value 0 since they're API defaults and marked as no_refresh in v5
 func (m *V4ToV5Migrator) convertNumericFields(result string, attrs gjson.Result) string {
 	numericFields := []string{
 		"max_upload_bytes",
@@ -102,9 +138,17 @@ func (m *V4ToV5Migrator) convertNumericFields(result string, attrs gjson.Result)
 	}
 
 	for _, field := range numericFields {
-		if val := attrs.Get(field); val.Exists() && val.Type == gjson.Number {
-			// Convert to float64 for int64 compatibility
-			result, _ = sjson.Set(result, "attributes."+field, val.Float())
+		if val := attrs.Get(field); val.Exists() {
+			// These fields are marked as no_refresh in v5, so if they're 0 (API default),
+			// they should not be in state unless explicitly set in config.
+			// Since we can't determine if they were in config, we remove 0 values
+			// to match v5's behavior where these are only in state if explicitly configured.
+			if val.Type == gjson.Number && val.Float() == 0 {
+				result, _ = sjson.Delete(result, "attributes."+field)
+			} else {
+				// Convert to float64 for int64 compatibility
+				result, _ = sjson.Set(result, "attributes."+field, state.ConvertToFloat64(val))
+			}
 		}
 	}
 
@@ -112,6 +156,7 @@ func (m *V4ToV5Migrator) convertNumericFields(result string, attrs gjson.Result)
 }
 
 // transformOutputOptions transforms output_options from array to object and renames fields
+// Preserves v4 schema defaults in state to match config (v5 has no defaults for these fields)
 func (m *V4ToV5Migrator) transformOutputOptions(result string, attrs gjson.Result) string {
 	outputOpts := attrs.Get("output_options")
 
@@ -138,9 +183,13 @@ func (m *V4ToV5Migrator) transformOutputOptions(result string, attrs gjson.Resul
 					k = "cve_2021_44228"
 				}
 
+				// Keep all values including v4 schema defaults (they're now in migrated config)
 				obj[k] = state.ConvertGjsonValue(value)
 				return true
 			})
+
+			// Add v4 schema defaults if not present (to match migrated config)
+			m.addV4SchemaDefaultsToState(obj)
 
 			result, _ = sjson.Set(result, "attributes.output_options", obj)
 		}
@@ -148,7 +197,37 @@ func (m *V4ToV5Migrator) transformOutputOptions(result string, attrs gjson.Resul
 		// Already an object, just rename field if needed
 		result = state.RenameField(result, "attributes.output_options", outputOpts,
 			"cve20214428", "cve_2021_44228")
+
+		// Add v4 schema defaults if not present (to match migrated config)
+		// First, get the current object from result
+		updatedOpts := gjson.Get(result, "attributes.output_options")
+		if updatedOpts.Exists() {
+			obj := make(map[string]interface{})
+			updatedOpts.ForEach(func(key, value gjson.Result) bool {
+				obj[key.String()] = state.ConvertGjsonValue(value)
+				return true
+			})
+			m.addV4SchemaDefaultsToState(obj)
+			result, _ = sjson.Set(result, "attributes.output_options", obj)
+		}
 	}
 
 	return result
+}
+
+// addV4SchemaDefaultsToState adds v4 schema defaults to state object if not present
+func (m *V4ToV5Migrator) addV4SchemaDefaultsToState(obj map[string]interface{}) {
+	v4Defaults := map[string]interface{}{
+		"field_delimiter":  ",",
+		"record_prefix":    "{",
+		"record_suffix":    "}\n",
+		"timestamp_format": "unixnano",
+		"sample_rate":      1.0,
+	}
+
+	for field, defaultValue := range v4Defaults {
+		if _, exists := obj[field]; !exists {
+			obj[field] = defaultValue
+		}
+	}
 }
