@@ -280,10 +280,10 @@ resource "cloudflare_dns_record" "protected_record" {
 resource "cloudflare_dns_record" "conditional_value" {
   zone_id = var.cloudflare_zone_id
   name    = "conditional"
-  value   = var.enable_ipv6 ? "2001:0db8::1" : "192.0.2.100"
   type    = var.enable_ipv6 ? "AAAA" : "A"
   proxied = true
   ttl     = 1
+  content = var.enable_ipv6 ? "2001:0db8::1" : "192.0.2.100"
 }
 
 # Pattern 12: Resource with tags/comments

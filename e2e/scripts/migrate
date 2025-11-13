@@ -55,8 +55,9 @@ if [[ -d "${GENERATED_DIR}" ]]; then
 fi
 
 # Copy all files from v4 directory, excluding .terraform, lock file, and backend config
+# Include terraform.tfstate for state migration
 rsync -a --exclude='.terraform' --exclude='.terraform.lock.hcl' --exclude='backend.hcl' --exclude='backend.configured.hcl' "${V4_DIR}/" "${GENERATED_DIR}/"
-echo -e "${GREEN}  ✓ Copied tf/v4/ to migrated-v4_to_v5/ (excluding .terraform and backend configs)${NC}"
+echo -e "${GREEN}  ✓ Copied tf/v4/ to migrated-v4_to_v5/ (including state file for migration)${NC}"
 
 # Update provider.tf to use latest version and remove backend config
 if [[ -f "${GENERATED_DIR}/provider.tf" ]]; then
@@ -72,11 +73,12 @@ fi
 echo ""
 
 # Run migration with recursive flag to process all modules and root files
-echo -e "${YELLOW}Migrating all files (including modules)...${NC}"
+echo -e "${YELLOW}Migrating all files (including modules and state)...${NC}"
 if "$BINARY" --config-dir "$GENERATED_DIR" \
+    --state-file "${GENERATED_DIR}/terraform.tfstate" \
     --source-version v4 --target-version v5 \
     migrate --backup=false --recursive; then
-    echo -e "${GREEN}  ✓ Migration complete (includes cross-module reference updates)${NC}"
+    echo -e "${GREEN}  ✓ Migration complete (includes state and cross-module reference updates)${NC}"
 else
     echo -e "${RED}  ✗ Migration failed${NC}"
     exit 1

@@ -18,18 +18,18 @@ show_usage() {
     echo "Usage: $0 [--account <account_id>] [--zone <zone_id>]"
     echo ""
     echo "Optional arguments:"
-    echo "  --account    Cloudflare account ID (default: a09697b020084f87a205896b35575a37)"
-    echo "  --zone       Cloudflare zone ID (default: cd581854c1f59f8c686ee796d0eddce2)"
+    echo "  --account    Cloudflare account ID (default: \$CLOUDFLARE_ACCOUNT_ID)"
+    echo "  --zone       Cloudflare zone ID (default: \$CLOUDFLARE_ZONE_ID)"
     echo ""
     echo "Example:"
     echo "  $0"
-    echo "  $0 --account a09697b020084f87a205896b35575a37 --zone cd581854c1f59f8c686ee796d0eddce2"
+    echo "  $0 --account your-account-id --zone your-zone-id"
     exit 1
 }
 
-# Parse command line arguments with defaults
-ACCOUNT_ID="a09697b020084f87a205896b35575a37"
-ZONE_ID="cd581854c1f59f8c686ee796d0eddce2"
+# Parse command line arguments with defaults from environment
+ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID}"
+ZONE_ID="${CLOUDFLARE_ZONE_ID}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
