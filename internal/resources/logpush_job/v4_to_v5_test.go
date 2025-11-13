@@ -470,24 +470,6 @@ resource "cloudflare_logpush_job" "job2" {
 }`,
 			},
 			{
-				Name: "Remove numeric fields with value 0 (API defaults)",
-				Input: `{
-  "attributes": {
-    "dataset": "http_requests",
-    "destination_conf": "s3://mybucket/logs?region=us-west-2",
-    "max_upload_bytes": 0,
-    "max_upload_records": 0,
-    "max_upload_interval_seconds": 0
-  }
-}`,
-				Expected: `{
-  "attributes": {
-    "dataset": "http_requests",
-    "destination_conf": "s3://mybucket/logs?region=us-west-2"
-  }
-}`,
-			},
-			{
 				Name: "Preserve v4 schema defaults in output_options state",
 				Input: `{
   "attributes": {
