@@ -39,6 +39,11 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+func (m *V4ToV5Migrator) Postprocess(content string) string {
+	// No postprocessing needed - cross-file references are handled by global postprocessing
+	return content
+}
+
 // GetResourceRename implements the ResourceRenamer interface
 // This allows the migration tool to collect all resource renames and apply them globally
 func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
@@ -62,10 +67,18 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		recordType = tfhcl.ExtractStringFromAttribute(typeAttr)
 	}
 
-	// Handle simple record types or records without type
-	// When type is missing, we still need to rename value to content
-	if recordType == "" || m.isSimpleRecordType(recordType) {
-		// Rename value to content for simple record types
+	// Complex record types that use the data field instead of content/value
+	complexDataTypes := map[string]bool{
+		"SRV": true, "CAA": true, "CERT": true, "DNSKEY": true, "DS": true,
+		"LOC": true, "NAPTR": true, "SMIMEA": true, "SSHFP": true, "SVCB": true,
+		"HTTPS": true, "TLSA": true, "URI": true,
+	}
+
+	// Rename value to content for all record types EXCEPT those that use data field
+	// This handles simple types (A, AAAA, CNAME, etc.) as well as dynamic type expressions
+	// where we can't determine the type statically
+	if !complexDataTypes[recordType] {
+		// Rename value to content
 		if valueAttr := body.GetAttribute("value"); valueAttr != nil {
 			// Get the expression from value attribute
 			tokens := valueAttr.Expr().BuildTokens(nil)

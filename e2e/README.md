@@ -52,10 +52,10 @@ git clone https://github.com/cloudflare/terraform-provider-cloudflare.git
 
 # Run the sweeper for specific resource types
 cd terraform-provider-cloudflare
-./scripts/sweep --account a09697b020084f87a205896b35575a37 --zone cd581854c1f59f8c686ee796d0eddce2 --resource workers_kv_namespace
+./scripts/sweep --account $CLOUDFLARE_ACCOUNT_ID --zone $CLOUDFLARE_ZONE_ID --resource workers_kv_namespace
 
 # You can sweep multiple resource types
-./scripts/sweep --account <account-id> --zone <zone-id> --resource workers_kv_namespace --resource teams_list --resource teams_rule
+./scripts/sweep --account $CLOUDFLARE_ACCOUNT_ID --zone $CLOUDFLARE_ZONE_ID --resource workers_kv_namespace --resource teams_list --resource teams_rule
 ```
 
 Common resource types to clean up:

@@ -19,7 +19,7 @@ resource "cloudflare_workers_kv" "basic" {
 resource "cloudflare_workers_kv" "special_chars" {
   account_id   = var.cloudflare_account_id
   namespace_id = cloudflare_workers_kv_namespace.test_namespace.id
-  key          = "api%2Ftoken"
+  key          = "api/token"
   value        = "{\"api_key\": \"test123\", \"endpoint\": \"https://api.example.com\"}"
 }
 

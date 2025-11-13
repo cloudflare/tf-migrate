@@ -11,6 +11,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration
@@ -39,9 +40,16 @@ if [[ -z "${R2_SECRET_ACCESS_KEY:-}" ]]; then
     exit 1
 fi
 
-echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}Bootstrap Remote State${NC}"
-echo -e "${BLUE}========================================${NC}"
+echo -e "${CYAN}========================================${NC}"
+echo -e "${CYAN}Bootstrap Remote State${NC}"
+echo -e "${CYAN}========================================${NC}"
+echo ""
+
+echo -e "${GREEN}Using credentials:${NC}"
+echo -e "  ${CYAN}User:       ${CLOUDFLARE_EMAIL:-<not set>}${NC}"
+echo -e "  ${CYAN}Account ID: ${CLOUDFLARE_ACCOUNT_ID}${NC}"
+echo -e "  ${CYAN}Zone ID:    ${CLOUDFLARE_ZONE_ID:-<not set>}${NC}"
+echo -e "  ${CYAN}R2 Key ID:  ${R2_ACCESS_KEY_ID}${NC}"
 echo ""
 
 # Check if local state exists
@@ -75,7 +83,7 @@ terraform init -backend-config="$BACKEND_CONFIG_TMP" -migrate-state
 echo ""
 echo -e "${GREEN}✓ State successfully migrated to remote backend!${NC}"
 echo ""
-echo -e "${BLUE}Remote state location:${NC}"
+echo -e "${CYAN}Remote state location:${NC}"
 echo -e "  Bucket: tf-migrate-e2e-state"
 echo -e "  Key: v4/terraform.tfstate"
 echo -e "  Endpoint: https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"

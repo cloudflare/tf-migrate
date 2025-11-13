@@ -4,13 +4,14 @@ resource "cloudflare_api_token" "basic_token" {
 
   policies = [{
     effect = "allow"
-    permission_groups = [
-      "c8fed203ed3043cba015a93ad1616f1f",
-      "82e64a83756745bbbb1c9c2701bf816b"
-    ]
     resources = {
       "com.cloudflare.api.account.*" = "*"
     }
+    permission_groups = [{
+      id = "c8fed203ed3043cba015a93ad1616f1f"
+      }, {
+      id = "82e64a83756745bbbb1c9c2701bf816b"
+    }]
   }]
 }
 
@@ -21,20 +22,20 @@ resource "cloudflare_api_token" "multi_policy_token" {
 
   policies = [{
     effect = "allow"
-    permission_groups = [
-      "c8fed203ed3043cba015a93ad1616f1f"
-    ]
     resources = {
       "com.cloudflare.api.account.*" = "*"
     }
+    permission_groups = [{
+      id = "c8fed203ed3043cba015a93ad1616f1f"
+    }]
     }, {
     effect = "deny"
-    permission_groups = [
-      "82e64a83756745bbbb1c9c2701bf816b"
-    ]
     resources = {
       "com.cloudflare.api.account.zone.*" = "*"
     }
+    permission_groups = [{
+      id = "82e64a83756745bbbb1c9c2701bf816b"
+    }]
   }]
 }
 
@@ -45,12 +46,12 @@ resource "cloudflare_api_token" "conditional_token" {
 
   policies = [{
     effect = "allow"
-    permission_groups = [
-      "c8fed203ed3043cba015a93ad1616f1f"
-    ]
     resources = {
       "com.cloudflare.api.account.*" = "*"
     }
+    permission_groups = [{
+      id = "c8fed203ed3043cba015a93ad1616f1f"
+    }]
   }]
   condition = {
     request_ip = {
@@ -69,13 +70,13 @@ resource "cloudflare_api_token" "advanced_condition_token" {
 
   policies = [{
     effect = "allow"
-    permission_groups = [
-      "c8fed203ed3043cba015a93ad1616f1f"
-    ]
     resources = {
       "com.cloudflare.api.account.*"      = "*"
       "com.cloudflare.api.account.zone.*" = "*"
     }
+    permission_groups = [{
+      id = "c8fed203ed3043cba015a93ad1616f1f"
+    }]
   }]
   condition = {
     request_ip = {
@@ -100,12 +101,12 @@ resource "cloudflare_api_token" "time_limited_token" {
 
   policies = [{
     effect = "allow"
-    permission_groups = [
-      "c8fed203ed3043cba015a93ad1616f1f"
-    ]
     resources = {
       "com.cloudflare.api.account.*" = "*"
     }
+    permission_groups = [{
+      id = "c8fed203ed3043cba015a93ad1616f1f"
+    }]
   }]
 }
 
@@ -115,12 +116,12 @@ resource "cloudflare_api_token" "empty_perms_token" {
 
   policies = [{
     effect = "allow"
-    permission_groups = [
-      "c8fed203ed3043cba015a93ad1616f1f"
-    ]
     resources = {
       "com.cloudflare.api.account.*" = "*"
     }
+    permission_groups = [{
+      id = "c8fed203ed3043cba015a93ad1616f1f"
+    }]
   }]
 }
 
@@ -134,21 +135,21 @@ resource "cloudflare_api_token" "full_example" {
 
   policies = [{
     effect = "allow"
-    permission_groups = [
-      "c8fed203ed3043cba015a93ad1616f1f"
-    ]
     resources = {
       "com.cloudflare.api.account.*"      = "*"
       "com.cloudflare.api.account.zone.*" = "*"
     }
+    permission_groups = [{
+      id = "c8fed203ed3043cba015a93ad1616f1f"
+    }]
     }, {
     effect = "deny"
-    permission_groups = [
-      "e086da7e2179491d91ee5f35b3ca210a"
-    ]
     resources = {
       "com.cloudflare.api.account.zone.*" = "*"
     }
+    permission_groups = [{
+      id = "e086da7e2179491d91ee5f35b3ca210a"
+    }]
   }]
   condition = {
     request_ip = {
@@ -167,8 +168,6 @@ resource "cloudflare_api_token" "full_example" {
 }
 
 # Test Case 8: Token with data reference and timestamps
-data "cloudflare_api_token_permission_groups" "all" {}
-
 resource "cloudflare_api_token" "api_token_create" {
   name = "api_token_create"
 
@@ -177,12 +176,13 @@ resource "cloudflare_api_token" "api_token_create" {
   expires_on = "2035-12-31T23:59:59Z"
 
   policies = [{
-    permission_groups = [
-      "c8fed203ed3043cba015a93ad1616f1f",
-    ]
     resources = {
       "com.cloudflare.api.account.*" = "*"
     }
+    effect = "allow"
+    permission_groups = [{
+      id = "c8fed203ed3043cba015a93ad1616f1f"
+    }]
   }]
   condition = {
     request_ip = {
