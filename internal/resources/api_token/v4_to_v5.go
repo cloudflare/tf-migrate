@@ -32,6 +32,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// This resource does not rename, so we return the same name for both old and new
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_api_token", "cloudflare_api_token"
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
 

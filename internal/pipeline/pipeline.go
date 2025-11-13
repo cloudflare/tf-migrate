@@ -1,9 +1,10 @@
 package pipeline
 
 import (
+	"github.com/hashicorp/go-hclog"
+
 	"github.com/cloudflare/tf-migrate/internal/handlers"
 	"github.com/cloudflare/tf-migrate/internal/transform"
-	"github.com/hashicorp/go-hclog"
 )
 
 type Pipeline struct {

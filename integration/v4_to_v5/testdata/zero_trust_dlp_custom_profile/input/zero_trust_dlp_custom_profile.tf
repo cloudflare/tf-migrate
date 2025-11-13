@@ -1,59 +1,67 @@
-resource "cloudflare_zero_trust_dlp_custom_profile" "credit_cards" {
-  account_id          = "f037e56e89293a057740de681ac9abbe"
+resource "cloudflare_dlp_profile" "credit_cards" {
+  account_id          = var.cloudflare_account_id
   name                = "Credit Card Detection"
   description         = "Custom profile for detecting credit card numbers"
+  type                = "custom"
   allowed_match_count = 5
 
-
-
-  entries = [{
+  entry {
+    id      = "visa-card-pattern"
     name    = "Visa Card"
     enabled = true
-    pattern = {
+    pattern {
       regex      = "4[0-9]{12}(?:[0-9]{3})?"
       validation = "luhn"
     }
-    }, {
+  }
+
+  entry {
+    id      = "mastercard-pattern"
     name    = "Mastercard"
     enabled = true
-    pattern = {
+    pattern {
       regex      = "5[1-5][0-9]{14}"
       validation = "luhn"
     }
-    }, {
+  }
+
+  entry {
+    id      = "amex-pattern"
     name    = "American Express"
     enabled = false
-    pattern = {
+    pattern {
       regex      = "3[47][0-9]{13}"
       validation = "luhn"
     }
-  }]
+  }
 }
 
-resource "cloudflare_zero_trust_dlp_custom_profile" "ssn_detection" {
-  account_id          = "f037e56e89293a057740de681ac9abbe"
+resource "cloudflare_dlp_profile" "ssn_detection" {
+  account_id          = var.cloudflare_account_id
   name                = "SSN Detection"
+  type                = "custom"
   allowed_match_count = 3
 
-  entries = [{
+  entry {
     name    = "SSN Pattern"
     enabled = true
-    pattern = {
+    pattern {
       regex = "[0-9]{3}-[0-9]{2}-[0-9]{4}"
     }
-  }]
+  }
 }
 
-resource "cloudflare_zero_trust_dlp_custom_profile" "minimal" {
-  account_id          = "f037e56e89293a057740de681ac9abbe"
+resource "cloudflare_dlp_profile" "minimal" {
+  account_id          = var.cloudflare_account_id
   name                = "Minimal Profile"
+  type                = "custom"
   allowed_match_count = 1
 
-  entries = [{
+  entry {
     name    = "Simple Pattern"
     enabled = true
-    pattern = {
-      regex = "test[0-9]+"
+    pattern {
+      regex = "test[0-9]{1,10}"
     }
-  }]
+  }
 }

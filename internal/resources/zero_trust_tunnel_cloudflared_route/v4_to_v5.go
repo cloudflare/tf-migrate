@@ -39,6 +39,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// This allows the migration tool to collect all resource renames and apply them globally
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_tunnel_route", "cloudflare_zero_trust_tunnel_cloudflared_route"
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	// Rename resource type from cloudflare_tunnel_route to cloudflare_zero_trust_tunnel_cloudflared_route
 	tfhcl.RenameResourceType(block, "cloudflare_tunnel_route", "cloudflare_zero_trust_tunnel_cloudflared_route")

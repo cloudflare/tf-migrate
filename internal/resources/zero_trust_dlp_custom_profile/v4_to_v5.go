@@ -39,6 +39,16 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// Note: This migrator handles TWO different target types (custom and predefined)
+// We return the primary rename here (to custom_profile), but the actual rename
+// is determined in TransformConfig based on the profile type
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	// Return both old types that map to this migrator
+	// The global postprocessing will handle both cloudflare_dlp_profile and cloudflare_zero_trust_dlp_profile
+	return "cloudflare_dlp_profile", "cloudflare_zero_trust_dlp_custom_profile"
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
 

@@ -19,21 +19,23 @@ import (
 // Example - Adding required TTL field to DNS records:
 //
 // Before:
-//   resource "cloudflare_dns_record" "example" {
-//     zone_id = "abc123"
-//     name    = "test"
-//     type    = "A"
-//     content = "192.0.2.1"
-//   }
+//
+//	resource "cloudflare_dns_record" "example" {
+//	  zone_id = "abc123"
+//	  name    = "test"
+//	  type    = "A"
+//	  content = "192.0.2.1"
+//	}
 //
 // After calling EnsureAttribute(body, "ttl", 1):
-//   resource "cloudflare_dns_record" "example" {
-//     zone_id = "abc123"
-//     name    = "test"
-//     type    = "A"
-//     content = "192.0.2.1"
-//     ttl     = 1
-//   }
+//
+//	resource "cloudflare_dns_record" "example" {
+//	  zone_id = "abc123"
+//	  name    = "test"
+//	  type    = "A"
+//	  content = "192.0.2.1"
+//	  ttl     = 1
+//	}
 func EnsureAttribute(body *hclwrite.Body, attrName string, defaultValue interface{}) {
 	if body.GetAttribute(attrName) == nil {
 		tokens := hcl.TokensForSimpleValue(defaultValue)
@@ -49,20 +51,22 @@ func EnsureAttribute(body *hclwrite.Body, attrName string, defaultValue interfac
 // Example - Renaming 'value' to 'content' for DNS records:
 //
 // Before:
-//   resource "cloudflare_dns_record" "example" {
-//     zone_id = "abc123"
-//     name    = "test"
-//     type    = "A"
-//     value   = "192.0.2.1"  # Old field name
-//   }
+//
+//	resource "cloudflare_dns_record" "example" {
+//	  zone_id = "abc123"
+//	  name    = "test"
+//	  type    = "A"
+//	  value   = "192.0.2.1"  # Old field name
+//	}
 //
 // After calling RenameAttribute(body, "value", "content"):
-//   resource "cloudflare_dns_record" "example" {
-//     zone_id = "abc123"
-//     name    = "test"
-//     type    = "A"
-//     content = "192.0.2.1"  # New field name
-//   }
+//
+//	resource "cloudflare_dns_record" "example" {
+//	  zone_id = "abc123"
+//	  name    = "test"
+//	  type    = "A"
+//	  content = "192.0.2.1"  # New field name
+//	}
 func RenameAttribute(body *hclwrite.Body, oldName, newName string) bool {
 	if attr := body.GetAttribute(oldName); attr != nil {
 		tokens := attr.Expr().BuildTokens(nil)
@@ -79,22 +83,24 @@ func RenameAttribute(body *hclwrite.Body, oldName, newName string) bool {
 // Example - Removing deprecated fields:
 //
 // Before:
-//   resource "cloudflare_dns_record" "example" {
-//     zone_id         = "abc123"
-//     name            = "test"
-//     type            = "A"
-//     content         = "192.0.2.1"
-//     allow_overwrite = true      # Deprecated in v5
-//     hostname        = "test.com" # Deprecated in v5
-//   }
+//
+//	resource "cloudflare_dns_record" "example" {
+//	  zone_id         = "abc123"
+//	  name            = "test"
+//	  type            = "A"
+//	  content         = "192.0.2.1"
+//	  allow_overwrite = true      # Deprecated in v5
+//	  hostname        = "test.com" # Deprecated in v5
+//	}
 //
 // After calling RemoveAttributes(body, "allow_overwrite", "hostname"):
-//   resource "cloudflare_dns_record" "example" {
-//     zone_id = "abc123"
-//     name    = "test"
-//     type    = "A"
-//     content = "192.0.2.1"
-//   }
+//
+//	resource "cloudflare_dns_record" "example" {
+//	  zone_id = "abc123"
+//	  name    = "test"
+//	  type    = "A"
+//	  content = "192.0.2.1"
+//	}
 func RemoveAttributes(body *hclwrite.Body, attrNames ...string) int {
 	removed := 0
 	for _, attrName := range attrNames {
@@ -110,15 +116,16 @@ func RemoveAttributes(body *hclwrite.Body, attrNames ...string) int {
 // Handles both quoted literals and identifiers.
 //
 // Example usage:
-//   typeAttr := body.GetAttribute("type")
-//   recordType := ExtractStringFromAttribute(typeAttr)
-//   // Returns "A" from: type = "A"
-//   // Returns "var.record_type" from: type = var.record_type
+//
+//	typeAttr := body.GetAttribute("type")
+//	recordType := ExtractStringFromAttribute(typeAttr)
+//	// Returns "A" from: type = "A"
+//	// Returns "var.record_type" from: type = var.record_type
 func ExtractStringFromAttribute(attr *hclwrite.Attribute) string {
 	if attr == nil {
 		return ""
 	}
-	
+
 	tokens := attr.Expr().BuildTokens(nil)
 	for _, token := range tokens {
 		if token.Type == hclsyntax.TokenQuotedLit {
@@ -172,4 +179,27 @@ func ConditionalRenameAttribute(body *hclwrite.Body, oldName, newName string, co
 		}
 	}
 	return false
+}
+
+// UpdateResourceReferences updates all references to a resource type in the content.
+// This is useful when renaming resource types to ensure cross-resource references are updated.
+//
+// Example - Updating references from cloudflare_record to cloudflare_dns_record:
+//
+// Before:
+//
+//	content = "${cloudflare_record.example_a.name}.${var.domain_name}"
+//
+// After calling UpdateResourceReferences(content, "cloudflare_record", "cloudflare_dns_record"):
+//
+//	content = "${cloudflare_dns_record.example_a.name}.${var.domain_name}"
+func UpdateResourceReferences(content, oldType, newType string) string {
+	// Replace resource references in string interpolations
+	// Pattern: ${oldType. -> ${newType.
+	content = strings.ReplaceAll(content, "${"+oldType+".", "${"+newType+".")
+	// Pattern: oldType. (for non-interpolated references)
+	// We need to be careful to only replace when followed by a dot and identifier
+	// This is a simpler approach that works for most cases
+	content = strings.ReplaceAll(content, oldType+".", newType+".")
+	return content
 }
