@@ -129,7 +129,6 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 }
 
 // convertNumericFields converts integer fields to float64 for int64 compatibility
-// and removes fields with value 0 since they're API defaults and marked as no_refresh in v5
 func (m *V4ToV5Migrator) convertNumericFields(result string, attrs gjson.Result) string {
 	numericFields := []string{
 		"max_upload_bytes",
