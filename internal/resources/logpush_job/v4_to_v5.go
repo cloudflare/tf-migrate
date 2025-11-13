@@ -139,16 +139,8 @@ func (m *V4ToV5Migrator) convertNumericFields(result string, attrs gjson.Result)
 
 	for _, field := range numericFields {
 		if val := attrs.Get(field); val.Exists() {
-			// These fields are marked as no_refresh in v5, so if they're 0 (API default),
-			// they should not be in state unless explicitly set in config.
-			// Since we can't determine if they were in config, we remove 0 values
-			// to match v5's behavior where these are only in state if explicitly configured.
-			if val.Type == gjson.Number && val.Float() == 0 {
-				result, _ = sjson.Delete(result, "attributes."+field)
-			} else {
-				// Convert to float64 for int64 compatibility
-				result, _ = sjson.Set(result, "attributes."+field, state.ConvertToFloat64(val))
-			}
+			// Convert to float64 for int64 compatibility
+			result, _ = sjson.Set(result, "attributes."+field, state.ConvertToFloat64(val))
 		}
 	}
 
