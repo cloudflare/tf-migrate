@@ -1,1 +1,24 @@
 tf-migrate
+
+# E2E test files
+# Ignore v4 directory except provider.tf and backend.hcl
+e2e/tf/v4/*
+!e2e/tf/v4/provider.tf
+!e2e/tf/v4/backend.hcl
+
+# Migrated output
+e2e/migrated-v4_to_v5/
+
+# E2E test outputs
+e2e/tmp/
+
+# E2E test state files (stored in remote backend)
+e2e/tf/v4/terraform.tfstate*
+e2e/tf/v5/terraform.tfstate*
+
+# Backend configuration with secrets (generated at runtime)
+e2e/tf/v4/backend.configured.hcl
+
+# Backup files
+e2e/*.backup
+e2e/*.tfstate.backup

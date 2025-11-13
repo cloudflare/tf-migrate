@@ -30,6 +30,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// This resource does not rename, so we return the same name for both old and new
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_workers_kv_namespace", "cloudflare_workers_kv_namespace"
+}
+
 // TransformConfig transforms the HCL configuration from v4 to v5.
 // For workers_kv_namespace, the config is identical between v4 and v5.
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

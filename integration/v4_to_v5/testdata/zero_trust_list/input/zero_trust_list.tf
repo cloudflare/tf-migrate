@@ -1,6 +1,6 @@
 # Basic IP list with simple items array
 resource "cloudflare_teams_list" "ip_list" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
+  account_id = var.cloudflare_account_id
   name       = "IP Allowlist"
   type       = "IP"
   items      = ["192.168.1.1", "192.168.1.2", "10.0.0.0/8"]
@@ -8,7 +8,7 @@ resource "cloudflare_teams_list" "ip_list" {
 
 # Domain list with items_with_description blocks
 resource "cloudflare_teams_list" "domain_list" {
-  account_id  = "f037e56e89293a057740de681ac9abbe"
+  account_id  = var.cloudflare_account_id
   name        = "Allowed Domains"
   type        = "DOMAIN"
   description = "Company approved domains"
@@ -31,7 +31,7 @@ resource "cloudflare_teams_list" "domain_list" {
 
 # Mixed list with both items and items_with_description
 resource "cloudflare_teams_list" "email_list" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
+  account_id = var.cloudflare_account_id
   name       = "VIP Emails"
   type       = "EMAIL"
   items      = ["admin@example.com", "security@example.com"]
@@ -49,7 +49,7 @@ resource "cloudflare_teams_list" "email_list" {
 
 # URL list with only items_with_description
 resource "cloudflare_teams_list" "url_list" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
+  account_id = var.cloudflare_account_id
   name       = "Blocked URLs"
   type       = "URL"
   
@@ -66,7 +66,7 @@ resource "cloudflare_teams_list" "url_list" {
 
 # Empty list - should be handled properly
 resource "cloudflare_teams_list" "empty_list" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
+  account_id = var.cloudflare_account_id
   name       = "Empty Serial List"
   type       = "SERIAL"
   items      = []
@@ -74,7 +74,7 @@ resource "cloudflare_teams_list" "empty_list" {
 
 # List with special characters and various formats
 resource "cloudflare_teams_list" "complex_ips" {
-  account_id  = "f037e56e89293a057740de681ac9abbe"
+  account_id  = var.cloudflare_account_id
   name        = "Complex IP List"
   type        = "IP"
   description = "Various IP formats"

@@ -16,8 +16,8 @@ type Context struct {
 	Diagnostics   hcl.Diagnostics
 	Metadata      map[string]interface{}
 	Resources     []string
-	SourceVersion string           // Source provider version (e.g., "v4")
-	TargetVersion string           // Target provider version (e.g., "v5")
+	SourceVersion string             // Source provider version (e.g., "v4")
+	TargetVersion string             // Target provider version (e.g., "v5")
 	APIClient     *cloudflare.Client // Optional: Cloudflare API client for migrations that need to query the API
 }
 
@@ -41,6 +41,14 @@ type ResourceTransformer interface {
 	GetResourceType() string
 	// Preprocess for string-level transformations before parsing
 	Preprocess(content string) string
+}
+
+// ResourceRenamer is an optional interface that migrators can implement
+// to expose resource type renames. This enables global cross-file reference updates.
+type ResourceRenamer interface {
+	// GetResourceRename returns the old and new resource type names
+	// Returns empty strings if this migrator doesn't rename the resource type
+	GetResourceRename() (oldType string, newType string)
 }
 
 // MigrationProvider specifies the interface for a migrator provider

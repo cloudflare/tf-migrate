@@ -29,6 +29,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// This resource does not rename, so we return the same name for both old and new
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_notification_policy_webhooks", "cloudflare_notification_policy_webhooks"
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	// No transformations needed - all fields remain the same
 	// Note: We assume all v4 configs have the url field since it was optional in v4

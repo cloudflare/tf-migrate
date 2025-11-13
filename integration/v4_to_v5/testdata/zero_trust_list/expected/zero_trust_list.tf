@@ -1,6 +1,6 @@
 # Basic IP list with simple items array
 resource "cloudflare_zero_trust_list" "ip_list" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
+  account_id = var.cloudflare_account_id
   name       = "IP Allowlist"
   type       = "IP"
   items = [{
@@ -17,7 +17,7 @@ resource "cloudflare_zero_trust_list" "ip_list" {
 
 # Domain list with items_with_description blocks
 resource "cloudflare_zero_trust_list" "domain_list" {
-  account_id  = "f037e56e89293a057740de681ac9abbe"
+  account_id  = var.cloudflare_account_id
   name        = "Allowed Domains"
   type        = "DOMAIN"
   description = "Company approved domains"
@@ -38,7 +38,7 @@ resource "cloudflare_zero_trust_list" "domain_list" {
 
 # Mixed list with both items and items_with_description
 resource "cloudflare_zero_trust_list" "email_list" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
+  account_id = var.cloudflare_account_id
   name       = "VIP Emails"
   type       = "EMAIL"
 
@@ -60,7 +60,7 @@ resource "cloudflare_zero_trust_list" "email_list" {
 
 # URL list with only items_with_description
 resource "cloudflare_zero_trust_list" "url_list" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
+  account_id = var.cloudflare_account_id
   name       = "Blocked URLs"
   type       = "URL"
 
@@ -76,14 +76,14 @@ resource "cloudflare_zero_trust_list" "url_list" {
 
 # Empty list - should be handled properly
 resource "cloudflare_zero_trust_list" "empty_list" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
+  account_id = var.cloudflare_account_id
   name       = "Empty Serial List"
   type       = "SERIAL"
 }
 
 # List with special characters and various formats
 resource "cloudflare_zero_trust_list" "complex_ips" {
-  account_id  = "f037e56e89293a057740de681ac9abbe"
+  account_id  = var.cloudflare_account_id
   name        = "Complex IP List"
   type        = "IP"
   description = "Various IP formats"

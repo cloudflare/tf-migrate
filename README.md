@@ -181,3 +181,25 @@ Integration tests are organized by version migration path:
   - `testdata/` - Test fixtures for each resource
 
 Each version migration has its own test suite with explicit migration registration, while sharing the common test runner infrastructure.
+
+#### End-to-End Tests
+
+E2E tests validate the complete migration workflow with real Cloudflare resources. These tests:
+1. Apply v4 Terraform configs to create real infrastructure
+2. Run the migration tool to generate v5 configs
+3. Apply v5 configs and verify no changes are needed
+4. Compare v4 and v5 state to ensure equivalence
+
+**Requirements:**
+- Cloudflare API credentials for "Terraform Test" account (set as `CLOUDFLARE_API_KEY` and `CLOUDFLARE_EMAIL`)
+- Terraform installed
+
+```bash
+# Run E2E tests
+cd ..
+./scripts/run-e2e-tests
+```
+
+**Output:**
+- Test logs saved to `e2e/tmp/*.log`
+- State snapshots saved to `e2e/tmp/*-state.json`

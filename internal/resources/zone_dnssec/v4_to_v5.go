@@ -42,6 +42,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// This resource does not rename, so we return the same name for both old and new
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_zone_dnssec", "cloudflare_zone_dnssec"
+}
+
 // TransformConfig handles configuration file transformations.
 // 1. Adds status attribute from state (changed from computed-only to optional in v5)
 // 2. Removes modified_on attribute if present (changed from optional+computed to computed-only in v5)

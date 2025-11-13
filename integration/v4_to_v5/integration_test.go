@@ -21,7 +21,6 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_policy"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
-	_ "github.com/cloudflare/tf-migrate/internal/resources/zone_dnssec"
 )
 
 // TestMain explicitly registers migrations for this version path
@@ -44,24 +43,26 @@ func TestV4ToV5Migration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create test runner: %v", err)
 	}
-  
-	// List of resources to test for v4 to v5 migration
-	resources := []string{
-		"account_member",
-		"api_token",
-		"dns_record",
-		"logpull_retention",
-		"logpush_job",
-		"notification_policy_webhooks",
-		"r2_bucket",
-		"workers_kv",
-		"workers_kv_namespace",
-		"zero_trust_access_service_token",
-		"zero_trust_gateway_policy",
-		"zero_trust_list",
-		"zone_dnssec",
-		"zero_trust_dlp_custom_profile",
+
+	// Dynamically discover resources from testdata directory
+	testdataPath := "testdata"
+	entries, err := os.ReadDir(testdataPath)
+	if err != nil {
+		t.Fatalf("Failed to read testdata directory: %v", err)
 	}
+
+	var resources []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			resources = append(resources, entry.Name())
+		}
+	}
+
+	if len(resources) == 0 {
+		t.Fatal("No resources found in testdata directory")
+	}
+
+	t.Logf("Discovered %d resources to test: %v", len(resources), resources)
 
 	for _, resource := range resources {
 		runner.RunTest(t, integration.TestCase{

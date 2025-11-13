@@ -34,6 +34,7 @@ type config struct {
 	targetVersion      string
 	dryRun             bool
 	backup             bool
+	recursive          bool
 	logLevel           string
 }
 
@@ -150,6 +151,7 @@ Uses the global flags --config-dir, --state-file, and --resources to determine w
 	cmd.Flags().StringVar(&cfg.outputDir, "output-dir", "", "Output directory for migrated configuration files (default: in-place)")
 	cmd.Flags().StringVar(&cfg.outputState, "output-state", "", "Output path for migrated state file (default: in-place)")
 	cmd.Flags().BoolVar(&cfg.backup, "backup", true, "Create backup of original files before migration")
+	cmd.Flags().BoolVar(&cfg.recursive, "recursive", false, "Recursively process subdirectories (useful for module structures)")
 
 	return cmd
 }
@@ -234,7 +236,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 		cfg.outputDir = cfg.configDir
 	}
 
-	files, err := findTerraformFiles(cfg.configDir)
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
 	if err != nil {
 		return fmt.Errorf("failed to list .tf files: %w", err)
 	}
@@ -245,6 +247,9 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 	}
 
 	fmt.Printf("\nFound %d configuration files to migrate\n", len(files))
+
+	// Store file paths for global postprocessing
+	outputPaths := make([]string, 0, len(files))
 
 	for i, file := range files {
 		fmt.Printf("[%d/%d] Processing %s... ", i+1, len(files), filepath.Base(file))
@@ -279,15 +284,29 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 			return fmt.Errorf("failed to transform %s: %w", file, err)
 		}
 
-		outputPath := filepath.Join(cfg.outputDir, filepath.Base(file))
+		// Calculate output path maintaining directory structure when recursive
+		var outputPath string
+		if cfg.recursive {
+			// Preserve directory structure relative to config dir
+			relPath, err := filepath.Rel(cfg.configDir, file)
+			if err != nil {
+				return fmt.Errorf("failed to compute relative path: %w", err)
+			}
+			outputPath = filepath.Join(cfg.outputDir, relPath)
+		} else {
+			outputPath = filepath.Join(cfg.outputDir, filepath.Base(file))
+		}
 
 		if cfg.dryRun {
 			fmt.Println("(dry run)")
 			log.Debug("Would write file", "output", outputPath)
-			return nil
+			outputPaths = append(outputPaths, outputPath)
+			continue
 		}
 
-		if err := os.MkdirAll(cfg.outputDir, 0755); err != nil {
+		// Create output directory (including subdirectories if needed)
+		outputDir := filepath.Dir(outputPath)
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
 			return fmt.Errorf("failed to create output directory: %w", err)
 		}
 
@@ -296,8 +315,90 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 		}
 		fmt.Println("✓")
 		log.Debug("Migrated file", "output", outputPath)
+		outputPaths = append(outputPaths, outputPath)
 	}
 
+	// Apply global postprocessing for cross-file reference updates
+	if !cfg.dryRun && len(outputPaths) > 0 {
+		if err := applyGlobalPostprocessing(log, cfg, outputPaths); err != nil {
+			return fmt.Errorf("failed to apply global postprocessing: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// applyGlobalPostprocessing applies cross-file reference updates for resource renames
+func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []string) error {
+	// Collect resource renames from all migrators
+	providers := getProviders(cfg.resourcesToMigrate...)
+	migrators := providers.GetAllMigrators(cfg.sourceVersion, cfg.targetVersion, cfg.resourcesToMigrate...)
+
+	// Map to store old type -> new type mappings
+	renames := make(map[string]string)
+
+	for _, migrator := range migrators {
+		// Check if this migrator implements ResourceRenamer interface
+		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
+			oldType, newType := renamer.GetResourceRename()
+			if oldType != "" && newType != "" {
+				// Only add to renames map if the types are different (actual rename)
+				if oldType != newType {
+					renames[oldType] = newType
+					log.Debug("Collected resource rename", "old", oldType, "new", newType)
+				} else {
+					log.Debug("Resource type unchanged", "type", oldType)
+				}
+			} else {
+				// Warn if migrator implements interface but returns empty values
+				log.Warn("Migrator implements ResourceRenamer but returned empty type names",
+					"old", oldType, "new", newType)
+			}
+		} else {
+			// Warn if migrator doesn't implement ResourceRenamer interface
+			log.Warn("Migrator does not implement ResourceRenamer interface - cross-file references may not be updated",
+				"migrator", fmt.Sprintf("%T", migrator))
+		}
+	}
+
+	// If no renames found, skip global postprocessing
+	if len(renames) == 0 {
+		log.Debug("No resource renames found, skipping global postprocessing")
+		return nil
+	}
+
+	fmt.Printf("\nApplying cross-file reference updates (%d renames across %d files)...\n", len(renames), len(outputPaths))
+
+	// Apply renames to all files
+	for _, outputPath := range outputPaths {
+		content, err := os.ReadFile(outputPath)
+		if err != nil {
+			log.Warn("Failed to read file for global postprocessing", "file", outputPath, "error", err)
+			continue
+		}
+
+		contentStr := string(content)
+		modified := false
+
+		// Apply all renames
+		for oldType, newType := range renames {
+			newContent := strings.ReplaceAll(contentStr, oldType+".", newType+".")
+			if newContent != contentStr {
+				modified = true
+				contentStr = newContent
+				log.Debug("Updated references", "file", filepath.Base(outputPath), "old", oldType, "new", newType)
+			}
+		}
+
+		// Write back if modified
+		if modified {
+			if err := os.WriteFile(outputPath, []byte(contentStr), 0644); err != nil {
+				return fmt.Errorf("failed to write updated file %s: %w", outputPath, err)
+			}
+		}
+	}
+
+	fmt.Printf("✓ Updated cross-file references (%d renames applied)\n", len(renames))
 	return nil
 }
 
@@ -358,6 +459,10 @@ func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config, apiCli
 }
 
 func findTerraformFiles(dir string) ([]string, error) {
+	return findTerraformFilesWithRecursion(dir, false)
+}
+
+func findTerraformFilesWithRecursion(dir string, recursive bool) ([]string, error) {
 	var files []string
 
 	entries, err := os.ReadDir(dir)
@@ -366,8 +471,17 @@ func findTerraformFiles(dir string) ([]string, error) {
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".tf") {
-			files = append(files, filepath.Join(dir, entry.Name()))
+		path := filepath.Join(dir, entry.Name())
+		if entry.IsDir() && recursive {
+			// Recursively search subdirectories
+			subFiles, err := findTerraformFilesWithRecursion(path, recursive)
+			if err != nil {
+				// Log the error but continue processing other directories
+				continue
+			}
+			files = append(files, subFiles...)
+		} else if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".tf") {
+			files = append(files, path)
 		}
 	}
 
