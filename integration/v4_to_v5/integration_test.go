@@ -7,7 +7,10 @@ import (
 	"github.com/cloudflare/tf-migrate/integration"
 	"github.com/cloudflare/tf-migrate/internal/registry"
 
-	// Explicitly import the migrations we want to test
+	// Datasources
+	_ "github.com/cloudflare/tf-migrate/internal/datasources/zone_data_source"
+
+	// Resources
 	_ "github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
