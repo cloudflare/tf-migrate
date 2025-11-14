@@ -35,7 +35,8 @@ func (h *ResourceTransformHandler) Handle(ctx *transform.Context) (*transform.Co
 	var blocksToAdd []*hclwrite.Block
 
 	for _, block := range blocks {
-		if block.Type() != "resource" {
+		// Handle both resources and datasources
+		if block.Type() != "resource" && block.Type() != "data" {
 			continue
 		}
 
@@ -47,16 +48,16 @@ func (h *ResourceTransformHandler) Handle(ctx *transform.Context) (*transform.Co
 		resourceType := labels[0]
 		migrator := h.provider.GetMigrator(resourceType, ctx.SourceVersion, ctx.TargetVersion)
 		if migrator == nil {
-			h.log.Debug("No migrator found for resource type", "type", resourceType, "source", ctx.SourceVersion, "target", ctx.TargetVersion)
+			h.log.Debug("No migrator found for resource/datasource type", "type", resourceType, "source", ctx.SourceVersion, "target", ctx.TargetVersion)
 			continue
 		}
 
 		result, err := migrator.TransformConfig(ctx, block)
 		if err != nil {
-			h.log.Error("Error transforming resource", "type", resourceType, "error", err)
+			h.log.Error("Error transforming resource/datasource", "type", resourceType, "error", err)
 			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 				Severity: hcl.DiagError,
-				Summary:  fmt.Sprintf("Failed to transform %s resource", resourceType),
+				Summary:  fmt.Sprintf("Failed to transform %s resource/datasource", resourceType),
 				Detail:   err.Error(),
 			})
 			continue

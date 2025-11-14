@@ -41,11 +41,12 @@ func runConfigTransformTest(t *testing.T, tt ConfigTestCase, migrator transform.
 	// Step 4: Transform using HCL AST
 	body := file.Body()
 	for _, block := range body.Blocks() {
-		if block.Type() == "resource" && len(block.Labels()) >= 2 {
+		// Handle both resources and datasources
+		if (block.Type() == "resource" || block.Type() == "data") && len(block.Labels()) >= 2 {
 			resourceType := block.Labels()[0]
 			if migrator.CanHandle(resourceType) {
 				result, err := migrator.TransformConfig(ctx, block)
-				assert.NoError(t, err, "Failed to transform resource")
+				assert.NoError(t, err, "Failed to transform resource/datasource")
 
 				// Handle resource splits or removals
 				if result != nil && result.RemoveOriginal {
