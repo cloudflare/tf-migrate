@@ -118,7 +118,7 @@ func ExtractStringFromAttribute(attr *hclwrite.Attribute) string {
 	if attr == nil {
 		return ""
 	}
-	
+
 	tokens := attr.Expr().BuildTokens(nil)
 	for _, token := range tokens {
 		if token.Type == hclsyntax.TokenQuotedLit {
@@ -130,6 +130,35 @@ func ExtractStringFromAttribute(attr *hclwrite.Attribute) string {
 		}
 	}
 	return ""
+}
+
+// ExtractBoolFromAttribute extracts a boolean value from an HCL attribute.
+// Returns the boolean value and true if successful, or false and false if not found/invalid.
+//
+// Example usage:
+//   enabledAttr := body.GetAttribute("enabled")
+//   value, ok := ExtractBoolFromAttribute(enabledAttr)
+//   // Returns (true, true) from: enabled = true
+//   // Returns (false, true) from: enabled = false
+//   // Returns (false, false) from: enabled = null or missing
+func ExtractBoolFromAttribute(attr *hclwrite.Attribute) (bool, bool) {
+	if attr == nil {
+		return false, false
+	}
+
+	tokens := attr.Expr().BuildTokens(nil)
+	for _, token := range tokens {
+		if token.Type == hclsyntax.TokenIdent {
+			val := string(token.Bytes)
+			if val == "true" {
+				return true, true
+			}
+			if val == "false" {
+				return false, true
+			}
+		}
+	}
+	return false, false
 }
 
 // HasAttribute checks if an attribute exists in the body
