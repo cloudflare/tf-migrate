@@ -42,6 +42,29 @@ Run the complete end-to-end test suite:
 CLOUDFLARE_ACCOUNT_ID=<...> CLOUDFLARE_ZONE_ID=<...> ./scripts/run-e2e-tests
 ```
 
+## Cleaning Up State
+
+If you've manually deleted resources from Cloudflare but they still exist in the Terraform state, use the `clean-state-modules` script to remove them:
+
+```bash
+# Remove tunnel modules from state
+cd e2e
+R2_ACCESS_KEY_ID=xxx R2_SECRET_ACCESS_KEY=yyy \
+  ./scripts/clean-state-modules \
+    zero_trust_tunnel_cloudflared \
+    zero_trust_tunnel_cloudflared_route
+
+# Remove any module
+./scripts/clean-state-modules dns_record
+```
+
+This is useful when:
+- Resources were manually deleted from Cloudflare but remain in state
+- You want to start fresh with specific modules
+- E2E tests are failing due to 404 errors for deleted resources
+
+See `scripts/README.md` for full documentation.
+
 ## Cleaning Up Resources
 
 If you need to clean up orphaned test resources (resources that exist in Cloudflare but not in Terraform state), you can use the sweeper script from the Terraform provider repository:
