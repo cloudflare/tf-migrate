@@ -1,23 +1,23 @@
 # Minimal logpush job
 resource "cloudflare_logpush_job" "minimal" {
-  account_id       = "f037e56e89293a057740de681ac9abbe"
+  account_id       = var.cloudflare_account_id
   dataset          = "audit_logs"
-  destination_conf = "s3://mybucket/logs?region=us-west-2"
+  destination_conf = "https://logpush-receiver.sd.cfplat.com"
 }
 
 # Job with logpull_options only (no output_options)
 resource "cloudflare_logpush_job" "with_logpull_options" {
-  account_id       = "f037e56e89293a057740de681ac9abbe"
+  account_id       = var.cloudflare_account_id
   dataset          = "audit_logs"
-  destination_conf = "s3://mybucket/logs?region=us-west-2"
+  destination_conf = "https://logpush-receiver.sd.cfplat.com"
   logpull_options  = "fields=ClientIP,EdgeStartTimestamp&timestamps=unixnano"
 }
 
 # Job with output_options block
 resource "cloudflare_logpush_job" "with_output_options" {
-  account_id       = "f037e56e89293a057740de681ac9abbe"
+  account_id       = var.cloudflare_account_id
   dataset          = "audit_logs"
-  destination_conf = "s3://mybucket/logs?region=us-west-2"
+  destination_conf = "https://logpush-receiver.sd.cfplat.com"
 
   output_options {
     batch_prefix = "{"
@@ -29,9 +29,9 @@ resource "cloudflare_logpush_job" "with_output_options" {
 
 # Job with cve20214428 field (should be renamed)
 resource "cloudflare_logpush_job" "with_cve_field" {
-  account_id       = "f037e56e89293a057740de681ac9abbe"
+  account_id       = var.cloudflare_account_id
   dataset          = "audit_logs"
-  destination_conf = "s3://mybucket/logs?region=us-west-2"
+  destination_conf = "https://logpush-receiver.sd.cfplat.com"
 
   output_options {
     cve20214428 = true
@@ -41,25 +41,25 @@ resource "cloudflare_logpush_job" "with_cve_field" {
 
 # Job with instant-logs kind (should become empty string)
 resource "cloudflare_logpush_job" "instant_logs" {
-  zone_id       = "0da42c8d2132a9ddaf714f9e7c920711"
+  zone_id          = var.cloudflare_zone_id
   dataset          = "http_requests"
-  destination_conf = "s3://mybucket/logs?region=us-west-2"
+  destination_conf = "https://logpush-receiver.sd.cfplat.com"
   kind             = "instant-logs"
 }
 
 # Job with edge kind (should be preserved)
 resource "cloudflare_logpush_job" "edge_logs" {
-  zone_id       = "0da42c8d2132a9ddaf714f9e7c920711"
+  zone_id          = var.cloudflare_zone_id
   dataset          = "http_requests"
-  destination_conf = "s3://mybucket/logs?region=us-west-2"
+  destination_conf = "https://logpush-receiver.sd.cfplat.com"
   kind             = "edge"
 }
 
 # Full featured job with all transformations
 resource "cloudflare_logpush_job" "full" {
-  zone_id       = "0da42c8d2132a9ddaf714f9e7c920711"
+  zone_id          = var.cloudflare_zone_id
   dataset          = "http_requests"
-  destination_conf = "s3://mybucket/logs?region=us-west-2"
+  destination_conf = "https://logpush-receiver.sd.cfplat.com"
   kind             = "instant-logs"
   enabled          = true
   name             = "my-logpush-job"
