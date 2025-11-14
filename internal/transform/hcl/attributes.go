@@ -203,3 +203,62 @@ func UpdateResourceReferences(content, oldType, newType string) string {
 	content = strings.ReplaceAll(content, oldType+".", newType+".")
 	return content
 }
+
+// AttributeValueContainsKey checks if an attribute's value is an object/map
+// and contains the specified key as a top-level key in that object.
+//
+// Example - Checking if an object contains a specific key:
+//
+// Given:
+//
+//	config = {
+//	  key1 = "value1"
+//	  key2 = "value2"
+//	}
+//
+// AttributeValueContainsKey(attr, "key1") returns true
+// AttributeValueContainsKey(attr, "value1") returns false (it's a value, not a key)
+// AttributeValueContainsKey(attr, "missing") returns false
+func AttributeValueContainsKey(attr *hclwrite.Attribute, key string) bool {
+	if attr == nil {
+		return false
+	}
+
+	valueTokens := attr.BuildTokens(hclwrite.Tokens{})
+
+	// Track object nesting depth - we only want to check top-level keys (depth 1)
+	depth := 0
+	for i, token := range valueTokens {
+		// Check if we're entering an object
+		if token.Type == hclsyntax.TokenOBrace {
+			depth++
+			continue
+		}
+
+		// Check if we're leaving an object
+		if token.Type == hclsyntax.TokenCBrace {
+			depth--
+			continue
+		}
+
+		// If we're at depth 1 (top-level of the object) and find an identifier, check if it's a key
+		// (a key is an identifier followed by an equals sign)
+		if depth == 1 && token.Type == hclsyntax.TokenIdent && string(token.Bytes) == key {
+			// Look ahead to see if this identifier is followed by an equals sign
+			for j := i + 1; j < len(valueTokens); j++ {
+				nextToken := valueTokens[j]
+				// Skip whitespace and newlines
+				if nextToken.Type == hclsyntax.TokenNewline || nextToken.Type == hclsyntax.TokenComment {
+					continue
+				}
+				// If we find an equals sign, this is a key
+				if nextToken.Type == hclsyntax.TokenEqual {
+					return true
+				}
+				// If we find something else, this is not a key
+				break
+			}
+		}
+	}
+	return false
+}

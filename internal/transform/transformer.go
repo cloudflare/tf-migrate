@@ -12,6 +12,7 @@ type Context struct {
 	Content       []byte
 	Filename      string
 	AST           *hclwrite.File
+	AllAST        map[string]*hclwrite.File
 	StateJSON     string
 	Diagnostics   hcl.Diagnostics
 	Metadata      map[string]interface{}
@@ -37,7 +38,7 @@ type ResourceTransformer interface {
 	// - Split: return {Blocks: newBlocks, RemoveOriginal: true}
 	// - Remove: return {Blocks: nil, RemoveOriginal: true}
 	TransformConfig(ctx *Context, block *hclwrite.Block) (*TransformResult, error)
-	TransformState(ctx *Context, json gjson.Result, resourcePath string) (string, error)
+	TransformState(ctx *Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error)
 	GetResourceType() string
 	// Preprocess for string-level transformations before parsing
 	Preprocess(content string) string

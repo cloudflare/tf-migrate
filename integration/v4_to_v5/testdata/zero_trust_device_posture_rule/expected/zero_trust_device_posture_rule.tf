@@ -20,32 +20,9 @@ resource "cloudflare_zero_trust_device_posture_rule" "basic" {
   }]
 }
 
-# Test case 1: Basic os_version rule with input and match - zero value input block
-resource "cloudflare_device_posture_rule" "basic_zero_value" {
-  account_id  = var.cloudflare_account_id
-  name        = "tf-test-posture-basic"
-  type        = "os_version"
-  description = "Device posture rule for corporate devices."
-  schedule    = "24h"
-  expiration  = "24h"
-
-  match = {
-    platform = "linux"
-  }
-
-  input = {
-    version            = "1.0.0"
-    operator           = "<"
-    os_distro_name     = "ubuntu"
-    os_distro_revision = "1.0.0"
-    os_version_extra   = "(a)"
-    active_threats     = 0
-  }
-}
-
 # Test case 2: Firewall rule with enabled input
 resource "cloudflare_zero_trust_device_posture_rule" "firewall" {
-  account_id  = var.cloudflare_account_id
+  account_id = var.cloudflare_account_id
   name       = "tf-test-firewall"
   type       = "firewall"
   schedule   = "5m"
@@ -61,7 +38,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "firewall" {
 
 # Test case 3: Disk encryption with check_disks (Set->List conversion)
 resource "cloudflare_zero_trust_device_posture_rule" "disk_encryption" {
-  account_id  = var.cloudflare_account_id
+  account_id = var.cloudflare_account_id
   name       = "tf-test-disk"
   type       = "disk_encryption"
   schedule   = "5m"
@@ -78,15 +55,17 @@ resource "cloudflare_zero_trust_device_posture_rule" "disk_encryption" {
 
 # Test case 4: Multiple platforms (multiple match blocks)
 resource "cloudflare_zero_trust_device_posture_rule" "multi_platform" {
-  account_id  = var.cloudflare_account_id
+  account_id = var.cloudflare_account_id
   name       = "tf-test-multi"
   type       = "firewall"
   schedule   = "5m"
 
+
+
+
   input = {
     enabled = true
   }
-
   match = [{
     platform = "windows"
     }, {

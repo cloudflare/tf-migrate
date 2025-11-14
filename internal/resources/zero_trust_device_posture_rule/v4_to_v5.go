@@ -85,7 +85,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
 	result := stateJSON.String()
 
 	attrs := stateJSON.Get("attributes")
@@ -104,14 +104,13 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	}
 
 	// Re-parse attrs after transformation to get updated structure
-	updatedInstance := gjson.Parse(result)
-	updatedAttrs := updatedInstance.Get("attributes")
+	updatedAttrs := gjson.Parse(result).Get("attributes")
 
 	result = m.convertNumericFields(result, updatedAttrs)
 
 	inputField = updatedAttrs.Get("input")
 	if inputField.Exists() {
-		result = m.transformInputEmptyValuesToNull(ctx, result, updatedAttrs)
+		result = m.transformInputEmptyValuesToNull(ctx, result, updatedAttrs, resourceName)
 		if inputField.Get("running").Exists() {
 			result, _ = sjson.Delete(result, "attributes.input.running")
 		}
@@ -181,32 +180,50 @@ func (m *V4ToV5Migrator) inputFieldIsEmpty(attrs gjson.Result) bool {
 	return reflect.DeepEqual(actual, expected)
 }
 
-func (m *V4ToV5Migrator) transformInputEmptyValuesToNull(ctx *transform.Context, stateJSON string, attrs gjson.Result) string {
+func (m *V4ToV5Migrator) transformInputEmptyValuesToNull(ctx *transform.Context, result string, attrs gjson.Result, resourceName string) string {
 	inputField := attrs.Get("input")
 	if !inputField.Exists() {
-		return stateJSON
+		return result
 	}
 
-	var inputObj gjson.Result
-	if inputField.IsArray() {
-		inputObj = inputField.Array()[0]
-	} else {
-		inputObj = inputField
-	}
-
-	inputObj.ForEach(func(key, value gjson.Result) bool {
+	inputField.ForEach(func(key, value gjson.Result) bool {
 		if state.IsEmptyValue(value) {
-			stateJSON, _ = sjson.Set(stateJSON, "attributes.input."+key.String(), nil)
-			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
-				Severity: hcl.DiagWarning,
-				Summary:  fmt.Sprintf("Transforming state for attribute %s from empty value to null. Will require an update in place.", key.String()),
-			})
+			emptyValueDefineInHCL := false
+
+			// Check if this empty value was defined in HCL and if so don't transform it to null
+			if len(ctx.AllAST) > 0 {
+			HCL_SEARCH:
+				for _, file := range ctx.AllAST {
+					resourceBlocks := tfhcl.FindBlocksByType(file.Body(), "resource")
+					for _, resourceBlock := range resourceBlocks {
+						resourceBlockType := tfhcl.GetResourceType(resourceBlock)
+						resourceBlockName := tfhcl.GetResourceName(resourceBlock)
+
+						if m.CanHandle(resourceBlockType) && resourceBlockName == resourceName {
+							inputAttribute := resourceBlock.Body().GetAttribute("input")
+							if tfhcl.AttributeValueContainsKey(inputAttribute, key.String()) {
+								emptyValueDefineInHCL = true
+							}
+							break HCL_SEARCH
+						}
+					}
+				}
+			}
+
+			// If empty value was not explicity defined in HCL, carry out empty value -> null transformation
+			if !emptyValueDefineInHCL {
+				result, _ = sjson.Set(result, "attributes.input."+key.String(), nil)
+				ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+					Severity: hcl.DiagWarning,
+					Summary:  fmt.Sprintf("Transforming state for attribute %s from empty value to null. Will require an update in place.", key.String()),
+				})
+			}
 		}
 
 		return true
 	})
 
-	return stateJSON
+	return result
 }
 
 // transformInputArrayToObject converts input field from array to object

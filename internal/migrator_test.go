@@ -21,7 +21,7 @@ func (m *mockMigrator) TransformConfig(ctx *transform.Context, block *hclwrite.B
 	return nil, nil
 }
 
-func (m *mockMigrator) TransformState(ctx *transform.Context, json gjson.Result, resourcePath string) (string, error) {
+func (m *mockMigrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
 	return "", nil
 }
 

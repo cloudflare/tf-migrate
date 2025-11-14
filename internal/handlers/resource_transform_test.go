@@ -40,9 +40,9 @@ func (m *MockResourceTransformer) TransformConfig(ctx *transform.Context, block 
 	}, nil
 }
 
-func (m *MockResourceTransformer) TransformState(_ *transform.Context, json gjson.Result, resourcePath string) (string, error) {
+func (m *MockResourceTransformer) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
 	if m.stateTransformFunc != nil {
-		return m.stateTransformFunc(json, resourcePath)
+		return m.stateTransformFunc(stateJSON, resourcePath)
 	}
 	return "", nil
 }

@@ -173,7 +173,7 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(body *hclwrite.Body) {
 	}
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
 	result := stateJSON.String()
 
 	if stateJSON.Get("instances").Exists() {
