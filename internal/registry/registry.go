@@ -13,6 +13,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_policy"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared_route"
 	"github.com/cloudflare/tf-migrate/internal/resources/zone_dnssec"
 )
@@ -34,5 +35,6 @@ func RegisterAllMigrations() {
 	zero_trust_dlp_custom_profile.NewV4ToV5Migrator()
 	zero_trust_gateway_policy.NewV4ToV5Migrator()
 	zero_trust_list.NewV4ToV5Migrator()
+	zero_trust_tunnel_cloudflared.NewV4ToV5Migrator()
 	zero_trust_tunnel_cloudflared_route.NewV4ToV5Migrator()
 }
