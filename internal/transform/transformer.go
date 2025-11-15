@@ -11,8 +11,8 @@ import (
 type Context struct {
 	Content       []byte
 	Filename      string
-	AST           *hclwrite.File
-	AllAST        map[string]*hclwrite.File
+	CFGFile       *hclwrite.File
+	CFGFiles      map[string]*hclwrite.File
 	StateJSON     string
 	Diagnostics   hcl.Diagnostics
 	Metadata      map[string]interface{}

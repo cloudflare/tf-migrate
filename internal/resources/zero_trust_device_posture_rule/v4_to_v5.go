@@ -195,9 +195,9 @@ func (m *V4ToV5Migrator) transformInputEmptyValuesToNull(ctx *transform.Context,
 			emptyValueDefineInHCL := false
 
 			// Check if this empty value was defined in HCL and if so don't transform it to null
-			if len(ctx.AllAST) > 0 {
+			if len(ctx.CFGFiles) > 0 {
 			HCL_SEARCH:
-				for _, file := range ctx.AllAST {
+				for _, file := range ctx.CFGFiles {
 					resourceBlocks := tfhcl.FindBlocksByType(file.Body(), "resource")
 					for _, resourceBlock := range resourceBlocks {
 						resourceBlockType := tfhcl.GetResourceType(resourceBlock)

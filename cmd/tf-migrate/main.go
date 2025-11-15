@@ -287,8 +287,8 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 			return nil, fmt.Errorf("failed to transform %s: %w", file, err)
 		}
 
-		if ctx.AST != nil {
-			parsedConfigs[file] = ctx.AST
+		if ctx.CFGFile != nil {
+			parsedConfigs[file] = ctx.CFGFile
 		}
 
 		// Calculate output path maintaining directory structure when recursive
@@ -446,7 +446,7 @@ func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config, apiCli
 		TargetVersion: cfg.targetVersion,
 		Resources:     cfg.resourcesToMigrate,
 		APIClient:     apiClient,
-		AllAST:        parsedConfigs,
+		CFGFiles:      parsedConfigs,
 	}
 	transformedContent, err := p.Transform(ctx)
 	if err != nil {
