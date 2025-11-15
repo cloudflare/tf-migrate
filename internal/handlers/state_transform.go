@@ -77,10 +77,11 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 			}
 		}
 
+		resourceName := resource.Get("name").String()
 		instances.ForEach(func(instKey, instance gjson.Result) bool {
 			resourcePath := fmt.Sprintf("resources.%d.instances.%d", key.Int(), instKey.Int())
 
-			transformedJSON, err := migrator.TransformState(ctx, instance, resourcePath)
+			transformedJSON, err := migrator.TransformState(ctx, instance, resourcePath, resourceName)
 			if err != nil {
 				h.log.Error("Error transforming state resource",
 					"type", resourceType,

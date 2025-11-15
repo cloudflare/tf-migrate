@@ -164,7 +164,7 @@ func (m *V4ToV5Migrator) transformConditionBlock(body *hclwrite.Body) {
 	body.RemoveBlock(conditionBlock)
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
 	result := stateJSON.String()
 
 	attributesPath := "attributes"

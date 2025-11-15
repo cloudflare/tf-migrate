@@ -45,25 +45,25 @@ func runStateTransformTest(t *testing.T, tt StateTestCase, migrator transform.Re
 
 	// Check if this is a full state or just an instance
 	resources := inputResult.Get("resources")
-	
+
 	// If there's no "resources" field, assume this is a single instance test
 	if !resources.Exists() {
 		// This is a single instance - transform it directly
-		transformedInstance, err := migrator.TransformState(ctx, inputResult, "")
+		transformedInstance, err := migrator.TransformState(ctx, inputResult, "", "")
 		require.NoError(t, err, "Failed to transform instance")
-		
+
 		// Compare directly with expected
 		assert.JSONEq(t, tt.Expected, transformedInstance, "State transformation mismatch")
 		return
 	}
-	
+
 	// Otherwise, process as a full state with resources array
 	if resources.IsArray() {
 		var transformedResources []interface{}
-		
+
 		resources.ForEach(func(k, resource gjson.Result) bool {
 			resourceType := resource.Get("type").String()
-			
+
 			// Check if migrator can handle this resource type
 			if !migrator.CanHandle(resourceType) {
 				// Keep resource as-is if not handled
@@ -72,55 +72,55 @@ func runStateTransformTest(t *testing.T, tt StateTestCase, migrator transform.Re
 				transformedResources = append(transformedResources, r)
 				return true
 			}
-			
+
 			// Transform resource type
 			newResourceType := migrator.GetResourceType()
-			
+
 			// Build transformed resource
 			transformedResource := map[string]interface{}{
 				"type": newResourceType,
 				"name": resource.Get("name").String(),
 			}
-			
+
 			// Process instances
 			instances := resource.Get("instances")
 			if instances.Exists() {
 				if instances.IsArray() && instances.Array() != nil && len(instances.Array()) > 0 {
 					var transformedInstances []interface{}
-					
+
 					instances.ForEach(func(i, instance gjson.Result) bool {
 						// Transform each instance
-						transformedInstance, err := migrator.TransformState(ctx, instance, "")
+						transformedInstance, err := migrator.TransformState(ctx, instance, "", "")
 						require.NoError(t, err, "Failed to transform instance")
-						
+
 						var inst interface{}
 						err = json.Unmarshal([]byte(transformedInstance), &inst)
 						require.NoError(t, err, "Failed to unmarshal instance")
-						
+
 						transformedInstances = append(transformedInstances, inst)
 						return true
 					})
-					
+
 					transformedResource["instances"] = transformedInstances
 				} else {
 					// Keep empty arrays as empty arrays, not nil
 					transformedResource["instances"] = []interface{}{}
 				}
 			}
-			
+
 			transformedResources = append(transformedResources, transformedResource)
 			return true
 		})
-		
+
 		outputState["resources"] = transformedResources
 	}
-	
+
 	// Handle edge case where expected output has empty resources array
 	expectedResources := expectedResult.Get("resources")
 	if expectedResources.Exists() && expectedResources.IsArray() && len(expectedResources.Array()) == 0 {
 		outputState["resources"] = []interface{}{}
 	}
-	
+
 	// Convert to JSON for comparison
 	resultJSON, err := json.Marshal(outputState)
 	require.NoError(t, err, "Failed to marshal result")
@@ -137,4 +137,3 @@ func RunStateTransformTests(t *testing.T, tests []StateTestCase, migrator transf
 		})
 	}
 }
-

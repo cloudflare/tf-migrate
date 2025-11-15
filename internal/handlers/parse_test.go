@@ -24,11 +24,11 @@ func TestParseHandler(t *testing.T) {
 }`,
 			expectError: false,
 			checkAST: func(t *testing.T, ctx *transform.Context) {
-				if ctx.AST == nil {
-					t.Fatal("AST should not be nil")
+				if ctx.CFGFile == nil {
+					t.Fatal("CFGFile should not be nil")
 				}
 
-				blocks := ctx.AST.Body().Blocks()
+				blocks := ctx.CFGFile.Body().Blocks()
 				if len(blocks) != 1 {
 					t.Errorf("Expected 1 block, got %d", len(blocks))
 				}
@@ -58,7 +58,7 @@ data "data_source" "example" {
 }`,
 			expectError: false,
 			checkAST: func(t *testing.T, ctx *transform.Context) {
-				blocks := ctx.AST.Body().Blocks()
+				blocks := ctx.CFGFile.Body().Blocks()
 				if len(blocks) != 3 {
 					t.Errorf("Expected 3 blocks, got %d", len(blocks))
 				}
@@ -89,10 +89,10 @@ data "data_source" "example" {
 			input:       "",
 			expectError: false,
 			checkAST: func(t *testing.T, ctx *transform.Context) {
-				if ctx.AST == nil {
-					t.Fatal("AST should not be nil even for empty file")
+				if ctx.CFGFile == nil {
+					t.Fatal("CFGFile should not be nil even for empty file")
 				}
-				blocks := ctx.AST.Body().Blocks()
+				blocks := ctx.CFGFile.Body().Blocks()
 				if len(blocks) != 0 {
 					t.Errorf("Expected 0 blocks for empty file, got %d", len(blocks))
 				}
@@ -104,7 +104,7 @@ data "data_source" "example" {
 /* Block comment */`,
 			expectError: false,
 			checkAST: func(t *testing.T, ctx *transform.Context) {
-				blocks := ctx.AST.Body().Blocks()
+				blocks := ctx.CFGFile.Body().Blocks()
 				if len(blocks) != 0 {
 					t.Errorf("Expected 0 blocks for file with only comments, got %d", len(blocks))
 				}
@@ -129,7 +129,7 @@ data "data_source" "example" {
 }`,
 			expectError: false,
 			checkAST: func(t *testing.T, ctx *transform.Context) {
-				blocks := ctx.AST.Body().Blocks()
+				blocks := ctx.CFGFile.Body().Blocks()
 				if len(blocks) != 1 {
 					t.Errorf("Expected 1 block, got %d", len(blocks))
 				}
@@ -203,8 +203,8 @@ func TestParseHandlerChaining(t *testing.T) {
 	mockNext := &mockHandler{
 		handleFunc: func(ctx *transform.Context) (*transform.Context, error) {
 			nextHandlerCalled = true
-			if ctx.AST == nil {
-				t.Error("AST should be set when next handler is called")
+			if ctx.CFGFile == nil {
+				t.Error("CFGFile should be set when next handler is called")
 			}
 			return ctx, nil
 		},

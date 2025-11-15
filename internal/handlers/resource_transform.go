@@ -24,11 +24,11 @@ func NewResourceTransformHandler(log hclog.Logger, provider transform.MigrationP
 }
 
 func (h *ResourceTransformHandler) Handle(ctx *transform.Context) (*transform.Context, error) {
-	if ctx.AST == nil {
-		return ctx, fmt.Errorf("AST is nil - ParseHandler must run before ResourceTransformHandler")
+	if ctx.CFGFile == nil {
+		return ctx, fmt.Errorf("CFGFile is nil - ParseHandler must run before ResourceTransformHandler")
 	}
 
-	body := ctx.AST.Body()
+	body := ctx.CFGFile.Body()
 	blocks := body.Blocks()
 
 	var blocksToRemove []*hclwrite.Block

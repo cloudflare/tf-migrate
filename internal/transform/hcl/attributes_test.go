@@ -66,12 +66,12 @@ resource "test" "example" {
 
 func TestRenameAttribute(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		oldName  string
-		newName  string
-		expected bool
-		contains string
+		name        string
+		input       string
+		oldName     string
+		newName     string
+		expected    bool
+		contains    string
 		notContains string
 	}{
 		{
@@ -123,11 +123,11 @@ resource "test" "example" {
 
 func TestRemoveAttributes(t *testing.T) {
 	tests := []struct {
-		name           string
-		input          string
-		attrsToRemove  []string
-		expectedCount  int
-		shouldContain  []string
+		name             string
+		input            string
+		attrsToRemove    []string
+		expectedCount    int
+		shouldContain    []string
 		shouldNotContain []string
 	}{
 		{
@@ -417,6 +417,209 @@ resource "test" "example" {
 
 			output := string(file.Bytes())
 			assert.Contains(t, output, tt.contains)
+		})
+	}
+}
+
+func TestAttributeValueContainsKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		attrName string
+		key      string
+		expected bool
+	}{
+		{
+			name: "Returns false for nil attribute",
+			input: `
+resource "test" "example" {
+  name = "test"
+}`,
+			attrName: "nonexistent",
+			key:      "some_key",
+			expected: false,
+		},
+		{
+			name: "Returns false when value is simple identifier",
+			input: `
+resource "test" "example" {
+  value = my_identifier
+}`,
+			attrName: "value",
+			key:      "my_identifier",
+			expected: false,
+		},
+		{
+			name: "Returns false when key does not exist in non-object",
+			input: `
+resource "test" "example" {
+  value = some_other_value
+}`,
+			attrName: "value",
+			key:      "my_identifier",
+			expected: false,
+		},
+		{
+			name: "Returns false for quoted string",
+			input: `
+resource "test" "example" {
+  value = "my_identifier"
+}`,
+			attrName: "value",
+			key:      "my_identifier",
+			expected: false,
+		},
+		{
+			name: "Returns false for dotted notation (not an object)",
+			input: `
+resource "test" "example" {
+  value = var.my_key
+}`,
+			attrName: "value",
+			key:      "var",
+			expected: false,
+		},
+		{
+			name: "Returns false for list values",
+			input: `
+resource "test" "example" {
+  values = [first_item, second_item]
+}`,
+			attrName: "values",
+			key:      "second_item",
+			expected: false,
+		},
+		{
+			name: "Returns true when key exists as object key",
+			input: `
+resource "test" "example" {
+  config = {
+    key = some_value
+  }
+}`,
+			attrName: "config",
+			key:      "key",
+			expected: true,
+		},
+		{
+			name: "Returns false when checking for value identifier in object",
+			input: `
+resource "test" "example" {
+  config = {
+    key = target_identifier
+  }
+}`,
+			attrName: "config",
+			key:      "target_identifier",
+			expected: false,
+		},
+		{
+			name: "Returns true when multiple keys exist in object",
+			input: `
+resource "test" "example" {
+  config = {
+    first_key = "value1"
+    second_key = "value2"
+    third_key = "value3"
+  }
+}`,
+			attrName: "config",
+			key:      "second_key",
+			expected: true,
+		},
+		{
+			name: "Returns false when key does not exist in object",
+			input: `
+resource "test" "example" {
+  config = {
+    first_key = "value1"
+    second_key = "value2"
+  }
+}`,
+			attrName: "config",
+			key:      "missing_key",
+			expected: false,
+		},
+		{
+			name: "Returns false for numeric value",
+			input: `
+resource "test" "example" {
+  count = 5
+}`,
+			attrName: "count",
+			key:      "5",
+			expected: false,
+		},
+		{
+			name: "Returns false for boolean value",
+			input: `
+resource "test" "example" {
+  enabled = true
+}`,
+			attrName: "enabled",
+			key:      "true",
+			expected: false,
+		},
+		{
+			name: "Returns false for function call",
+			input: `
+resource "test" "example" {
+  value = lookup(my_map, "key")
+}`,
+			attrName: "value",
+			key:      "lookup",
+			expected: false,
+		},
+		{
+			name: "Returns true for nested object with matching key",
+			input: `
+resource "test" "example" {
+  config = {
+    nested = {
+      inner_key = "value"
+    }
+  }
+}`,
+			attrName: "config",
+			key:      "nested",
+			expected: true,
+		},
+		{
+			name: "Returns false for key in deeply nested object",
+			input: `
+resource "test" "example" {
+  config = {
+    nested = {
+      inner_key = "value"
+    }
+  }
+}`,
+			attrName: "config",
+			key:      "inner_key",
+			expected: false,
+		},
+		{
+			name: "Returns false for empty object",
+			input: `
+resource "test" "example" {
+  config = {}
+}`,
+			attrName: "config",
+			key:      "any_key",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclwrite.ParseConfig([]byte(tt.input), "", hcl.InitialPos)
+			require.False(t, diags.HasErrors())
+
+			body := file.Body().Blocks()[0].Body()
+			attr := body.GetAttribute(tt.attrName)
+
+			result := AttributeValueContainsKey(attr, tt.key)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

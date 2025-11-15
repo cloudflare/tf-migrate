@@ -98,11 +98,11 @@ func (m *V4ToV5Migrator) processRuleSettingsBlock(ruleSettingsBlock *hclwrite.Bl
 	}
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
 	// This function receives a single instance and needs to return the transformed instance JSON
-	result := instance.String()
+	result := stateJSON.String()
 	// Get attributes
-	attrs := instance.Get("attributes")
+	attrs := stateJSON.Get("attributes")
 	if !attrs.Exists() {
 		result, _ = sjson.Set(result, "schema_version", 0)
 		return result, nil
