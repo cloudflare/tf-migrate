@@ -1196,6 +1196,187 @@ func TestStateTransformation(t *testing.T) {
 			}]
 		}`,
 		},
+		{
+			Name: "resource with missing attributes",
+			Input: `{
+			"version": 4,
+			"terraform_version": "1.5.0",
+			"resources": [{
+				"type": "cloudflare_device_posture_rule",
+				"name": "name",
+				"instances": [{
+					"schema_version": 1
+				}]
+			}]
+		}`,
+			Expected: `{
+			"version": 4,
+			"terraform_version": "1.5.0",
+			"resources": [{
+				"type": "cloudflare_zero_trust_device_posture_rule",
+				"name": "name",
+				"instances": [{
+					"schema_version": 0
+				}]
+			}]
+		}`,
+		},
+		{
+			Name: "resource with empty array input",
+			Input: `{
+			"version": 4,
+			"terraform_version": "1.5.0",
+			"resources": [{
+				"type": "cloudflare_device_posture_rule",
+				"name": "name",
+				"instances": [{
+					"attributes": {
+						"id": "test-rule-id",
+						"account_id": "f037e56e89293a057740de681ac9abbe",
+						"name": "name",
+						"type": "serial_number",
+						"input": []
+					},
+					"schema_version": 1
+				}]
+			}]
+		}`,
+			Expected: `{
+			"version": 4,
+			"terraform_version": "1.5.0",
+			"resources": [{
+				"type": "cloudflare_zero_trust_device_posture_rule",
+				"name": "name",
+				"instances": [{
+					"attributes": {
+						"id": "test-rule-id",
+						"account_id": "f037e56e89293a057740de681ac9abbe",
+						"name": "name",
+						"type": "serial_number"
+					},
+					"schema_version": 0
+				}]
+			}]
+		}`,
+		},
+		{
+			Name: "resource with empty locations array",
+			Input: `{
+			"version": 4,
+			"terraform_version": "1.5.0",
+			"resources": [{
+				"type": "cloudflare_device_posture_rule",
+				"name": "name",
+				"instances": [{
+					"attributes": {
+						"id": "test-rule-id",
+						"account_id": "f037e56e89293a057740de681ac9abbe",
+						"name": "name",
+						"type": "client_certificate_v2",
+						"input": [{
+							"active_threats": 0,
+							"certificate_id": "",
+							"check_disks": null,
+							"check_private_key": true,
+							"cn": "device.example.com",
+							"compliance_status": "",
+							"connection_id": "",
+							"count_operator": "",
+							"domain": "",
+							"eid_last_seen": "",
+							"enabled": false,
+							"exists": false,
+							"extended_key_usage": null,
+							"id": "",
+							"infected": false,
+							"is_active": false,
+							"issue_count": "",
+							"last_seen": "",
+							"locations": [],
+							"network_status": "",
+							"operational_state": "",
+							"operator": "",
+							"os": "",
+							"os_distro_name": "",
+							"os_distro_revision": "",
+							"os_version_extra": "",
+							"overall": "",
+							"path": "",
+							"require_all": false,
+							"risk_level": "",
+							"running": false,
+							"score": 0,
+							"sensor_config": "",
+							"sha256": "",
+							"state": "",
+							"thumbprint": "",
+							"total_score": 0,
+							"version": "",
+							"version_operator": ""
+						}]
+					},
+					"schema_version": 1
+				}]
+			}]
+		}`,
+			Expected: `{
+			"version": 4,
+			"terraform_version": "1.5.0",
+			"resources": [{
+				"type": "cloudflare_zero_trust_device_posture_rule",
+				"name": "name",
+				"instances": [{
+					"attributes": {
+						"id": "test-rule-id",
+						"account_id": "f037e56e89293a057740de681ac9abbe",
+						"name": "name",
+						"type": "client_certificate_v2",
+						"input": {
+							"active_threats": null,
+							"certificate_id": null,
+							"check_disks": null,
+							"check_private_key": true,
+							"cn": "device.example.com",
+							"compliance_status": null,
+							"connection_id": null,
+							"count_operator": null,
+							"domain": null,
+							"eid_last_seen": null,
+							"enabled": null,
+							"exists": null,
+							"extended_key_usage": null,
+							"id": null,
+							"infected": null,
+							"is_active": null,
+							"issue_count": null,
+							"last_seen": null,
+							"locations": null,
+							"network_status": null,
+							"operational_state": null,
+							"operator": null,
+							"os": null,
+							"os_distro_name": null,
+							"os_distro_revision": null,
+							"os_version_extra": null,
+							"overall": null,
+							"path": null,
+							"require_all": null,
+							"risk_level": null,
+							"score": null,
+							"sensor_config": null,
+							"sha256": null,
+							"state": null,
+							"thumbprint": null,
+							"total_score": null,
+							"version": null,
+							"version_operator": null
+						}
+					},
+					"schema_version": 0
+				}]
+			}]
+		}`,
+		},
 	}
 
 	testhelpers.RunStateTransformTests(t, tests, migrator)

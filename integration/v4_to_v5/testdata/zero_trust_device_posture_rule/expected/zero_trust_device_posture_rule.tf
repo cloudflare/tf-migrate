@@ -74,3 +74,20 @@ resource "cloudflare_zero_trust_device_posture_rule" "multi_platform" {
     platform = "linux"
   }]
 }
+
+# Test case 5: Application rule with path and running (removed attribute)
+resource "cloudflare_zero_trust_device_posture_rule" "application" {
+  account_id = var.cloudflare_account_id
+  name       = "tf-test-application"
+  type       = "application"
+  schedule   = "30m"
+
+
+  input = {
+    path   = "/usr/bin/security-app"
+    sha256 = "abc123def456"
+  }
+  match = [{
+    platform = "linux"
+  }]
+}

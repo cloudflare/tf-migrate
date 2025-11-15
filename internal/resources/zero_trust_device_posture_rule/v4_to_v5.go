@@ -171,6 +171,10 @@ func (m *V4ToV5Migrator) inputFieldIsEmpty(attrs gjson.Result) bool {
 		return false
 	}
 
+	if !inputField.IsArray() || len(inputField.Array()) == 0 {
+		return true
+	}
+
 	inputObj := inputField.Array()[0]
 
 	var actual, expected map[string]interface{}
