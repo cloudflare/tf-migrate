@@ -35,7 +35,8 @@ func (h *ResourceTransformHandler) Handle(ctx *transform.Context) (*transform.Co
 	var blocksToAdd []*hclwrite.Block
 
 	for _, block := range blocks {
-		if block.Type() != "resource" {
+		// Process both "resource" and "data" blocks
+		if block.Type() != "resource" && block.Type() != "data" {
 			continue
 		}
 

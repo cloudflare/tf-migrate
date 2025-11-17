@@ -5,15 +5,15 @@ data "cloudflare_zone" "main" {
 
 # Zone lookup with filter by name
 data "cloudflare_zone" "by_name" {
-  filter {
+  filter = {
     name = "example.com"
   }
 }
 
 # Zone lookup with complex filter
 data "cloudflare_zone" "filtered" {
-  filter {
-    account {
+  filter = {
+    account = {
       id = "f037e56e89293a057740de681ac9abbe"
     }
     name      = "test.example.com"
@@ -47,9 +47,9 @@ locals {
 
 # Pattern 3: Datasource with variable-driven filter
 data "cloudflare_zone" "variable_driven" {
-  filter {
+  filter = {
     name = var.zone_name
-    account {
+    account = {
       id = var.account_id
     }
   }
@@ -57,7 +57,7 @@ data "cloudflare_zone" "variable_driven" {
 
 # Pattern 4: Datasource with local value reference
 data "cloudflare_zone" "local_driven" {
-  filter {
+  filter = {
     name = local.full_zone
   }
 }
@@ -75,7 +75,7 @@ variable "zone_names" {
 data "cloudflare_zone" "multiple_zones" {
   for_each = var.zone_names
 
-  filter {
+  filter = {
     name = each.value
   }
 }
@@ -85,7 +85,7 @@ data "cloudflare_zone" "multiple_zones" {
 resource "cloudflare_dns_record" "example" {
   zone_id = data.cloudflare_zone.main.id
   name    = "www"
-  content = "192.0.2.1"
+  value   = "192.0.2.1"
   type    = "A"
   ttl     = 3600
 }
@@ -109,14 +109,14 @@ data "cloudflare_zone" "conditional" {
 
 # Pattern 8: Zone lookup with filter operators
 data "cloudflare_zone" "with_operators" {
-  filter {
+  filter = {
     name = "starts_with:example"
   }
 }
 
 # Pattern 9: Zone lookup for subdomain
 data "cloudflare_zone" "subdomain" {
-  filter {
+  filter = {
     name   = "sub.example.com"
     status = "active"
   }
@@ -124,16 +124,16 @@ data "cloudflare_zone" "subdomain" {
 
 # Pattern 10: Cross-datasource references
 data "cloudflare_zone" "primary" {
-  filter {
+  filter = {
     name = "example.com"
   }
 }
 
 # Use primary zone's account in another lookup
 data "cloudflare_zone" "same_account" {
-  filter {
+  filter = {
     name = "another.example.com"
-    account {
+    account = {
       id = data.cloudflare_zone.primary.account.id
     }
   }
@@ -179,9 +179,9 @@ variable "dns_records" {
 
 # Pattern 13: Zone lookup with all filter options
 data "cloudflare_zone" "comprehensive" {
-  filter {
+  filter = {
     name = "comprehensive.example.com"
-    account {
+    account = {
       id   = var.account_id
       name = "Example Organization"
     }
