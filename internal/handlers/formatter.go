@@ -21,11 +21,11 @@ func NewFormatterHandler(log hclog.Logger) transform.TransformationHandler {
 }
 
 func (h *FormatterHandler) Handle(ctx *transform.Context) (*transform.Context, error) {
-	if ctx.AST == nil {
-		return ctx, fmt.Errorf("AST is nil - cannot format without AST")
+	if ctx.CFGFile == nil {
+		return ctx, fmt.Errorf("CFGFile is nil - cannot format without CFGFile")
 	}
 
-	bytes := ctx.AST.Bytes()
+	bytes := ctx.CFGFile.Bytes()
 	formatted := hclwrite.Format(bytes)
 
 	ctx.Content = formatted

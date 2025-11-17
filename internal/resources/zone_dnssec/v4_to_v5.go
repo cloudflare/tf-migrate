@@ -106,15 +106,15 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 // TransformState handles state file transformations.
 // This function receives a single resource instance and returns the transformed instance JSON.
 // Converts flags and key_tag from TypeInt (v4) to Float64 (v5).
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath string) (string, error) {
-	result := instance.String()
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
+	result := stateJSON.String()
 
 	// Check if it's a valid zone_dnssec instance
-	if !instance.Exists() || !instance.Get("attributes").Exists() {
+	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
 		return result, nil
 	}
 
-	attrs := instance.Get("attributes")
+	attrs := stateJSON.Get("attributes")
 	if !attrs.Get("zone_id").Exists() {
 		return result, nil
 	}

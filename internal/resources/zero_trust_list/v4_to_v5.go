@@ -68,12 +68,12 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
 	// This function receives a single instance and needs to return the transformed instance JSON
-	result := instance.String()
+	result := stateJSON.String()
 
 	// Transform the instance attributes
-	attrs := instance.Get("attributes")
+	attrs := stateJSON.Get("attributes")
 	if attrs.Exists() {
 		var transformedItems []map[string]interface{}
 

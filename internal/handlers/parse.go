@@ -29,7 +29,7 @@ func (h *ParseHandler) Handle(ctx *transform.Context) (*transform.Context, error
 		return ctx, fmt.Errorf("failed to parse HCL: %s", diags.Error())
 	}
 
-	ctx.AST = file
+	ctx.CFGFile = file
 
 	if diags != nil && !diags.HasErrors() {
 		ctx.Diagnostics = append(ctx.Diagnostics, diags...)

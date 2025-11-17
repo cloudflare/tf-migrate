@@ -576,7 +576,7 @@ func TestV4ToV5Transformation(t *testing.T) {
 func TestPreprocessing(t *testing.T) {
 	migrator := &V4ToV5Migrator{}
 
-	// Test that preprocessing does nothing (we handle everything through HCL AST)
+	// Test that preprocessing does nothing (we handle everything through HCL CFGFile)
 	tests := []struct {
 		name  string
 		input string

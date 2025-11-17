@@ -162,16 +162,16 @@ func (m *V4ToV5Migrator) processDataAttribute(block *hclwrite.Block, recordType 
 	}
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
 	// This function receives a single instance and needs to return the transformed instance JSON
-	result := instance.String()
+	result := stateJSON.String()
 
 	// Single instance - check if it's a valid DNS record instance
-	if !instance.Exists() || !instance.Get("attributes").Exists() {
+	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
 		return result, nil
 	}
 
-	attrs := instance.Get("attributes")
+	attrs := stateJSON.Get("attributes")
 	if !attrs.Get("name").Exists() || !attrs.Get("type").Exists() || !attrs.Get("zone_id").Exists() {
 		// Even for invalid/incomplete instances, we need to set schema_version for v5
 		result, _ = sjson.Set(result, "schema_version", 0)
@@ -179,7 +179,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 	}
 
 	// Transform the single instance
-	result = m.transformSingleDNSInstance(result, instance)
+	result = m.transformSingleDNSInstance(result, stateJSON)
 
 	// Ensure schema_version is set to 0 for v5
 	result, _ = sjson.Set(result, "schema_version", 0)

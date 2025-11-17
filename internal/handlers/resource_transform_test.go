@@ -40,9 +40,9 @@ func (m *MockResourceTransformer) TransformConfig(ctx *transform.Context, block 
 	}, nil
 }
 
-func (m *MockResourceTransformer) TransformState(_ *transform.Context, json gjson.Result, resourcePath string) (string, error) {
+func (m *MockResourceTransformer) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
 	if m.stateTransformFunc != nil {
-		return m.stateTransformFunc(json, resourcePath)
+		return m.stateTransformFunc(stateJSON, resourcePath)
 	}
 	return "", nil
 }
@@ -115,7 +115,7 @@ func TestResourceTransformHandler(t *testing.T) {
 				},
 			},
 			checkResult: func(t *testing.T, ctx *transform.Context) {
-				blocks := ctx.AST.Body().Blocks()
+				blocks := ctx.CFGFile.Body().Blocks()
 				if len(blocks) != 1 {
 					t.Errorf("Expected 1 block after transformation, got %d", len(blocks))
 				}
@@ -144,7 +144,7 @@ resource "keep_me" "example" {
 				},
 			},
 			checkResult: func(t *testing.T, ctx *transform.Context) {
-				blocks := ctx.AST.Body().Blocks()
+				blocks := ctx.CFGFile.Body().Blocks()
 				if len(blocks) != 1 {
 					t.Errorf("Expected 1 block after removal, got %d", len(blocks))
 				}
@@ -176,7 +176,7 @@ resource "keep_me" "example" {
 				},
 			},
 			checkResult: func(t *testing.T, ctx *transform.Context) {
-				blocks := ctx.AST.Body().Blocks()
+				blocks := ctx.CFGFile.Body().Blocks()
 				if len(blocks) != 2 {
 					t.Errorf("Expected 2 blocks after split, got %d", len(blocks))
 				}
@@ -208,7 +208,7 @@ resource "keep_me" "example" {
 				},
 			},
 			checkResult: func(t *testing.T, ctx *transform.Context) {
-				blocks := ctx.AST.Body().Blocks()
+				blocks := ctx.CFGFile.Body().Blocks()
 				if len(blocks) != 1 {
 					t.Errorf("Expected 1 block, got %d", len(blocks))
 				}
@@ -234,7 +234,7 @@ resource "keep_me" "example" {
 			},
 			checkResult: func(t *testing.T, ctx *transform.Context) {
 				// Should remain unchanged
-				blocks := ctx.AST.Body().Blocks()
+				blocks := ctx.CFGFile.Body().Blocks()
 				if len(blocks) != 1 {
 					t.Errorf("Expected 1 block unchanged, got %d", len(blocks))
 				}
@@ -263,7 +263,7 @@ resource "keep_me" "example" {
 				}
 
 				// Original block should remain
-				blocks := ctx.AST.Body().Blocks()
+				blocks := ctx.CFGFile.Body().Blocks()
 				if len(blocks) != 1 {
 					t.Errorf("Expected original block to remain on error, got %d blocks", len(blocks))
 				}
@@ -304,7 +304,7 @@ resource "type_c" "c" {
 				// No transformer for type_c - should remain unchanged
 			},
 			checkResult: func(t *testing.T, ctx *transform.Context) {
-				blocks := ctx.AST.Body().Blocks()
+				blocks := ctx.CFGFile.Body().Blocks()
 				if len(blocks) != 2 {
 					t.Errorf("Expected 2 blocks (a and c), got %d", len(blocks))
 				}
@@ -368,11 +368,11 @@ func TestResourceTransformHandlerRequiresAST(t *testing.T) {
 
 	_, err := handler.Handle(ctx)
 	if err == nil {
-		t.Fatal("Expected error when AST is nil")
+		t.Fatal("Expected error when CFGFile is nil")
 	}
 
-	if !strings.Contains(err.Error(), "AST is nil") {
-		t.Errorf("Expected error about nil AST, got: %v", err)
+	if !strings.Contains(err.Error(), "CFGFile is nil") {
+		t.Errorf("Expected error about nil CFGFile, got: %v", err)
 	}
 }
 

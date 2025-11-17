@@ -58,21 +58,21 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath string) (string, error) {
-	result := instance.String()
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
+	result := stateJSON.String()
 
 	// Set schema_version to 0 for v5
 	result, _ = sjson.Set(result, "schema_version", 0)
 
 	// Update the type field if it exists (for unit tests that pass instance-level type)
-	if instance.Get("type").Exists() {
+	if stateJSON.Get("type").Exists() {
 		result, _ = sjson.Set(result, "type", "cloudflare_zero_trust_tunnel_cloudflared_route")
 	}
 
 	// Try to update the ID if API client is available
 	// In v4, the ID was the network CIDR (or a checksum of it)
 	// In v5, the ID is a UUID from the API
-	attrs := instance.Get("attributes")
+	attrs := stateJSON.Get("attributes")
 	if attrs.Exists() && ctx.APIClient != nil {
 		accountID := attrs.Get("account_id").String()
 		tunnelID := attrs.Get("tunnel_id").String()
