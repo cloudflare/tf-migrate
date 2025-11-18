@@ -33,7 +33,7 @@ resource "cloudflare_record" "example_caa_map" {
   name    = "caa-map"
   type    = "CAA"
   data {
-    flags   = 128
+    flags   = "128"
     tag     = "issuewild"
     value   = "ca.example.com"
   }
@@ -60,9 +60,8 @@ resource "cloudflare_record" "example_uri" {
   type     = "URI"
   priority = 10
   data {
-    priority = 10
-    weight   = 20
-    target   = "http://example.com/path"
+    weight = 20
+    target = "http://example.com/path"
   }
 }
 
@@ -209,7 +208,7 @@ resource "cloudflare_record" "ipv6_aaaa" {
 
   zone_id = var.cloudflare_zone_id
   name    = "ipv6"
-  value   = "2001:0db8:85a3:0000:0000:8a2e:0370:7334"
+  value   = "2001:db8:85a3::8a2e:370:7334"
   type    = "AAAA"
   proxied = true
   ttl     = 1
@@ -249,7 +248,7 @@ resource "cloudflare_record" "dnslink" {
 resource "cloudflare_record" "cname_to_a" {
   zone_id = var.cloudflare_zone_id
   name    = "alias"
-  value   = "${cloudflare_record.example_a.name}.${var.domain_name}"
+  value   = "example.${var.domain_name}"
   type    = "CNAME"
   proxied = false
   ttl     = var.record_ttl
@@ -274,7 +273,7 @@ resource "cloudflare_record" "protected_record" {
 resource "cloudflare_record" "conditional_value" {
   zone_id = var.cloudflare_zone_id
   name    = "conditional"
-  value   = var.enable_ipv6 ? "2001:0db8::1" : "192.0.2.100"
+  value   = var.enable_ipv6 ? "2001:db8::1" : "192.0.2.100"
   type    = var.enable_ipv6 ? "AAAA" : "A"
   proxied = true
   ttl     = 1

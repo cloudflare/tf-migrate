@@ -195,9 +195,11 @@ E2E tests validate the complete migration workflow with real Cloudflare resource
 - Terraform installed
 
 ```bash
-# Run E2E tests
-cd ..
+# Run all E2E tests
 ./scripts/run-e2e-tests
+
+# Run E2E tests for specific resources only
+./scripts/run-e2e-tests --resources dns_record,api_token
 ```
 
 **Output:**

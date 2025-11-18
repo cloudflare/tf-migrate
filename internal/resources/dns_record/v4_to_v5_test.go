@@ -349,6 +349,58 @@ resource "cloudflare_record" "pgp" {
   content = "base64encodedkey"
 }`,
 			},
+			{
+				Name: "AAAA record with compressed IPv6",
+				Input: `
+resource "cloudflare_record" "ipv6" {
+  zone_id = "abc123"
+  name    = "test"
+  type    = "AAAA"
+  value   = "2001:db8::1"
+}`,
+				Expected: `resource "cloudflare_dns_record" "ipv6" {
+  zone_id = "abc123"
+  name    = "test"
+  type    = "AAAA"
+  ttl     = 1
+  content = "2001:db8::1"
+}`,
+			},
+			{
+				Name: "AAAA record with full IPv6 address",
+				Input: `
+resource "cloudflare_record" "ipv6_full" {
+  zone_id = "abc123"
+  name    = "test"
+  type    = "AAAA"
+  value   = "2001:0db8:85a3:0000:0000:8a2e:0370:7334"
+}`,
+				Expected: `resource "cloudflare_dns_record" "ipv6_full" {
+  zone_id = "abc123"
+  name    = "test"
+  type    = "AAAA"
+  ttl     = 1
+  content = "2001:0db8:85a3:0000:0000:8a2e:0370:7334"
+}`,
+			},
+			{
+				Name: "AAAA record with existing content field",
+				Input: `
+resource "cloudflare_record" "ipv6_content" {
+  zone_id = "abc123"
+  name    = "ipv6"
+  type    = "AAAA"
+  content = "2001:db8::1"
+  ttl     = 3600
+}`,
+				Expected: `resource "cloudflare_dns_record" "ipv6_content" {
+  zone_id = "abc123"
+  name    = "ipv6"
+  type    = "AAAA"
+  content = "2001:db8::1"
+  ttl     = 3600
+}`,
+			},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
@@ -400,8 +452,8 @@ resource "cloudflare_record" "pgp" {
 							"modified_on": "2024-01-01T00:00:00Z",
 							"data": {
 								"flags": {
-									"value": 0,
-									"type": "number"
+									"type": "string",
+									"value": "0"
 								},
 								"tag": "issue",
 								"value": "letsencrypt.org"
@@ -539,8 +591,8 @@ resource "cloudflare_record" "pgp" {
 							"modified_on": "2024-01-01T00:00:00Z",
 							"data": {
 								"flags": {
-									"value": 0,
-									"type": "number"
+									"type": "string",
+									"value": "0"
 								},
 								"tag": "issue",
 								"value": "letsencrypt.org"
@@ -808,8 +860,8 @@ resource "cloudflare_record" "pgp" {
 								"content": "128 issue letsencrypt.org",
 								"data": {
 									"flags": {
-										"value": 128,
-										"type": "number"
+										"type": "string",
+										"value": "128"
 									},
 									"tag": "issue",
 									"value": "letsencrypt.org"
@@ -903,8 +955,8 @@ resource "cloudflare_record" "pgp" {
 								"content": "critical issue letsencrypt.org",
 								"data": {
 									"flags": {
-										"value": "critical",
-										"type": "string"
+										"type": "string",
+										"value": "critical"
 									},
 									"tag": "issue",
 									"value": "letsencrypt.org"
@@ -1173,8 +1225,46 @@ resource "cloudflare_record" "pgp" {
 					}]
 				}`,
 			},
+			{
+				Name: "AAAA record with compressed IPv6 - preserved as-is",
+				Input: `{
+					"resources": [{
+						"type": "cloudflare_record",
+						"name": "ipv6_test",
+						"instances": [{
+							"attributes": {
+								"id": "ipv6-id",
+								"zone_id": "zone123",
+								"name": "ipv6.example.com",
+								"type": "AAAA",
+								"value": "2001:db8::1"
+							}
+						}]
+					}]
+				}`,
+				Expected: `{
+					"resources": [{
+						"type": "cloudflare_dns_record",
+						"name": "ipv6_test",
+						"instances": [{
+							"attributes": {
+								"id": "ipv6-id",
+								"zone_id": "zone123",
+								"name": "ipv6.example.com",
+								"type": "AAAA",
+								"content": "2001:db8::1",
+								"ttl": 1,
+								"created_on": "2024-01-01T00:00:00Z",
+								"modified_on": "2024-01-01T00:00:00Z"
+							},
+							"schema_version": 0
+						}]
+					}]
+				}`,
+			},
 		}
 
 		testhelpers.RunStateTransformTests(t, tests, migrator)
 	})
+
 }

@@ -1,7 +1,6 @@
 package dns_record
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -417,27 +416,27 @@ func (m *V4ToV5Migrator) transformNumericValue(value gjson.Result) interface{} {
 	}
 }
 
-// transformFlagsValue transforms the flags value to the correct format
+// transformFlagsValue transforms the flags value to the correct DynamicAttribute format
+// In v5, flags is a DynamicAttribute which requires {"type": "...", "value": ...} structure
+// The Cloudflare API always returns flags as strings, so we normalize all flags to strings
 func (m *V4ToV5Migrator) transformFlagsValue(value gjson.Result) interface{} {
 	switch value.Type {
 	case gjson.Number:
+		// Convert numbers to strings to match API behavior
 		return map[string]interface{}{
-			"value": json.Number(value.Raw),
-			"type":  "number",
+			"type":  "string",
+			"value": value.String(),
 		}
 	case gjson.String:
-		if _, err := strconv.ParseFloat(value.String(), 64); err == nil {
-			return map[string]interface{}{
-				"value": json.Number(value.String()),
-				"type":  "number",
-			}
-		} else if value.String() == "" {
+		strVal := value.String()
+		if strVal == "" {
 			return nil
-		} else {
-			return map[string]interface{}{
-				"value": value.String(),
-				"type":  "string",
-			}
+		}
+
+		// Keep strings as strings (API always returns strings)
+		return map[string]interface{}{
+			"type":  "string",
+			"value": strVal,
 		}
 	case gjson.Null:
 		return nil
@@ -454,3 +453,4 @@ func (m *V4ToV5Migrator) isSimpleRecordType(recordType string) bool {
 	}
 	return simpleTypes[recordType]
 }
+

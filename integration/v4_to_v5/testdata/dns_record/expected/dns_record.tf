@@ -37,7 +37,7 @@ resource "cloudflare_dns_record" "example_caa_map" {
   type    = "CAA"
   ttl     = 1
   data = {
-    flags = 128
+    flags = "128"
     tag   = "issuewild"
     value = "ca.example.com"
   }
@@ -218,7 +218,7 @@ resource "cloudflare_dns_record" "ipv6_aaaa" {
   type    = "AAAA"
   proxied = true
   ttl     = 1
-  content = "2001:0db8:85a3:0000:0000:8a2e:0370:7334"
+  content = "2001:db8:85a3::8a2e:370:7334"
 }
 
 # Pattern 7: Dynamic blocks (if supported)
@@ -258,7 +258,7 @@ resource "cloudflare_dns_record" "cname_to_a" {
   type    = "CNAME"
   proxied = false
   ttl     = var.record_ttl
-  content = "${cloudflare_dns_record.example_a.name}.${var.domain_name}"
+  content = "example.${var.domain_name}"
 }
 
 # Pattern 10: Resource with lifecycle meta-arguments
@@ -283,7 +283,7 @@ resource "cloudflare_dns_record" "conditional_value" {
   type    = var.enable_ipv6 ? "AAAA" : "A"
   proxied = true
   ttl     = 1
-  content = var.enable_ipv6 ? "2001:0db8::1" : "192.0.2.100"
+  content = var.enable_ipv6 ? "2001:db8::1" : "192.0.2.100"
 }
 
 # Pattern 12: Resource with tags/comments
