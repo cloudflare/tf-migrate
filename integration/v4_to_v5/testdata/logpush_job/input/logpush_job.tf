@@ -39,7 +39,7 @@ resource "cloudflare_logpush_job" "with_cve_field" {
   }
 }
 
-# Job with instant-logs kind (should become empty string)
+# Job with instant-logs kind (should be removed)
 resource "cloudflare_logpush_job" "instant_logs" {
   zone_id          = var.cloudflare_zone_id
   dataset          = "http_requests"
@@ -53,6 +53,14 @@ resource "cloudflare_logpush_job" "edge_logs" {
   dataset          = "http_requests"
   destination_conf = "https://logpush-receiver.sd.cfplat.com"
   kind             = "edge"
+}
+
+# Job with "" kind (should be preserved)
+resource "cloudflare_logpush_job" "edge_logs" {
+  zone_id          = var.cloudflare_zone_id
+  dataset          = "http_requests"
+  destination_conf = "https://logpush-receiver.sd.cfplat.com"
+  kind             = ""
 }
 
 # Full featured job with all transformations
