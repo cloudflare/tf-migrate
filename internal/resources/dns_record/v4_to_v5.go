@@ -216,12 +216,14 @@ func (m *V4ToV5Migrator) transformSingleDNSInstance(result string, instance gjso
 		recordType == "TLSA" || recordType == "URI"
 
 	if !usesDataField {
-		if valueField.Exists() && !contentField.Exists() {
-			// Only value exists - rename it to content
+		// Check if content has an actual value (not just exists as null)
+		hasContent := contentField.Exists() && contentField.Value() != nil
+		if valueField.Exists() && !hasContent {
+			// Value exists and content is missing or null - use value as content
 			result, _ = sjson.Set(result, "attributes.content", valueField.Value())
 			result, _ = sjson.Delete(result, "attributes.value")
-		} else if valueField.Exists() && contentField.Exists() {
-			// Both exist - keep content, remove value
+		} else if valueField.Exists() && hasContent {
+			// Both exist with real values - keep content, remove value
 			result, _ = sjson.Delete(result, "attributes.value")
 		}
 	} else {
@@ -235,7 +237,7 @@ func (m *V4ToV5Migrator) transformSingleDNSInstance(result string, instance gjso
 
 	// Remove deprecated fields
 	result = state.RemoveFields(result, "attributes", attrs,
-		"hostname", "allow_overwrite", "timeouts")
+		"hostname", "allow_overwrite", "timeouts", "metadata")
 
 	// Handle data field transformation
 	result = m.transformDataFieldForInstance(result, instance, recordType)
