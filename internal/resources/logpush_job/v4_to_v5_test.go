@@ -147,7 +147,7 @@ func TestV4ToV5Transformation(t *testing.T) {
 }`,
 			},
 			{
-				Name: "Handle kind instant-logs to empty string",
+				Name: "Handle kind instant-logs by removing attribute",
 				Input: `resource "cloudflare_logpush_job" "example" {
   dataset          = "http_requests"
   destination_conf = "s3://mybucket/logs?region=us-west-2"
@@ -156,7 +156,6 @@ func TestV4ToV5Transformation(t *testing.T) {
 				Expected: `resource "cloudflare_logpush_job" "example" {
   dataset          = "http_requests"
   destination_conf = "s3://mybucket/logs?region=us-west-2"
-  kind             = ""
 }`,
 			},
 			{
@@ -208,7 +207,6 @@ func TestV4ToV5Transformation(t *testing.T) {
   account_id       = "abc123"
   dataset          = "http_requests"
   destination_conf = "s3://mybucket/logs?region=us-west-2"
-  kind             = ""
   enabled          = true
 
   output_options = {
@@ -249,7 +247,6 @@ resource "cloudflare_logpush_job" "job2" {
 				Expected: `resource "cloudflare_logpush_job" "job1" {
   dataset          = "http_requests"
   destination_conf = "s3://bucket1/logs?region=us-west-2"
-  kind             = ""
 
   output_options = {
     output_type       = "ndjson"
@@ -539,7 +536,7 @@ resource "cloudflare_logpush_job" "job2" {
 }`,
 			},
 			{
-				Name: "Handle kind instant-logs to empty string",
+				Name: "Handle kind instant-logs by removing attribute",
 				Input: `{
   "attributes": {
     "dataset": "http_requests",
@@ -550,8 +547,7 @@ resource "cloudflare_logpush_job" "job2" {
 				Expected: `{
   "attributes": {
     "dataset": "http_requests",
-    "destination_conf": "s3://mybucket/logs?region=us-west-2",
-    "kind": ""
+    "destination_conf": "s3://mybucket/logs?region=us-west-2"
   }
 }`,
 			},
@@ -639,7 +635,6 @@ resource "cloudflare_logpush_job" "job2" {
     "account_id": "abc123",
     "dataset": "http_requests",
     "destination_conf": "s3://mybucket/logs?region=us-west-2",
-    "kind": "",
     "enabled": true,
     "max_upload_bytes": 5000000.0,
     "max_upload_records": 1000.0,

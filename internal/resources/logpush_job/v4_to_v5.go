@@ -54,16 +54,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.ConvertSingleBlockToAttribute(body, "output_options", "output_options")
 	}
 
-	// 2. Handle kind = "instant-logs" → kind = ""
-	// "instant-logs" is no longer valid in v5, convert to empty string
+	// 2. Handle kind = "instant-logs" → remove attribute
+	// "instant-logs" is no longer valid in v5, remove the attribute entirely
 	if kindAttr := body.GetAttribute("kind"); kindAttr != nil {
 		kindValue := tfhcl.ExtractStringFromAttribute(kindAttr)
 		if kindValue == "instant-logs" {
-			// Set to empty string (default in v5)
-			tokens := hcl.TokensForSimpleValue("")
-			if tokens != nil {
-				body.SetAttributeRaw("kind", tokens)
-			}
+			// Remove the attribute entirely since instant-logs is not valid in v5
+			body.RemoveAttribute("kind")
 		}
 	}
 
@@ -120,9 +117,10 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	result = state.RemoveFields(result, "attributes", attrs,
 		"error_message", "last_complete", "last_error")
 
-	// 4. Handle kind value change: "instant-logs" → ""
+	// 4. Handle kind value change: "instant-logs" → remove attribute
+	// "instant-logs" is no longer valid in v5, remove it entirely
 	if kind := attrs.Get("kind"); kind.Exists() && kind.String() == "instant-logs" {
-		result, _ = sjson.Set(result, "attributes.kind", "")
+		result, _ = sjson.Delete(result, "attributes.kind")
 	}
 
 	return result, nil
