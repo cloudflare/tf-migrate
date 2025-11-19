@@ -46,6 +46,7 @@ func EnsureAttribute(body *hclwrite.Body, attrName string, defaultValue interfac
 }
 
 // RenameAttribute renames an attribute from oldName to newName.
+// Also updates any references to the old attribute name in lifecycle blocks (ignore_changes, replace_triggered_by).
 // Returns true if the attribute was found and renamed, false otherwise.
 //
 // Example - Renaming 'value' to 'content' for DNS records:
@@ -57,6 +58,10 @@ func EnsureAttribute(body *hclwrite.Body, attrName string, defaultValue interfac
 //	  name    = "test"
 //	  type    = "A"
 //	  value   = "192.0.2.1"  # Old field name
+//
+//	  lifecycle {
+//	    ignore_changes = [value]
+//	  }
 //	}
 //
 // After calling RenameAttribute(body, "value", "content"):
@@ -66,15 +71,68 @@ func EnsureAttribute(body *hclwrite.Body, attrName string, defaultValue interfac
 //	  name    = "test"
 //	  type    = "A"
 //	  content = "192.0.2.1"  # New field name
+//
+//	  lifecycle {
+//	    ignore_changes = [content]
+//	  }
 //	}
 func RenameAttribute(body *hclwrite.Body, oldName, newName string) bool {
+	renamed := false
+
+	// Rename the attribute itself
 	if attr := body.GetAttribute(oldName); attr != nil {
 		tokens := attr.Expr().BuildTokens(nil)
 		body.SetAttributeRaw(newName, tokens)
 		body.RemoveAttribute(oldName)
-		return true
+		renamed = true
 	}
-	return false
+
+	// Update references in lifecycle blocks
+	for _, block := range body.Blocks() {
+		if block.Type() == "lifecycle" {
+			lifecycleBody := block.Body()
+
+			// Update ignore_changes references
+			if ignoreChangesAttr := lifecycleBody.GetAttribute("ignore_changes"); ignoreChangesAttr != nil {
+				updated := updateAttributeListReferences(ignoreChangesAttr, oldName, newName)
+				if updated != nil {
+					lifecycleBody.SetAttributeRaw("ignore_changes", updated)
+				}
+			}
+
+			// Update replace_triggered_by references
+			if replaceAttr := lifecycleBody.GetAttribute("replace_triggered_by"); replaceAttr != nil {
+				updated := updateAttributeListReferences(replaceAttr, oldName, newName)
+				if updated != nil {
+					lifecycleBody.SetAttributeRaw("replace_triggered_by", updated)
+				}
+			}
+		}
+	}
+
+	return renamed
+}
+
+// updateAttributeListReferences updates references to oldName in a list attribute (like ignore_changes)
+// Returns updated tokens if any replacements were made, nil otherwise
+func updateAttributeListReferences(attr *hclwrite.Attribute, oldName, newName string) hclwrite.Tokens {
+	tokens := attr.Expr().BuildTokens(nil)
+	modified := false
+
+	for i, token := range tokens {
+		if token.Type == hclsyntax.TokenIdent && string(token.Bytes) == oldName {
+			tokens[i] = &hclwrite.Token{
+				Type:  hclsyntax.TokenIdent,
+				Bytes: []byte(newName),
+			}
+			modified = true
+		}
+	}
+
+	if modified {
+		return tokens
+	}
+	return nil
 }
 
 // RemoveAttributes removes multiple attributes from a body.
