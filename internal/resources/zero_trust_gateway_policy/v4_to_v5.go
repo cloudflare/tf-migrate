@@ -219,6 +219,17 @@ func (m *V4ToV5Migrator) transformRuleSettingsObject(settings gjson.Result) stri
 		} else if structName == "dns_resolvers" {
 			// Handle dns_resolvers specially - it has ipv4/ipv6 arrays with port fields
 			result = m.transformDnsResolvers(result, nestedObj)
+		} else if structName == "biso_admin_controls" {
+			// Remove deprecated v1-only disable_* attributes that were removed in v5
+			// These were replaced with new attributes (e.g., disable_printing → printing with values "enabled"/"disabled")
+			nestedResult := nestedObj.String()
+			nestedResult, _ = sjson.Delete(nestedResult, "disable_clipboard_redirection")
+			nestedResult, _ = sjson.Delete(nestedResult, "disable_printing")
+			nestedResult, _ = sjson.Delete(nestedResult, "disable_copy_paste")
+			nestedResult, _ = sjson.Delete(nestedResult, "disable_download")
+			nestedResult, _ = sjson.Delete(nestedResult, "disable_keyboard")
+			nestedResult, _ = sjson.Delete(nestedResult, "disable_upload")
+			result, _ = sjson.SetRaw(result, structName, nestedResult)
 		} else {
 			// Just convert array to object
 			result, _ = sjson.SetRaw(result, structName, nestedObj.String())

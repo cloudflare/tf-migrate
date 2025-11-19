@@ -26,6 +26,8 @@ V5_DIR="${E2E_ROOT}/migrated-v4_to_v5"
 TMP_DIR="${E2E_ROOT}/tmp"
 BINARY="${TF_MIGRATE_ROOT}/tf-migrate"
 SKIP_V4_TEST=false
+RESOURCES=""
+TARGET_ARGS=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -34,13 +36,46 @@ while [[ $# -gt 0 ]]; do
       SKIP_V4_TEST=true
       shift
       ;;
+    --resources)
+      RESOURCES="$2"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: $0 [OPTIONS]"
+      echo ""
+      echo "Options:"
+      echo "  --skip-v4-test                     Skip v4 testing phase and go straight to migration"
+      echo "  --resources <resource1,resource2>  Target specific resources (comma-separated module names)"
+      echo "  -h, --help                         Show this help message"
+      echo ""
+      echo "Examples:"
+      echo "  $0                                           # Run full e2e test for all resources"
+      echo "  $0 --skip-v4-test                           # Skip v4 phase, migrate and test v5"
+      echo "  $0 --resources dns_record                   # Test only dns_record module"
+      echo "  $0 --resources dns_record,zone_dnssec       # Test multiple modules"
+      echo "  $0 --skip-v4-test --resources dns_record    # Combined: skip v4, test only dns_record"
+      echo ""
+      exit 0
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--skip-v4-test]"
+      echo "Usage: $0 [--skip-v4-test] [--resources resource1,resource2,...] [-h|--help]"
       exit 1
       ;;
   esac
 done
+
+# Build target arguments if resources are specified
+if [[ -n "$RESOURCES" ]]; then
+  echo -e "${CYAN}Targeting specific resources: ${RESOURCES}${NC}"
+  IFS=',' read -ra RESOURCE_ARRAY <<< "$RESOURCES"
+  for resource in "${RESOURCE_ARRAY[@]}"; do
+    # Prepend module. to each resource name
+    TARGET_ARGS="${TARGET_ARGS} -target=module.${resource}"
+  done
+  echo -e "${CYAN}Target arguments: ${TARGET_ARGS}${NC}"
+  echo ""
+fi
 
 # Create tmp directory
 mkdir -p "${TMP_DIR}"
@@ -50,7 +85,14 @@ echo -e "${CYAN}E2E Migration Test${NC}"
 echo -e "${CYAN}========================================${NC}"
 echo ""
 
-if [[ "$SKIP_V4_TEST" == "false" ]]; then
+# Show tips based on current configuration
+if [[ "$SKIP_V4_TEST" == "false" ]] && [[ -z "$RESOURCES" ]]; then
+  echo -e "${YELLOW}Tips:${NC}"
+  echo -e "${YELLOW}  • Use --skip-v4-test to skip v4 testing and go straight to migration${NC}"
+  echo -e "${YELLOW}  • Use --resources <name> to test specific modules (e.g., --resources dns_record)${NC}"
+  echo -e "${YELLOW}  • Run --help to see all available options${NC}"
+  echo ""
+elif [[ "$SKIP_V4_TEST" == "false" ]] && [[ -n "$RESOURCES" ]]; then
   echo -e "${YELLOW}Tip: Use --skip-v4-test to skip v4 testing and go straight to migration${NC}"
   echo ""
 fi
@@ -89,11 +131,14 @@ fi
 echo -e "${GREEN}✓ Test resources initialized${NC}"
 echo ""
 
-# Check if binary exists
-if [[ ! -f "$BINARY" ]]; then
-    echo -e "${YELLOW}Binary not found, building...${NC}"
-    (cd "$TF_MIGRATE_ROOT" && go build -o tf-migrate ./cmd/tf-migrate)
+# Always build the binary to ensure it's up to date with latest code
+echo -e "${YELLOW}Building tf-migrate binary...${NC}"
+if ! (cd "$TF_MIGRATE_ROOT" && go build -o tf-migrate ./cmd/tf-migrate); then
+    echo -e "${RED}✗ Failed to build tf-migrate binary${NC}"
+    exit 1
 fi
+echo -e "${GREEN}✓ Binary built successfully${NC}"
+echo ""
 
 # Step 1: Initialize and apply v4 configs
 if [[ "$SKIP_V4_TEST" == "false" ]]; then
@@ -149,7 +194,7 @@ if [[ "$SKIP_V4_TEST" == "false" ]]; then
   rm -f "$BACKEND_CONFIG_TMP"
 
   echo -e "${YELLOW}Running terraform plan in v4/...${NC}"
-  if ! terraform plan -no-color -out="${TMP_DIR}/v4.tfplan" -input=false > "${TMP_DIR}/v4-plan.log" 2>&1; then
+  if ! terraform plan -no-color -out="${TMP_DIR}/v4.tfplan" -input=false ${TARGET_ARGS} > "${TMP_DIR}/v4-plan.log" 2>&1; then
       echo -e "${RED}✗ Terraform plan failed for v4${NC}"
       echo ""
       echo -e "${RED}Error output:${NC}"
@@ -276,7 +321,7 @@ fi
 echo -e "${GREEN}✓ Terraform init successful${NC}"
 
 echo -e "${YELLOW}Running terraform plan in v5/...${NC}"
-if ! terraform plan -no-color -out="${TMP_DIR}/v5.tfplan" -input=false > "${TMP_DIR}/v5-plan.log" 2>&1; then
+if ! terraform plan -no-color -out="${TMP_DIR}/v5.tfplan" -input=false ${TARGET_ARGS} > "${TMP_DIR}/v5-plan.log" 2>&1; then
     echo -e "${RED}✗ Terraform plan failed for v5${NC}"
     echo ""
     echo -e "${RED}Error output:${NC}"
