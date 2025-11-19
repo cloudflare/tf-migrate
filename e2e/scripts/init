@@ -94,8 +94,8 @@ while IFS= read -r input_dir; do
     rm -rf "$module_dir"
     mkdir -p "$module_dir"
 
-    # Sync all .tf files from testdata (excluding variables.tf which we generate)
-    tf_files=$(find "$input_dir" -maxdepth 1 -name "*.tf" -type f ! -name "variables.tf")
+    # Sync all .tf files from testdata
+    tf_files=$(find "$input_dir" -maxdepth 1 -name "*.tf" -type f)
 
     if [[ -n "$tf_files" ]]; then
         while IFS= read -r tf_file; do
@@ -109,22 +109,6 @@ while IFS= read -r input_dir; do
             FILE_COUNT=$((FILE_COUNT + 1))
         done <<< "$tf_files"
     fi
-
-    # Create variables.tf dynamically for each module
-    variables_file="${module_dir}/variables.tf"
-    cat > "$variables_file" << 'VARIABLES_EOF'
-variable "cloudflare_account_id" {
-  description = "Cloudflare account ID"
-  type        = string
-}
-
-variable "cloudflare_zone_id" {
-  description = "Cloudflare zone ID"
-  type        = string
-}
-VARIABLES_EOF
-    echo -e "  ${GREEN}✓ ${resource_type}/variables.tf${NC}"
-    FILE_COUNT=$((FILE_COUNT + 1))
 
     # Create versions.tf dynamically for each module
     versions_file="${module_dir}/versions.tf"

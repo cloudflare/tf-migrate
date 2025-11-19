@@ -1,3 +1,13 @@
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID"
+  type        = string
+}
+
 resource "cloudflare_zero_trust_dlp_custom_profile" "credit_cards" {
   account_id          = var.cloudflare_account_id
   name                = "Credit Card Detection"

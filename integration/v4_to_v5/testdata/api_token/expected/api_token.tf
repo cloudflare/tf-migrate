@@ -1,3 +1,13 @@
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID"
+  type        = string
+}
+
 # Test Case 1: Basic API token with single policy
 resource "cloudflare_api_token" "basic_token" {
   name = "Basic API Token"

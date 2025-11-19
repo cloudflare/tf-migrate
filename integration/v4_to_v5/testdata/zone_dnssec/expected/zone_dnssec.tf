@@ -1,3 +1,13 @@
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID"
+  type        = string
+}
+
 # Zone DNSSEC with modified_on field (should be removed)
 # Status should be added from state value (status = "active" in state)
 resource "cloudflare_zone_dnssec" "example_active" {

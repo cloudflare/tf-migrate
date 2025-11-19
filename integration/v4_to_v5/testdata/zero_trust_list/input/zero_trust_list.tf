@@ -1,3 +1,13 @@
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID"
+  type        = string
+}
+
 # Basic IP list with simple items array
 resource "cloudflare_teams_list" "ip_list" {
   account_id = var.cloudflare_account_id
