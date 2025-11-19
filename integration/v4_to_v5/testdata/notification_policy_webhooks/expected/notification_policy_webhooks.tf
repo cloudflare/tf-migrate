@@ -1,3 +1,13 @@
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID"
+  type        = string
+}
+
 # Use pre-existing webhook endpoint worker
 # Worker URL: https://e2e-webhook-endpoint.terraform-testing-a09.workers.dev/
 # This worker responds with 200 OK to all requests for webhook validation

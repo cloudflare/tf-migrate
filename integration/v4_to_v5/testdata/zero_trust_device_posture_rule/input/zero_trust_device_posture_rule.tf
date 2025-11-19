@@ -1,3 +1,13 @@
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID"
+  type        = string
+}
+
 # Test case 1: Basic os_version rule with input and match
 resource "cloudflare_device_posture_rule" "basic" {
   account_id  = var.cloudflare_account_id

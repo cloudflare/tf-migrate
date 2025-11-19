@@ -1,3 +1,13 @@
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID"
+  type        = string
+}
+
 # Test Case 1: Minimal gateway policy
 resource "cloudflare_zero_trust_gateway_policy" "minimal" {
   account_id  = var.cloudflare_account_id
