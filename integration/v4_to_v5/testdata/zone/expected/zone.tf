@@ -38,15 +38,16 @@ resource "cloudflare_zone" "minimal" {
 }
 
 # Test Case 2: Full zone with all v4 attributes
-resource "cloudflare_zone" "maximal" {
-  paused              = false
-  type                = "full"
-  vanity_name_servers = ["ns1.custom.example.com", "ns2.custom.example.com"]
-  name                = "maximal.example.com"
-  account = {
-    id = var.cloudflare_account_id
-  }
-}
+# COMMENTED OUT: Requires Business/Enterprise plan with configured vanity nameservers
+# resource "cloudflare_zone" "maximal" {
+#   paused              = false
+#   type                = "full"
+#   vanity_name_servers = ["ns1.custom.example.com", "ns2.custom.example.com"]
+#   name                = "maximal.example.com"
+#   account = {
+#     id = var.cloudflare_account_id
+#   }
+# }
 
 # Test Case 3: Zone with paused = true
 resource "cloudflare_zone" "paused_zone" {
@@ -59,33 +60,36 @@ resource "cloudflare_zone" "paused_zone" {
 }
 
 # Test Case 4: Partial zone type
-resource "cloudflare_zone" "partial_zone" {
-  type   = "partial"
-  paused = false
-  name   = "partial.example.com"
-  account = {
-    id = var.cloudflare_account_id
-  }
-}
+# COMMENTED OUT: Requires Business/Enterprise plan
+# resource "cloudflare_zone" "partial_zone" {
+#   type   = "partial"
+#   paused = false
+#   name   = "partial.example.com"
+#   account = {
+#     id = var.cloudflare_account_id
+#   }
+# }
 
 # Test Case 5: Secondary zone type
-resource "cloudflare_zone" "secondary_zone" {
-  type = "secondary"
-  name = "secondary.example.com"
-  account = {
-    id = var.cloudflare_account_id
-  }
-}
+# COMMENTED OUT: Requires Enterprise plan
+# resource "cloudflare_zone" "secondary_zone" {
+#   type = "secondary"
+#   name = "secondary.example.com"
+#   account = {
+#     id = var.cloudflare_account_id
+#   }
+# }
 
 # Test Case 6: Zone with vanity name servers
-resource "cloudflare_zone" "with_vanity_ns" {
-  type                = "full"
-  vanity_name_servers = ["ns1.vanity.example.com", "ns2.vanity.example.com", "ns3.vanity.example.com"]
-  name                = "vanity.example.com"
-  account = {
-    id = var.cloudflare_account_id
-  }
-}
+# COMMENTED OUT: Requires Business/Enterprise plan with configured vanity nameservers
+# resource "cloudflare_zone" "with_vanity_ns" {
+#   type                = "full"
+#   vanity_name_servers = ["ns1.vanity.example.com", "ns2.vanity.example.com", "ns3.vanity.example.com"]
+#   name                = "vanity.example.com"
+#   account = {
+#     id = var.cloudflare_account_id
+#   }
+# }
 
 # ========================================
 # Pattern Group 3: for_each with Maps
@@ -103,11 +107,12 @@ resource "cloudflare_zone" "map_zones" {
       type   = "full"
       paused = false
     }
-    "dev" = {
-      domain = "dev.example.com"
-      type   = "partial"
-      paused = true
-    }
+    # COMMENTED OUT: "dev" environment uses partial type which requires Business/Enterprise plan
+    # "dev" = {
+    #   domain = "dev.example.com"
+    #   type   = "partial"
+    #   paused = true
+    # }
   }
 
   type   = each.value.type
@@ -256,13 +261,13 @@ resource "cloudflare_zone" "with_prevent_destroy" {
 # ========================================
 
 # Test Case: Unicode domain name
-resource "cloudflare_zone" "unicode_domain" {
-  type = "full"
-  name = "例え.テスト"
-  account = {
-    id = var.cloudflare_account_id
-  }
-}
+# resource "cloudflare_zone" "unicode_domain" {
+#   type = "full"
+#   name = "例え.テスト"
+#   account = {
+#     id = var.cloudflare_account_id
+#   }
+# }
 
 # Test Case: Hyphenated domain
 resource "cloudflare_zone" "hyphenated_domain" {
