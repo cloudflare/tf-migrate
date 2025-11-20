@@ -35,47 +35,13 @@ resource "cloudflare_zone" "minimal" {
   zone       = "minimal.example.com"
 }
 
-# Test Case 2: Full zone with all v4 attributes
-# resource "cloudflare_zone" "maximal" {
-#   account_id          = var.cloudflare_account_id
-#   zone                = "maximal.example.com"
-#   paused              = false
-#   type                = "full"
-#   jump_start          = true
-#   plan                = "enterprise"
-#   vanity_name_servers = ["ns1.custom.example.com", "ns2.custom.example.com"]
-# }
-
-# Test Case 3: Zone with paused = true
+# Test Case 2: Zone with paused = true
 resource "cloudflare_zone" "paused_zone" {
   account_id = var.cloudflare_account_id
   zone       = "paused.example.com"
   paused     = true
   type       = "full"
 }
-
-# Test Case 4: Partial zone type
-# resource "cloudflare_zone" "partial_zone" {
-#   account_id = var.cloudflare_account_id
-#   zone       = "partial.example.com"
-#   type       = "partial"
-#   paused     = false
-# }
-
-# Test Case 5: Secondary zone type
-# resource "cloudflare_zone" "secondary_zone" {
-#   account_id = var.cloudflare_account_id
-#   zone       = "secondary.example.com"
-#   type       = "secondary"
-# }
-
-# Test Case 6: Zone with vanity name servers
-# resource "cloudflare_zone" "with_vanity_ns" {
-#   account_id          = var.cloudflare_account_id
-#   zone                = "vanity.example.com"
-#   type                = "full"
-#   vanity_name_servers = ["ns1.vanity.example.com", "ns2.vanity.example.com", "ns3.vanity.example.com"]
-# }
 
 # ========================================
 # Pattern Group 3: for_each with Maps
@@ -223,13 +189,6 @@ resource "cloudflare_zone" "with_prevent_destroy" {
 # Pattern Group 9: Edge Cases
 # ========================================
 
-# Test Case: Unicode domain name
-# resource "cloudflare_zone" "unicode_domain" {
-#   account_id = var.cloudflare_account_id
-#   zone       = "例え.テスト"
-#   type       = "full"
-# }
-
 # Test Case: Hyphenated domain
 resource "cloudflare_zone" "hyphenated_domain" {
   account_id = var.cloudflare_account_id
@@ -272,13 +231,20 @@ resource "cloudflare_zone" "with_business_plan" {
 # Total Resource Count Summary
 # ========================================
 # Minimal: 1
-# Maximal: 1
-# Basic variations: 5 (paused, partial, secondary, vanity_ns, removed_attrs)
-# for_each with maps: 3 instances (prod, staging, dev)
+# Basic variations: 2 (paused, removed_attrs)
+# for_each with maps: 2 instances (prod, staging)
 # for_each with sets: 4 instances
 # count-based: 3 instances
 # Conditional: 1 instance (enabled only)
 # With functions: 3 instances
 # Lifecycle: 3 instances
-# Edge cases: 5 instances (unicode, hyphenated, deep, plan variations)
-# TOTAL: 29 resource instances
+# Edge cases: 4 instances (hyphenated, deep, plan variations)
+# TOTAL: 23 resource instances
+#
+# REMOVED (require Business/Enterprise plans):
+# - maximal (vanity name servers)
+# - partial_zone (partial zone type)
+# - secondary_zone (secondary zone type)
+# - with_vanity_ns (vanity name servers)
+# - map_zones["dev"] (partial zone type)
+# - unicode_domain (commented out by linter)
