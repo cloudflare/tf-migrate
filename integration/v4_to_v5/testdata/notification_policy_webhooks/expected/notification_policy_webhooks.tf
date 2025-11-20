@@ -1,3 +1,6 @@
+# ========================================
+# Variables
+# ========================================
 variable "cloudflare_account_id" {
   description = "Cloudflare account ID"
   type        = string
@@ -11,6 +14,21 @@ variable "cloudflare_zone_id" {
 # Use pre-existing webhook endpoint worker
 # Worker URL: https://e2e-webhook-endpoint.terraform-testing-a09.workers.dev/
 # This worker responds with 200 OK to all requests for webhook validation
+
+# ========================================
+# Locals
+# ========================================
+locals {
+  common_account   = var.cloudflare_account_id
+  name_prefix      = "test-integration"
+  webhook_base_url = "https://e2e-webhook-endpoint.terraform-testing-a09.workers.dev"
+  enable_backup    = true
+  enable_test      = false
+}
+
+# ========================================
+# Basic Resources
+# ========================================
 
 # Test Case 1: Basic webhook with minimal fields
 resource "cloudflare_notification_policy_webhooks" "basic_webhook" {
@@ -27,16 +45,132 @@ resource "cloudflare_notification_policy_webhooks" "full_webhook" {
   secret     = "webhook-secret-token-12345"
 }
 
-# Test Case 3: Multiple webhooks
-resource "cloudflare_notification_policy_webhooks" "primary" {
-  account_id = var.cloudflare_account_id
-  name       = "primary-webhook"
-  url        = "https://e2e-webhook-endpoint.terraform-testing-a09.workers.dev/primary"
+# ========================================
+# for_each with Maps Pattern (3 resources)
+# ========================================
+resource "cloudflare_notification_policy_webhooks" "map_example" {
+  for_each = {
+    "alerts" = {
+      name   = "alerts-webhook"
+      secret = "alerts-secret-123"
+    }
+    "monitoring" = {
+      name   = "monitoring-webhook"
+      secret = "monitoring-secret-456"
+    }
+    "security" = {
+      name   = "security-webhook"
+      secret = "security-secret-789"
+    }
+  }
+
+  account_id = local.common_account
+  name       = each.value.name
+  url        = "${local.webhook_base_url}/${each.key}"
+  secret     = each.value.secret
 }
 
-resource "cloudflare_notification_policy_webhooks" "backup" {
+# ========================================
+# for_each with Sets Pattern (4 resources)
+# ========================================
+resource "cloudflare_notification_policy_webhooks" "set_example" {
+  for_each = toset([
+    "alpha",
+    "beta",
+    "gamma",
+    "delta"
+  ])
+
   account_id = var.cloudflare_account_id
-  name       = "backup-webhook"
-  url        = "https://e2e-webhook-endpoint.terraform-testing-a09.workers.dev/backup"
-  secret     = "backup-secret"
+  name       = "set-${each.value}"
+  url        = "${local.webhook_base_url}/set-${each.value}"
+}
+
+# ========================================
+# count-based Resources (3 resources)
+# ========================================
+resource "cloudflare_notification_policy_webhooks" "counted" {
+  count = 3
+
+  account_id = var.cloudflare_account_id
+  name       = "webhook-${count.index}"
+  url        = "${local.webhook_base_url}/counted-${count.index}"
+}
+
+# ========================================
+# Conditional Creation
+# ========================================
+resource "cloudflare_notification_policy_webhooks" "conditional_enabled" {
+  count = local.enable_backup ? 1 : 0
+
+  account_id = var.cloudflare_account_id
+  name       = "conditional-enabled"
+  url        = "${local.webhook_base_url}/conditional-enabled"
+}
+
+resource "cloudflare_notification_policy_webhooks" "conditional_disabled" {
+  count = local.enable_test ? 1 : 0
+
+  account_id = var.cloudflare_account_id
+  name       = "conditional-disabled"
+  url        = "${local.webhook_base_url}/conditional-disabled"
+}
+
+# ========================================
+# Terraform Functions
+# ========================================
+resource "cloudflare_notification_policy_webhooks" "with_functions" {
+  account_id = local.common_account
+  name       = join("-", [local.name_prefix, "function", "example"])
+  url        = "${local.webhook_base_url}/function-test"
+  secret     = "function-test-secret"
+}
+
+# ========================================
+# Lifecycle Meta-Arguments
+# ========================================
+resource "cloudflare_notification_policy_webhooks" "with_lifecycle" {
+  account_id = var.cloudflare_account_id
+  name       = "lifecycle-test"
+  url        = "${local.webhook_base_url}/lifecycle"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "cloudflare_notification_policy_webhooks" "with_prevent_destroy" {
+  account_id = var.cloudflare_account_id
+  name       = "prevent-destroy-test"
+  url        = "${local.webhook_base_url}/prevent-destroy"
+
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+# ========================================
+# Edge Cases
+# ========================================
+
+# Minimal resource (only required fields)
+resource "cloudflare_notification_policy_webhooks" "minimal" {
+  account_id = var.cloudflare_account_id
+  name       = "minimal"
+  url        = "${local.webhook_base_url}/minimal"
+}
+
+# Maximal resource (all fields populated)
+resource "cloudflare_notification_policy_webhooks" "maximal" {
+  account_id = var.cloudflare_account_id
+  name       = "maximal-webhook-with-all-fields"
+  url        = "${local.webhook_base_url}/maximal?param=value&test=123"
+  secret     = "maximal-secret-token-with-special-chars-!@#$"
+}
+
+# URL with special characters
+resource "cloudflare_notification_policy_webhooks" "special_chars" {
+  account_id = var.cloudflare_account_id
+  name       = "special-chars-test"
+  url        = "${local.webhook_base_url}/path?query=value&param=test"
 }
