@@ -800,3 +800,12 @@ func buildValueTokens(val cty.Value) hclwrite.Tokens {
 
 	return tokens
 }
+
+// BuildArrayFromObjects creates array tokens from multiple object tokens
+// Useful for converting multiple blocks to an array attribute
+func BuildArrayFromObjects(objects []hclwrite.Tokens) hclwrite.Tokens {
+	if len(objects) == 0 {
+		return TokensForEmptyArray()
+	}
+	return hclwrite.TokensForTuple(objects)
+}
