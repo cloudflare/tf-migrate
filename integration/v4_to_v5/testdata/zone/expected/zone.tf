@@ -2,7 +2,20 @@
 # Covers all Terraform patterns and zone-specific edge cases
 
 # ========================================
-# Pattern Group 1: Variables & Locals
+# Variables
+# ========================================
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID"
+  type        = string
+}
+
+# ========================================
+# Pattern Group 1: Locals
 # ========================================
 
 locals {
