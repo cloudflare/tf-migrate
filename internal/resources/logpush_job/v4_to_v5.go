@@ -23,17 +23,20 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 }
 
 func (m *V4ToV5Migrator) GetResourceType() string {
-	// Return the NEW (v5) resource name - same as v4
 	return "cloudflare_logpush_job"
 }
 
 func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
-	// Check for the OLD (v4) resource name
 	return resourceType == "cloudflare_logpush_job"
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
+}
+
+// This resource does not rename, so we return the same name for both old and new
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_logpush_job", "cloudflare_logpush_job"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
@@ -98,7 +101,7 @@ func (m *V4ToV5Migrator) ensureV4SchemaDefaults(body *hclwrite.Body) {
 	}
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string, resourceName string) (string, error) {
 	result := stateJSON.String()
 
 	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
