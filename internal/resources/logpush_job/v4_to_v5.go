@@ -83,6 +83,7 @@ func (m *V4ToV5Migrator) ensureV4SchemaDefaults(body *hclwrite.Body) {
 	}
 
 	v4Defaults := []defaultPair{
+		{"cve_2021_44228", false},
 		{"field_delimiter", ","},
 		{"record_prefix", "{"},
 		{"record_suffix", "}\n"},
@@ -228,6 +229,7 @@ func (m *V4ToV5Migrator) transformOutputOptions(result string, attrs gjson.Resul
 // addV4SchemaDefaultsToState adds v4 schema defaults to state object if not present
 func (m *V4ToV5Migrator) addV4SchemaDefaultsToState(obj map[string]interface{}) {
 	v4Defaults := map[string]interface{}{
+		"cve_2021_44228":   false,
 		"field_delimiter":  ",",
 		"record_prefix":    "{",
 		"record_suffix":    "}\n",

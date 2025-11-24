@@ -57,6 +57,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     batch_suffix      = "}"
     field_names       = ["ClientIP", "EdgeStartTimestamp"]
     output_type       = "ndjson"
+    cve_2021_44228    = false
     field_delimiter   = ","
     record_prefix     = "{"
     record_suffix     = "}\n"
@@ -111,6 +112,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     output_type       = "ndjson"
     field_delimiter   = "|"
     sample_rate       = 0.5
+    cve_2021_44228    = false
     record_prefix     = "{"
     record_suffix     = "}\n"
     timestamp_format  = "unixnano"
@@ -143,6 +145,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     record_suffix     = "]"
     timestamp_format  = "rfc3339"
     sample_rate       = 0.1
+    cve_2021_44228    = false
   }
 }`,
 			},
@@ -265,6 +268,7 @@ resource "cloudflare_logpush_job" "job2" {
 
   output_options = {
     output_type       = "csv"
+    cve_2021_44228    = false
     field_delimiter   = ","
     record_prefix     = "{"
     record_suffix     = "}\n"
@@ -293,6 +297,7 @@ resource "cloudflare_logpush_job" "job2" {
   output_options = {
     field_names       = var.field_names
     output_type       = "ndjson"
+    cve_2021_44228    = false
     field_delimiter   = ","
     record_prefix     = "{"
     record_suffix     = "}\n"
@@ -378,6 +383,7 @@ resource "cloudflare_logpush_job" "job2" {
       "batch_suffix": "}",
       "field_names": ["ClientIP", "EdgeStartTimestamp"],
       "output_type": "ndjson",
+      "cve_2021_44228": false,
       "field_delimiter": ",",
       "record_prefix": "{",
       "record_suffix": "}\n",
@@ -530,6 +536,7 @@ resource "cloudflare_logpush_job" "job2" {
       "record_prefix": "[",
       "sample_rate": 0.5,
       "timestamp_format": "rfc3339",
+      "cve_2021_44228": false,
       "record_suffix": "}\n"
     }
   }

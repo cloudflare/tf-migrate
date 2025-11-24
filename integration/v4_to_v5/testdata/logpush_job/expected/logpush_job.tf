@@ -34,6 +34,7 @@ resource "cloudflare_logpush_job" "with_output_options" {
     batch_suffix     = "}"
     field_names      = ["ClientIP", "EdgeStartTimestamp"]
     output_type      = "ndjson"
+    cve_2021_44228   = false
     field_delimiter  = ","
     record_prefix    = "{"
     record_suffix    = "}\n"
