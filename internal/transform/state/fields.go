@@ -346,7 +346,7 @@ func ConvertGjsonToJSON(value gjson.Result) interface{} {
 	}
 }
 
-// isEmptyValue checks if a gjson.Result value is considered "empty" (default/zero)
+// IsEmptyValue checks if a gjson.Result value is considered "empty" (default/zero)
 func IsEmptyValue(value gjson.Result) bool {
 	if !value.Exists() {
 		return true

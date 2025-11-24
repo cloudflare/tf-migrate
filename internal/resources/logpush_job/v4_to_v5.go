@@ -110,17 +110,30 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 
 	attrs := stateJSON.Get("attributes")
 
-	// 1. Convert integer fields to float64 for int64 compatibility
+	// 1. Convert integer fields to float64 for int64 compatibility, remove 0 defaults
 	result = m.convertNumericFields(result, attrs)
 
-	// 2. Transform output_options array to object
+	// 2. Transform empty string defaults to null for v4 fields (filter, logpull_options, name)
+	// v4 sets these to "" when not configured, v5 uses null
+	// Only transform if not explicitly set to "" in config
+	result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+		Ctx:              ctx,
+		Result:           result,
+		FieldPath:        "attributes",
+		FieldResult:      attrs,
+		ResourceName:     resourceName,
+		HCLAttributePath: "",
+		CanHandle:        m.CanHandle,
+	})
+
+	// 3. Transform output_options array to object
 	result = m.transformOutputOptions(result, attrs)
 
-	// 3. Remove computed-only fields (these should not be in state)
+	// 4. Remove computed-only fields (these should not be in state)
 	result = state.RemoveFields(result, "attributes", attrs,
 		"error_message", "last_complete", "last_error")
 
-	// 4. Handle kind value change: "instant-logs" → remove attribute
+	// 5. Handle kind value change: "instant-logs" → remove attribute
 	// "instant-logs" is no longer valid in v5, remove it entirely
 	if kind := attrs.Get("kind"); kind.Exists() && kind.String() == "instant-logs" {
 		result, _ = sjson.Delete(result, "attributes.kind")
@@ -139,8 +152,13 @@ func (m *V4ToV5Migrator) convertNumericFields(result string, attrs gjson.Result)
 
 	for _, field := range numericFields {
 		if val := attrs.Get(field); val.Exists() {
-			// Convert to float64 for int64 compatibility
-			result, _ = sjson.Set(result, "attributes."+field, state.ConvertToFloat64(val))
+			// if val == 0, make it null in v5 to avoid a diff
+			if val.Type == gjson.Number && val.Float() == 0 {
+				result, _ = sjson.Delete(result, "attributes."+field)
+			} else {
+				// Convert to float64 for int64 compatibility
+				result, _ = sjson.Set(result, "attributes."+field, state.ConvertToFloat64(val))
+			}
 		}
 	}
 

@@ -1,3 +1,13 @@
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID"
+  type        = string
+}
+
 # Minimal logpush job
 resource "cloudflare_logpush_job" "minimal" {
   account_id       = var.cloudflare_account_id
@@ -56,7 +66,7 @@ resource "cloudflare_logpush_job" "edge_logs" {
 }
 
 # Job with "" kind (should be preserved)
-resource "cloudflare_logpush_job" "edge_logs" {
+resource "cloudflare_logpush_job" "empty_kind" {
   zone_id          = var.cloudflare_zone_id
   dataset          = "http_requests"
   destination_conf = "https://logpush-receiver.sd.cfplat.com"
