@@ -1,7 +1,3 @@
-# Integration Tests for cloudflare_account_member v4 to v5 Migration
-# This file contains only one test since end to end tests fail with more than one test 
-# account_member is 1:1 for zone id
-
 variable "cloudflare_account_id" {
   description = "Cloudflare account ID"
   type        = string
@@ -12,18 +8,20 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
-locals {
-  common_account = var.cloudflare_account_id
-
-  # Standard Cloudflare role IDs (predefined, not account-specific)
-  admin_read_only_role = "e58cefd75d7adae0b761796c28815e5c"
-  analytics_role       = "a4154d230e664f8b3e6e5c95a8cc812f"
-  billing_role         = "a3eb64b6819c42e78c93e9cb90e6e8e2"
+# Test Case 1: Basic account member
+resource "cloudflare_account_member" "basic_am" {
+    account_id = var.cloudflare_account_id
+    email_address = "terraform-test-user-b@cfapi.net"
+    role_ids = ["e58cefd75d7adae0b761796c28815e5c"]
 }
 
-resource "cloudflare_account_member" "maximal" {
-  account_id    = var.cloudflare_account_id
-  email_address = "maximal-member@cfapi.net"
-  role_ids      = [local.admin_read_only_role, local.analytics_role, local.billing_role]
-  status        = "accepted"
+# Test Case 2: Full account member
+resource "cloudflare_account_member" "full_am" {
+    account_id = var.cloudflare_account_id
+    status = "accepted"
+    email_address = "terraform-test-user-c@cfapi.net"
+    role_ids = [
+        "e58cefd75d7adae0b761796c28815e5c",
+        "a4154d230e664f8b3e6e5c95a8cc812f"
+    ]
 }
