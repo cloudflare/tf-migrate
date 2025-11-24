@@ -35,6 +35,18 @@ func (m *V4ToV5Migrator) GetResourceType() string {
 	return "cloudflare_zones"
 }
 
+// GetAttributeRenames returns attribute renames for cross-file reference updates.
+// The zones datasource changed its output attribute from "zones" to "result".
+func (m *V4ToV5Migrator) GetAttributeRenames() []transform.AttributeRename {
+	return []transform.AttributeRename{
+		{
+			ResourceType: "data.cloudflare_zones",
+			OldAttribute: "zones",
+			NewAttribute: "result",
+		},
+	}
+}
+
 // CanHandle determines if this migrator can handle the given datasource type.
 func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 	// Only match datasource type (with "data." prefix)
