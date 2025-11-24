@@ -46,28 +46,41 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 	datasourceIndices := []int{} // Track datasource indices to remove them later
 
 	resources.ForEach(func(key, resource gjson.Result) bool {
-		// Skip datasources (mode="data") - they are ephemeral and will be refreshed by Terraform
-		// Only process managed resources (mode="managed")
 		mode := resource.Get("mode").String()
-		if mode == "data" {
-			datasourceIndices = append(datasourceIndices, int(key.Int()))
-			h.log.Debug("Marking datasource for removal during state migration (datasources are ephemeral)", "type", resource.Get("type").String())
-			return true
-		}
-
 		resourceType := resource.Get("type").String()
 		if resourceType == "" {
 			return true
 		}
 
-		migrator := h.provider.GetMigrator(resourceType, ctx.SourceVersion, ctx.TargetVersion)
+		// For datasources (mode="data"), check if there's a registered migrator
+		// If no migrator exists, mark for removal (datasources are ephemeral)
+		// If migrator exists, process the transformation
+		lookupType := resourceType
+		if mode == "data" {
+			lookupType = "data." + resourceType
+			migrator := h.provider.GetMigrator(lookupType, ctx.SourceVersion, ctx.TargetVersion)
+			if migrator == nil {
+				// No migrator - mark for removal (datasources are ephemeral and will be refreshed)
+				datasourceIndices = append(datasourceIndices, int(key.Int()))
+				h.log.Debug("Missing datasource migration - marking for removal", "type", resourceType)
+				return true
+			}
+			// Migrator exists - process transformation below
+			h.log.Debug("Processing datasource with registered migrator", "type", lookupType)
+		}
+
+		migrator := h.provider.GetMigrator(lookupType, ctx.SourceVersion, ctx.TargetVersion)
 		if migrator == nil {
+			resourceKind := "resource"
+			if mode == "data" {
+				resourceKind = "datasource"
+			}
 			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 				Severity: hcl.DiagWarning,
-				Summary:  fmt.Sprintf("Failed to transform resource: %s", resourceType),
-				Detail:   fmt.Sprintf("No migrator found for state resource: %s (v%s -> v%s)", resourceType, ctx.SourceVersion, ctx.TargetVersion),
+				Summary:  fmt.Sprintf("Missing %s migration for %s", resourceKind, resourceType),
+				Detail:   fmt.Sprintf("No migrator found for %s: %s (v%s -> v%s)", resourceKind, resourceType, ctx.SourceVersion, ctx.TargetVersion),
 			})
-			h.log.Debug("No migrator found for state resource", "type", resourceType, "source", ctx.SourceVersion, "target", ctx.TargetVersion)
+			h.log.Debug("No migrator found", "kind", resourceKind, "type", resourceType, "source", ctx.SourceVersion, "target", ctx.TargetVersion)
 			return true
 		}
 

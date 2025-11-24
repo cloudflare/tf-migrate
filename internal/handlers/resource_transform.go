@@ -35,7 +35,7 @@ func (h *ResourceTransformHandler) Handle(ctx *transform.Context) (*transform.Co
 	var blocksToAdd []*hclwrite.Block
 
 	for _, block := range blocks {
-		if block.Type() != "resource" {
+		if block.Type() != "resource" && block.Type() != "data" {
 			continue
 		}
 
@@ -45,6 +45,10 @@ func (h *ResourceTransformHandler) Handle(ctx *transform.Context) (*transform.Co
 		}
 
 		resourceType := labels[0]
+		// For data blocks, prefix with "data." to look up datasource migrators
+		if block.Type() == "data" {
+			resourceType = "data." + resourceType
+		}
 		migrator := h.provider.GetMigrator(resourceType, ctx.SourceVersion, ctx.TargetVersion)
 		if migrator == nil {
 			h.log.Debug("No migrator found for resource type", "type", resourceType, "source", ctx.SourceVersion, "target", ctx.TargetVersion)
