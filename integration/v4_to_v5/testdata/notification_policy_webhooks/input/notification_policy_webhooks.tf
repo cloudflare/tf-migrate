@@ -11,9 +11,9 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
-# Use pre-existing webhook endpoint worker
-# Worker URL: https://e2e-webhook-endpoint.terraform-testing-a09.workers.dev/
-# This worker responds with 200 OK to all requests for webhook validation
+# Use Cloudflare trace endpoint for webhook testing
+# URL: https://www.cloudflare.com/cdn-cgi/trace
+# This endpoint responds with 200 OK to all requests for webhook validation
 
 # ========================================
 # Locals
@@ -21,7 +21,7 @@ variable "cloudflare_zone_id" {
 locals {
   common_account = var.cloudflare_account_id
   name_prefix    = "test-integration"
-  webhook_base_url = "https://e2e-webhook-endpoint.terraform-testing-a09.workers.dev"
+  webhook_base_url = "https://www.cloudflare.com/cdn-cgi/trace"
   enable_backup    = true
   enable_test      = false
 }
@@ -34,14 +34,14 @@ locals {
 resource "cloudflare_notification_policy_webhooks" "basic_webhook" {
   account_id = var.cloudflare_account_id
   name       = "basic-webhook"
-  url        = "https://e2e-webhook-endpoint.terraform-testing-a09.workers.dev/basic"
+  url        = "https://www.cloudflare.com/cdn-cgi/trace/basic"
 }
 
 # Test Case 2: Full webhook with all fields
 resource "cloudflare_notification_policy_webhooks" "full_webhook" {
   account_id = var.cloudflare_account_id
   name       = "production-webhook"
-  url        = "https://e2e-webhook-endpoint.terraform-testing-a09.workers.dev/full"
+  url        = "https://www.cloudflare.com/cdn-cgi/trace/full"
   secret     = "webhook-secret-token-12345"
 }
 
