@@ -14,9 +14,9 @@ resource "cloudflare_api_token" "basic_token" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
       }, {
@@ -32,17 +32,17 @@ resource "cloudflare_api_token" "multi_policy_token" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
     }, {
     effect = "deny"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.zone.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "82e64a83756745bbbb1c9c2701bf816b"
     }]
@@ -56,9 +56,9 @@ resource "cloudflare_api_token" "conditional_token" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
@@ -80,10 +80,10 @@ resource "cloudflare_api_token" "advanced_condition_token" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*"      = "*"
       "com.cloudflare.api.account.zone.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
@@ -111,9 +111,9 @@ resource "cloudflare_api_token" "time_limited_token" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
@@ -126,9 +126,9 @@ resource "cloudflare_api_token" "empty_perms_token" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
@@ -145,18 +145,18 @@ resource "cloudflare_api_token" "full_example" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*"      = "*"
       "com.cloudflare.api.account.zone.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
     }, {
     effect = "deny"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.zone.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "e086da7e2179491d91ee5f35b3ca210a"
     }]
@@ -186,9 +186,9 @@ resource "cloudflare_api_token" "api_token_create" {
   expires_on = "2035-12-31T23:59:59Z"
 
   policies = [{
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     effect = "allow"
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
