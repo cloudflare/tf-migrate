@@ -64,7 +64,7 @@ locals {
   ])
 }
 
-# Pattern 1: Basic profiles with entries (reduced)
+# Pattern 1: Basic profiles with entries
 resource "cloudflare_zero_trust_dlp_custom_profile" "credit_cards_basic" {
   account_id          = local.common_account
   name                = "Credit Card Detection Basic"
@@ -207,121 +207,7 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "conditional_pii" {
   }]
 }
 
-# Pattern 6: Complex profile with multiple entries (commented out to reduce entry count)
-# resource "cloudflare_dlp_profile" "comprehensive_financial" {
-#   account_id          = var.cloudflare_account_id
-#   name                = "Comprehensive Financial Data"
-#   description         = "Detects various financial information patterns"
-#   type                = "custom"
-#   allowed_match_count = 25
-#
-#   entry {
-#     id      = "iban"
-#     name    = "IBAN"
-#     enabled = true
-#     pattern {
-#       regex = "[A-Z]{2}[0-9]{2}[A-Z0-9]{4}[0-9]{7}([A-Z0-9]?){0,16}"
-#     }
-#   }
-#
-#   entry {
-#     id      = "swift"
-#     name    = "SWIFT Code"
-#     enabled = true
-#     pattern {
-#       regex = "[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?"
-#     }
-#   }
-# }
-
-# Pattern 7: Profile with lifecycle meta-arguments
-# Commented out to avoid hitting the 25 custom entries limit in E2E tests
-# resource "cloudflare_dlp_profile" "with_lifecycle" {
-#   account_id          = var.cloudflare_account_id
-#   name                = "Profile with Lifecycle"
-#   description         = "Tests lifecycle meta-arguments"
-#   type                = "custom"
-#   allowed_match_count = 8
-#
-#   entry {
-#     name    = "Lifecycle Pattern"
-#     enabled = true
-#     pattern {
-#       regex = "LIFECYCLE[0-9]{1,4}"
-#     }
-#   }
-#
-#   lifecycle {
-#     create_before_destroy = true
-#     ignore_changes        = [description]
-#   }
-# }
-
-# Pattern 8: Edge case - maximal configuration (commented out to reduce entry count)
-# resource "cloudflare_dlp_profile" "maximal" {
-#   account_id          = var.cloudflare_account_id
-#   name                = "Maximal Configuration Profile"
-#   description         = "Profile with all possible fields populated"
-#   type                = "custom"
-#   allowed_match_count = 100
-#
-#   entry {
-#     id      = "max-entry-1"
-#     name    = "First Maximum Entry"
-#     enabled = true
-#     pattern {
-#       regex      = "MAX[0-9]{10,20}"
-#       validation = "luhn"
-#     }
-#   }
-#
-#   entry {
-#     id      = "max-entry-2"
-#     name    = "Second Maximum Entry"
-#     enabled = true
-#     pattern {
-#       regex      = "PATTERN[A-Z]{5}"
-#       validation = null
-#     }
-#   }
-# }
-
-# Pattern 9: Edge case - profile without description (commented out to reduce entry count)
-# resource "cloudflare_dlp_profile" "no_description" {
-#   account_id          = var.cloudflare_account_id
-#   name                = "No Description Profile"
-#   type                = "custom"
-#   allowed_match_count = 7
-#
-#   entry {
-#     id      = "nodesc-entry"
-#     name    = "Entry without description"
-#     enabled = true
-#     pattern {
-#       regex = "NODESC[0-9]{1,4}"
-#     }
-#   }
-# }
-
-# Pattern 10: Special characters in patterns (commented out to reduce entry count)
-# resource "cloudflare_dlp_profile" "special_chars" {
-#   account_id          = var.cloudflare_account_id
-#   name                = "Special Characters Test"
-#   description         = "Tests special regex characters and escaping"
-#   type                = "custom"
-#   allowed_match_count = 12
-#
-#   entry {
-#     id      = "special-1"
-#     name    = "Email Pattern"
-#     enabled = true
-#     pattern {
-#       regex = "[a-zA-Z0-9._%+-]{1,20}@[a-zA-Z0-9.-]{1,20}\\.[a-zA-Z]{2,4}"
-#     }
-#   }
-# }
-
-# Pattern 11: Multiple entries (was dynamic blocks in v4, now static for v5 compatibility)
+# Pattern 6: Multiple entries
 resource "cloudflare_zero_trust_dlp_custom_profile" "dynamic_entries" {
   account_id          = var.cloudflare_account_id
   name                = "Dynamic Entries Profile"
@@ -351,7 +237,7 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "dynamic_entries" {
   }]
 }
 
-# Pattern 12: Profile with null values
+# Pattern 7: Profile with null values
 resource "cloudflare_zero_trust_dlp_custom_profile" "with_nulls" {
   account_id          = var.cloudflare_account_id
   name                = "Profile with Null Values"
@@ -368,7 +254,7 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "with_nulls" {
   }]
 }
 
-# Pattern 13: Profile with prevent_destroy lifecycle
+# Pattern 8: Profile with lifecycle meta-arguments
 resource "cloudflare_zero_trust_dlp_custom_profile" "prevent_destroy" {
   account_id          = var.cloudflare_account_id
   name                = "Protected Profile"
@@ -377,7 +263,7 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "prevent_destroy" {
 
 
   lifecycle {
-    prevent_destroy = false # Set to false for testing
+    prevent_destroy = false
   }
   entries = [{
     name    = "Protected Pattern"
@@ -387,16 +273,3 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "prevent_destroy" {
     }
   }]
 }
-
-# Total: 23 resource instances across all patterns
-# Patterns covered:
-# - Variables and locals: ✅
-# - for_each with maps: ✅ (4 instances)
-# - for_each with sets: ✅ (4 instances)
-# - count-based resources: ✅ (3 instances)
-# - Conditional creation: ✅
-# - Terraform functions (join, upper, replace, title): ✅
-# - String interpolation: ✅
-# - Lifecycle meta-arguments: ✅
-# - Dynamic blocks: ✅
-# - Edge cases (minimal, maximal, nulls, special chars): ✅
