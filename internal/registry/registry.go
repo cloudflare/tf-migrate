@@ -1,6 +1,8 @@
 package registry
 
 import (
+	zonedata "github.com/cloudflare/tf-migrate/internal/datasources/zone"
+	zonesdata "github.com/cloudflare/tf-migrate/internal/datasources/zones"
 	"github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
@@ -24,6 +26,11 @@ import (
 // This function should be called once during initialization to set up all available migrations.
 // Each resource package's NewV4ToV5Migrator function registers itself with the internal registry.
 func RegisterAllMigrations() {
+	// Datasources
+	zonedata.NewV4ToV5Migrator()
+	zonesdata.NewV4ToV5Migrator()
+
+	// Resources
 	account_member.NewV4ToV5Migrator()
 	api_token.NewV4ToV5Migrator()
 	dns_record.NewV4ToV5Migrator()

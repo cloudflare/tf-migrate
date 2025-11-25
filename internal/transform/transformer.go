@@ -52,6 +52,21 @@ type ResourceRenamer interface {
 	GetResourceRename() (oldType string, newType string)
 }
 
+// AttributeRename represents an attribute name change for a specific resource/datasource type
+type AttributeRename struct {
+	ResourceType string // The resource/datasource type (e.g., "cloudflare_zones", "data.cloudflare_zones")
+	OldAttribute string // The old attribute name (e.g., "zones")
+	NewAttribute string // The new attribute name (e.g., "result")
+}
+
+// AttributeRenamer is an optional interface that migrators can implement
+// to expose attribute renames. This enables global cross-file attribute reference updates.
+type AttributeRenamer interface {
+	// GetAttributeRenames returns a list of attribute renames for this migrator
+	// Each rename specifies the resource type and the old/new attribute names
+	GetAttributeRenames() []AttributeRename
+}
+
 // MigrationProvider specifies the interface for a migrator provider
 // This is used to provide a way to get migrators for a given resource type
 // a migrator defines the strategy which a resource uses to migrate the resource

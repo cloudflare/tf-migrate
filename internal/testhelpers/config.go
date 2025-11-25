@@ -41,8 +41,12 @@ func runConfigTransformTest(t *testing.T, tt ConfigTestCase, migrator transform.
 	// Step 4: Transform using HCL CFGFile
 	body := file.Body()
 	for _, block := range body.Blocks() {
-		if block.Type() == "resource" && len(block.Labels()) >= 2 {
+		if (block.Type() == "resource" || block.Type() == "data") && len(block.Labels()) >= 2 {
 			resourceType := block.Labels()[0]
+			// For data blocks, prefix with "data." to match datasource migrators
+			if block.Type() == "data" {
+				resourceType = "data." + resourceType
+			}
 			if migrator.CanHandle(resourceType) {
 				result, err := migrator.TransformConfig(ctx, block)
 				assert.NoError(t, err, "Failed to transform resource")
