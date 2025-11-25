@@ -203,3 +203,65 @@ resource "cloudflare_api_token" "api_token_create" {
     }
   }
 }
+
+# Test Case 9: Token with complex multi-key resources map
+resource "cloudflare_api_token" "complex_resources_token" {
+  name = "Complex Resources Token"
+
+  policy {
+    effect = "allow"
+    permission_groups = [
+      "c8fed203ed3043cba015a93ad1616f1f"
+    ]
+    resources = {
+      "com.cloudflare.api.account.*"      = "*"
+      "com.cloudflare.api.account.zone.*" = "*"
+    }
+  }
+}
+
+# Test Case 10: Token with multiple permission groups (v4 string format)
+resource "cloudflare_api_token" "multi_perms_token" {
+  name = "Multiple Permissions Token"
+
+  policy {
+    effect = "allow"
+    permission_groups = [
+      "c8fed203ed3043cba015a93ad1616f1f",
+      "82e64a83756745bbbb1c9c2701bf816b"
+    ]
+    resources = {
+      "com.cloudflare.api.account.*" = "*"
+    }
+  }
+}
+
+# Test Case 11: Token without effect (should default to allow)
+resource "cloudflare_api_token" "no_effect_token" {
+  name = "No Effect Token"
+
+  policy {
+    permission_groups = [
+      "c8fed203ed3043cba015a93ad1616f1f"
+    ]
+    resources = {
+      "com.cloudflare.api.account.*" = "*"
+    }
+  }
+}
+
+# Test Case 12: Token with variable references in resources
+resource "cloudflare_api_token" "variable_resources_token" {
+  name = "Variable Resources Token"
+
+  policy {
+    effect = "allow"
+    permission_groups = [
+      "c8fed203ed3043cba015a93ad1616f1f"
+    ]
+    resources = {
+      "com.cloudflare.api.account.${var.cloudflare_account_id}"      = "*"
+      "com.cloudflare.api.account.zone.${var.cloudflare_zone_id}" = "*"
+    }
+  }
+}

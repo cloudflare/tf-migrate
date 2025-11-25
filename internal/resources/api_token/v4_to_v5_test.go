@@ -8,7 +8,33 @@ import (
 
 func TestV4ToV5Migration(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
-	tests := []testhelpers.ConfigTestCase{
+
+	// Test basic methods - cast to concrete type
+	m := migrator.(*V4ToV5Migrator)
+	t.Run("BasicMethods", func(t *testing.T) {
+		if m.GetResourceType() != "cloudflare_api_token" {
+			t.Errorf("GetResourceType() = %v, want %v", m.GetResourceType(), "cloudflare_api_token")
+		}
+		if !m.CanHandle("cloudflare_api_token") {
+			t.Error("CanHandle(cloudflare_api_token) = false, want true")
+		}
+		if m.CanHandle("cloudflare_other") {
+			t.Error("CanHandle(cloudflare_other) = true, want false")
+		}
+		oldName, newName := m.GetResourceRename()
+		if oldName != "cloudflare_api_token" || newName != "cloudflare_api_token" {
+			t.Errorf("GetResourceRename() = (%v, %v), want (cloudflare_api_token, cloudflare_api_token)", oldName, newName)
+		}
+		// Test Postprocess (should return input unchanged)
+		input := "test content"
+		if m.Postprocess(input) != input {
+			t.Errorf("Postprocess() should return input unchanged")
+		}
+	})
+
+	// Test config transformations
+	t.Run("ConfigTransformation", func(t *testing.T) {
+		tests := []testhelpers.ConfigTestCase{
 		{
 			Name: "basic api token with single policy",
 			Input: `
@@ -33,9 +59,9 @@ resource "cloudflare_api_token" "example" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
       }, {
@@ -49,7 +75,7 @@ resource "cloudflare_api_token" "example" {
 			Input: `
 resource "cloudflare_api_token" "multi_policy" {
 		 name = "multi-policy-token"
-		
+
 		 policy {
 		   effect = "allow"
 		   permission_groups = [
@@ -59,7 +85,7 @@ resource "cloudflare_api_token" "multi_policy" {
 		     "com.cloudflare.api.account.*" = "*"
 		   }
 		 }
-		
+
 		 policy {
 		   effect = "allow"
 		   permission_groups = [
@@ -77,17 +103,17 @@ resource "cloudflare_api_token" "multi_policy" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
     }, {
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.zone.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "82e64a83756745bbbb1c9c2701bf816b"
     }]
@@ -126,9 +152,9 @@ resource "cloudflare_api_token" "with_condition" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
@@ -148,7 +174,7 @@ resource "cloudflare_api_token" "with_condition" {
 			Input: `
 		resource "cloudflare_api_token" "with_not_in_condition" {
 		 name = "restricted-token"
-		
+
 		 policy {
 		   effect = "allow"
 		   permission_groups = [
@@ -158,7 +184,7 @@ resource "cloudflare_api_token" "with_condition" {
 		     "com.cloudflare.api.account.*" = "*"
 		   }
 		 }
-		
+
 		 condition {
 		   request_ip {
 		     in = [
@@ -177,9 +203,9 @@ resource "cloudflare_api_token" "with_not_in_condition" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
@@ -203,7 +229,7 @@ resource "cloudflare_api_token" "with_not_in_condition" {
 		 name       = "time-limited-token"
 		 expires_on = "2025-01-01T00:00:00Z"
 		 not_before = "2024-01-01T00:00:00Z"
-		
+
 		 policy {
 		   effect = "allow"
 		   permission_groups = [
@@ -222,9 +248,9 @@ resource "cloudflare_api_token" "time_limited" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
@@ -237,7 +263,7 @@ resource "cloudflare_api_token" "time_limited" {
 		resource "cloudflare_api_token" "with_status" {
 		 name   = "status-token"
 		 status = "active"
-		
+
 		 policy {
 		   effect = "allow"
 		   permission_groups = [
@@ -255,9 +281,9 @@ resource "cloudflare_api_token" "with_status" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
@@ -269,7 +295,7 @@ resource "cloudflare_api_token" "with_status" {
 			Input: `
 		resource "cloudflare_api_token" "complex_resources" {
 		 name = "complex-resources-token"
-		
+
 		 policy {
 		   effect = "allow"
 		   permission_groups = [
@@ -288,11 +314,11 @@ resource "cloudflare_api_token" "complex_resources" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*"      = "*"
       "com.cloudflare.api.account.zone.*" = "*"
       "com.cloudflare.api.user.*"         = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
@@ -304,7 +330,7 @@ resource "cloudflare_api_token" "complex_resources" {
 			Input: `
 		resource "cloudflare_api_token" "deny_policy" {
 		 name = "deny-policy-token"
-		
+
 		 policy {
 		   effect = "allow"
 		   permission_groups = [
@@ -314,7 +340,7 @@ resource "cloudflare_api_token" "complex_resources" {
 		     "com.cloudflare.api.account.*" = "*"
 		   }
 		 }
-		
+
 		 policy {
 		   effect = "deny"
 		   permission_groups = [
@@ -332,17 +358,17 @@ resource "cloudflare_api_token" "deny_policy" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
     }, {
     effect = "deny"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.billing.*" = "*"
-    }
+    })
     permission_groups = [{
       id = "82e64a83756745bbbb1c9c2701bf816b"
     }]
@@ -354,7 +380,7 @@ resource "cloudflare_api_token" "deny_policy" {
 			Input: `
 		resource "cloudflare_api_token" "empty_perms" {
 		 name = "empty-perms-token"
-		
+
 		 policy {
 		   effect            = "allow"
 		   permission_groups = []
@@ -370,9 +396,9 @@ resource "cloudflare_api_token" "empty_perms" {
   policies = [{
     effect            = "allow"
     permission_groups = []
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
-    }
+    })
   }]
 }`,
 		},
@@ -384,7 +410,7 @@ resource "cloudflare_api_token" "empty_perms" {
 		 status     = "active"
 		 expires_on = "2025-12-31T23:59:59Z"
 		 not_before = "2024-01-01T00:00:00Z"
-		
+
 		 policy {
 		   effect = "allow"
 		   permission_groups = [
@@ -397,7 +423,7 @@ resource "cloudflare_api_token" "empty_perms" {
 		     "com.cloudflare.api.account.billing.*" = "read"
 		   }
 		 }
-		
+
 		 policy {
 		   effect = "deny"
 		   permission_groups = [
@@ -407,7 +433,7 @@ resource "cloudflare_api_token" "empty_perms" {
 		     "com.cloudflare.api.account.billing.*" = "edit"
 		   }
 		 }
-		
+
 		 condition {
 		   request_ip {
 		     in = [
@@ -433,11 +459,11 @@ resource "cloudflare_api_token" "full_example" {
 
   policies = [{
     effect = "allow"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.*"         = "*"
       "com.cloudflare.api.account.zone.*"    = "*"
       "com.cloudflare.api.account.billing.*" = "read"
-    }
+    })
     permission_groups = [{
       id = "c8fed203ed3043cba015a93ad1616f1f"
       }, {
@@ -445,9 +471,9 @@ resource "cloudflare_api_token" "full_example" {
     }]
     }, {
     effect = "deny"
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.account.billing.*" = "edit"
-    }
+    })
     permission_groups = [{
       id = "f7f0eda5697f475c90846e879bab8666"
     }]
@@ -501,9 +527,9 @@ resource "cloudflare_api_token" "api_token_create" {
   expires_on = "2020-01-01T00:00:00Z"
 
   policies = [{
-    resources = {
+    resources = jsonencode({
       "com.cloudflare.api.user.${var.user_id}" = "*"
-    }
+    })
     effect = "allow"
     permission_groups = [{
       id = "API Tokens Write"
@@ -519,9 +545,207 @@ resource "cloudflare_api_token" "api_token_create" {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			testhelpers.RunConfigTransformTests(t, tests, migrator)
-		})
-	}
+		testhelpers.RunConfigTransformTests(t, tests, migrator)
+	})
+
+	// Test state transformations
+	t.Run("StateTransformation", func(t *testing.T) {
+		stateTests := []testhelpers.StateTestCase{
+			{
+				Name: "basic api token state transformation",
+				Input: `{
+					"attributes": {
+						"id": "token-id-1",
+						"name": "Basic API Token",
+						"policy": [{
+							"effect": "allow",
+							"id": "policy1",
+							"permission_groups": ["c8fed203ed3043cba015a93ad1616f1f", "82e64a83756745bbbb1c9c2701bf816b"],
+							"resources": {
+								"com.cloudflare.api.account.*": "*"
+							}
+						}],
+						"status": "active"
+					},
+					"schema_version": 0
+				}`,
+				Expected: `{
+					"attributes": {
+						"id": "token-id-1",
+						"name": "Basic API Token",
+						"policies": [{
+							"effect": "allow",
+							"id": "policy1",
+							"permission_groups": [{"id": "c8fed203ed3043cba015a93ad1616f1f"}, {"id": "82e64a83756745bbbb1c9c2701bf816b"}],
+							"resources": "{\"com.cloudflare.api.account.*\":\"*\"}"
+						}],
+						"status": "active",
+						"last_used_on": null
+					},
+					"schema_version": 1
+				}`,
+			},
+			{
+				Name: "api token with condition array to object",
+				Input: `{
+					"attributes": {
+						"id": "token-id-2",
+						"name": "Conditional Token",
+						"condition": [{
+							"request_ip": [{
+								"in": ["192.168.1.0/24", "10.0.0.0/8"]
+							}]
+						}],
+						"policy": [{
+							"effect": "allow",
+							"id": "policy2",
+							"permission_groups": ["c8fed203ed3043cba015a93ad1616f1f"],
+							"resources": {
+								"com.cloudflare.api.account.*": "*"
+							}
+						}],
+						"status": "active"
+					},
+					"schema_version": 0
+				}`,
+				Expected: `{
+					"attributes": {
+						"id": "token-id-2",
+						"name": "Conditional Token",
+						"condition": {
+							"request_ip": {
+								"in": ["192.168.1.0/24", "10.0.0.0/8"]
+							}
+						},
+						"policies": [{
+							"effect": "allow",
+							"id": "policy2",
+							"permission_groups": [{"id": "c8fed203ed3043cba015a93ad1616f1f"}],
+							"resources": "{\"com.cloudflare.api.account.*\":\"*\"}"
+						}],
+						"status": "active",
+						"last_used_on": null
+					},
+					"schema_version": 1
+				}`,
+			},
+			{
+				Name: "api token with multiple policies",
+				Input: `{
+					"attributes": {
+						"id": "token-id-3",
+						"name": "Multi Policy Token",
+						"policy": [{
+							"effect": "allow",
+							"id": "policy3a",
+							"permission_groups": ["c8fed203ed3043cba015a93ad1616f1f"],
+							"resources": {
+								"com.cloudflare.api.account.*": "*"
+							}
+						}, {
+							"effect": "deny",
+							"id": "policy3b",
+							"permission_groups": ["82e64a83756745bbbb1c9c2701bf816b"],
+							"resources": {
+								"com.cloudflare.api.account.billing.*": "*"
+							}
+						}],
+						"status": "active"
+					},
+					"schema_version": 0
+				}`,
+				Expected: `{
+					"attributes": {
+						"id": "token-id-3",
+						"name": "Multi Policy Token",
+						"policies": [{
+							"effect": "allow",
+							"id": "policy3a",
+							"permission_groups": [{"id": "c8fed203ed3043cba015a93ad1616f1f"}],
+							"resources": "{\"com.cloudflare.api.account.*\":\"*\"}"
+						}, {
+							"effect": "deny",
+							"id": "policy3b",
+							"permission_groups": [{"id": "82e64a83756745bbbb1c9c2701bf816b"}],
+							"resources": "{\"com.cloudflare.api.account.billing.*\":\"*\"}"
+						}],
+						"status": "active",
+						"last_used_on": null
+					},
+					"schema_version": 1
+				}`,
+			},
+			{
+				Name: "api token with empty condition array",
+				Input: `{
+					"attributes": {
+						"id": "token-id-4",
+						"name": "No Condition Token",
+						"condition": [],
+						"policy": [{
+							"effect": "allow",
+							"id": "policy4",
+							"permission_groups": ["c8fed203ed3043cba015a93ad1616f1f"],
+							"resources": {
+								"com.cloudflare.api.account.*": "*"
+							}
+						}],
+						"status": "active"
+					},
+					"schema_version": 0
+				}`,
+				Expected: `{
+					"attributes": {
+						"id": "token-id-4",
+						"name": "No Condition Token",
+						"policies": [{
+							"effect": "allow",
+							"id": "policy4",
+							"permission_groups": [{"id": "c8fed203ed3043cba015a93ad1616f1f"}],
+							"resources": "{\"com.cloudflare.api.account.*\":\"*\"}"
+						}],
+						"status": "active",
+						"last_used_on": null
+					},
+					"schema_version": 1
+				}`,
+			},
+			{
+				Name: "api token with permission_groups already as objects",
+				Input: `{
+					"attributes": {
+						"id": "token-id-5",
+						"name": "Already Objects Token",
+						"policy": [{
+							"effect": "allow",
+							"id": "policy5",
+							"permission_groups": [{"id": "c8fed203ed3043cba015a93ad1616f1f"}],
+							"resources": {
+								"com.cloudflare.api.account.*": "*"
+							}
+						}],
+						"status": "active"
+					},
+					"schema_version": 0
+				}`,
+				Expected: `{
+					"attributes": {
+						"id": "token-id-5",
+						"name": "Already Objects Token",
+						"policies": [{
+							"effect": "allow",
+							"id": "policy5",
+							"permission_groups": [{"id": "c8fed203ed3043cba015a93ad1616f1f"}],
+							"resources": "{\"com.cloudflare.api.account.*\":\"*\"}"
+						}],
+						"status": "active",
+						"last_used_on": null
+					},
+					"schema_version": 1
+				}`,
+			},
+		}
+
+		testhelpers.RunStateTransformTests(t, stateTests, migrator)
+	})
 }

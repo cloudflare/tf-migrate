@@ -82,6 +82,11 @@ func (m *V4ToV5Migrator) transformPolicyBlocks(body *hclwrite.Body) {
 		// Transform permission_groups from list of strings to list of objects with id field
 		m.transformPermissionGroups(policyBody)
 
+		// Transform resources from map to jsonencode() wrapped map
+		// v4: resources = { "com.cloudflare.api.account.*" = "*" }
+		// v5: resources = jsonencode({ "com.cloudflare.api.account.*" = "*" })
+		m.transformResources(policyBody)
+
 		objTokens := hcl.BuildObjectFromBlock(policyBlock)
 		policyObjects = append(policyObjects, objTokens)
 	}
@@ -142,6 +147,43 @@ func (m *V4ToV5Migrator) transformPermissionGroups(body *hclwrite.Body) {
 	}
 }
 
+// transformResources wraps the resources map with jsonencode()
+// v4: resources = { "com.cloudflare.api.account.*" = "*" }
+// v5: resources = jsonencode({ "com.cloudflare.api.account.*" = "*" })
+func (m *V4ToV5Migrator) transformResources(body *hclwrite.Body) {
+	resourcesAttr := body.GetAttribute("resources")
+	if resourcesAttr == nil {
+		return
+	}
+
+	// Get the existing expression tokens (the map value)
+	exprTokens := resourcesAttr.Expr().BuildTokens(nil)
+
+	// Build jsonencode( ... ) wrapper
+	// Start with "jsonencode("
+	var newTokens hclwrite.Tokens
+	newTokens = append(newTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenIdent,
+		Bytes: []byte("jsonencode"),
+	})
+	newTokens = append(newTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenOParen,
+		Bytes: []byte("("),
+	})
+
+	// Add the original map expression
+	newTokens = append(newTokens, exprTokens...)
+
+	// Close with ")"
+	newTokens = append(newTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenCParen,
+		Bytes: []byte(")"),
+	})
+
+	// Replace the attribute with the wrapped version
+	body.SetAttributeRaw("resources", newTokens)
+}
+
 func (m *V4ToV5Migrator) transformConditionBlock(body *hclwrite.Body) {
 	conditionBlock := tfhcl.FindBlockByType(body, "condition")
 	if conditionBlock == nil {
@@ -199,12 +241,16 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	}
 
 	// Transform permission_groups from array of strings to array of objects
+	// and transform resources from map to JSON string
 	// v4: permission_groups = ["id1", "id2"]
 	// v5: permission_groups = [{ id = "id1" }, { id = "id2" }]
+	// v4: resources = { "com.cloudflare.api.account.*": "*" }
+	// v5: resources = "{\"com.cloudflare.api.account.*\": \"*\"}" (JSON string)
 	policiesPath := "attributes.policies"
 	policies := gjson.Get(result, policiesPath)
 	if policies.Exists() && policies.IsArray() {
 		for i, policy := range policies.Array() {
+			// Transform permission_groups
 			permGroupsPath := fmt.Sprintf("%s.%d.permission_groups", policiesPath, i)
 			permGroups := policy.Get("permission_groups")
 
@@ -221,11 +267,24 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 					result, _ = sjson.Set(result, permGroupsPath, transformedGroups)
 				}
 			}
+
+			// Transform resources from map to JSON string
+			// v4 stores resources as a map object: { "key": "value" }
+			// v5 stores resources as a JSON string: "{\"key\": \"value\"}"
+			resourcesPath := fmt.Sprintf("%s.%d.resources", policiesPath, i)
+			resourcesData := policy.Get("resources")
+
+			if resourcesData.Exists() && resourcesData.IsObject() {
+				// Convert the map to a JSON string
+				jsonStr := resourcesData.Raw
+				result, _ = sjson.Set(result, resourcesPath, jsonStr)
+			}
 		}
 	}
 
 	attributes = gjson.Get(result, attributesPath)
 	result = state.EnsureField(result, attributesPath, attributes, "last_used_on", nil)
+	result, _ = sjson.Set(result, "schema_version", 1)
 
 	return result, nil
 }
