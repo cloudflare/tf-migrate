@@ -88,7 +88,7 @@ func (m *V4ToV5Migrator) ensureV4SchemaDefaults(body *hclwrite.Body) {
 		{"record_prefix", "{"},
 		{"record_suffix", "}\n"},
 		{"timestamp_format", "unixnano"},
-		{"sample_rate", 1.0},
+		{"sample_rate", 1},
 	}
 
 	for _, pair := range v4Defaults {
@@ -234,7 +234,7 @@ func (m *V4ToV5Migrator) addV4SchemaDefaultsToState(obj map[string]interface{}) 
 		"record_prefix":    "{",
 		"record_suffix":    "}\n",
 		"timestamp_format": "unixnano",
-		"sample_rate":      1.0,
+		"sample_rate":      1,
 	}
 
 	for field, defaultValue := range v4Defaults {
