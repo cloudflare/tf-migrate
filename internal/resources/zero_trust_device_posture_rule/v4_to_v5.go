@@ -2,10 +2,8 @@ package zero_trust_device_posture_rule
 
 import (
 	"encoding/json"
-	"fmt"
 	"reflect"
 
-	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -110,7 +108,17 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 
 	inputField = updatedAttrs.Get("input")
 	if inputField.Exists() {
-		result = m.transformInputEmptyValuesToNull(ctx, result, updatedAttrs, resourceName)
+		// Transform empty values to null for fields not explicitly set in config
+		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+			Ctx:              ctx,
+			Result:           result,
+			FieldPath:        "attributes.input",
+			FieldResult:      inputField,
+			ResourceName:     resourceName,
+			HCLAttributePath: "input",
+			CanHandle:        m.CanHandle,
+		})
+
 		if inputField.Get("running").Exists() {
 			result, _ = sjson.Delete(result, "attributes.input.running")
 		}
@@ -182,52 +190,6 @@ func (m *V4ToV5Migrator) inputFieldIsEmpty(attrs gjson.Result) bool {
 	json.Unmarshal([]byte(emptyInput), &expected)
 
 	return reflect.DeepEqual(actual, expected)
-}
-
-func (m *V4ToV5Migrator) transformInputEmptyValuesToNull(ctx *transform.Context, result string, attrs gjson.Result, resourceName string) string {
-	inputField := attrs.Get("input")
-	if !inputField.Exists() {
-		return result
-	}
-
-	inputField.ForEach(func(key, value gjson.Result) bool {
-		if state.IsEmptyValue(value) {
-			emptyValueDefineInHCL := false
-
-			// Check if this empty value was defined in HCL and if so don't transform it to null
-			if len(ctx.CFGFiles) > 0 {
-			HCL_SEARCH:
-				for _, file := range ctx.CFGFiles {
-					resourceBlocks := tfhcl.FindBlocksByType(file.Body(), "resource")
-					for _, resourceBlock := range resourceBlocks {
-						resourceBlockType := tfhcl.GetResourceType(resourceBlock)
-						resourceBlockName := tfhcl.GetResourceName(resourceBlock)
-
-						if m.CanHandle(resourceBlockType) && resourceBlockName == resourceName {
-							inputAttribute := resourceBlock.Body().GetAttribute("input")
-							if tfhcl.AttributeValueContainsKey(inputAttribute, key.String()) {
-								emptyValueDefineInHCL = true
-							}
-							break HCL_SEARCH
-						}
-					}
-				}
-			}
-
-			// If empty value was not explicity defined in HCL, carry out empty value -> null transformation
-			if !emptyValueDefineInHCL {
-				result, _ = sjson.Set(result, "attributes.input."+key.String(), nil)
-				ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
-					Severity: hcl.DiagWarning,
-					Summary:  fmt.Sprintf("Transforming state for attribute %s from empty value to null. Will require an update in place.", key.String()),
-				})
-			}
-		}
-
-		return true
-	})
-
-	return result
 }
 
 // transformInputArrayToObject converts input field from array to object
