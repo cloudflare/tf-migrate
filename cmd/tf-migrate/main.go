@@ -15,6 +15,9 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/logger"
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+
+	// Import resource migrators so their init() functions run
+	_ "github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
 )
 
 type config struct {
