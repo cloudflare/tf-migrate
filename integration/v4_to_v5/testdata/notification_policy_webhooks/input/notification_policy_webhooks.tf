@@ -34,14 +34,14 @@ locals {
 resource "cloudflare_notification_policy_webhooks" "basic_webhook" {
   account_id = var.cloudflare_account_id
   name       = "basic-webhook"
-  url        = "https://www.cloudflare.com/cdn-cgi/trace/basic"
+  url        = "https://www.cloudflare.com/cdn-cgi/trace"
 }
 
 # Test Case 2: Full webhook with all fields
 resource "cloudflare_notification_policy_webhooks" "full_webhook" {
   account_id = var.cloudflare_account_id
   name       = "production-webhook"
-  url        = "https://www.cloudflare.com/cdn-cgi/trace/full"
+  url        = "https://www.cloudflare.com/cdn-cgi/trace"
   secret     = "webhook-secret-token-12345"
 }
 
@@ -66,7 +66,7 @@ resource "cloudflare_notification_policy_webhooks" "map_example" {
 
   account_id = local.common_account
   name       = each.value.name
-  url        = "${local.webhook_base_url}/${each.key}"
+  url        = local.webhook_base_url
   secret     = each.value.secret
 }
 
@@ -83,7 +83,7 @@ resource "cloudflare_notification_policy_webhooks" "set_example" {
 
   account_id = var.cloudflare_account_id
   name       = "set-${each.value}"
-  url        = "${local.webhook_base_url}/set-${each.value}"
+  url        = local.webhook_base_url
 }
 
 # ========================================
@@ -94,7 +94,7 @@ resource "cloudflare_notification_policy_webhooks" "counted" {
 
   account_id = var.cloudflare_account_id
   name       = "webhook-${count.index}"
-  url        = "${local.webhook_base_url}/counted-${count.index}"
+  url        = local.webhook_base_url
 }
 
 # ========================================
@@ -105,7 +105,7 @@ resource "cloudflare_notification_policy_webhooks" "conditional_enabled" {
 
   account_id = var.cloudflare_account_id
   name       = "conditional-enabled"
-  url        = "${local.webhook_base_url}/conditional-enabled"
+  url        = local.webhook_base_url
 }
 
 resource "cloudflare_notification_policy_webhooks" "conditional_disabled" {
@@ -113,7 +113,7 @@ resource "cloudflare_notification_policy_webhooks" "conditional_disabled" {
 
   account_id = var.cloudflare_account_id
   name       = "conditional-disabled"
-  url        = "${local.webhook_base_url}/conditional-disabled"
+  url        = local.webhook_base_url
 }
 
 # ========================================
@@ -122,7 +122,7 @@ resource "cloudflare_notification_policy_webhooks" "conditional_disabled" {
 resource "cloudflare_notification_policy_webhooks" "with_functions" {
   account_id = local.common_account
   name       = join("-", [local.name_prefix, "function", "example"])
-  url        = "${local.webhook_base_url}/function-test"
+  url        = local.webhook_base_url
   secret     = "function-test-secret"
 }
 
@@ -132,7 +132,7 @@ resource "cloudflare_notification_policy_webhooks" "with_functions" {
 resource "cloudflare_notification_policy_webhooks" "with_lifecycle" {
   account_id = var.cloudflare_account_id
   name       = "lifecycle-test"
-  url        = "${local.webhook_base_url}/lifecycle"
+  url        = local.webhook_base_url
 
   lifecycle {
     create_before_destroy = true
@@ -142,7 +142,7 @@ resource "cloudflare_notification_policy_webhooks" "with_lifecycle" {
 resource "cloudflare_notification_policy_webhooks" "with_prevent_destroy" {
   account_id = var.cloudflare_account_id
   name       = "prevent-destroy-test"
-  url        = "${local.webhook_base_url}/prevent-destroy"
+  url        = local.webhook_base_url
 
   lifecycle {
     prevent_destroy = false
@@ -157,14 +157,14 @@ resource "cloudflare_notification_policy_webhooks" "with_prevent_destroy" {
 resource "cloudflare_notification_policy_webhooks" "minimal" {
   account_id = var.cloudflare_account_id
   name       = "minimal"
-  url        = "${local.webhook_base_url}/minimal"
+  url        = local.webhook_base_url
 }
 
 # Maximal resource (all fields populated)
 resource "cloudflare_notification_policy_webhooks" "maximal" {
   account_id = var.cloudflare_account_id
   name       = "maximal-webhook-with-all-fields"
-  url        = "${local.webhook_base_url}/maximal?param=value&test=123"
+  url        = local.webhook_base_url
   secret     = "maximal-secret-token-with-special-chars-!@#$"
 }
 
@@ -172,5 +172,5 @@ resource "cloudflare_notification_policy_webhooks" "maximal" {
 resource "cloudflare_notification_policy_webhooks" "special_chars" {
   account_id = var.cloudflare_account_id
   name       = "special-chars-test"
-  url        = "${local.webhook_base_url}/path?query=value&param=test"
+  url        = local.webhook_base_url
 }
