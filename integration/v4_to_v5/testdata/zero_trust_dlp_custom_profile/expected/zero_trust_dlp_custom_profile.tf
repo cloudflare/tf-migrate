@@ -28,7 +28,7 @@ variable "max_allowed_matches" {
 # Locals for common values and computed configurations
 locals {
   common_account = var.cloudflare_account_id
-  name_prefix    = "test-dlp"
+  name_prefix    = "tfmigrate-e2e-test-dlp"
   tags           = ["migration", "test", "v4_to_v5"]
 
   # Map for for_each iteration
@@ -67,7 +67,7 @@ locals {
 # Pattern 1: Basic profiles with entries
 resource "cloudflare_zero_trust_dlp_custom_profile" "credit_cards_basic" {
   account_id          = local.common_account
-  name                = "Credit Card Detection Basic"
+  name                = "${local.name_prefix}-credit-cards-basic"
   description         = "Basic profile for detecting credit card numbers"
   allowed_match_count = var.max_allowed_matches
 
@@ -123,7 +123,7 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "card_profiles_map" {
   for_each = local.card_patterns
 
   account_id          = var.cloudflare_account_id
-  name                = "Card Detection - ${upper(each.key)}"
+  name                = "${local.name_prefix}-card-${each.key}"
   description         = "Dedicated profile for ${each.key} cards"
   allowed_match_count = 10
 
@@ -142,7 +142,7 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "pii_profiles_set" {
   for_each = local.pii_types
 
   account_id          = var.cloudflare_account_id
-  name                = "PII Detection - ${upper(replace(each.value, "_", " "))}"
+  name                = "${local.name_prefix}-pii-${each.value}"
   allowed_match_count = 2
 
   entries = [{
@@ -159,7 +159,7 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "counted_profiles" {
   count = 3
 
   account_id          = var.cloudflare_account_id
-  name                = "Counted Profile ${count.index + 1}"
+  name                = "${local.name_prefix}-counted-${count.index}"
   description         = "This is profile number ${count.index}"
   allowed_match_count = count.index + 1
 
@@ -177,7 +177,7 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "conditional_credit" {
   count = var.enable_credit_detection ? 1 : 0
 
   account_id          = var.cloudflare_account_id
-  name                = "Conditional Credit Card Profile"
+  name                = "${local.name_prefix}-conditional-credit"
   description         = "Created conditionally based on variable"
   allowed_match_count = 15
 
@@ -195,7 +195,7 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "conditional_pii" {
   count = var.enable_pii_detection ? 1 : 0
 
   account_id          = var.cloudflare_account_id
-  name                = "Conditional PII Profile"
+  name                = "${local.name_prefix}-conditional-pii"
   allowed_match_count = 20
 
   entries = [{
@@ -210,7 +210,7 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "conditional_pii" {
 # Pattern 6: Multiple entries
 resource "cloudflare_zero_trust_dlp_custom_profile" "dynamic_entries" {
   account_id          = var.cloudflare_account_id
-  name                = "Dynamic Entries Profile"
+  name                = "${local.name_prefix}-dynamic-entries"
   description         = "Profile with multiple entries"
   allowed_match_count = 30
 
@@ -240,7 +240,7 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "dynamic_entries" {
 # Pattern 7: Profile with null values
 resource "cloudflare_zero_trust_dlp_custom_profile" "with_nulls" {
   account_id          = var.cloudflare_account_id
-  name                = "Profile with Null Values"
+  name                = "${local.name_prefix}-with-nulls"
   description         = null
   allowed_match_count = 4
 
@@ -257,7 +257,7 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "with_nulls" {
 # Pattern 8: Profile with lifecycle meta-arguments
 resource "cloudflare_zero_trust_dlp_custom_profile" "prevent_destroy" {
   account_id          = var.cloudflare_account_id
-  name                = "Protected Profile"
+  name                = "${local.name_prefix}-protected"
   description         = "This profile should not be destroyed"
   allowed_match_count = 50
 
