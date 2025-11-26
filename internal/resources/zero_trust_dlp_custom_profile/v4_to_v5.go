@@ -88,28 +88,48 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 func (m *V4ToV5Migrator) transformCustomEntryBlocks(body *hclwrite.Body) {
 	var entryBlocks []*hclwrite.Block
+	var hasDynamicEntry bool
+
 	for _, block := range body.Blocks() {
 		if block.Type() == "entry" {
 			entryBlocks = append(entryBlocks, block)
+		} else if block.Type() == "dynamic" && len(block.Labels()) > 0 && block.Labels()[0] == "entry" {
+			hasDynamicEntry = true
+			// Since entries in v5 is a list attribute (not blocks), and dynamic blocks can't be used with attributes,
+			// we need to leave dynamic blocks as-is and let the user manually convert them
+			// This is a limitation of the v5 schema where entries is a list of objects
 		}
 	}
 
-	if len(entryBlocks) == 0 {
-		return
-	}
+	// Only transform static entry blocks if there are no dynamic blocks
+	// If there are dynamic blocks, we can't auto-migrate properly
+	if len(entryBlocks) > 0 && !hasDynamicEntry {
+		var entryObjects []hclwrite.Tokens
+		for _, entryBlock := range entryBlocks {
+			entryBody := entryBlock.Body()
+			tfhcl.RemoveAttributes(entryBody, "id")
+			m.transformPatternBlock(entryBody)
+			objTokens := hcl.BuildObjectFromBlock(entryBlock)
+			entryObjects = append(entryObjects, objTokens)
+		}
 
-	var entryObjects []hclwrite.Tokens
-	for _, entryBlock := range entryBlocks {
-		entryBody := entryBlock.Body()
-		tfhcl.RemoveAttributes(entryBody, "id")
-		m.transformPatternBlock(entryBody)
-		objTokens := hcl.BuildObjectFromBlock(entryBlock)
-		entryObjects = append(entryObjects, objTokens)
+		arrayTokens := hclwrite.TokensForTuple(entryObjects)
+		body.SetAttributeRaw("entries", arrayTokens)
+		tfhcl.RemoveBlocksByType(body, "entry")
+	} else if hasDynamicEntry {
+		// For resources with dynamic entry blocks, we need a different approach
+		// Since v5 uses a list attribute instead of blocks, dynamic blocks won't work
+		// We'll add a comment to notify the user
+		body.AppendNewline()
+		commentTokens := hclwrite.Tokens{
+			{Type: hclsyntax.TokenComment, Bytes: []byte("# WARNING: Dynamic entry blocks cannot be automatically migrated to v5.\n")},
+			{Type: hclsyntax.TokenComment, Bytes: []byte("# The v5 provider uses 'entries' as a list attribute, which doesn't support dynamic blocks.\n")},
+			{Type: hclsyntax.TokenComment, Bytes: []byte("# Please manually convert dynamic entries to a static list or use for_each at the resource level.\n")},
+		}
+		for _, token := range commentTokens {
+			body.AppendUnstructuredTokens(hclwrite.Tokens{token})
+		}
 	}
-
-	arrayTokens := hclwrite.TokensForTuple(entryObjects)
-	body.SetAttributeRaw("entries", arrayTokens)
-	tfhcl.RemoveBlocksByType(body, "entry")
 }
 
 func (m *V4ToV5Migrator) transformPatternBlock(entryBody *hclwrite.Body) {
