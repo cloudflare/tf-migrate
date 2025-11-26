@@ -79,7 +79,7 @@ resource "cloudflare_logpush_job" "empty_kind" {
 # Full featured job with all transformations
 resource "cloudflare_logpush_job" "full" {
   zone_id          = var.cloudflare_zone_id
-  dataset          = "audit_logs"
+  dataset          = "http_requests"
   destination_conf = "https://logpush-receiver.sd.cfplat.com"
   kind             = "edge"
   enabled          = true
