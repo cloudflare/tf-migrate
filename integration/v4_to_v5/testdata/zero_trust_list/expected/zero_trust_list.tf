@@ -174,9 +174,14 @@ resource "cloudflare_zero_trust_list" "security_domains" {
   type        = each.value.type
   description = each.value.description
   items = [{
+    value       = "${each.key}.example.com"
     description = null
-    value       = "www."
-  }]
+    },
+    {
+      value       = "www.${each.key}.example.com"
+      description = null
+    },
+  ]
 }
 
 # ============================================================================
@@ -191,6 +196,11 @@ resource "cloudflare_zero_trust_list" "list_types" {
   name        = "${local.list_name_prefix}-${each.value}"
   type        = "DOMAIN"
   description = "List for ${each.value} environment"
+  items = [{
+    value       = "${each.value}.example.com"
+    description = null
+    }
+  ]
 }
 
 # ============================================================================
@@ -205,6 +215,11 @@ resource "cloudflare_zero_trust_list" "ip_ranges" {
   name        = "${local.list_name_prefix}-range-${count.index}"
   type        = "IP"
   description = "IP range ${count.index}"
+  items = [{
+    value       = local.ip_ranges[count.index]
+    description = null
+    }
+  ]
 }
 
 # ============================================================================
@@ -253,15 +268,10 @@ resource "cloudflare_zero_trust_list" "with_join" {
   type        = "DOMAIN"
   description = "List created with join function"
   items = [{
+    value       = "${join(".", ["subdomain", "example", "com"])}"
     description = null
-    value       = "subdomain"
-    }, {
-    description = null
-    value       = "example"
-    }, {
-    description = null
-    value       = "com"
-  }]
+    }
+  ]
 }
 
 # 20. Resource using string interpolation
@@ -271,9 +281,10 @@ resource "cloudflare_zero_trust_list" "with_interpolation" {
   type        = "URL"
   description = "Description with ${local.list_name_prefix} interpolation"
   items = [{
+    value       = "https://${var.list_prefix}.example.com/path"
     description = null
-    value       = "https://"
-  }]
+    }
+  ]
 }
 
 # ============================================================================
@@ -380,16 +391,15 @@ resource "cloudflare_zero_trust_list" "complex_emails" {
   name        = "Complex Email List"
   type        = "EMAIL"
   description = "Emails with various formats"
-
   items = [{
-    description = "Admin email with variable"
-    value       = "admin@"
-    }, {
     description = null
     value       = "user+tag@example.com"
     }, {
     description = null
     value       = "user.name@subdomain.example.com"
+    }, {
+    description = null
+    value       = "admin@test.example.com"
   }]
 }
 

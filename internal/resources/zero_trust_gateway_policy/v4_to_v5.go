@@ -167,6 +167,13 @@ func (m *V4ToV5Migrator) transformRuleSettingsObject(settings gjson.Result) stri
 		result, _ = sjson.Delete(result, "block_page_reason")
 	}
 
+	// Remove empty add_headers map
+	if addHeaders := settings.Get("add_headers"); addHeaders.Exists() {
+		if addHeaders.IsObject() && len(addHeaders.Map()) == 0 {
+			result, _ = sjson.Delete(result, "add_headers")
+		}
+	}
+
 	// Transform nested structures (convert arrays to objects)
 	nestedStructures := []string{
 		"audit_ssh",
@@ -229,6 +236,17 @@ func (m *V4ToV5Migrator) transformRuleSettingsObject(settings gjson.Result) stri
 			nestedResult, _ = sjson.Delete(nestedResult, "disable_download")
 			nestedResult, _ = sjson.Delete(nestedResult, "disable_keyboard")
 			nestedResult, _ = sjson.Delete(nestedResult, "disable_upload")
+			// Remove deprecated dp and dd fields
+			nestedResult, _ = sjson.Delete(nestedResult, "dp")
+			nestedResult, _ = sjson.Delete(nestedResult, "dd")
+			result, _ = sjson.SetRaw(result, structName, nestedResult)
+		} else if structName == "check_session" {
+			// Normalize duration format (e.g., "24h0m0s" -> "24h")
+			nestedResult := nestedObj.String()
+			if duration := nestedObj.Get("duration"); duration.Exists() && duration.Type == gjson.String {
+				normalizedDuration := normalizeDuration(duration.String())
+				nestedResult, _ = sjson.Set(nestedResult, "duration", normalizedDuration)
+			}
 			result, _ = sjson.SetRaw(result, structName, nestedResult)
 		} else {
 			// Just convert array to object
@@ -265,4 +283,20 @@ func (m *V4ToV5Migrator) transformDnsResolvers(result string, dnsResolvers gjson
 
 	result, _ = sjson.SetRaw(result, "dns_resolvers", resolversResult)
 	return result
+}
+
+// normalizeDuration normalizes Go duration format strings
+// Converts "24h0m0s" -> "24h", "12h0m0s" -> "12h", etc.
+func normalizeDuration(duration string) string {
+	// Remove trailing "0m0s" or "0s" patterns
+	if len(duration) > 4 && duration[len(duration)-4:] == "0m0s" {
+		return duration[:len(duration)-4]
+	}
+	if len(duration) > 2 && duration[len(duration)-2:] == "0s" {
+		return duration[:len(duration)-2]
+	}
+	if len(duration) > 2 && duration[len(duration)-2:] == "0m" {
+		return duration[:len(duration)-2]
+	}
+	return duration
 }
