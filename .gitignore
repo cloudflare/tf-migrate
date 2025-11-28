@@ -1,6 +1,9 @@
 tf-migrate
 .terraformrc-tf-migrate
 
+# Local provider dev overrides
+.terraformrc-tf-migrate
+
 # E2E test files
 # Ignore v4 directory except provider.tf and backend.hcl
 e2e/tf/v4/*

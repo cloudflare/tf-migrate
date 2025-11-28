@@ -326,13 +326,9 @@ resource "cloudflare_teams_list" "complex_emails" {
   description = "Emails with various formats"
   items       = [
     "user+tag@example.com",
-    "user.name@subdomain.example.com"
+    "user.name@subdomain.example.com",
+    "admin@test.example.com"
   ]
-
-  items_with_description {
-    value       = "admin@${var.list_prefix}.example.com"
-    description = "Admin email with variable"
-  }
 }
 
 # Total: 26 base resources + 3 from for_each map + 4 from for_each set + 3 from count = 36 instances

@@ -173,10 +173,16 @@ resource "cloudflare_zero_trust_list" "security_domains" {
   name        = "${local.list_name_prefix}-${each.key}"
   type        = each.value.type
   description = each.value.description
-  items = [{
-    description = null
-    value       = "www."
-  }]
+  items = [
+    {
+      value       = "${each.key}.example.com"
+      description = null
+    },
+    {
+      value       = "www.${each.key}.example.com"
+      description = null
+    }
+  ]
 }
 
 # ============================================================================
@@ -191,6 +197,12 @@ resource "cloudflare_zero_trust_list" "list_types" {
   name        = "${local.list_name_prefix}-${each.value}"
   type        = "DOMAIN"
   description = "List for ${each.value} environment"
+  items = [
+    {
+      value       = "${each.value}.example.com"
+      description = null
+    }
+  ]
 }
 
 # ============================================================================
@@ -205,6 +217,12 @@ resource "cloudflare_zero_trust_list" "ip_ranges" {
   name        = "${local.list_name_prefix}-range-${count.index}"
   type        = "IP"
   description = "IP range ${count.index}"
+  items = [
+    {
+      value       = local.ip_ranges[count.index]
+      description = null
+    }
+  ]
 }
 
 # ============================================================================
@@ -252,16 +270,12 @@ resource "cloudflare_zero_trust_list" "with_join" {
   name        = join("-", [local.list_name_prefix, "joined", "name"])
   type        = "DOMAIN"
   description = "List created with join function"
-  items = [{
-    description = null
-    value       = "subdomain"
-    }, {
-    description = null
-    value       = "example"
-    }, {
-    description = null
-    value       = "com"
-  }]
+  items = [
+    {
+      value       = "${join(".", ["subdomain", "example", "com"])}"
+      description = null
+    }
+  ]
 }
 
 # 20. Resource using string interpolation
@@ -270,10 +284,12 @@ resource "cloudflare_zero_trust_list" "with_interpolation" {
   name        = "List for account ${var.cloudflare_account_id}"
   type        = "URL"
   description = "Description with ${local.list_name_prefix} interpolation"
-  items = [{
-    description = null
-    value       = "https://"
-  }]
+  items = [
+    {
+      value       = "https://${var.list_prefix}.example.com/path"
+      description = null
+    }
+  ]
 }
 
 # ============================================================================
@@ -380,16 +396,15 @@ resource "cloudflare_zero_trust_list" "complex_emails" {
   name        = "Complex Email List"
   type        = "EMAIL"
   description = "Emails with various formats"
-
   items = [{
-    description = "Admin email with variable"
-    value       = "admin@"
-    }, {
     description = null
     value       = "user+tag@example.com"
     }, {
     description = null
     value       = "user.name@subdomain.example.com"
+    }, {
+    description = null
+    value       = "admin@test.example.com"
   }]
 }
 

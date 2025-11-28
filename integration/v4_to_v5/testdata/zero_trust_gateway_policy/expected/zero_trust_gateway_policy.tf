@@ -184,7 +184,7 @@ resource "cloudflare_zero_trust_gateway_policy" "policy_configs" {
   account_id  = var.cloudflare_account_id
   name        = "${local.policy_name_prefix}-${each.key}"
   description = each.value.description
-  precedence  = each.value.precedence
+  precedence  = each.value.precedence + 5000 # Add offset to avoid conflicts
   action      = each.value.action
   enabled     = true
   filters     = ["dns"]

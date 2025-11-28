@@ -131,30 +131,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 		if inputField.Get("running").Exists() {
 			result, _ = sjson.Delete(result, "attributes.input.running")
 		}
-
-		// TODO: Fix input.operator empty string to ">=" conversion
-		// Disabled for now as it conflicts with test expectations
-		// The v5 provider converts "" to ">=" automatically, so this may not be needed in migration
-		// if operator := inputField.Get("operator"); operator.Type == gjson.String && operator.String() == "" {
-		// 	result, _ = sjson.Set(result, "attributes.input.operator", ">=")
-		// }
 	}
-
-	// NOTE: Removed empty match array deletion logic to preserve empty arrays in state
-	// Previously removed empty match arrays, but this causes drift in v5 plan
-	// when the API returns match = [] which then doesn't match the state
-	// if matchField := updatedAttrs.Get("match"); matchField.Exists() {
-	// 	if matchField.IsArray() && len(matchField.Array()) == 0 {
-	// 		result, _ = sjson.Delete(result, "attributes.match")
-	// 	}
-	// }
-
-	// NOTE: Removed schedule deletion logic to preserve schedule = "5m" in state
-	// Previously removed default schedule value "5m", but this causes drift in v5 plan
-	// when the API returns schedule = "5m" which then doesn't match the state
-	// if schedule := updatedAttrs.Get("schedule"); schedule.Exists() && schedule.String() == "5m" {
-	// 	result, _ = sjson.Delete(result, "attributes.schedule")
-	// }
 
 	result, _ = sjson.Set(result, "schema_version", 0)
 

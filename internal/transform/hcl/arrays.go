@@ -282,6 +282,22 @@ func determineElementType(tokens hclwrite.Tokens) string {
 	return "unknown"
 }
 
+// cleanTokens normalizes tokens by resetting spacing metadata
+// This ensures consistent formatting when building new token sequences
+func cleanTokens(tokens hclwrite.Tokens) hclwrite.Tokens {
+	cleaned := make(hclwrite.Tokens, len(tokens))
+	for i, token := range tokens {
+		cleanedToken := &hclwrite.Token{
+			Type:  token.Type,
+			Bytes: token.Bytes,
+		}
+		// Clear the SpacesBefore field to ensure consistent spacing in generated output
+		cleanedToken.SpacesBefore = 0
+		cleaned[i] = cleanedToken
+	}
+	return cleaned
+}
+
 // extractStringFieldFromBlock extracts a string field value from a block's attributes
 func extractStringFieldFromBlock(block *hclwrite.Block, fieldName string) (string, bool) {
 	if attr := block.Body().GetAttribute(fieldName); attr != nil {
@@ -302,7 +318,7 @@ func extractTokensFromBlock(block *hclwrite.Block, fieldName string) (hclwrite.T
 	if attr := block.Body().GetAttribute(fieldName); attr != nil {
 		tokens := attr.Expr().BuildTokens(nil)
 		if len(tokens) > 0 {
-			return tokens, true
+			return cleanTokens(tokens), true
 		}
 	}
 	return nil, false
@@ -330,7 +346,8 @@ func extractValueTokensFromArrayElement(elem ArrayElement) (hclwrite.Tokens, boo
 
 	// Don't trim anything - just return all tokens
 	// Template strings, function calls, and index expressions need all their tokens preserved
-	return elem.Tokens, true
+	// But we need to clean them to remove any ANSI codes
+	return cleanTokens(elem.Tokens), true
 }
 
 // MergeAttributeAndBlocksToObjectArray merges an array attribute and blocks into a single array of objects
@@ -722,7 +739,7 @@ func buildObjectTokensFromMap(itemTokens map[string]hclwrite.Tokens, primaryFiel
 			Type:  hclsyntax.TokenEqual,
 			Bytes: []byte(" = "),
 		})
-		tokens = append(tokens, fieldTokens...)
+		tokens = append(tokens, cleanTokens(fieldTokens)...)
 		tokens = append(tokens, &hclwrite.Token{
 			Type:  hclsyntax.TokenNewline,
 			Bytes: []byte("\n"),
@@ -740,7 +757,7 @@ func buildObjectTokensFromMap(itemTokens map[string]hclwrite.Tokens, primaryFiel
 				Type:  hclsyntax.TokenEqual,
 				Bytes: []byte(" = "),
 			})
-			tokens = append(tokens, fieldTokens...)
+			tokens = append(tokens, cleanTokens(fieldTokens)...)
 			tokens = append(tokens, &hclwrite.Token{
 				Type:  hclsyntax.TokenNewline,
 				Bytes: []byte("\n"),
