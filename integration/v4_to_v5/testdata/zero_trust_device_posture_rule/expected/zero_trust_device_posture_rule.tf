@@ -78,6 +78,11 @@ resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
     version  = each.value.version
     operator = ">="
   }
+  match = [
+    {
+      platform = each.value.platform
+    }
+  ]
 }
 
 # ============================================================================
@@ -264,6 +269,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "minimal" {
   account_id = var.cloudflare_account_id
   name       = "minimal-rule"
   type       = "firewall"
+  schedule   = "5m"
 
 
   input = {
@@ -303,6 +309,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "with_nulls" {
   type        = "firewall"
   description = null
   expiration  = null
+  schedule    = "5m"
 
 
   input = {

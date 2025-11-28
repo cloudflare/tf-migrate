@@ -394,6 +394,68 @@ echo -e "${YELLOW}Capturing v5 state...${NC}"
 terraform show -no-color -json > "${TMP_DIR}/v5-state.json"
 echo -e "${GREEN}✓ Saved v5 state to tmp/v5-state.json${NC}"
 
+# Step 4: Run v5 plan again to verify stable state (no ongoing drift)
+echo ""
+echo -e "${CYAN}Step 4: Verifying stable state (v5 plan after apply)${NC}"
+echo -e "${YELLOW}Running terraform plan again to check for ongoing drift...${NC}"
+if ! terraform plan -no-color -out="${TMP_DIR}/v5-post-apply.tfplan" -input=false ${TARGET_ARGS} > "${TMP_DIR}/v5-post-apply-plan.log" 2>&1; then
+    echo -e "${RED}✗ Terraform plan failed for v5 (post-apply)${NC}"
+    echo ""
+    echo -e "${RED}Error output:${NC}"
+    cat "${TMP_DIR}/v5-post-apply-plan.log"
+    exit 1
+fi
+
+# Extract post-apply plan summary
+POST_APPLY_PLAN_SUMMARY=$(grep -E "^Plan: " "${TMP_DIR}/v5-post-apply-plan.log" || echo "")
+HAS_POST_APPLY_CHANGES=false
+
+# Check if plan shows any changes
+if grep -q "No changes" "${TMP_DIR}/v5-post-apply-plan.log"; then
+    echo -e "${GREEN}✓ No ongoing drift detected - migration achieved stable state!${NC}"
+else
+    HAS_POST_APPLY_CHANGES=true
+    echo -e "${RED}✗ Ongoing drift detected after v5 apply${NC}"
+    if [[ -n "$POST_APPLY_PLAN_SUMMARY" ]]; then
+        echo -e "  ${POST_APPLY_PLAN_SUMMARY}"
+    fi
+    echo ""
+
+    # Show detailed changes
+    echo -e "${YELLOW}Detailed ongoing drift:${NC}"
+    echo ""
+
+    # Use awk to extract resource blocks with their changes
+    awk '
+    /^Terraform will perform the following actions:/ { in_changes=1; next }
+    /^Plan: / { in_changes=0 }
+    in_changes && /^  # / {
+        # Start of a resource block
+        print "\033[1;33m" $0 "\033[0m"
+        getline
+        while ($0 ~ /^  [^ ]/ || $0 ~ /^      / || $0 ~ /^        /) {
+            # Highlight attribute changes
+            if ($0 ~ /~ /) {
+                print "\033[0;33m" $0 "\033[0m"
+            } else if ($0 ~ /\+ /) {
+                print "\033[0;32m" $0 "\033[0m"
+            } else if ($0 ~ /- /) {
+                print "\033[0;31m" $0 "\033[0m"
+            } else if ($0 ~ /-\/\+ /) {
+                print "\033[0;35m" $0 "\033[0m"
+            } else {
+                print $0
+            }
+            getline
+        }
+        print ""
+    }
+    ' "${TMP_DIR}/v5-post-apply-plan.log"
+
+    echo ""
+    echo -e "${RED}⚠ Migration did not achieve stable state - ongoing drift remains${NC}"
+fi
+
 # Final summary
 echo ""
 echo -e "${CYAN}========================================${NC}"
@@ -409,11 +471,25 @@ else
     echo -e "  - v5 terraform apply: ${GREEN}SUCCESS${NC}"
 fi
 if [[ -n "$PLAN_SUMMARY" ]]; then
-    echo -e "  - v5 plan: ${PLAN_SUMMARY}"
+    echo -e "  - v5 plan (before apply): ${PLAN_SUMMARY}"
 else
-    echo -e "  - v5 plan: No changes"
+    echo -e "  - v5 plan (before apply): No changes"
+fi
+if [[ "$HAS_POST_APPLY_CHANGES" == "true" ]]; then
+    echo -e "  - v5 plan (after apply): ${RED}DRIFT DETECTED${NC}"
+    if [[ -n "$POST_APPLY_PLAN_SUMMARY" ]]; then
+        echo -e "    ${POST_APPLY_PLAN_SUMMARY}"
+    fi
+else
+    echo -e "  - v5 plan (after apply): ${GREEN}STABLE - No changes${NC}"
 fi
 echo ""
 echo -e "${YELLOW}Logs saved to:${NC}"
 echo -e "  - ${CYAN}${TMP_DIR}/${NC}"
 echo ""
+
+# Exit with error if there's ongoing drift
+if [[ "$HAS_POST_APPLY_CHANGES" == "true" ]]; then
+    echo -e "${RED}E2E test detected ongoing drift - migration did not achieve stable state${NC}"
+    exit 1
+fi

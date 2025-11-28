@@ -299,6 +299,117 @@ resource "cloudflare_zero_trust_device_posture_rule" "test" {
 }
 `,
 		},
+		{
+			Name: "match block with dynamic reference",
+			Input: `
+resource "cloudflare_device_posture_rule" "test" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "name"
+  type       = "os_version"
+  match {
+    platform = each.value.platform
+  }
+  input {
+    version  = each.value.version
+    operator = ">="
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_device_posture_rule" "test" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "name"
+  type       = "os_version"
+  input = {
+    version  = each.value.version
+    operator = ">="
+  }
+  match = [
+    {
+      platform = each.value.platform
+    }
+  ]
+}
+`,
+		},
+		{
+			Name: "multiple match blocks with dynamic references",
+			Input: `
+resource "cloudflare_device_posture_rule" "test" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "name"
+  type       = "os_version"
+  match {
+    platform = var.platform1
+  }
+  match {
+    platform = var.platform2
+  }
+  input {
+    version  = "1.0.0"
+    operator = ">="
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_device_posture_rule" "test" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "name"
+  type       = "os_version"
+  input = {
+    version  = "1.0.0"
+    operator = ">="
+  }
+  match = [
+    {
+      platform = var.platform1
+    },
+    {
+      platform = var.platform2
+    }
+  ]
+}
+`,
+		},
+		{
+			Name: "match blocks with mixed static and dynamic values",
+			Input: `
+resource "cloudflare_device_posture_rule" "test" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "name"
+  type       = "os_version"
+  match {
+    platform = "windows"
+  }
+  match {
+    platform = each.value.platform
+  }
+  input {
+    version  = "1.0.0"
+    operator = ">="
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_device_posture_rule" "test" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "name"
+  type       = "os_version"
+  input = {
+    version  = "1.0.0"
+    operator = ">="
+  }
+  match = [
+    {
+      platform = each.value.platform
+    },
+    {
+      platform = "windows"
+    }
+  ]
+}
+`,
+		},
 	}
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
@@ -469,7 +580,6 @@ func TestStateTransformation(t *testing.T) {
 							"count_operator": null,
 							"domain": null,
 							"eid_last_seen": null,
-							"enabled": null,
 							"exists": null,
 							"extended_key_usage": null,
 							"id": null,
@@ -782,7 +892,6 @@ func TestStateTransformation(t *testing.T) {
 							"count_operator": null,
 							"domain": null,
 							"eid_last_seen": null,
-							"enabled": null,
 							"exists": null,
 							"extended_key_usage": null,
 							"id": null,
@@ -903,7 +1012,6 @@ func TestStateTransformation(t *testing.T) {
 							"count_operator": null,
 							"domain": null,
 							"eid_last_seen": null,
-							"enabled": null,
 							"exists": null,
 							"extended_key_usage": null,
 							"id": null,
@@ -1021,7 +1129,6 @@ func TestStateTransformation(t *testing.T) {
 							"count_operator": null,
 							"domain": null,
 							"eid_last_seen": null,
-							"enabled": null,
 							"exists": null,
 							"extended_key_usage": null,
 							"id": null,
@@ -1342,7 +1449,6 @@ func TestStateTransformation(t *testing.T) {
 							"count_operator": null,
 							"domain": null,
 							"eid_last_seen": null,
-							"enabled": null,
 							"exists": null,
 							"extended_key_usage": null,
 							"id": null,
