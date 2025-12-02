@@ -28,6 +28,7 @@ BINARY="${TF_MIGRATE_ROOT}/tf-migrate"
 SKIP_V4_TEST=false
 RESOURCES=""
 TARGET_ARGS=""
+PROVIDER_PATH=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -40,12 +41,17 @@ while [[ $# -gt 0 ]]; do
       RESOURCES="$2"
       shift 2
       ;;
+    --provider)
+      PROVIDER_PATH="$2"
+      shift 2
+      ;;
     -h|--help)
       echo "Usage: $0 [OPTIONS]"
       echo ""
       echo "Options:"
       echo "  --skip-v4-test                     Skip v4 testing phase and go straight to migration"
       echo "  --resources <resource1,resource2>  Target specific resources (comma-separated module names)"
+      echo "  --provider <path>                  Use local provider from specified path"
       echo "  -h, --help                         Show this help message"
       echo ""
       echo "Examples:"
@@ -54,12 +60,13 @@ while [[ $# -gt 0 ]]; do
       echo "  $0 --resources dns_record                   # Test only dns_record module"
       echo "  $0 --resources dns_record,zone_dnssec       # Test multiple modules"
       echo "  $0 --skip-v4-test --resources dns_record    # Combined: skip v4, test only dns_record"
+      echo "  $0 --provider ~/cloudflare-terraform-next   # Use local provider"
       echo ""
       exit 0
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--skip-v4-test] [--resources resource1,resource2,...] [-h|--help]"
+      echo "Usage: $0 [--skip-v4-test] [--resources resource1,resource2,...] [--provider path] [-h|--help]"
       exit 1
       ;;
   esac
@@ -79,6 +86,56 @@ fi
 
 # Create tmp directory
 mkdir -p "${TMP_DIR}"
+
+# Set up local provider if --provider path was specified
+if [[ -n "$PROVIDER_PATH" ]]; then
+  echo -e "${CYAN}========================================${NC}"
+  echo -e "${CYAN}Setting up local provider${NC}"
+  echo -e "${CYAN}========================================${NC}"
+  echo ""
+
+  # Resolve absolute path
+  PROVIDER_PATH=$(cd "$PROVIDER_PATH" && pwd)
+
+  echo -e "${YELLOW}Using provider from: ${PROVIDER_PATH}${NC}"
+
+  # Verify provider binary exists
+  if [[ ! -f "${PROVIDER_PATH}/terraform-provider-cloudflare" ]]; then
+    echo -e "${RED}✗ Provider binary not found: ${PROVIDER_PATH}/terraform-provider-cloudflare${NC}"
+    echo ""
+    echo -e "${YELLOW}Please build the provider first:${NC}"
+    echo -e "${YELLOW}  cd ${PROVIDER_PATH}${NC}"
+    echo -e "${YELLOW}  go build .${NC}"
+    exit 1
+  fi
+
+  echo -e "${GREEN}✓ Provider binary found${NC}"
+
+  # Create dev overrides config
+  CONFIG_FILE="${TF_MIGRATE_ROOT}/.terraformrc-tf-migrate"
+
+  cat > "$CONFIG_FILE" <<EOF
+provider_installation {
+  dev_overrides {
+    "cloudflare/cloudflare" = "$PROVIDER_PATH"
+  }
+
+  # For all other providers, install them directly as normal.
+  direct {}
+}
+EOF
+
+  echo -e "${GREEN}✓ Created dev overrides config: ${CONFIG_FILE}${NC}"
+
+  # Store config file path for v5 commands (v4 will use registry provider)
+  # TF_CLI_CONFIG_FILE will be set per-command for v5 terraform operations
+
+  echo -e "${GREEN}✓ Local provider will be used for v5 testing${NC}"
+  echo ""
+  echo -e "${YELLOW}Note: v4 tests will use the registry provider (v4.x)${NC}"
+  echo -e "${YELLOW}      v5 tests will use the local provider with dev overrides${NC}"
+  echo ""
+fi
 
 echo -e "${CYAN}========================================${NC}"
 echo -e "${CYAN}E2E Migration Test${NC}"
@@ -118,6 +175,11 @@ echo -e "${GREEN}Running tests with:${NC}"
 echo -e "  ${CYAN}User:       ${CLOUDFLARE_EMAIL}${NC}"
 echo -e "  ${CYAN}Account ID: ${CLOUDFLARE_ACCOUNT_ID}${NC}"
 echo -e "  ${CYAN}Zone ID:    ${CLOUDFLARE_ZONE_ID}${NC}"
+if [[ -n "$PROVIDER_PATH" ]]; then
+  echo -e "  ${CYAN}Provider:   Local (${PROVIDER_PATH})${NC}"
+else
+  echo -e "  ${CYAN}Provider:   Registry (latest)${NC}"
+fi
 echo ""
 
 echo -e "${YELLOW}Running init script...${NC}"
@@ -311,22 +373,43 @@ if [[ -d "${V5_DIR}/.terraform" ]]; then
     rm -rf "${V5_DIR}/.terraform"
 fi
 
-if ! terraform init -no-color -input=false > "${TMP_DIR}/v5-init.log" 2>&1; then
-    echo -e "${RED}✗ Terraform init failed for v5${NC}"
-    echo ""
-    echo -e "${RED}Error output:${NC}"
-    cat "${TMP_DIR}/v5-init.log"
-    exit 1
+# Use local provider for v5 if --provider was specified
+if [[ -n "$PROVIDER_PATH" ]]; then
+  if ! TF_CLI_CONFIG_FILE="$CONFIG_FILE" terraform init -no-color -input=false > "${TMP_DIR}/v5-init.log" 2>&1; then
+      echo -e "${RED}✗ Terraform init failed for v5${NC}"
+      echo ""
+      echo -e "${RED}Error output:${NC}"
+      cat "${TMP_DIR}/v5-init.log"
+      exit 1
+  fi
+else
+  if ! terraform init -no-color -input=false > "${TMP_DIR}/v5-init.log" 2>&1; then
+      echo -e "${RED}✗ Terraform init failed for v5${NC}"
+      echo ""
+      echo -e "${RED}Error output:${NC}"
+      cat "${TMP_DIR}/v5-init.log"
+      exit 1
+  fi
 fi
 echo -e "${GREEN}✓ Terraform init successful${NC}"
 
 echo -e "${YELLOW}Running terraform plan in v5/...${NC}"
-if ! terraform plan -no-color -out="${TMP_DIR}/v5.tfplan" -input=false ${TARGET_ARGS} > "${TMP_DIR}/v5-plan.log" 2>&1; then
-    echo -e "${RED}✗ Terraform plan failed for v5${NC}"
-    echo ""
-    echo -e "${RED}Error output:${NC}"
-    cat "${TMP_DIR}/v5-plan.log"
-    exit 1
+if [[ -n "$PROVIDER_PATH" ]]; then
+  if ! TF_CLI_CONFIG_FILE="$CONFIG_FILE" terraform plan -no-color -out="${TMP_DIR}/v5.tfplan" -input=false ${TARGET_ARGS} > "${TMP_DIR}/v5-plan.log" 2>&1; then
+      echo -e "${RED}✗ Terraform plan failed for v5${NC}"
+      echo ""
+      echo -e "${RED}Error output:${NC}"
+      cat "${TMP_DIR}/v5-plan.log"
+      exit 1
+  fi
+else
+  if ! terraform plan -no-color -out="${TMP_DIR}/v5.tfplan" -input=false ${TARGET_ARGS} > "${TMP_DIR}/v5-plan.log" 2>&1; then
+      echo -e "${RED}✗ Terraform plan failed for v5${NC}"
+      echo ""
+      echo -e "${RED}Error output:${NC}"
+      cat "${TMP_DIR}/v5-plan.log"
+      exit 1
+  fi
 fi
 
 # Extract plan summary
@@ -380,19 +463,105 @@ else
 fi
 
 echo -e "${YELLOW}Running terraform apply in v5/...${NC}"
-if ! terraform apply -no-color -auto-approve -input=false "${TMP_DIR}/v5.tfplan" > "${TMP_DIR}/v5-apply.log" 2>&1; then
-    echo -e "${RED}✗ Terraform apply failed for v5${NC}"
-    echo ""
-    echo -e "${RED}Error output:${NC}"
-    cat "${TMP_DIR}/v5-apply.log"
-    exit 1
+if [[ -n "$PROVIDER_PATH" ]]; then
+  if ! TF_CLI_CONFIG_FILE="$CONFIG_FILE" terraform apply -no-color -auto-approve -input=false "${TMP_DIR}/v5.tfplan" > "${TMP_DIR}/v5-apply.log" 2>&1; then
+      echo -e "${RED}✗ Terraform apply failed for v5${NC}"
+      echo ""
+      echo -e "${RED}Error output:${NC}"
+      cat "${TMP_DIR}/v5-apply.log"
+      exit 1
+  fi
+else
+  if ! terraform apply -no-color -auto-approve -input=false "${TMP_DIR}/v5.tfplan" > "${TMP_DIR}/v5-apply.log" 2>&1; then
+      echo -e "${RED}✗ Terraform apply failed for v5${NC}"
+      echo ""
+      echo -e "${RED}Error output:${NC}"
+      cat "${TMP_DIR}/v5-apply.log"
+      exit 1
+  fi
 fi
 echo -e "${GREEN}✓ Terraform apply successful${NC}"
 
 # Capture v5 state
 echo -e "${YELLOW}Capturing v5 state...${NC}"
-terraform show -no-color -json > "${TMP_DIR}/v5-state.json"
+if [[ -n "$PROVIDER_PATH" ]]; then
+  TF_CLI_CONFIG_FILE="$CONFIG_FILE" terraform show -no-color -json > "${TMP_DIR}/v5-state.json"
+else
+  terraform show -no-color -json > "${TMP_DIR}/v5-state.json"
+fi
 echo -e "${GREEN}✓ Saved v5 state to tmp/v5-state.json${NC}"
+
+# Step 4: Run v5 plan again to verify stable state (no ongoing drift)
+echo ""
+echo -e "${CYAN}Step 4: Verifying stable state (v5 plan after apply)${NC}"
+echo -e "${YELLOW}Running terraform plan again to check for ongoing drift...${NC}"
+if [[ -n "$PROVIDER_PATH" ]]; then
+  if ! TF_CLI_CONFIG_FILE="$CONFIG_FILE" terraform plan -no-color -out="${TMP_DIR}/v5-post-apply.tfplan" -input=false ${TARGET_ARGS} > "${TMP_DIR}/v5-post-apply-plan.log" 2>&1; then
+      echo -e "${RED}✗ Terraform plan failed for v5 (post-apply)${NC}"
+      echo ""
+      echo -e "${RED}Error output:${NC}"
+      cat "${TMP_DIR}/v5-post-apply-plan.log"
+      exit 1
+  fi
+else
+  if ! terraform plan -no-color -out="${TMP_DIR}/v5-post-apply.tfplan" -input=false ${TARGET_ARGS} > "${TMP_DIR}/v5-post-apply-plan.log" 2>&1; then
+      echo -e "${RED}✗ Terraform plan failed for v5 (post-apply)${NC}"
+      echo ""
+      echo -e "${RED}Error output:${NC}"
+      cat "${TMP_DIR}/v5-post-apply-plan.log"
+      exit 1
+  fi
+fi
+
+# Extract post-apply plan summary
+POST_APPLY_PLAN_SUMMARY=$(grep -E "^Plan: " "${TMP_DIR}/v5-post-apply-plan.log" || echo "")
+HAS_POST_APPLY_CHANGES=false
+
+# Check if plan shows any changes
+if grep -q "No changes" "${TMP_DIR}/v5-post-apply-plan.log"; then
+    echo -e "${GREEN}✓ No ongoing drift detected - migration achieved stable state!${NC}"
+else
+    HAS_POST_APPLY_CHANGES=true
+    echo -e "${RED}✗ Ongoing drift detected after v5 apply${NC}"
+    if [[ -n "$POST_APPLY_PLAN_SUMMARY" ]]; then
+        echo -e "  ${POST_APPLY_PLAN_SUMMARY}"
+    fi
+    echo ""
+
+    # Show detailed changes
+    echo -e "${YELLOW}Detailed ongoing drift:${NC}"
+    echo ""
+
+    # Use awk to extract resource blocks with their changes
+    awk '
+    /^Terraform will perform the following actions:/ { in_changes=1; next }
+    /^Plan: / { in_changes=0 }
+    in_changes && /^  # / {
+        # Start of a resource block
+        print "\033[1;33m" $0 "\033[0m"
+        getline
+        while ($0 ~ /^  [^ ]/ || $0 ~ /^      / || $0 ~ /^        /) {
+            # Highlight attribute changes
+            if ($0 ~ /~ /) {
+                print "\033[0;33m" $0 "\033[0m"
+            } else if ($0 ~ /\+ /) {
+                print "\033[0;32m" $0 "\033[0m"
+            } else if ($0 ~ /- /) {
+                print "\033[0;31m" $0 "\033[0m"
+            } else if ($0 ~ /-\/\+ /) {
+                print "\033[0;35m" $0 "\033[0m"
+            } else {
+                print $0
+            }
+            getline
+        }
+        print ""
+    }
+    ' "${TMP_DIR}/v5-post-apply-plan.log"
+
+    echo ""
+    echo -e "${RED}⚠ Migration did not achieve stable state - ongoing drift remains${NC}"
+fi
 
 # Final summary
 echo ""
@@ -409,11 +578,25 @@ else
     echo -e "  - v5 terraform apply: ${GREEN}SUCCESS${NC}"
 fi
 if [[ -n "$PLAN_SUMMARY" ]]; then
-    echo -e "  - v5 plan: ${PLAN_SUMMARY}"
+    echo -e "  - v5 plan (before apply): ${PLAN_SUMMARY}"
 else
-    echo -e "  - v5 plan: No changes"
+    echo -e "  - v5 plan (before apply): No changes"
+fi
+if [[ "$HAS_POST_APPLY_CHANGES" == "true" ]]; then
+    echo -e "  - v5 plan (after apply): ${RED}DRIFT DETECTED${NC}"
+    if [[ -n "$POST_APPLY_PLAN_SUMMARY" ]]; then
+        echo -e "    ${POST_APPLY_PLAN_SUMMARY}"
+    fi
+else
+    echo -e "  - v5 plan (after apply): ${GREEN}STABLE - No changes${NC}"
 fi
 echo ""
 echo -e "${YELLOW}Logs saved to:${NC}"
 echo -e "  - ${CYAN}${TMP_DIR}/${NC}"
 echo ""
+
+# Exit with error if there's ongoing drift
+if [[ "$HAS_POST_APPLY_CHANGES" == "true" ]]; then
+    echo -e "${RED}E2E test detected ongoing drift - migration did not achieve stable state${NC}"
+    exit 1
+fi

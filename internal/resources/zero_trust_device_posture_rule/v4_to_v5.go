@@ -108,6 +108,15 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 
 	inputField = updatedAttrs.Get("input")
 	if inputField.Exists() {
+		// Remove input.enabled if explicitly false BEFORE transforming to null
+		// This must be done before transforming empty values
+		if enabled := inputField.Get("enabled"); enabled.Exists() && enabled.Type == gjson.False {
+			result, _ = sjson.Delete(result, "attributes.input.enabled")
+			// Re-parse updatedAttrs after deletion so transform doesn't re-add it
+			updatedAttrs = gjson.Parse(result).Get("attributes")
+			inputField = updatedAttrs.Get("input")
+		}
+
 		// Transform empty values to null for fields not explicitly set in config
 		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
 			Ctx:              ctx,

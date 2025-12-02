@@ -47,7 +47,11 @@ func ParseArrayAttribute(attr *hclwrite.Attribute) []ArrayElement {
 	// Find the opening bracket
 	inArray := false
 	inObject := false
+	inQuotedString := false
+	templateDepth := 0
 	objectDepth := 0
+	parenDepth := 0
+	bracketDepth := 0
 	currentElement := hclwrite.Tokens{}
 	currentObject := make(map[string]hclwrite.Tokens)
 	currentFieldName := ""
@@ -57,11 +61,11 @@ func ParseArrayAttribute(attr *hclwrite.Attribute) []ArrayElement {
 		token := tokens[i]
 
 		// Handle array boundaries
-		if token.Type == hclsyntax.TokenOBrack {
+		if token.Type == hclsyntax.TokenOBrack && !inArray {
 			inArray = true
 			continue
 		}
-		if token.Type == hclsyntax.TokenCBrack {
+		if token.Type == hclsyntax.TokenCBrack && inArray && bracketDepth == 0 && templateDepth == 0 && !inQuotedString {
 			// End of array - save any pending element
 			if len(currentElement) > 0 {
 				elem := ArrayElement{
@@ -74,6 +78,60 @@ func ParseArrayAttribute(attr *hclwrite.Attribute) []ArrayElement {
 		}
 
 		if !inArray {
+			continue
+		}
+
+		// Track quoted string boundaries to avoid stopping on commas inside strings
+		if token.Type == hclsyntax.TokenOQuote {
+			inQuotedString = true
+			currentElement = append(currentElement, token)
+			continue
+		}
+		if token.Type == hclsyntax.TokenCQuote && templateDepth == 0 {
+			inQuotedString = false
+			currentElement = append(currentElement, token)
+			continue
+		}
+
+		// Track template interpolation depth (${...})
+		if token.Type == hclsyntax.TokenTemplateInterp {
+			templateDepth++
+			currentElement = append(currentElement, token)
+			continue
+		}
+		if token.Type == hclsyntax.TokenTemplateSeqEnd {
+			templateDepth--
+			currentElement = append(currentElement, token)
+			continue
+		}
+
+		// If we're in a quoted string (but not inside template interpolation), just collect all tokens
+		if inQuotedString && templateDepth == 0 {
+			currentElement = append(currentElement, token)
+			continue
+		}
+
+		// Track parentheses depth (for function calls)
+		if token.Type == hclsyntax.TokenOParen {
+			parenDepth++
+			currentElement = append(currentElement, token)
+			continue
+		}
+		if token.Type == hclsyntax.TokenCParen {
+			parenDepth--
+			currentElement = append(currentElement, token)
+			continue
+		}
+
+		// Track bracket depth (for nested arrays and index expressions)
+		if token.Type == hclsyntax.TokenOBrack {
+			bracketDepth++
+			currentElement = append(currentElement, token)
+			continue
+		}
+		if token.Type == hclsyntax.TokenCBrack {
+			bracketDepth--
+			currentElement = append(currentElement, token)
 			continue
 		}
 
@@ -109,8 +167,8 @@ func ParseArrayAttribute(attr *hclwrite.Attribute) []ArrayElement {
 			continue
 		}
 
-		// Handle commas (element separators)
-		if token.Type == hclsyntax.TokenComma && !inObject {
+		// Handle commas (element separators) - only when at depth 0
+		if token.Type == hclsyntax.TokenComma && !inObject && templateDepth == 0 && parenDepth == 0 && bracketDepth == 0 {
 			if len(currentElement) > 0 {
 				elem := ArrayElement{
 					Tokens: currentElement,
@@ -143,8 +201,8 @@ func ParseArrayAttribute(attr *hclwrite.Attribute) []ArrayElement {
 				continue
 			}
 
-			// Handle comma (field separator)
-			if token.Type == hclsyntax.TokenComma {
+			// Handle comma (field separator) - only at depth 0
+			if token.Type == hclsyntax.TokenComma && templateDepth == 0 && parenDepth == 0 && bracketDepth == 0 {
 				if inFieldValue && currentFieldName != "" {
 					currentObject[currentFieldName] = currentElement
 					currentFieldName = ""
@@ -185,17 +243,28 @@ func ParseArrayAttribute(attr *hclwrite.Attribute) []ArrayElement {
 
 // determineElementType determines the type of an array element based on its tokens
 func determineElementType(tokens hclwrite.Tokens) string {
+	hasQuote := false
+	hasTemplateInterp := false
+
 	for _, token := range tokens {
 		if token.Type == hclsyntax.TokenOBrace {
 			return "object"
 		}
-		if token.Type == hclsyntax.TokenQuotedLit {
-			return "string"
+		if token.Type == hclsyntax.TokenOQuote || token.Type == hclsyntax.TokenCQuote {
+			hasQuote = true
+		}
+		// TokenTemplateInterp is ${, TokenTemplateSeqEnd is }
+		if token.Type == hclsyntax.TokenTemplateInterp || token.Type == hclsyntax.TokenTemplateSeqEnd {
+			hasTemplateInterp = true
+		}
+		if token.Type == hclsyntax.TokenQuotedLit && !hasTemplateInterp {
+			// Only consider it a plain string if there's no template interpolation
+			continue
 		}
 		if token.Type == hclsyntax.TokenNumberLit {
 			return "number"
 		}
-		if token.Type == hclsyntax.TokenIdent {
+		if token.Type == hclsyntax.TokenIdent && !hasQuote {
 			ident := string(token.Bytes)
 			if ident == "true" || ident == "false" {
 				return "bool"
@@ -203,7 +272,30 @@ func determineElementType(tokens hclwrite.Tokens) string {
 			return "reference"
 		}
 	}
+
+	if hasTemplateInterp {
+		return "template"
+	}
+	if hasQuote {
+		return "string"
+	}
 	return "unknown"
+}
+
+// cleanTokens normalizes tokens by resetting spacing metadata
+// This ensures consistent formatting when building new token sequences
+func cleanTokens(tokens hclwrite.Tokens) hclwrite.Tokens {
+	cleaned := make(hclwrite.Tokens, len(tokens))
+	for i, token := range tokens {
+		cleanedToken := &hclwrite.Token{
+			Type:  token.Type,
+			Bytes: token.Bytes,
+		}
+		// Clear the SpacesBefore field to ensure consistent spacing in generated output
+		cleanedToken.SpacesBefore = 0
+		cleaned[i] = cleanedToken
+	}
+	return cleaned
 }
 
 // extractStringFieldFromBlock extracts a string field value from a block's attributes
@@ -220,6 +312,18 @@ func extractStringFieldFromBlock(block *hclwrite.Block, fieldName string) (strin
 	return "", false
 }
 
+// extractTokensFromBlock extracts raw tokens from a block attribute
+// This preserves dynamic references, interpolations, and function calls
+func extractTokensFromBlock(block *hclwrite.Block, fieldName string) (hclwrite.Tokens, bool) {
+	if attr := block.Body().GetAttribute(fieldName); attr != nil {
+		tokens := attr.Expr().BuildTokens(nil)
+		if len(tokens) > 0 {
+			return cleanTokens(tokens), true
+		}
+	}
+	return nil, false
+}
+
 // extractStringFieldFromArrayElement extracts a string value from an array element
 func extractStringFieldFromArrayElement(elem ArrayElement) (string, bool) {
 	if elem.Type == "string" {
@@ -231,6 +335,19 @@ func extractStringFieldFromArrayElement(elem ArrayElement) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// extractValueTokensFromArrayElement extracts the raw tokens representing a value from an array element
+// This preserves interpolations, references, and function calls instead of trying to parse them
+func extractValueTokensFromArrayElement(elem ArrayElement) (hclwrite.Tokens, bool) {
+	if len(elem.Tokens) == 0 {
+		return nil, false
+	}
+
+	// Don't trim anything - just return all tokens
+	// Template strings, function calls, and index expressions need all their tokens preserved
+	// But we need to clean them to remove any ANSI codes
+	return cleanTokens(elem.Tokens), true
 }
 
 // MergeAttributeAndBlocksToObjectArray merges an array attribute and blocks into a single array of objects
@@ -304,30 +421,58 @@ func MergeAttributeAndBlocksToObjectArray(
 	// Collect items from blocks
 	var blocksToRemove []*hclwrite.Block
 	var blockItems []cty.Value
+	var blockItemTokens []map[string]hclwrite.Tokens
 
 	for _, block := range body.Blocks() {
 		if block.Type() != blockType {
 			continue
 		}
 
+		// Try to extract plain string values first
 		itemAttrs := make(map[string]cty.Value)
+		itemTokens := make(map[string]hclwrite.Tokens)
+		hasPlainValues := false
+		hasTokenValues := false
 
 		// Extract primary field
 		if val, ok := extractStringFieldFromBlock(block, primaryField); ok {
 			itemAttrs[primaryField] = cty.StringVal(val)
+			hasPlainValues = true
+		} else if tokens, ok := extractTokensFromBlock(block, primaryField); ok {
+			itemTokens[primaryField] = tokens
+			hasTokenValues = true
 		}
 
 		// Extract optional fields
 		for _, fieldName := range optionalFields {
 			if val, ok := extractStringFieldFromBlock(block, fieldName); ok {
 				itemAttrs[fieldName] = cty.StringVal(val)
-			} else {
+				hasPlainValues = true
+			} else if tokens, ok := extractTokensFromBlock(block, fieldName); ok {
+				itemTokens[fieldName] = tokens
+				hasTokenValues = true
+			} else if hasPlainValues {
 				itemAttrs[fieldName] = cty.NullVal(cty.String)
+			} else if hasTokenValues {
+				itemTokens[fieldName] = hclwrite.Tokens{
+					{Type: hclsyntax.TokenIdent, Bytes: []byte("null")},
+				}
 			}
 		}
 
-		if len(itemAttrs) > 0 {
+		// Add the item using the appropriate format
+		if hasPlainValues && !hasTokenValues {
 			blockItems = append(blockItems, cty.ObjectVal(itemAttrs))
+			modified = true
+		} else if hasTokenValues {
+			// If we have any tokens (dynamic references), use token-based representation
+			// Convert any plain values to tokens
+			for field, val := range itemAttrs {
+				if _, exists := itemTokens[field]; !exists {
+					itemTokens[field] = buildValueTokens(val)
+				}
+			}
+			blockItemTokens = append(blockItemTokens, itemTokens)
 			modified = true
 		}
 		blocksToRemove = append(blocksToRemove, block)
@@ -340,10 +485,12 @@ func MergeAttributeAndBlocksToObjectArray(
 
 	// Collect items from array attribute
 	var arrayItems []cty.Value
+	var arrayItemTokens []map[string]hclwrite.Tokens
 	if attr := body.GetAttribute(arrayAttrName); attr != nil {
 		elements := ParseArrayAttribute(attr)
 
 		for _, elem := range elements {
+			// First try to extract a plain string value
 			if val, ok := extractStringFieldFromArrayElement(elem); ok {
 				itemAttrs := make(map[string]cty.Value)
 				itemAttrs[primaryField] = cty.StringVal(val)
@@ -354,6 +501,19 @@ func MergeAttributeAndBlocksToObjectArray(
 				}
 
 				arrayItems = append(arrayItems, cty.ObjectVal(itemAttrs))
+			} else if tokens, ok := extractValueTokensFromArrayElement(elem); ok {
+				// If we can't extract a plain string, preserve the raw tokens (interpolations, references, etc)
+				itemTokens := make(map[string]hclwrite.Tokens)
+				itemTokens[primaryField] = tokens
+
+				// Add null tokens for optional fields
+				for _, fieldName := range optionalFields {
+					itemTokens[fieldName] = hclwrite.Tokens{
+						{Type: hclsyntax.TokenIdent, Bytes: []byte("null")},
+					}
+				}
+
+				arrayItemTokens = append(arrayItemTokens, itemTokens)
 			}
 		}
 
@@ -371,11 +531,272 @@ func MergeAttributeAndBlocksToObjectArray(
 	}
 
 	// Create the output attribute with all items as objects
-	// Use TupleVal to preserve order (SetVal would reorder elements)
-	if len(allItems) > 0 {
+	// If we have any items with raw tokens (interpolations/references), we need to build the attribute manually
+	if len(arrayItemTokens) > 0 || len(blockItemTokens) > 0 {
+		// Build the array using tokens to preserve expressions
+		var tokens hclwrite.Tokens
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenOBrack,
+			Bytes: []byte("["),
+		})
+
+		// Decide which items to add first based on blocksFirst parameter
+		var firstTokenItems, secondTokenItems []map[string]hclwrite.Tokens
+		var firstValueItems, secondValueItems []cty.Value
+
+		if blocksFirst {
+			firstTokenItems = blockItemTokens
+			firstValueItems = blockItems
+			secondTokenItems = arrayItemTokens
+			secondValueItems = arrayItems
+		} else {
+			firstTokenItems = arrayItemTokens
+			firstValueItems = arrayItems
+			secondTokenItems = blockItemTokens
+			secondValueItems = blockItems
+		}
+
+		// Add first set of token-based items
+		for i, itemTokens := range firstTokenItems {
+			if i > 0 {
+				tokens = append(tokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenComma,
+					Bytes: []byte(","),
+				})
+				tokens = append(tokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenNewline,
+					Bytes: []byte("\n"),
+				})
+			} else {
+				tokens = append(tokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenNewline,
+					Bytes: []byte("\n"),
+				})
+			}
+			tokens = append(tokens, buildObjectTokensFromMap(itemTokens, primaryField, optionalFields)...)
+		}
+
+		// Add first set of value-based items (cty.Values)
+		for i, item := range firstValueItems {
+			if i > 0 || len(firstTokenItems) > 0 {
+				tokens = append(tokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenComma,
+					Bytes: []byte(","),
+				})
+				tokens = append(tokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenNewline,
+					Bytes: []byte("\n"),
+				})
+			} else {
+				tokens = append(tokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenNewline,
+					Bytes: []byte("\n"),
+				})
+			}
+			tokens = append(tokens, buildObjectTokens(item, primaryField, optionalFields)...)
+		}
+
+		// Add second set of token-based items
+		for i, itemTokens := range secondTokenItems {
+			if i > 0 || len(firstTokenItems) > 0 || len(firstValueItems) > 0 {
+				tokens = append(tokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenComma,
+					Bytes: []byte(","),
+				})
+				tokens = append(tokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenNewline,
+					Bytes: []byte("\n"),
+				})
+			} else {
+				tokens = append(tokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenNewline,
+					Bytes: []byte("\n"),
+				})
+			}
+			tokens = append(tokens, buildObjectTokensFromMap(itemTokens, primaryField, optionalFields)...)
+		}
+
+		// Add second set of value-based items
+		for i, item := range secondValueItems {
+			if i > 0 || len(firstTokenItems) > 0 || len(firstValueItems) > 0 || len(secondTokenItems) > 0 {
+				tokens = append(tokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenComma,
+					Bytes: []byte(","),
+				})
+				tokens = append(tokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenNewline,
+					Bytes: []byte("\n"),
+				})
+			} else {
+				tokens = append(tokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenNewline,
+					Bytes: []byte("\n"),
+				})
+			}
+			tokens = append(tokens, buildObjectTokens(item, primaryField, optionalFields)...)
+		}
+
+		// Close the array
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenNewline,
+			Bytes: []byte("\n"),
+		})
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenCBrack,
+			Bytes: []byte("]"),
+		})
+
+		body.SetAttributeRaw(outputAttrName, tokens)
+	} else if len(allItems) > 0 {
+		// No items with raw tokens, can use SetAttributeValue
+		// Use TupleVal to preserve order (SetVal would reorder elements)
 		itemsVal := cty.TupleVal(allItems)
 		body.SetAttributeValue(outputAttrName, itemsVal)
 	}
 
 	return modified
+}
+
+// buildObjectTokens builds HCL tokens for an object from a cty.Value
+func buildObjectTokens(item cty.Value, primaryField string, optionalFields []string) hclwrite.Tokens {
+	var tokens hclwrite.Tokens
+
+	tokens = append(tokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenOBrace,
+		Bytes: []byte("{"),
+	})
+	tokens = append(tokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenNewline,
+		Bytes: []byte("\n"),
+	})
+
+	// Add primary field
+	if item.Type().IsObjectType() && item.Type().HasAttribute(primaryField) {
+		val := item.GetAttr(primaryField)
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenIdent,
+			Bytes: []byte(primaryField),
+		})
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenEqual,
+			Bytes: []byte(" = "),
+		})
+		tokens = append(tokens, buildValueTokens(val)...)
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenNewline,
+			Bytes: []byte("\n"),
+		})
+	}
+
+	// Add optional fields
+	for _, fieldName := range optionalFields {
+		if item.Type().IsObjectType() && item.Type().HasAttribute(fieldName) {
+			val := item.GetAttr(fieldName)
+			tokens = append(tokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenIdent,
+				Bytes: []byte(fieldName),
+			})
+			tokens = append(tokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenEqual,
+				Bytes: []byte(" = "),
+			})
+			tokens = append(tokens, buildValueTokens(val)...)
+			tokens = append(tokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenNewline,
+				Bytes: []byte("\n"),
+			})
+		}
+	}
+
+	tokens = append(tokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenCBrace,
+		Bytes: []byte("}"),
+	})
+
+	return tokens
+}
+
+// buildObjectTokensFromMap builds HCL tokens for an object from a map of field tokens
+func buildObjectTokensFromMap(itemTokens map[string]hclwrite.Tokens, primaryField string, optionalFields []string) hclwrite.Tokens {
+	var tokens hclwrite.Tokens
+
+	tokens = append(tokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenOBrace,
+		Bytes: []byte("{"),
+	})
+	tokens = append(tokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenNewline,
+		Bytes: []byte("\n"),
+	})
+
+	// Add primary field
+	if fieldTokens, ok := itemTokens[primaryField]; ok {
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenIdent,
+			Bytes: []byte(primaryField),
+		})
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenEqual,
+			Bytes: []byte(" = "),
+		})
+		tokens = append(tokens, cleanTokens(fieldTokens)...)
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenNewline,
+			Bytes: []byte("\n"),
+		})
+	}
+
+	// Add optional fields
+	for _, fieldName := range optionalFields {
+		if fieldTokens, ok := itemTokens[fieldName]; ok {
+			tokens = append(tokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenIdent,
+				Bytes: []byte(fieldName),
+			})
+			tokens = append(tokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenEqual,
+				Bytes: []byte(" = "),
+			})
+			tokens = append(tokens, cleanTokens(fieldTokens)...)
+			tokens = append(tokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenNewline,
+				Bytes: []byte("\n"),
+			})
+		}
+	}
+
+	tokens = append(tokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenCBrace,
+		Bytes: []byte("}"),
+	})
+
+	return tokens
+}
+
+// buildValueTokens builds HCL tokens for a cty.Value
+func buildValueTokens(val cty.Value) hclwrite.Tokens {
+	var tokens hclwrite.Tokens
+
+	if val.IsNull() {
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenIdent,
+			Bytes: []byte("null"),
+		})
+	} else if val.Type() == cty.String {
+		str := val.AsString()
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenOQuote,
+			Bytes: []byte("\""),
+		})
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenQuotedLit,
+			Bytes: []byte(str),
+		})
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenCQuote,
+			Bytes: []byte("\""),
+		})
+	}
+
+	return tokens
 }
