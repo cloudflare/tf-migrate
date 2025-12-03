@@ -210,9 +210,9 @@ if [[ -z "${CLOUDFLARE_EMAIL:-}" ]]; then
     exit 1
 fi
 
-if [[ -z "${R2_ACCESS_KEY_ID:-}" ]] || [[ -z "${R2_SECRET_ACCESS_KEY:-}" ]]; then
+if [[ -z "${CLOUDFLARE_R2_ACCESS_KEY_ID:-}" ]] || [[ -z "${CLOUDFLARE_R2_SECRET_ACCESS_KEY:-}" ]]; then
     echo -e "${RED}Error: R2 credentials not set${NC}"
-    echo "Please set: R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY"
+    echo "Please set: CLOUDFLARE_R2_ACCESS_KEY_ID and CLOUDFLARE_R2_SECRET_ACCESS_KEY"
     exit 1
 fi
 
@@ -223,8 +223,8 @@ BACKEND_CONFIG_TMP="${V4_DIR}/backend.configured.hcl"
 sed "s/ACCOUNT_ID/${CLOUDFLARE_ACCOUNT_ID}/g" "$BACKEND_CONFIG" > "$BACKEND_CONFIG_TMP"
 
 # Set R2 credentials (Terraform uses AWS S3-compatible API)
-export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
-export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+export AWS_ACCESS_KEY_ID="$CLOUDFLARE_R2_ACCESS_KEY_ID"
+export AWS_SECRET_ACCESS_KEY="$CLOUDFLARE_R2_SECRET_ACCESS_KEY"
 
 echo -e "${GREEN}  ✓ Backend configured${NC}"
 echo ""

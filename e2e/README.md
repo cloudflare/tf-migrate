@@ -49,7 +49,7 @@ If you've manually deleted resources from Cloudflare but they still exist in the
 ```bash
 # Remove tunnel modules from state
 cd e2e
-R2_ACCESS_KEY_ID=xxx R2_SECRET_ACCESS_KEY=yyy \
+CLOUDFLARE_R2_ACCESS_KEY_ID=xxx CLOUDFLARE_R2_SECRET_ACCESS_KEY=yyy \
   ./scripts/clean-state-modules \
     zero_trust_tunnel_cloudflared \
     zero_trust_tunnel_cloudflared_route
