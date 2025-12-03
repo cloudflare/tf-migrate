@@ -2,6 +2,10 @@
 # This file contains comprehensive test cases covering all migration scenarios
 
 # Standard variables (auto-provided by E2E infrastructure)
+variable "cloudflare_account_id" {
+  description = "Cloudflare account ID for testing"
+  type        = string
+}
 variable "cloudflare_zone_id" {
   description = "Cloudflare zone ID for testing"
   type        = string
@@ -235,12 +239,12 @@ resource "cloudflare_healthcheck" "with_functions" {
 
   description = "Healthcheck for zone ${local.zone_id}"
 
-  check_regions = tolist(["WNAM", "EEUR"])
+  check_regions = tolist(["WNAM", "EEU"])
 
   interval = 60
   http_config = {
     expected_codes = tolist(["200", "202"])
-    method         = "POST"
+    method         = "GET"
     path           = "/health"
     port           = 443
   }
@@ -355,7 +359,7 @@ resource "cloudflare_healthcheck" "suspended" {
 # Test Case 15: Different HTTP methods
 # ==============================================================================
 locals {
-  http_methods = ["GET", "HEAD", "POST"]
+  http_methods = ["GET", "HEAD"]
 }
 
 resource "cloudflare_healthcheck" "http_methods" {
@@ -389,7 +393,7 @@ resource "cloudflare_healthcheck" "regions_multi" {
   name          = "${local.name_prefix}-region-multi"
   address       = "global.${local.test_domain}"
   type          = "HTTP"
-  check_regions = ["WNAM", "ENAM", "WEU", "EEU", "SEAS", "WEAS"]
+  check_regions = ["WNAM", "ENAM", "WEU", "EEU", "SEAS"]
 }
 
 # ==============================================================================
