@@ -20,9 +20,7 @@ type V4ToV5Migrator struct{}
 func NewV4ToV5Migrator() transform.ResourceTransformer {
 	migrator := &V4ToV5Migrator{}
 	// Register the migrator for cloudflare_healthcheck
-	internal.Register("cloudflare_healthcheck", "v4", "v5", func() transform.ResourceTransformer {
-		return migrator
-	})
+	internal.RegisterMigrator("cloudflare_healthcheck", "v4", "v5", migrator)
 	return migrator
 }
 
@@ -181,7 +179,7 @@ func (m *V4ToV5Migrator) buildHeaderMapTokens(body *hclwrite.Body) (hclwrite.Tok
 
 // TransformState handles JSON state transformations
 // Major transformation: Restructure based on type field + type conversions
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
 	result := instance.String()
 	attrs := instance.Get("attributes")
 

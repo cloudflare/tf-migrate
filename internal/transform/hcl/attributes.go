@@ -5,6 +5,7 @@
 package hcl
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -387,6 +388,7 @@ func CreateNestedAttributeFromFields(body *hclwrite.Body, attrName string, field
 	for k := range fields {
 		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 
 	// Create object attributes
 	for _, fieldName := range keys {

@@ -46,17 +46,17 @@ resource "cloudflare_healthcheck" "full_http" {
   suspended             = false
   check_regions         = ["WNAM", "ENAM"]
   http_config = {
-    method           = "GET"
-    port             = 80
-    path             = "/health"
-    expected_codes   = ["200", "201", "204"]
-    expected_body    = "OK"
-    follow_redirects = false
     allow_insecure   = false
+    expected_body    = "OK"
+    expected_codes   = ["200", "201", "204"]
+    follow_redirects = false
     header = {
       "Host"       = [local.test_domain]
       "User-Agent" = ["HealthChecker/1.0"]
     }
+    method = "GET"
+    path   = "/health"
+    port   = 80
   }
 }
 
@@ -74,14 +74,14 @@ resource "cloudflare_healthcheck" "https_with_ssl" {
   consecutive_fails = 2
   timeout           = 10
   http_config = {
-    method         = "HEAD"
-    port           = 443
-    path           = "/api/health"
-    expected_codes = ["200"]
     allow_insecure = true
+    expected_codes = ["200"]
     header = {
       "Authorization" = ["Bearer test-token"]
     }
+    method = "HEAD"
+    path   = "/api/health"
+    port   = 443
   }
 }
 
@@ -135,8 +135,8 @@ resource "cloudflare_healthcheck" "http_map" {
   consecutive_fails = 3
   interval          = 60
   http_config = {
-    path   = each.value.path
     method = "GET"
+    path   = each.value.path
     port   = each.value.port
   }
 }
@@ -180,8 +180,8 @@ resource "cloudflare_healthcheck" "counted" {
   description = "Health check for server ${count.index}"
   interval    = 60 + (count.index * 10)
   http_config = {
-    path   = "/health/${count.index}"
     method = "GET"
+    path   = "/health/${count.index}"
     port   = 80 + count.index
   }
 }
@@ -203,8 +203,8 @@ resource "cloudflare_healthcheck" "conditional_enabled" {
   type    = "HTTP"
 
   http_config = {
-    path   = "/health"
     method = "GET"
+    path   = "/health"
     port   = 80
   }
 }
@@ -218,9 +218,9 @@ resource "cloudflare_healthcheck" "conditional_disabled" {
   type    = "HTTP"
 
   http_config = {
-    port   = 80
-    path   = "/debug"
     method = "GET"
+    path   = "/debug"
+    port   = 80
   }
 }
 
@@ -239,10 +239,10 @@ resource "cloudflare_healthcheck" "with_functions" {
 
   interval = 60
   http_config = {
-    method         = "POST"
-    port           = 443
-    path           = "/health"
     expected_codes = tolist(["200", "202"])
+    method         = "POST"
+    path           = "/health"
+    port           = 443
   }
 }
 
@@ -262,8 +262,8 @@ resource "cloudflare_healthcheck" "with_lifecycle" {
   }
   http_config = {
     method = "GET"
-    port   = 80
     path   = "/health"
+    port   = 80
   }
 }
 
@@ -279,8 +279,8 @@ resource "cloudflare_healthcheck" "prevent_destroy" {
   }
   http_config = {
     method = "GET"
-    port   = 443
     path   = "/"
+    port   = 443
   }
 }
 
@@ -297,14 +297,14 @@ resource "cloudflare_healthcheck" "multiple_headers" {
 
 
   http_config = {
-    method = "GET"
-    port   = 80
-    path   = "/v1/health"
     header = {
       "Accept"          = ["application/json", "text/plain"]
       "X-API-Key"       = ["test-api-key-123"]
       "X-Custom-Header" = ["custom-value"]
     }
+    method = "GET"
+    path   = "/v1/health"
+    port   = 80
   }
 }
 
@@ -319,8 +319,8 @@ resource "cloudflare_healthcheck" "empty_fields" {
 
   check_regions = []
   http_config = {
-    path           = "/"
     expected_codes = []
+    path           = "/"
   }
 }
 
@@ -368,8 +368,8 @@ resource "cloudflare_healthcheck" "http_methods" {
 
   http_config = {
     method = each.value
-    port   = 80
     path   = "/health"
+    port   = 80
   }
 }
 
@@ -403,8 +403,8 @@ resource "cloudflare_healthcheck" "interpolation" {
   description = "Health check for ${local.test_domain} in zone ${local.zone_id}"
 
   http_config = {
-    path   = "/health"
     method = "GET"
+    path   = "/health"
   }
 }
 
@@ -455,8 +455,8 @@ resource "cloudflare_healthcheck" "dynamic_headers" {
     }
   }
   http_config = {
-    path   = "/health"
     method = "GET"
+    path   = "/health"
     port   = 80
   }
 }
