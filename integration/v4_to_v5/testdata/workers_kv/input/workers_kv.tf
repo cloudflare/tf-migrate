@@ -11,7 +11,7 @@ variable "cloudflare_zone_id" {
 # Locals for reusable values
 locals {
   common_account   = var.cloudflare_account_id
-  namespace_prefix = "test-kv"
+  namespace_prefix = "cf-tf-test-kv"
   test_keys = [
     "config_key_1",
     "config_key_2",

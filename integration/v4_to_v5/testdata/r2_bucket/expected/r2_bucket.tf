@@ -16,7 +16,7 @@ variable "cloudflare_zone_id" {
 # ============================================================================
 locals {
   common_account = var.cloudflare_account_id
-  name_prefix    = "test-integration"
+  name_prefix    = "cf-tf-test"
   locations = {
     "wnam" = "WNAM"
     "enam" = "ENAM"
@@ -36,37 +36,37 @@ locals {
 # Test Case 1: Minimal bucket with only required fields
 resource "cloudflare_r2_bucket" "minimal" {
   account_id = var.cloudflare_account_id
-  name       = "minimal-bucket"
+  name       = "${local.name_prefix}-minimal-bucket"
 }
 
 # Test Case 2: Bucket with all locations tested
 resource "cloudflare_r2_bucket" "location_wnam" {
   account_id = var.cloudflare_account_id
-  name       = "bucket-wnam"
+  name       = "${local.name_prefix}-bucket-wnam"
   location   = "WNAM"
 }
 
 resource "cloudflare_r2_bucket" "location_enam" {
   account_id = var.cloudflare_account_id
-  name       = "bucket-enam"
+  name       = "${local.name_prefix}-bucket-enam"
   location   = "ENAM"
 }
 
 resource "cloudflare_r2_bucket" "location_weur" {
   account_id = var.cloudflare_account_id
-  name       = "bucket-weur"
+  name       = "${local.name_prefix}-bucket-weur"
   location   = "WEUR"
 }
 
 resource "cloudflare_r2_bucket" "location_eeur" {
   account_id = var.cloudflare_account_id
-  name       = "bucket-eeur"
+  name       = "${local.name_prefix}-bucket-eeur"
   location   = "EEUR"
 }
 
 resource "cloudflare_r2_bucket" "location_apac" {
   account_id = var.cloudflare_account_id
-  name       = "bucket-apac"
+  name       = "${local.name_prefix}-bucket-apac"
   location   = "APAC"
 }
 
@@ -83,15 +83,15 @@ resource "cloudflare_r2_bucket" "location_oc" {
 resource "cloudflare_r2_bucket" "map_example" {
   for_each = {
     "data" = {
-      name     = "data-bucket"
+      name     = "${local.name_prefix}-data-bucket"
       location = "WNAM"
     }
     "logs" = {
-      name     = "logs-bucket"
+      name     = "${local.name_prefix}-logs-bucket"
       location = "ENAM"
     }
     "backups" = {
-      name     = "backups-bucket"
+      name     = "${local.name_prefix}-backups-bucket"
       location = "WEUR"
     }
   }
@@ -114,7 +114,7 @@ resource "cloudflare_r2_bucket" "set_example" {
   ])
 
   account_id = var.cloudflare_account_id
-  name       = "set-${each.value}-bucket"
+  name       = "${local.name_prefix}-set-${each.value}-bucket"
 }
 
 # ============================================================================
@@ -125,7 +125,7 @@ resource "cloudflare_r2_bucket" "counted" {
   count = 3
 
   account_id = var.cloudflare_account_id
-  name       = "counted-bucket-${count.index}"
+  name       = "${local.name_prefix}-counted-bucket-${count.index}"
   location   = count.index == 0 ? "WNAM" : count.index == 1 ? "EEUR" : "APAC"
 }
 
@@ -137,7 +137,7 @@ resource "cloudflare_r2_bucket" "conditional_enabled" {
   count = local.enable_feature ? 1 : 0
 
   account_id = var.cloudflare_account_id
-  name       = "conditional-enabled-bucket"
+  name       = "${local.name_prefix}-conditional-enabled-bucket"
   location   = "WNAM"
 }
 
@@ -145,7 +145,7 @@ resource "cloudflare_r2_bucket" "conditional_disabled" {
   count = local.enable_test ? 1 : 0
 
   account_id = var.cloudflare_account_id
-  name       = "conditional-disabled-bucket"
+  name       = "${local.name_prefix}-conditional-disabled-bucket"
   location   = "EEUR"
 }
 
@@ -171,7 +171,7 @@ resource "cloudflare_r2_bucket" "with_interpolation" {
 
 resource "cloudflare_r2_bucket" "with_lifecycle" {
   account_id = var.cloudflare_account_id
-  name       = "lifecycle-test-bucket"
+  name       = "${local.name_prefix}-lifecycle-test-bucket"
   location   = "WNAM"
 
   lifecycle {
@@ -181,7 +181,7 @@ resource "cloudflare_r2_bucket" "with_lifecycle" {
 
 resource "cloudflare_r2_bucket" "with_prevent_destroy" {
   account_id = var.cloudflare_account_id
-  name       = "prevent-destroy-bucket"
+  name       = "${local.name_prefix}-prevent-destroy-bucket"
   location   = "EEUR"
 
   lifecycle {
@@ -193,21 +193,15 @@ resource "cloudflare_r2_bucket" "with_prevent_destroy" {
 # Pattern Group 9: Edge Cases
 # ============================================================================
 
-# Special characters in bucket names (hyphens and numbers)
-resource "cloudflare_r2_bucket" "special_chars" {
-  account_id = var.cloudflare_account_id
-  name       = "bucket-with-dashes-and-numbers-123"
-}
-
 # Long bucket name (testing near max length - 63 chars max)
 resource "cloudflare_r2_bucket" "long_name" {
   account_id = var.cloudflare_account_id
-  name       = "very-long-bucket-name-for-testing-migration-limits-max-len"
+  name       = "${local.name_prefix}-long-bucket-name-to-test-migration-limits-max-len"
 }
 
 # Bucket name with all allowed characters (lowercase, numbers, hyphens)
 resource "cloudflare_r2_bucket" "all_chars" {
   account_id = var.cloudflare_account_id
-  name       = "bucket-name-with-all-valid-chars-123-test"
+  name       = "${local.name_prefix}-bucket-name-with-all-valid-chars-123-test"
   location   = "WNAM"
 }

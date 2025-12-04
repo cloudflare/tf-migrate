@@ -14,7 +14,7 @@ variable "cloudflare_zone_id" {
 
 locals {
   common_account = var.cloudflare_account_id
-  name_prefix    = "test-integration"
+  name_prefix    = "cf-tf-test"
   tags           = ["test", "migration", "v4_to_v5"]
   environments   = ["dev", "staging", "prod"]
 }
@@ -47,7 +47,7 @@ resource "cloudflare_workers_kv_namespace" "set_example" {
   ])
 
   account_id = var.cloudflare_account_id
-  title      = "set-${each.value}-namespace"
+  title      = "${local.name_prefix}-set-${each.value}-namespace"
 }
 
 # Pattern Group 4: count-based Resources (3 instances)
@@ -55,7 +55,7 @@ resource "cloudflare_workers_kv_namespace" "counted" {
   count = 3
 
   account_id = var.cloudflare_account_id
-  title      = "counted-namespace-${count.index}"
+  title      = "${local.name_prefix}-counted-namespace-${count.index}"
 }
 
 # Pattern Group 5: Conditional Creation (1 instance created, 1 not created)
@@ -68,36 +68,36 @@ resource "cloudflare_workers_kv_namespace" "conditional_enabled" {
   count = local.enable_feature ? 1 : 0
 
   account_id = var.cloudflare_account_id
-  title      = "conditional-enabled-namespace"
+  title      = "${local.name_prefix}-conditional-enabled-namespace"
 }
 
 resource "cloudflare_workers_kv_namespace" "conditional_disabled" {
   count = local.enable_test ? 1 : 0
 
   account_id = var.cloudflare_account_id
-  title      = "conditional-disabled-namespace"
+  title      = "${local.name_prefix}-conditional-disabled-namespace"
 }
 
 # Pattern Group 6: Terraform Functions (3 instances)
 resource "cloudflare_workers_kv_namespace" "with_join" {
   account_id = var.cloudflare_account_id
-  title      = join("-", ["workers", "kv", "joined"])
+  title      = join("-", [local.name_prefix, "workers", "kv", "joined"])
 }
 
 resource "cloudflare_workers_kv_namespace" "with_format" {
   account_id = var.cloudflare_account_id
-  title      = "formatted-namespace-001"
+  title      = "${local.name_prefix}-formatted-namespace-001"
 }
 
 resource "cloudflare_workers_kv_namespace" "with_interpolation" {
   account_id = var.cloudflare_account_id
-  title      = "namespace-for-account-${var.cloudflare_account_id}"
+  title      = "${local.name_prefix}-namespace-for-account-${var.cloudflare_account_id}"
 }
 
 # Pattern Group 7: Lifecycle Meta-Arguments (2 instances)
 resource "cloudflare_workers_kv_namespace" "with_lifecycle" {
   account_id = var.cloudflare_account_id
-  title      = "lifecycle-test-namespace"
+  title      = "${local.name_prefix}-lifecycle-test-namespace"
 
   lifecycle {
     create_before_destroy = true
@@ -107,7 +107,7 @@ resource "cloudflare_workers_kv_namespace" "with_lifecycle" {
 
 resource "cloudflare_workers_kv_namespace" "with_prevent_destroy" {
   account_id = var.cloudflare_account_id
-  title      = "prevent-destroy-namespace"
+  title      = "${local.name_prefix}-prevent-destroy-namespace"
 
   lifecycle {
     prevent_destroy = false
@@ -119,31 +119,19 @@ resource "cloudflare_workers_kv_namespace" "with_prevent_destroy" {
 # Minimal resource (only required fields)
 resource "cloudflare_workers_kv_namespace" "minimal" {
   account_id = var.cloudflare_account_id
-  title      = "minimal"
+  title      = "${local.name_prefix}-minimal"
 }
 
-# Resource with special characters in title
-resource "cloudflare_workers_kv_namespace" "special_chars" {
-  account_id = var.cloudflare_account_id
-  title      = "test_namespace-with.special-chars!2024"
-}
-
-# Resource with spaces in title
+# Resource with spaces, special chars, unicode in title
 resource "cloudflare_workers_kv_namespace" "with_spaces" {
   account_id = var.cloudflare_account_id
-  title      = "My Workers KV Namespace With Spaces"
+  title      = "${local.name_prefix}-KV Namespace With Spaces!2024émojis-🚀-and-spëcial-chàrs"
 }
 
 # Resource with very long title
 resource "cloudflare_workers_kv_namespace" "long_title" {
   account_id = var.cloudflare_account_id
-  title      = "very-long-namespace-title-that-tests-maximum-length-handling-in-migration-process-2024"
-}
-
-# Resource with unicode characters
-resource "cloudflare_workers_kv_namespace" "unicode" {
-  account_id = var.cloudflare_account_id
-  title      = "namespace-with-émojis-🚀-and-spëcial-chàrs"
+  title      = "${local.name_prefix}-long-title-that-tests-maximum-length-handling-in-migration"
 }
 
 # Pattern Group 9: Production-like Patterns
@@ -160,7 +148,7 @@ resource "cloudflare_workers_kv_namespace" "variable_driven" {
   title      = "namespace-${var.cloudflare_zone_id}"
 }
 
-# Total instances: 25
+# Total instances: 21
 # - map_example: 3 instances (cache, session, config)
 # - set_example: 4 instances (alpha, beta, gamma, delta)
 # - counted: 3 instances (0, 1, 2)
@@ -172,10 +160,8 @@ resource "cloudflare_workers_kv_namespace" "variable_driven" {
 # - with_lifecycle: 1 instance
 # - with_prevent_destroy: 1 instance
 # - minimal: 1 instance
-# - special_chars: 1 instance
-# - with_spaces: 1 instance
+# - with_spaces: 1 instance (combined: spaces, special chars, unicode, emojis)
 # - long_title: 1 instance
-# - unicode: 1 instance
 # - from_locals: 1 instance
 # - variable_driven: 1 instance
-# Total: 23 instances (excluding conditional_disabled which has count = 0)
+# Total: 21 instances (excluding conditional_disabled which has count = 0)
