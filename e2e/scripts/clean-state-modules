@@ -26,8 +26,8 @@ show_usage() {
     echo "                 Multiple modules can be specified"
     echo ""
     echo "Environment variables required:"
-    echo "  R2_ACCESS_KEY_ID        R2 access key ID"
-    echo "  R2_SECRET_ACCESS_KEY    R2 secret access key"
+    echo "  CLOUDFLARE_R2_ACCESS_KEY_ID        R2 access key ID"
+    echo "  CLOUDFLARE_R2_SECRET_ACCESS_KEY    R2 secret access key"
     echo ""
     echo "Examples:"
     echo "  # Remove tunnels module"
@@ -37,7 +37,7 @@ show_usage() {
     echo "  $0 zero_trust_tunnel_cloudflared zero_trust_tunnel_cloudflared_route"
     echo ""
     echo "  # With explicit credentials"
-    echo "  R2_ACCESS_KEY_ID=xxx R2_SECRET_ACCESS_KEY=yyy $0 zero_trust_tunnel_cloudflared"
+    echo "  CLOUDFLARE_R2_ACCESS_KEY_ID=xxx CLOUDFLARE_R2_SECRET_ACCESS_KEY=yyy $0 zero_trust_tunnel_cloudflared"
     exit 1
 }
 
@@ -47,11 +47,11 @@ if [[ $# -eq 0 ]] || [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
 fi
 
 # Check for R2 credentials
-if [[ -z "${R2_ACCESS_KEY_ID:-}" ]] || [[ -z "${R2_SECRET_ACCESS_KEY:-}" ]]; then
+if [[ -z "${CLOUDFLARE_R2_ACCESS_KEY_ID:-}" ]] || [[ -z "${CLOUDFLARE_R2_SECRET_ACCESS_KEY:-}" ]]; then
     echo -e "${RED}Error: R2 credentials not set${NC}"
-    echo "Please set: R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY"
+    echo "Please set: CLOUDFLARE_R2_ACCESS_KEY_ID and CLOUDFLARE_R2_SECRET_ACCESS_KEY"
     echo ""
-    echo "Usage: R2_ACCESS_KEY_ID=xxx R2_SECRET_ACCESS_KEY=yyy $0 <module_name>"
+    echo "Usage: CLOUDFLARE_R2_ACCESS_KEY_ID=xxx CLOUDFLARE_R2_SECRET_ACCESS_KEY=yyy $0 <module_name>"
     exit 1
 fi
 
@@ -70,8 +70,8 @@ fi
 cd "$V4_DIR"
 
 # Export R2 credentials for terraform
-export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
-export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+export AWS_ACCESS_KEY_ID="$CLOUDFLARE_R2_ACCESS_KEY_ID"
+export AWS_SECRET_ACCESS_KEY="$CLOUDFLARE_R2_SECRET_ACCESS_KEY"
 
 echo -e "${CYAN}========================================${NC}"
 echo -e "${CYAN}Cleaning Modules from Remote State${NC}"
