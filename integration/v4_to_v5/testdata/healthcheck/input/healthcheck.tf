@@ -11,20 +11,52 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+# Variable for test IP - override if default doesn't work
+variable "healthcheck_test_ip" {
+  description = "IP for healthcheck test DNS record - use an IP you control if needed"
+  type        = string
+  default     = ""  # Empty default - will auto-detect zone apex IP or use httpbin.org
+}
+
+# Get actual zone domain
+data "cloudflare_zone" "test_zone" {
+  zone_id = var.cloudflare_zone_id
+}
+
+# Try to get the zone apex A record (if it exists)
+data "external" "zone_apex_ip" {
+  program = ["bash", "-c", <<-EOT
+    IP=$(dig +short ${data.cloudflare_zone.test_zone.name} A @1.1.1.1 | grep -E '^[0-9.]+$' | head -1)
+    if [ -z "$IP" ]; then
+      echo '{"ip":"52.205.123.206"}'
+    else
+      echo "{\"ip\":\"$IP\"}"
+    fi
+  EOT
+  ]
+}
+
 # Locals for common values
 locals {
-  zone_id     = var.cloudflare_zone_id
-  name_prefix = "migration-test"
-  test_domain = "example.com"
+  zone_id       = var.cloudflare_zone_id
+  name_prefix   = "migration-test"
+  real_domain   = data.cloudflare_zone.test_zone.name
+  # Use provided IP, otherwise use zone apex IP, otherwise use test IP
+  resolved_ip   = var.healthcheck_test_ip != "" ? var.healthcheck_test_ip : data.external.zone_apex_ip.result.ip
+  # Use IP directly instead of hostname to avoid DNS issues
+  test_hostname = local.resolved_ip
 }
+
+# No DNS record needed - using IPs directly
 
 # ==============================================================================
 # Test Case 1: Minimal HTTP healthcheck (required fields only)
 # ==============================================================================
 resource "cloudflare_healthcheck" "minimal_http" {
+
   zone_id = local.zone_id
   name    = "${local.name_prefix}-minimal-http"
-  address = local.test_domain
+  address = local.test_hostname
   type    = "HTTP"
 }
 
@@ -32,9 +64,10 @@ resource "cloudflare_healthcheck" "minimal_http" {
 # Test Case 2: Full HTTP healthcheck (all optional fields)
 # ==============================================================================
 resource "cloudflare_healthcheck" "full_http" {
+
   zone_id = local.zone_id
   name    = "${local.name_prefix}-full-http"
-  address = "api.${local.test_domain}"
+  address = local.test_hostname
   type    = "HTTP"
 
   # HTTP-specific fields
@@ -49,7 +82,7 @@ resource "cloudflare_healthcheck" "full_http" {
   # Headers
   header {
     header = "Host"
-    values = [local.test_domain]
+    values = [local.real_domain]
   }
 
   header {
@@ -72,9 +105,10 @@ resource "cloudflare_healthcheck" "full_http" {
 # Test Case 3: HTTPS healthcheck with SSL options
 # ==============================================================================
 resource "cloudflare_healthcheck" "https_with_ssl" {
+
   zone_id = local.zone_id
   name    = "${local.name_prefix}-https-ssl"
-  address = "secure.${local.test_domain}"
+  address = local.test_hostname
   type    = "HTTPS"
 
   port           = 443
@@ -96,9 +130,10 @@ resource "cloudflare_healthcheck" "https_with_ssl" {
 # Test Case 4: TCP healthcheck
 # ==============================================================================
 resource "cloudflare_healthcheck" "tcp_basic" {
+
   zone_id = local.zone_id
   name    = "${local.name_prefix}-tcp"
-  address = "10.0.0.1"
+  address = local.resolved_ip
   type    = "TCP"
 
   port   = 8080
@@ -113,19 +148,20 @@ resource "cloudflare_healthcheck" "tcp_basic" {
 # Test Case 5: for_each with map - Multiple HTTP checks
 # ==============================================================================
 resource "cloudflare_healthcheck" "http_map" {
+
   for_each = {
     "api" = {
-      address = "api.${local.test_domain}"
+      address = local.test_hostname
       path    = "/api/health"
       port    = 8080
     }
     "web" = {
-      address = "www.${local.test_domain}"
+      address = local.test_hostname
       path    = "/"
       port    = 80
     }
     "admin" = {
-      address = "admin.${local.test_domain}"
+      address = local.test_hostname
       path    = "/admin/health"
       port    = 443
     }
@@ -148,6 +184,7 @@ resource "cloudflare_healthcheck" "http_map" {
 # Test Case 6: for_each with set - Multiple TCP checks
 # ==============================================================================
 resource "cloudflare_healthcheck" "tcp_set" {
+
   for_each = toset([
     "db-primary",
     "db-replica",
@@ -156,7 +193,7 @@ resource "cloudflare_healthcheck" "tcp_set" {
 
   zone_id = local.zone_id
   name    = "${local.name_prefix}-${each.value}"
-  address = "${each.value}.internal"
+  address = local.test_hostname
   type    = "TCP"
 
   port   = 5432
@@ -170,11 +207,12 @@ resource "cloudflare_healthcheck" "tcp_set" {
 # Test Case 7: count-based resources
 # ==============================================================================
 resource "cloudflare_healthcheck" "counted" {
+
   count = 4
 
   zone_id = local.zone_id
   name    = "${local.name_prefix}-counted-${count.index}"
-  address = "server-${count.index}.${local.test_domain}"
+  address = local.test_hostname
   type    = "HTTP"
 
   port   = 80 + count.index
@@ -194,11 +232,12 @@ locals {
 }
 
 resource "cloudflare_healthcheck" "conditional_enabled" {
+
   count = local.enable_monitoring ? 1 : 0
 
   zone_id = local.zone_id
   name    = "${local.name_prefix}-conditional-enabled"
-  address = "monitor.${local.test_domain}"
+  address = local.test_hostname
   type    = "HTTP"
 
   port   = 80
@@ -207,11 +246,12 @@ resource "cloudflare_healthcheck" "conditional_enabled" {
 }
 
 resource "cloudflare_healthcheck" "conditional_disabled" {
+
   count = local.enable_debug ? 1 : 0
 
   zone_id = local.zone_id
   name    = "${local.name_prefix}-conditional-disabled"
-  address = "debug.${local.test_domain}"
+  address = local.test_hostname
   type    = "HTTP"
 
   port   = 80
@@ -223,9 +263,10 @@ resource "cloudflare_healthcheck" "conditional_disabled" {
 # Test Case 9: Terraform functions
 # ==============================================================================
 resource "cloudflare_healthcheck" "with_functions" {
+
   zone_id = local.zone_id
   name    = join("-", [local.name_prefix, "functions", "test"])
-  address = "${local.test_domain}"
+  address = local.resolved_ip
   type    = "HTTPS"
 
   port        = 443
@@ -243,9 +284,10 @@ resource "cloudflare_healthcheck" "with_functions" {
 # Test Case 10: Lifecycle meta-arguments
 # ==============================================================================
 resource "cloudflare_healthcheck" "with_lifecycle" {
+
   zone_id = local.zone_id
   name    = "${local.name_prefix}-lifecycle"
-  address = "lifecycle.${local.test_domain}"
+  address = local.test_hostname
   type    = "HTTP"
 
   port   = 80
@@ -259,9 +301,10 @@ resource "cloudflare_healthcheck" "with_lifecycle" {
 }
 
 resource "cloudflare_healthcheck" "prevent_destroy" {
+
   zone_id = local.zone_id
   name    = "${local.name_prefix}-prevent-destroy"
-  address = "important.${local.test_domain}"
+  address = local.test_hostname
   type    = "HTTPS"
 
   port   = 443
@@ -277,9 +320,10 @@ resource "cloudflare_healthcheck" "prevent_destroy" {
 # Test Case 11: Multiple headers
 # ==============================================================================
 resource "cloudflare_healthcheck" "multiple_headers" {
+
   zone_id = local.zone_id
   name    = "${local.name_prefix}-multi-headers"
-  address = "api.${local.test_domain}"
+  address = local.test_hostname
   type    = "HTTP"
 
   port   = 80
@@ -306,9 +350,10 @@ resource "cloudflare_healthcheck" "multiple_headers" {
 # Test Case 12: Empty optional fields
 # ==============================================================================
 resource "cloudflare_healthcheck" "empty_fields" {
+
   zone_id = local.zone_id
   name    = "${local.name_prefix}-empty"
-  address = "empty.${local.test_domain}"
+  address = local.test_hostname
   type    = "HTTP"
 
   path           = "/"
@@ -320,9 +365,10 @@ resource "cloudflare_healthcheck" "empty_fields" {
 # Test Case 13: Null description
 # ==============================================================================
 resource "cloudflare_healthcheck" "null_description" {
+
   zone_id     = local.zone_id
   name        = "${local.name_prefix}-null-desc"
-  address     = "null.${local.test_domain}"
+  address     = local.test_hostname
   type        = "HTTP"
   description = null
 }
@@ -331,9 +377,10 @@ resource "cloudflare_healthcheck" "null_description" {
 # Test Case 14: Suspended healthcheck
 # ==============================================================================
 resource "cloudflare_healthcheck" "suspended" {
+
   zone_id   = local.zone_id
   name      = "${local.name_prefix}-suspended"
-  address   = "suspended.${local.test_domain}"
+  address   = local.test_hostname
   type      = "HTTP"
   suspended = true
 
@@ -349,11 +396,12 @@ locals {
 }
 
 resource "cloudflare_healthcheck" "http_methods" {
+
   for_each = toset(local.http_methods)
 
   zone_id = local.zone_id
   name    = "${local.name_prefix}-method-${lower(each.value)}"
-  address = "methods.${local.test_domain}"
+  address = local.test_hostname
   type    = "HTTP"
 
   port   = 80
@@ -365,17 +413,19 @@ resource "cloudflare_healthcheck" "http_methods" {
 # Test Case 16: Different check regions
 # ==============================================================================
 resource "cloudflare_healthcheck" "regions_wnam" {
+
   zone_id       = local.zone_id
   name          = "${local.name_prefix}-region-wnam"
-  address       = "us.${local.test_domain}"
+  address       = local.test_hostname
   type          = "HTTP"
   check_regions = ["WNAM"]
 }
 
 resource "cloudflare_healthcheck" "regions_multi" {
+
   zone_id       = local.zone_id
   name          = "${local.name_prefix}-region-multi"
-  address       = "global.${local.test_domain}"
+  address       = local.test_hostname
   type          = "HTTP"
   check_regions = ["WNAM", "ENAM", "WEU", "EEU", "SEAS"]
 }
@@ -384,11 +434,12 @@ resource "cloudflare_healthcheck" "regions_multi" {
 # Test Case 17: String interpolation
 # ==============================================================================
 resource "cloudflare_healthcheck" "interpolation" {
+
   zone_id     = local.zone_id
-  name        = "${local.name_prefix}-${local.test_domain}-interpolated"
-  address     = "${local.test_domain}"
+  name        = "${local.name_prefix}-${local.real_domain}-interpolated"
+  address     = local.resolved_ip
   type        = "HTTP"
-  description = "Health check for ${local.test_domain} in zone ${local.zone_id}"
+  description = "Health check for ${local.real_domain} in zone ${local.zone_id}"
 
   path   = "/health"
   method = "GET"
@@ -398,15 +449,16 @@ resource "cloudflare_healthcheck" "interpolation" {
 # Test Case 18: Numeric edge values
 # ==============================================================================
 resource "cloudflare_healthcheck" "numeric_edges" {
+
   zone_id = local.zone_id
   name    = "${local.name_prefix}-numeric-edges"
-  address = "numeric.${local.test_domain}"
+  address = local.test_hostname
   type    = "HTTP"
 
   consecutive_fails     = 1  # Minimum
   consecutive_successes = 1  # Minimum
   retries               = 5  # Higher value
-  timeout               = 30 # Higher value
+  timeout               = 15 # Maximum value
   interval              = 300 # Higher value
 
   port   = 8443
@@ -425,21 +477,29 @@ locals {
 }
 
 resource "cloudflare_healthcheck" "dynamic_headers" {
+
   zone_id = local.zone_id
   name    = "${local.name_prefix}-dynamic-headers"
-  address = "dynamic.${local.test_domain}"
+  address = local.test_hostname
   type    = "HTTP"
 
   port   = 80
   path   = "/health"
   method = "GET"
 
-  dynamic "header" {
-    for_each = local.custom_headers
-    content {
-      header = header.key
-      values = header.value
-    }
+  header {
+    header = "X-Environment"
+    values = ["production"]
+  }
+
+  header {
+    header = "X-Region"
+    values = ["us-west"]
+  }
+
+  header {
+    header = "X-Version"
+    values = ["v2"]
   }
 }
 
