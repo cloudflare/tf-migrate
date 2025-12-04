@@ -72,7 +72,7 @@ resource "cloudflare_logpush_job" "full" {
   destination_conf = "https://logpush-receiver.sd.cfplat.com"
   kind             = "edge"
   enabled          = true
-  name             = "my-logpush-job"
+  name = "cftftest-my-logpush-job"
   frequency        = "high"
 
   output_options {

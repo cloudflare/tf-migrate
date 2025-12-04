@@ -14,7 +14,7 @@ variable "cloudflare_zone_id" {
 
 locals {
   common_account = var.cloudflare_account_id
-  name_prefix    = "cf-tf-test"
+  name_prefix    = "cftftest"
   tags           = ["test", "migration", "v4_to_v5"]
   environments   = ["dev", "staging", "prod"]
 }
@@ -122,16 +122,28 @@ resource "cloudflare_workers_kv_namespace" "minimal" {
   title      = "${local.name_prefix}-minimal"
 }
 
-# Resource with spaces, special chars, unicode in title
+# Resource with special characters in title
+resource "cloudflare_workers_kv_namespace" "special_chars" {
+  account_id = var.cloudflare_account_id
+  title      = "${local.name_prefix}_namespace-with.special-chars!2024"
+}
+
+# Resource with spaces in title
 resource "cloudflare_workers_kv_namespace" "with_spaces" {
   account_id = var.cloudflare_account_id
-  title      = "${local.name_prefix}-KV Namespace With Spaces!2024émojis-🚀-and-spëcial-chàrs"
+  title      = "${local.name_prefix} My Workers KV Namespace With Spaces"
 }
 
 # Resource with very long title
 resource "cloudflare_workers_kv_namespace" "long_title" {
   account_id = var.cloudflare_account_id
-  title      = "${local.name_prefix}-long-title-that-tests-maximum-length-handling-in-migration"
+  title      = "${local.name_prefix}-very-long-namespace-title-that-tests-maximum-length-handling"
+}
+
+# Resource with unicode characters
+resource "cloudflare_workers_kv_namespace" "unicode" {
+  account_id = var.cloudflare_account_id
+  title      = "${local.name_prefix}-namespace-with-émojis-🚀-and-spëcial-chàrs"
 }
 
 # Pattern Group 9: Production-like Patterns
@@ -148,7 +160,7 @@ resource "cloudflare_workers_kv_namespace" "variable_driven" {
   title      = "namespace-${var.cloudflare_zone_id}"
 }
 
-# Total instances: 21
+# Total instances: 23
 # - map_example: 3 instances (cache, session, config)
 # - set_example: 4 instances (alpha, beta, gamma, delta)
 # - counted: 3 instances (0, 1, 2)
@@ -160,8 +172,10 @@ resource "cloudflare_workers_kv_namespace" "variable_driven" {
 # - with_lifecycle: 1 instance
 # - with_prevent_destroy: 1 instance
 # - minimal: 1 instance
-# - with_spaces: 1 instance (combined: spaces, special chars, unicode, emojis)
+# - special_chars: 1 instance
+# - with_spaces: 1 instance
 # - long_title: 1 instance
+# - unicode: 1 instance
 # - from_locals: 1 instance
 # - variable_driven: 1 instance
-# Total: 21 instances (excluding conditional_disabled which has count = 0)
+# Total: 23 instances (excluding conditional_disabled which has count = 0)

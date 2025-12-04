@@ -59,7 +59,7 @@ locals {
 # 1. Minimal resource - only required fields
 resource "cloudflare_zero_trust_list" "minimal" {
   account_id = local.common_account_id
-  name       = "Minimal List"
+  name = "cftftest Minimal List"
   type       = "IP"
   items = [{
     description = null
@@ -96,7 +96,7 @@ resource "cloudflare_zero_trust_list" "maximal" {
 # 3. Empty list - edge case
 resource "cloudflare_zero_trust_list" "empty" {
   account_id  = var.cloudflare_account_id
-  name        = "Empty List"
+  name = "cftftest Empty List"
   type        = "URL"
   description = "Empty list for testing"
 }
@@ -104,7 +104,7 @@ resource "cloudflare_zero_trust_list" "empty" {
 # 4. Basic IP list with simple items array
 resource "cloudflare_zero_trust_list" "ip_list" {
   account_id = var.cloudflare_account_id
-  name       = "IP Allowlist"
+  name = "cftftest IP Allowlist"
   type       = "IP"
   items = [{
     description = null
@@ -121,7 +121,7 @@ resource "cloudflare_zero_trust_list" "ip_list" {
 # 5. Domain list with items_with_description blocks
 resource "cloudflare_zero_trust_list" "domain_list" {
   account_id  = var.cloudflare_account_id
-  name        = "Allowed Domains"
+  name = "cftftest Allowed Domains"
   type        = "DOMAIN"
   description = "Company approved domains"
 
@@ -142,7 +142,7 @@ resource "cloudflare_zero_trust_list" "domain_list" {
 # 6. Mixed list with both items and items_with_description
 resource "cloudflare_zero_trust_list" "email_list" {
   account_id = var.cloudflare_account_id
-  name       = "VIP Emails"
+  name = "cftftest VIP Emails"
   type       = "EMAIL"
 
 
@@ -234,7 +234,7 @@ resource "cloudflare_zero_trust_list" "conditional_enabled" {
   count = var.enable_security_lists ? 1 : 0
 
   account_id  = var.cloudflare_account_id
-  name        = "Security List - Enabled"
+  name = "cftftest Security List - Enabled"
   type        = "DOMAIN"
   description = "This list is conditionally created"
   items = [{
@@ -251,7 +251,7 @@ resource "cloudflare_zero_trust_list" "conditional_disabled" {
   count = var.enable_security_lists ? 0 : 1
 
   account_id  = var.cloudflare_account_id
-  name        = "Security List - Disabled"
+  name = "cftftest Security List - Disabled"
   type        = "DOMAIN"
   description = "This list is conditionally not created"
   items = [{
@@ -299,7 +299,7 @@ resource "cloudflare_zero_trust_list" "with_interpolation" {
 # 21. Resource with lifecycle block
 resource "cloudflare_zero_trust_list" "with_lifecycle" {
   account_id  = var.cloudflare_account_id
-  name        = "Protected List"
+  name = "cftftest Protected List"
   type        = "IP"
   description = "List with lifecycle settings"
 
@@ -316,7 +316,7 @@ resource "cloudflare_zero_trust_list" "with_lifecycle" {
 # 22. Resource with prevent_destroy (set to false for testing)
 resource "cloudflare_zero_trust_list" "with_prevent_destroy" {
   account_id  = var.cloudflare_account_id
-  name        = "Important List"
+  name = "cftftest Important List"
   type        = "DOMAIN"
   description = "Critical list"
 
@@ -336,7 +336,7 @@ resource "cloudflare_zero_trust_list" "with_prevent_destroy" {
 # 23. URL list with only items_with_description
 resource "cloudflare_zero_trust_list" "url_list" {
   account_id = var.cloudflare_account_id
-  name       = "Blocked URLs"
+  name = "cftftest Blocked URLs"
   type       = "URL"
 
 
@@ -352,7 +352,7 @@ resource "cloudflare_zero_trust_list" "url_list" {
 # 24. SERIAL type list
 resource "cloudflare_zero_trust_list" "serial_list" {
   account_id  = var.cloudflare_account_id
-  name        = "Certificate Serials"
+  name = "cftftest Certificate Serials"
   type        = "SERIAL"
   description = "Revoked certificate serial numbers"
 
@@ -371,7 +371,7 @@ resource "cloudflare_zero_trust_list" "serial_list" {
 # 25. List with special characters and various IP formats
 resource "cloudflare_zero_trust_list" "complex_ips" {
   account_id  = var.cloudflare_account_id
-  name        = "Complex IP List"
+  name = "cftftest Complex IP List"
   type        = "IP"
   description = "Various IP formats"
 
@@ -393,7 +393,7 @@ resource "cloudflare_zero_trust_list" "complex_ips" {
 # 26. EMAIL type with complex addresses
 resource "cloudflare_zero_trust_list" "complex_emails" {
   account_id  = var.cloudflare_account_id
-  name        = "Complex Email List"
+  name = "cftftest Complex Email List"
   type        = "EMAIL"
   description = "Emails with various formats"
   items = [{
