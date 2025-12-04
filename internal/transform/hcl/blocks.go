@@ -3,9 +3,11 @@
 package hcl
 
 import (
-	"github.com/hashicorp/hcl/v2/hclwrite"
+	"strings"
 
-	"github.com/cloudflare/tf-migrate/internal/hcl"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // RenameResourceType renames a resource from oldType to newType.
@@ -105,7 +107,7 @@ func ConvertBlocksToAttribute(body *hclwrite.Body, blockType, attrName string, p
 		}
 		
 		// Convert block to object tokens
-		objTokens := hcl.BuildObjectFromBlock(block)
+		objTokens := BuildObjectFromBlock(block)
 		body.SetAttributeRaw(attrName, objTokens)
 		blocksToRemove = append(blocksToRemove, block)
 	}
@@ -156,7 +158,7 @@ func HoistAttributeFromBlock(parentBody *hclwrite.Body, blockType, attrName stri
 		if block.Body().GetAttribute(attrName) != nil {
 			// Only hoist if parent doesn't already have this attribute
 			if parentBody.GetAttribute(attrName) == nil {
-				hcl.CopyAttribute(block.Body(), parentBody, attrName)
+				CopyAttribute(block.Body(), parentBody, attrName)
 				return true
 			}
 		}
@@ -224,9 +226,120 @@ func ConvertSingleBlockToAttribute(body *hclwrite.Body, blockType, attrName stri
 	if block == nil {
 		return false
 	}
-	
-	objTokens := hcl.BuildObjectFromBlock(block)
+
+	objTokens := BuildObjectFromBlock(block)
 	body.SetAttributeRaw(attrName, objTokens)
 	body.RemoveBlock(block)
 	return true
+}
+// CreateMovedBlock creates a moved block for resource migration
+// This is used when resources are renamed or restructured between provider versions
+func CreateMovedBlock(from, to string) *hclwrite.Block {
+	block := hclwrite.NewBlock("moved", nil)
+	body := block.Body()
+
+	// Create traversals for from and to
+	fromParts := strings.Split(from, ".")
+	toParts := strings.Split(to, ".")
+
+	// Build from traversal
+	fromTraversal := hcl.Traversal{}
+	for i, part := range fromParts {
+		if i == 0 {
+			fromTraversal = append(fromTraversal, hcl.TraverseRoot{Name: part})
+		} else {
+			fromTraversal = append(fromTraversal, hcl.TraverseAttr{Name: part})
+		}
+	}
+
+	// Build to traversal
+	toTraversal := hcl.Traversal{}
+	for i, part := range toParts {
+		if i == 0 {
+			toTraversal = append(toTraversal, hcl.TraverseRoot{Name: part})
+		} else {
+			toTraversal = append(toTraversal, hcl.TraverseAttr{Name: part})
+		}
+	}
+
+	body.SetAttributeTraversal("from", fromTraversal)
+	body.SetAttributeTraversal("to", toTraversal)
+
+	return block
+}
+
+// CreateImportBlock creates an import block for a resource
+// Used for generating import blocks when transforming resources
+func CreateImportBlock(resourceType, resourceName, importID string) *hclwrite.Block {
+	block := hclwrite.NewBlock("import", nil)
+	body := block.Body()
+
+	// Build the "to" value: resource_type.resource_name
+	toTokens := BuildResourceReference(resourceType, resourceName)
+	body.SetAttributeRaw("to", toTokens)
+
+	// Set the import ID
+	body.SetAttributeValue("id", cty.StringVal(importID))
+
+	return block
+}
+
+// CreateImportBlockWithTokens creates an import block using raw tokens for the ID
+// This variant is useful when the import ID needs to be a template expression
+func CreateImportBlockWithTokens(resourceType, resourceName string, idTokens hclwrite.Tokens) *hclwrite.Block {
+	block := hclwrite.NewBlock("import", nil)
+	body := block.Body()
+
+	// Build the "to" value: resource_type.resource_name
+	toTokens := BuildResourceReference(resourceType, resourceName)
+	body.SetAttributeRaw("to", toTokens)
+
+	// Set the ID using raw tokens
+	body.SetAttributeRaw("id", idTokens)
+
+	return block
+}
+
+// BuildObjectFromBlock creates object tokens from a block's attributes
+// Useful for converting block syntax to object syntax
+func BuildObjectFromBlock(block *hclwrite.Block) hclwrite.Tokens {
+	// Get attributes in their original order
+	orderedAttrs := AttributesOrdered(block.Body())
+
+	// Build a list of attribute tokens preserving the original order
+	var attrs []hclwrite.ObjectAttrTokens
+
+	for _, attrInfo := range orderedAttrs {
+		// Create tokens for the attribute name (as a simple identifier)
+		nameTokens := hclwrite.TokensForIdentifier(attrInfo.Name)
+
+		// Get the value tokens from the attribute's expression
+		valueTokens := attrInfo.Attribute.Expr().BuildTokens(nil)
+
+		attrs = append(attrs, hclwrite.ObjectAttrTokens{
+			Name:  nameTokens,
+			Value: valueTokens,
+		})
+	}
+
+	// Use the built-in TokensForObject function to create properly formatted object tokens
+	return hclwrite.TokensForObject(attrs)
+}
+
+// RemoveEmptyBlocks removes blocks with no attributes or nested blocks
+func RemoveEmptyBlocks(body *hclwrite.Body, blockType string) {
+	var blocksToRemove []*hclwrite.Block
+
+	for _, block := range body.Blocks() {
+		if block.Type() == blockType {
+			blockBody := block.Body()
+			if len(blockBody.Attributes()) == 0 && len(blockBody.Blocks()) == 0 {
+				blocksToRemove = append(blocksToRemove, block)
+			}
+		}
+	}
+
+	for _, block := range blocksToRemove {
+		body.RemoveBlock(block)
+	}
 }
