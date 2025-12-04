@@ -28,7 +28,7 @@ variable "max_allowed_matches" {
 # Locals for common values and computed configurations
 locals {
   common_account = var.cloudflare_account_id
-  name_prefix = "cftftest-dlp"
+  name_prefix    = "cftftest-dlp"
   tags           = ["migration", "test", "v4_to_v5"]
 
   # Map for for_each iteration

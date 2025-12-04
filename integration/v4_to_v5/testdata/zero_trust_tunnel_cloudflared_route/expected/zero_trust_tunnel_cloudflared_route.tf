@@ -234,21 +234,21 @@ locals {
 # Basic tunnel with minimal configuration
 resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
   account_id    = var.cloudflare_account_id
-  name = "cftftest-route-minimal-tunnel"
+  name          = "cftftest-route-minimal-tunnel"
   config_src    = "local"
   tunnel_secret = base64encode("test-secret-that-is-at-least-32-bytes-long")
 }
 # Tunnel with local config source
 resource "cloudflare_zero_trust_tunnel_cloudflared" "local_config" {
   account_id    = var.cloudflare_account_id
-  name = "cftftest-route-local-config-tunnel"
+  name          = "cftftest-route-local-config-tunnel"
   config_src    = "local"
   tunnel_secret = base64encode("another-secret-32-bytes-or-longer-here")
 }
 # Tunnel with cloudflare config source
 resource "cloudflare_zero_trust_tunnel_cloudflared" "cloudflare_config" {
   account_id    = var.cloudflare_account_id
-  name = "cftftest-route-cloudflare-config-tunnel"
+  name          = "cftftest-route-cloudflare-config-tunnel"
   config_src    = "cloudflare"
   tunnel_secret = base64encode("remote-tunnel-secret-32-bytes-minimum")
 }
@@ -287,14 +287,14 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "backup" {
   count = var.enable_backup_tunnel ? 1 : 0
 
   account_id    = var.cloudflare_account_id
-  name = "cftftest-route-backup-tunnel"
+  name          = "cftftest-route-backup-tunnel"
   config_src    = "cloudflare"
   tunnel_secret = base64encode("backup-tunnel-secret-32-bytes-long")
 }
 # Cross-resource references between tunnels
 resource "cloudflare_zero_trust_tunnel_cloudflared" "primary" {
   account_id    = var.cloudflare_account_id
-  name = "cftftest-route-primary-tunnel"
+  name          = "cftftest-route-primary-tunnel"
   config_src    = "local"
   tunnel_secret = base64encode("primary-tunnel-secret-32-bytes-long")
 }
@@ -307,7 +307,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "secondary" {
 # Tunnel with lifecycle meta-arguments
 resource "cloudflare_zero_trust_tunnel_cloudflared" "protected" {
   account_id = var.cloudflare_account_id
-  name = "cftftest-route-protected-tunnel"
+  name       = "cftftest-route-protected-tunnel"
   config_src = "local"
 
   lifecycle {
@@ -318,14 +318,14 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "protected" {
 }
 resource "cloudflare_zero_trust_tunnel_cloudflared" "conditional_config" {
   account_id    = var.cloudflare_account_id
-  name = "cftftest-route-conditional-config-tunnel"
+  name          = "cftftest-route-conditional-config-tunnel"
   config_src    = var.use_cloudflare_config ? "cloudflare" : "local"
   tunnel_secret = base64encode("conditional-secret-32-bytes-or-more")
 }
 # Tunnel with base64encode function
 resource "cloudflare_zero_trust_tunnel_cloudflared" "encoded" {
   account_id    = var.cloudflare_account_id
-  name = "cftftest-route-encoded-tunnel"
+  name          = "cftftest-route-encoded-tunnel"
   config_src    = "local"
   tunnel_secret = base64encode("this-secret-is-base64-encoded-32b")
 }

@@ -11,7 +11,7 @@ variable "cloudflare_zone_id" {
 # Standard DNS records
 resource "cloudflare_dns_record" "example_a" {
   zone_id = var.cloudflare_zone_id
-  name = "cftftest-example"
+  name    = "cftftest-example"
   type    = "A"
   proxied = true
   ttl     = 1
@@ -43,7 +43,7 @@ resource "cloudflare_dns_record" "example_caa" {
 # CAA record with data attribute map
 resource "cloudflare_dns_record" "example_caa_map" {
   zone_id = var.cloudflare_zone_id
-  name = "cftftest-caa-map"
+  name    = "cftftest-caa-map"
   type    = "CAA"
   ttl     = 1
   data = {
@@ -56,7 +56,7 @@ resource "cloudflare_dns_record" "example_caa_map" {
 # SRV record with data block - priority should be hoisted
 resource "cloudflare_dns_record" "example_srv" {
   zone_id  = var.cloudflare_zone_id
-  name = "cftftest-service._tcp"
+  name     = "cftftest-service._tcp"
   type     = "SRV"
   priority = 5
   ttl      = 1
@@ -71,7 +71,7 @@ resource "cloudflare_dns_record" "example_srv" {
 # URI record with data block - priority should be hoisted
 resource "cloudflare_dns_record" "example_uri" {
   zone_id  = var.cloudflare_zone_id
-  name = "cftftest-http._tcp"
+  name     = "cftftest-http._tcp"
   type     = "URI"
   priority = 10
   ttl      = 1
@@ -84,7 +84,7 @@ resource "cloudflare_dns_record" "example_uri" {
 # Record without TTL - should add default TTL
 resource "cloudflare_dns_record" "example_cname" {
   zone_id = var.cloudflare_zone_id
-  name = "cftftest-www"
+  name    = "cftftest-www"
   type    = "CNAME"
   proxied = false
   ttl     = 1
@@ -104,7 +104,7 @@ resource "cloudflare_dns_record" "example_txt" {
 # This tests migrating custom TXT records
 resource "cloudflare_dns_record" "example_openpgpkey" {
   zone_id = var.cloudflare_zone_id
-  name = "cftftest-user._openpgpkey"
+  name    = "cftftest-user._openpgpkey"
   type    = "TXT"
   ttl     = 3600
   content = "mQENBFzjqGoBCADTKLKfh..."
@@ -224,7 +224,7 @@ resource "cloudflare_dns_record" "ipv6_aaaa" {
   count = var.enable_ipv6 ? 1 : 0
 
   zone_id = var.cloudflare_zone_id
-  name = "cftftest-ipv6"
+  name    = "cftftest-ipv6"
   type    = "AAAA"
   proxied = true
   ttl     = 1
@@ -255,7 +255,7 @@ variable "caa_records" {
 # Pattern 8: Resource with complex data structures
 resource "cloudflare_dns_record" "dnslink" {
   zone_id = var.cloudflare_zone_id
-  name = "cftftest-dnslink"
+  name    = "cftftest-dnslink"
   type    = "TXT"
   ttl     = var.record_ttl
   content = "dnslink=/ipfs/QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco"
@@ -264,7 +264,7 @@ resource "cloudflare_dns_record" "dnslink" {
 # Pattern 9: Cross-resource references
 resource "cloudflare_dns_record" "cname_to_a" {
   zone_id = var.cloudflare_zone_id
-  name = "cftftest-alias"
+  name    = "cftftest-alias"
   type    = "CNAME"
   proxied = false
   ttl     = var.record_ttl
@@ -274,7 +274,7 @@ resource "cloudflare_dns_record" "cname_to_a" {
 # Pattern 10: Resource with lifecycle meta-arguments
 resource "cloudflare_dns_record" "protected_record" {
   zone_id = var.cloudflare_zone_id
-  name = "cftftest-protected"
+  name    = "cftftest-protected"
   type    = "A"
   proxied = true
   ttl     = 1
@@ -289,7 +289,7 @@ resource "cloudflare_dns_record" "protected_record" {
 # Pattern 11: Using terraform expressions
 resource "cloudflare_dns_record" "conditional_value" {
   zone_id = var.cloudflare_zone_id
-  name = "cftftest-conditional"
+  name    = "cftftest-conditional"
   type    = var.enable_ipv6 ? "AAAA" : "A"
   proxied = true
   ttl     = 1
@@ -299,7 +299,7 @@ resource "cloudflare_dns_record" "conditional_value" {
 # Pattern 12: Resource with tags/comments
 resource "cloudflare_dns_record" "tagged_record" {
   zone_id = var.cloudflare_zone_id
-  name = "cftftest-tagged"
+  name    = "cftftest-tagged"
   type    = "A"
   proxied = true
   ttl     = 1

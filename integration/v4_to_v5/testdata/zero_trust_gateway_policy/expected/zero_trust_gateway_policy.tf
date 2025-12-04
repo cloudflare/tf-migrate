@@ -62,7 +62,7 @@ locals {
 # 1. Minimal gateway policy
 resource "cloudflare_zero_trust_gateway_policy" "minimal" {
   account_id  = local.common_account_id
-  name = "cftftest Minimal Policy"
+  name        = "cftftest Minimal Policy"
   description = "Basic block policy"
   precedence  = 100
   action      = "block"
@@ -92,7 +92,7 @@ resource "cloudflare_zero_trust_gateway_policy" "maximal" {
 # 3. Policy with rule_settings and field renames
 resource "cloudflare_zero_trust_gateway_policy" "with_settings" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Block Policy with Settings"
+  name        = "cftftest Block Policy with Settings"
   description = "Policy with custom block page"
   precedence  = 200
   action      = "block"
@@ -111,7 +111,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_settings" {
 # 4. Policy with nested blocks requiring transformation
 resource "cloudflare_zero_trust_gateway_policy" "with_nested_blocks" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest L4 Override Policy"
+  name        = "cftftest L4 Override Policy"
   description = "Policy with L4 override and notification"
   precedence  = 300
   action      = "l4_override"
@@ -130,7 +130,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_nested_blocks" {
 # 5. Complex policy with multiple nested structures
 resource "cloudflare_zero_trust_gateway_policy" "complex" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Complex Policy"
+  name        = "cftftest Complex Policy"
   description = "Policy with many nested settings"
   precedence  = 400
   action      = "allow"
@@ -160,7 +160,7 @@ resource "cloudflare_zero_trust_gateway_policy" "complex" {
 # 6. Simple allow policy for testing rule_settings
 resource "cloudflare_zero_trust_gateway_policy" "simple_resolver" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Simple Allow Policy"
+  name        = "cftftest Simple Allow Policy"
   description = "Simple allow policy with settings"
   precedence  = 500
   action      = "allow"
@@ -236,7 +236,7 @@ resource "cloudflare_zero_trust_gateway_policy" "conditional_enabled" {
   count = var.enable_security_policies ? 1 : 0
 
   account_id  = var.cloudflare_account_id
-  name = "cftftest Security Policy - Enabled"
+  name        = "cftftest Security Policy - Enabled"
   description = "This policy is conditionally created"
   precedence  = 800
   action      = "block"
@@ -255,7 +255,7 @@ resource "cloudflare_zero_trust_gateway_policy" "conditional_disabled" {
   count = var.enable_security_policies ? 0 : 1
 
   account_id  = var.cloudflare_account_id
-  name = "cftftest Security Policy - Disabled"
+  name        = "cftftest Security Policy - Disabled"
   description = "This policy is conditionally not created"
   precedence  = 900
   action      = "allow"
@@ -299,7 +299,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_interpolation" {
 # 21. Policy with lifecycle block
 resource "cloudflare_zero_trust_gateway_policy" "with_lifecycle" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Protected Policy"
+  name        = "cftftest Protected Policy"
   description = "Policy with lifecycle settings"
   precedence  = 1200
   action      = "block"
@@ -316,7 +316,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_lifecycle" {
 # 22. Policy with prevent_destroy (set to false for testing)
 resource "cloudflare_zero_trust_gateway_policy" "with_prevent_destroy" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Important Policy"
+  name        = "cftftest Important Policy"
   description = "Critical policy"
   precedence  = 1300
   action      = "block"
@@ -341,7 +341,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_prevent_destroy" {
 # 23. L4 Override policy with specific settings
 resource "cloudflare_zero_trust_gateway_policy" "l4_override_detailed" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest L4 Override Detailed"
+  name        = "cftftest L4 Override Detailed"
   description = "Detailed L4 override configuration"
   precedence  = 1400
   action      = "l4_override"
@@ -360,7 +360,7 @@ resource "cloudflare_zero_trust_gateway_policy" "l4_override_detailed" {
 # 24. Policy with audit SSH settings
 resource "cloudflare_zero_trust_gateway_policy" "with_audit_ssh" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest SSH Audit Policy"
+  name        = "cftftest SSH Audit Policy"
   description = "Policy with SSH auditing enabled"
   precedence  = 1500
   action      = "allow"
@@ -378,7 +378,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_audit_ssh" {
 # 25. Policy with check_session settings
 resource "cloudflare_zero_trust_gateway_policy" "with_check_session" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Session Check Policy"
+  name        = "cftftest Session Check Policy"
   description = "Policy with session validation"
   precedence  = 1600
   action      = "allow"
@@ -397,7 +397,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_check_session" {
 # 26. Policy with BISO admin controls
 resource "cloudflare_zero_trust_gateway_policy" "with_biso" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest BISO Controls Policy"
+  name        = "cftftest BISO Controls Policy"
   description = "Policy with browser isolation controls"
   precedence  = 1700
   action      = "isolate"
@@ -417,7 +417,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_biso" {
 # 27. Policy with payload logging
 resource "cloudflare_zero_trust_gateway_policy" "with_payload_log" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Payload Logging Policy"
+  name        = "cftftest Payload Logging Policy"
   description = "Policy with payload logging enabled"
   precedence  = 1800
   action      = "allow"
@@ -435,7 +435,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_payload_log" {
 # 28. Policy with override IPs
 resource "cloudflare_zero_trust_gateway_policy" "with_override_ips" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest DNS Override Policy"
+  name        = "cftftest DNS Override Policy"
   description = "Policy with custom DNS servers"
   precedence  = 1900
   action      = "allow"

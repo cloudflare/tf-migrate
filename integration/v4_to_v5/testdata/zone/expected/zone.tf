@@ -20,7 +20,7 @@ variable "cloudflare_zone_id" {
 
 locals {
   common_account = var.cloudflare_account_id
-  name_prefix = "cftftest"
+  name_prefix    = "cftftest"
   zone_types     = ["full", "partial", "secondary"]
   test_domains   = ["example.com", "test.com", "demo.com"]
 }
@@ -41,7 +41,7 @@ resource "cloudflare_zone" "minimal" {
 resource "cloudflare_zone" "paused_zone" {
   paused = true
   type   = "full"
-  name = "cftftest-paused.example.com"
+  name   = "cftftest-paused.example.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -106,7 +106,7 @@ resource "cloudflare_zone" "counted_zones" {
 
   type   = "full"
   paused = count.index == 1 ? true : false
-  name = "cftftest-zone-${count.index}.example.com"
+  name   = "cftftest-zone-${count.index}.example.com"
   account = {
     id = var.cloudflare_account_id
   }

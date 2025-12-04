@@ -24,7 +24,7 @@ locals {
 # Parent resource: KV Namespace for dependency testing
 resource "cloudflare_workers_kv_namespace" "test_namespace" {
   account_id = local.common_account
-  title = "${local.namespace_prefix}-namespace"
+  title      = "${local.namespace_prefix}-namespace"
 }
 
 # Pattern Group 1: Basic Resources
@@ -223,7 +223,7 @@ resource "cloudflare_workers_kv" "json_value" {
 # Pattern Group 9: Multiple Resources with Dependencies
 resource "cloudflare_workers_kv_namespace" "secondary_namespace" {
   account_id = var.cloudflare_account_id
-  title = "${local.namespace_prefix}-secondary"
+  title      = "${local.namespace_prefix}-secondary"
 }
 
 resource "cloudflare_workers_kv" "secondary_ns_kv1" {
