@@ -455,14 +455,107 @@ resource "test" "example" {
 	})
 }
 
+func TestConvertBlocksToAttributeList(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		blockType string
+		expected  string
+	}{
+		{
+			name: "Convert multiple blocks to array attribute",
+			input: `
+resource "test" "example" {
+  name = "test"
+
+  destinations {
+    type = "public"
+    uri  = "https://app.example.com"
+  }
+
+  destinations {
+    type = "private"
+    cidr = "10.0.0.0/24"
+  }
+}`,
+			blockType: "destinations",
+			expected: `
+resource "test" "example" {
+  name = "test"
+
+
+  destinations = [
+    {
+      type = "public"
+      uri  = "https://app.example.com"
+    },
+    {
+      type = "private"
+      cidr = "10.0.0.0/24"
+    }
+  ]
+}`,
+		},
+		{
+			name: "Convert single block to array attribute",
+			input: `
+resource "test" "example" {
+  name = "test"
+
+  destinations {
+    type = "public"
+    uri  = "https://app.example.com"
+  }
+}`,
+			blockType: "destinations",
+			expected: `
+resource "test" "example" {
+  name = "test"
+
+  destinations = [
+    {
+      type = "public"
+      uri  = "https://app.example.com"
+    }
+  ]
+}`,
+		},
+		{
+			name: "Return unchanged for non-existent blocks",
+			input: `
+resource "test" "example" {
+  name = "test"
+}`,
+			blockType: "missing",
+			expected: `
+resource "test" "example" {
+  name = "test"
+}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclwrite.ParseConfig([]byte(tt.input), "", hcl.InitialPos)
+			require.False(t, diags.HasErrors())
+
+			body := file.Body().Blocks()[0].Body()
+			ConvertBlocksToAttributeList(body, tt.blockType, nil)
+
+			output := string(file.Bytes())
+			assert.Equal(t, tt.expected, output)
+		})
+	}
+}
+
 func TestConvertSingleBlockToAttribute(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		blockType string
-		attrName string
-		expected bool
-		contains string
+		name        string
+		input       string
+		blockType   string
+		attrName    string
+		expected    bool
+		contains    string
 		notContains string
 	}{
 		{
@@ -476,10 +569,10 @@ resource "test" "example" {
     value   = "test"
   }
 }`,
-			blockType: "config",
-			attrName:  "config",
-			expected:  true,
-			contains:  "config =",
+			blockType:   "config",
+			attrName:    "config",
+			expected:    true,
+			contains:    "config =",
 			notContains: "config {",
 		},
 		{
