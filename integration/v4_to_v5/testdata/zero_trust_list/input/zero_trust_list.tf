@@ -59,7 +59,7 @@ locals {
 # 1. Minimal resource - only required fields
 resource "cloudflare_teams_list" "minimal" {
   account_id = local.common_account_id
-  name = "cftftest Minimal List"
+  name = "${local.name_prefix} Minimal List"
   type       = "IP"
   items      = ["192.168.1.1"]
 }
@@ -86,7 +86,7 @@ resource "cloudflare_teams_list" "maximal" {
 # 3. Empty list - edge case
 resource "cloudflare_teams_list" "empty" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Empty List"
+  name = "${local.name_prefix} Empty List"
   type        = "URL"
   description = "Empty list for testing"
   items       = []
@@ -95,7 +95,7 @@ resource "cloudflare_teams_list" "empty" {
 # 4. Basic IP list with simple items array
 resource "cloudflare_teams_list" "ip_list" {
   account_id = var.cloudflare_account_id
-  name = "cftftest IP Allowlist"
+  name = "${local.name_prefix} IP Allowlist"
   type       = "IP"
   items      = ["192.168.1.1", "192.168.1.2", "10.0.0.0/8"]
 }
@@ -103,7 +103,7 @@ resource "cloudflare_teams_list" "ip_list" {
 # 5. Domain list with items_with_description blocks
 resource "cloudflare_teams_list" "domain_list" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Allowed Domains"
+  name = "${local.name_prefix} Allowed Domains"
   type        = "DOMAIN"
   description = "Company approved domains"
 
@@ -126,7 +126,7 @@ resource "cloudflare_teams_list" "domain_list" {
 # 6. Mixed list with both items and items_with_description
 resource "cloudflare_teams_list" "email_list" {
   account_id = var.cloudflare_account_id
-  name = "cftftest VIP Emails"
+  name = "${local.name_prefix} VIP Emails"
   type       = "EMAIL"
   items      = ["admin@example.com", "security@example.com"]
 
@@ -195,7 +195,7 @@ resource "cloudflare_teams_list" "conditional_enabled" {
   count = var.enable_security_lists ? 1 : 0
 
   account_id  = var.cloudflare_account_id
-  name = "cftftest Security List - Enabled"
+  name = "${local.name_prefix} Security List - Enabled"
   type        = "DOMAIN"
   description = "This list is conditionally created"
   items       = ["secure.example.com", "protected.example.com"]
@@ -206,7 +206,7 @@ resource "cloudflare_teams_list" "conditional_disabled" {
   count = var.enable_security_lists ? 0 : 1
 
   account_id  = var.cloudflare_account_id
-  name = "cftftest Security List - Disabled"
+  name = "${local.name_prefix} Security List - Disabled"
   type        = "DOMAIN"
   description = "This list is conditionally not created"
   items       = ["insecure.example.com"]
@@ -241,7 +241,7 @@ resource "cloudflare_teams_list" "with_interpolation" {
 # 21. Resource with lifecycle block
 resource "cloudflare_teams_list" "with_lifecycle" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Protected List"
+  name = "${local.name_prefix} Protected List"
   type        = "IP"
   description = "List with lifecycle settings"
   items       = ["203.0.113.0/24"]
@@ -255,7 +255,7 @@ resource "cloudflare_teams_list" "with_lifecycle" {
 # 22. Resource with prevent_destroy (set to false for testing)
 resource "cloudflare_teams_list" "with_prevent_destroy" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Important List"
+  name = "${local.name_prefix} Important List"
   type        = "DOMAIN"
   description = "Critical list"
   items       = ["critical.example.com"]
@@ -272,7 +272,7 @@ resource "cloudflare_teams_list" "with_prevent_destroy" {
 # 23. URL list with only items_with_description
 resource "cloudflare_teams_list" "url_list" {
   account_id = var.cloudflare_account_id
-  name = "cftftest Blocked URLs"
+  name = "${local.name_prefix} Blocked URLs"
   type       = "URL"
 
   items_with_description {
@@ -289,7 +289,7 @@ resource "cloudflare_teams_list" "url_list" {
 # 24. SERIAL type list
 resource "cloudflare_teams_list" "serial_list" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Certificate Serials"
+  name = "${local.name_prefix} Certificate Serials"
   type        = "SERIAL"
   description = "Revoked certificate serial numbers"
   items       = ["1234567890ABCDEF", "FEDCBA0987654321"]
@@ -303,7 +303,7 @@ resource "cloudflare_teams_list" "serial_list" {
 # 25. List with special characters and various IP formats
 resource "cloudflare_teams_list" "complex_ips" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Complex IP List"
+  name = "${local.name_prefix} Complex IP List"
   type        = "IP"
   description = "Various IP formats"
   items       = [
@@ -321,7 +321,7 @@ resource "cloudflare_teams_list" "complex_ips" {
 # 26. EMAIL type with complex addresses
 resource "cloudflare_teams_list" "complex_emails" {
   account_id  = var.cloudflare_account_id
-  name = "cftftest Complex Email List"
+  name = "${local.name_prefix} Complex Email List"
   type        = "EMAIL"
   description = "Emails with various formats"
   items       = [

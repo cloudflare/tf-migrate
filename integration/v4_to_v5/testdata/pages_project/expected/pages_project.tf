@@ -14,7 +14,7 @@ variable "cloudflare_zone_id" {
 # Test Case 1: Minimal Pages Project
 resource "cloudflare_pages_project" "minimal" {
   account_id        = var.cloudflare_account_id
-  name              = "cftftest-minimal-project"
+  name              = "${local.name_prefix}-minimal-project"
   production_branch = "main"
   build_config      = {}
   deployment_configs = {
@@ -34,7 +34,7 @@ resource "cloudflare_pages_project" "minimal" {
 # Test Case 2: Pages Project with build_config block
 resource "cloudflare_pages_project" "with_build_config" {
   account_id        = var.cloudflare_account_id
-  name              = "cftftest-project-with-build"
+  name              = "${local.name_prefix}-project-with-build"
   production_branch = "main"
 
   build_config = {
@@ -61,7 +61,7 @@ resource "cloudflare_pages_project" "with_build_config" {
 # Test Case 3: Pages Project with source and config blocks
 resource "cloudflare_pages_project" "with_source" {
   account_id        = var.cloudflare_account_id
-  name              = "cftftest-project-with-source"
+  name              = "${local.name_prefix}-project-with-source"
   production_branch = "main"
 
   #source {
@@ -97,7 +97,7 @@ resource "cloudflare_pages_project" "with_source" {
 # Test Case 4: Pages Project with deployment_configs
 resource "cloudflare_pages_project" "with_deployment_configs" {
   account_id        = var.cloudflare_account_id
-  name              = "cftftest-project-with-deployments"
+  name              = "${local.name_prefix}-project-with-deployments"
   production_branch = "main"
 
   build_config = {}
@@ -126,7 +126,7 @@ resource "cloudflare_pages_project" "with_deployment_configs" {
 # Test Case 5: Full Pages Project with all features
 resource "cloudflare_pages_project" "full" {
   account_id        = var.cloudflare_account_id
-  name              = "cftftest-full-project"
+  name              = "${local.name_prefix}-full-project"
   production_branch = "main"
 
 
@@ -172,7 +172,7 @@ resource "cloudflare_pages_project" "full" {
 # Test Case 6: Project with only deployment configs (no build/source)
 resource "cloudflare_pages_project" "deployment_only" {
   account_id        = var.cloudflare_account_id
-  name              = "cftftest-deployment-only"
+  name              = "${local.name_prefix}-deployment-only"
   production_branch = "main"
 
   build_config = {}

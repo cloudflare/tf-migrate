@@ -28,7 +28,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
   for_each = {
     "prod" = {
       account_id = var.cloudflare_account_id
-      name       = "cftftest-prod-posture-rule"
+      name       = "${local.name_prefix}-prod-posture-rule"
       type       = "os_version"
       schedule   = "24h"
       platform   = "linux"
@@ -36,7 +36,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
     }
     "staging" = {
       account_id = var.cloudflare_account_id
-      name       = "cftftest-staging-posture-rule"
+      name       = "${local.name_prefix}-staging-posture-rule"
       type       = "firewall"
       schedule   = "12h"
       platform   = "windows"
@@ -44,7 +44,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
     }
     "dev" = {
       account_id = var.cloudflare_account_id
-      name       = "cftftest-dev-posture-rule"
+      name       = "${local.name_prefix}-dev-posture-rule"
       type       = "os_version"
       schedule   = "6h"
       platform   = "mac"
@@ -52,7 +52,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
     }
     "qa" = {
       account_id = var.cloudflare_account_id
-      name       = "cftftest-qa-posture-rule"
+      name       = "${local.name_prefix}-qa-posture-rule"
       type       = "firewall"
       schedule   = "12h"
       platform   = "linux"
@@ -60,7 +60,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
     }
     "perf" = {
       account_id = var.cloudflare_account_id
-      name       = "cftftest-perf-posture-rule"
+      name       = "${local.name_prefix}-perf-posture-rule"
       type       = "os_version"
       schedule   = "24h"
       platform   = "windows"
@@ -98,7 +98,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "set_example" {
   ])
 
   account_id = var.cloudflare_account_id
-  name       = "cftftest-set-${each.value}-rule"
+  name       = "${local.name_prefix}-set-${each.value}-rule"
   type       = "firewall"
   schedule   = "5m"
 
@@ -119,7 +119,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "counted" {
   count = 3
 
   account_id  = var.cloudflare_account_id
-  name        = "cftftest-counted-rule-${count.index}"
+  name        = "${local.name_prefix}-counted-rule-${count.index}"
   type        = "os_version"
   schedule    = "24h"
   description = "This is posture rule number ${count.index}"
@@ -142,7 +142,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "conditional_enabled" {
   count = local.enable_firewall_rules ? 1 : 0
 
   account_id  = var.cloudflare_account_id
-  name        = "cftftest-conditional-firewall-enabled"
+  name        = "${local.name_prefix}-conditional-firewall-enabled"
   type        = "firewall"
   schedule    = "12h"
   description = "Conditionally enabled firewall rule"
@@ -160,7 +160,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "conditional_disabled" {
   count = local.enable_test_rules ? 1 : 0
 
   account_id  = var.cloudflare_account_id
-  name        = "cftftest-conditional-test-disabled"
+  name        = "${local.name_prefix}-conditional-test-disabled"
   type        = "os_version"
   schedule    = "6h"
   description = "Conditionally disabled test rule"
@@ -201,7 +201,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "with_functions" {
 
 resource "cloudflare_zero_trust_device_posture_rule" "with_interpolation" {
   account_id  = var.cloudflare_account_id
-  name        = "cftftest-rule-for-account-${var.cloudflare_account_id}"
+  name        = "${local.name_prefix}-rule-for-account-${var.cloudflare_account_id}"
   type        = "firewall"
   schedule    = "5m"
   description = "Interpolated rule name"
@@ -221,7 +221,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "with_interpolation" {
 
 resource "cloudflare_zero_trust_device_posture_rule" "with_lifecycle" {
   account_id  = var.cloudflare_account_id
-  name        = "cftftest-lifecycle-test-rule"
+  name        = "${local.name_prefix}-lifecycle-test-rule"
   type        = "os_version"
   schedule    = "24h"
   description = "Rule with lifecycle arguments"
@@ -243,7 +243,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "with_lifecycle" {
 
 resource "cloudflare_zero_trust_device_posture_rule" "with_prevent_destroy" {
   account_id = var.cloudflare_account_id
-  name       = "cftftest-prevent-destroy-rule"
+  name       = "${local.name_prefix}-prevent-destroy-rule"
   type       = "firewall"
   schedule   = "12h"
 
@@ -267,7 +267,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "with_prevent_destroy" {
 # Minimal resource (only required fields)
 resource "cloudflare_zero_trust_device_posture_rule" "minimal" {
   account_id = var.cloudflare_account_id
-  name       = "cftftest-minimal-rule"
+  name       = "${local.name_prefix}-minimal-rule"
   type       = "firewall"
   schedule   = "5m"
 
@@ -283,7 +283,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "minimal" {
 # Maximal resource (all fields populated)
 resource "cloudflare_zero_trust_device_posture_rule" "maximal" {
   account_id  = var.cloudflare_account_id
-  name        = "cftftest-maximal-rule"
+  name        = "${local.name_prefix}-maximal-rule"
   type        = "os_version"
   description = "All fields populated"
   schedule    = "24h"
@@ -305,7 +305,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "maximal" {
 # Resource with empty/null optional fields
 resource "cloudflare_zero_trust_device_posture_rule" "with_nulls" {
   account_id  = var.cloudflare_account_id
-  name        = "cftftest-with-nulls"
+  name        = "${local.name_prefix}-with-nulls"
   type        = "firewall"
   description = null
   expiration  = null
@@ -327,7 +327,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "with_nulls" {
 # Test case 1: Basic os_version rule with input and match
 resource "cloudflare_zero_trust_device_posture_rule" "basic" {
   account_id  = var.cloudflare_account_id
-  name        = "cftftest-tf-test-posture-basic"
+  name        = "${local.name_prefix}-tf-test-posture-basic"
   type        = "os_version"
   description = "Device posture rule for corporate devices."
   schedule    = "24h"
@@ -349,7 +349,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "basic" {
 # Test case 2: Firewall rule with enabled input
 resource "cloudflare_zero_trust_device_posture_rule" "firewall" {
   account_id = var.cloudflare_account_id
-  name       = "cftftest-tf-test-firewall"
+  name       = "${local.name_prefix}-tf-test-firewall"
   type       = "firewall"
   schedule   = "5m"
 
@@ -365,7 +365,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "firewall" {
 # Test case 3: Disk encryption with check_disks (Set->List conversion)
 resource "cloudflare_zero_trust_device_posture_rule" "disk_encryption" {
   account_id = var.cloudflare_account_id
-  name       = "cftftest-tf-test-disk"
+  name       = "${local.name_prefix}-tf-test-disk"
   type       = "disk_encryption"
   schedule   = "5m"
 
@@ -382,7 +382,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "disk_encryption" {
 # Test case 4: Multiple platforms (multiple match blocks)
 resource "cloudflare_zero_trust_device_posture_rule" "multi_platform" {
   account_id = var.cloudflare_account_id
-  name       = "cftftest-tf-test-multi"
+  name       = "${local.name_prefix}-tf-test-multi"
   type       = "firewall"
   schedule   = "5m"
 
@@ -404,7 +404,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "multi_platform" {
 # Test case 5: Application rule with path and running (removed attribute)
 resource "cloudflare_zero_trust_device_posture_rule" "application" {
   account_id = var.cloudflare_account_id
-  name       = "cftftest-tf-test-application"
+  name       = "${local.name_prefix}-tf-test-application"
   type       = "application"
   schedule   = "30m"
 

@@ -29,31 +29,31 @@ resource "cloudflare_zero_trust_access_service_token" "map_example" {
   for_each = {
     "prod" = {
       account_id           = var.cloudflare_account_id
-      name = "cftftest-prod-service-token"
+      name = "${local.name_prefix}-prod-service-token"
       duration             = "8760h"
       min_days_for_renewal = 30
     }
     "staging" = {
       account_id           = var.cloudflare_account_id
-      name = "cftftest-staging-service-token"
+      name = "${local.name_prefix}-staging-service-token"
       duration             = "8760h"
       min_days_for_renewal = 15
     }
     "dev" = {
       account_id           = var.cloudflare_account_id
-      name = "cftftest-dev-service-token"
+      name = "${local.name_prefix}-dev-service-token"
       duration             = "8760h"
       min_days_for_renewal = 7
     }
     "qa" = {
       account_id           = var.cloudflare_account_id
-      name = "cftftest-qa-service-token"
+      name = "${local.name_prefix}-qa-service-token"
       duration             = "8760h"
       min_days_for_renewal = 10
     }
     "perf" = {
       account_id           = var.cloudflare_account_id
-      name = "cftftest-perf-service-token"
+      name = "${local.name_prefix}-perf-service-token"
       duration             = "8760h"
       min_days_for_renewal = 5
     }
@@ -78,7 +78,7 @@ resource "cloudflare_zero_trust_access_service_token" "set_example" {
   ])
 
   account_id = var.cloudflare_account_id
-  name = "cftftest-set-${each.value}-token"
+  name = "${local.name_prefix}-set-${each.value}-token"
   duration   = local.token_duration
   min_days_for_renewal = 30
 }
@@ -91,7 +91,7 @@ resource "cloudflare_zero_trust_access_service_token" "counted" {
   count = 3
 
   account_id            = var.cloudflare_account_id
-  name = "cftftest-counted-token-${count.index}"
+  name = "${local.name_prefix}-counted-token-${count.index}"
   duration              = "8760h"
   min_days_for_renewal  = count.index * 10 + 10
 }
@@ -104,7 +104,7 @@ resource "cloudflare_zero_trust_access_service_token" "conditional_enabled" {
   count = local.enable_long_duration ? 1 : 0
 
   account_id           = var.cloudflare_account_id
-  name = "cftftest-conditional-long-duration"
+  name = "${local.name_prefix}-conditional-long-duration"
   duration             = "17520h"  # 2 years
   min_days_for_renewal = 60
 }
@@ -113,7 +113,7 @@ resource "cloudflare_zero_trust_access_service_token" "conditional_disabled" {
   count = local.enable_short_duration ? 1 : 0
 
   account_id           = var.cloudflare_account_id
-  name = "cftftest-conditional-short-duration"
+  name = "${local.name_prefix}-conditional-short-duration"
   duration             = "8760h"  # Changed from 720h to valid value
   min_days_for_renewal = 7
 }
@@ -136,7 +136,7 @@ resource "cloudflare_zero_trust_access_service_token" "with_functions" {
 
 resource "cloudflare_zero_trust_access_service_token" "with_interpolation" {
   account_id = var.cloudflare_account_id
-  name = "cftftest-token-for-account-${var.cloudflare_account_id}"
+  name = "${local.name_prefix}-token-for-account-${var.cloudflare_account_id}"
   duration   = "8760h"
   min_days_for_renewal = 30
 }
@@ -147,7 +147,7 @@ resource "cloudflare_zero_trust_access_service_token" "with_interpolation" {
 
 resource "cloudflare_zero_trust_access_service_token" "with_lifecycle" {
   account_id = var.cloudflare_account_id
-  name = "cftftest-lifecycle-test-token"
+  name = "${local.name_prefix}-lifecycle-test-token"
   duration   = "8760h"
   min_days_for_renewal = 30
 
@@ -159,7 +159,7 @@ resource "cloudflare_zero_trust_access_service_token" "with_lifecycle" {
 
 resource "cloudflare_zero_trust_access_service_token" "with_prevent_destroy" {
   account_id = var.cloudflare_account_id
-  name = "cftftest-prevent-destroy-token"
+  name = "${local.name_prefix}-prevent-destroy-token"
   duration   = "8760h"
   min_days_for_renewal = 30
 
@@ -175,13 +175,13 @@ resource "cloudflare_zero_trust_access_service_token" "with_prevent_destroy" {
 # Minimal resource (only required fields)
 resource "cloudflare_zero_trust_access_service_token" "minimal" {
   account_id = var.cloudflare_account_id
-  name = "cftftest-minimal-token"
+  name = "${local.name_prefix}-minimal-token"
 }
 
 # Maximal resource (all fields populated)
 resource "cloudflare_zero_trust_access_service_token" "maximal" {
   account_id                        = var.cloudflare_account_id
-  name = "cftftest-maximal-token"
+  name = "${local.name_prefix}-maximal-token"
   duration                          = "8760h"
   min_days_for_renewal              = 30
   client_secret_version             = 5
@@ -191,7 +191,7 @@ resource "cloudflare_zero_trust_access_service_token" "maximal" {
 # Zero values
 resource "cloudflare_zero_trust_access_service_token" "zero_values" {
   account_id           = var.cloudflare_account_id
-  name = "cftftest-zero-values-token"
+  name = "${local.name_prefix}-zero-values-token"
   duration             = "8760h"
   min_days_for_renewal = 0
 }
@@ -199,7 +199,7 @@ resource "cloudflare_zero_trust_access_service_token" "zero_values" {
 # Legacy resource name (cloudflare_access_service_token - deprecated)
 resource "cloudflare_access_service_token" "legacy_name" {
   account_id                        = var.cloudflare_account_id
-  name = "cftftest-legacy-name-token"
+  name = "${local.name_prefix}-legacy-name-token"
   duration                          = "8760h"
   min_days_for_renewal              = 30
   client_secret_version             = 2
@@ -209,7 +209,7 @@ resource "cloudflare_access_service_token" "legacy_name" {
 # Resource without min_days_for_renewal (deprecated field)
 resource "cloudflare_zero_trust_access_service_token" "without_deprecated" {
   account_id            = var.cloudflare_account_id
-  name = "cftftest-no-deprecated-field"
+  name = "${local.name_prefix}-no-deprecated-field"
   duration              = "8760h"
 }
 
