@@ -391,6 +391,147 @@ func TestTransformFieldArrayToObject_EnsureObjectExists(t *testing.T) {
 	}
 }
 
+func TestTransformFieldArrayToObject_TransformEmptyToNull(t *testing.T) {
+	tests := []struct {
+		name           string
+		inputJSON      string
+		path           string
+		fieldName      string
+		options        ArrayToObjectOptions
+		expectedExists bool
+		expectedIsNull bool
+		expectedValue  map[string]interface{}
+	}{
+		{
+			name: "TransformEmptyToNull sets empty array to null",
+			inputJSON: `{
+				"attributes": {
+					"id": "test-id",
+					"name": "Test",
+					"cors_headers": []
+				}
+			}`,
+			path:      "attributes",
+			fieldName: "cors_headers",
+			options: ArrayToObjectOptions{
+				TransformEmptyToNull: true,
+			},
+			expectedExists: true,
+			expectedIsNull: true,
+		},
+		{
+			name: "TransformEmptyToNull transforms non-empty array to object",
+			inputJSON: `{
+				"attributes": {
+					"id": "test-id",
+					"cors_headers": [
+						{
+							"allowed_methods": ["GET", "POST"],
+							"max_age": 3600
+						}
+					]
+				}
+			}`,
+			path:      "attributes",
+			fieldName: "cors_headers",
+			options: ArrayToObjectOptions{
+				TransformEmptyToNull: true,
+			},
+			expectedExists: true,
+			expectedIsNull: false,
+			expectedValue: map[string]interface{}{
+				"allowed_methods": []interface{}{"GET", "POST"},
+				"max_age":         int64(3600),
+			},
+		},
+		{
+			name: "Without TransformEmptyToNull, empty array is deleted (default behavior)",
+			inputJSON: `{
+				"attributes": {
+					"id": "test-id",
+					"cors_headers": []
+				}
+			}`,
+			path:      "attributes",
+			fieldName: "cors_headers",
+			options: ArrayToObjectOptions{
+				TransformEmptyToNull: false,
+			},
+			expectedExists: false,
+		},
+		{
+			name: "TransformEmptyToNull works with missing field",
+			inputJSON: `{
+				"attributes": {
+					"id": "test-id",
+					"name": "Test"
+				}
+			}`,
+			path:      "attributes",
+			fieldName: "cors_headers",
+			options: ArrayToObjectOptions{
+				TransformEmptyToNull: true,
+			},
+			expectedExists: false,
+		},
+		{
+			name: "EnsureObjectExists takes precedence over TransformEmptyToNull",
+			inputJSON: `{
+				"attributes": {
+					"id": "test-id",
+					"cors_headers": []
+				}
+			}`,
+			path:      "attributes",
+			fieldName: "cors_headers",
+			options: ArrayToObjectOptions{
+				EnsureObjectExists:   true,
+				TransformEmptyToNull: true,
+			},
+			expectedExists: true,
+			expectedIsNull: false,
+			expectedValue:  map[string]interface{}{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Parse input JSON
+			instance := gjson.Parse(tt.inputJSON).Get(tt.path)
+			require.True(t, instance.Exists(), "Input path should exist")
+
+			// Apply transformation
+			result := TransformFieldArrayToObject(tt.inputJSON, tt.path, instance, tt.fieldName, tt.options)
+
+			// Parse result
+			resultParsed := gjson.Parse(result)
+			fieldPath := tt.path + "." + tt.fieldName
+			fieldValue := resultParsed.Get(fieldPath)
+
+			// Check expectations
+			if tt.expectedExists {
+				assert.True(t, fieldValue.Exists(), "Expected %s to exist", fieldPath)
+
+				if tt.expectedIsNull {
+					assert.Equal(t, gjson.Null, fieldValue.Type, "Expected %s to be null", fieldPath)
+				} else if tt.expectedValue != nil {
+					assert.True(t, fieldValue.IsObject(), "Expected %s to be an object", fieldPath)
+
+					// Convert result to map for comparison
+					actualMap := make(map[string]interface{})
+					fieldValue.ForEach(func(key, value gjson.Result) bool {
+						actualMap[key.String()] = ConvertGjsonValue(value)
+						return true
+					})
+					assert.Equal(t, tt.expectedValue, actualMap, "Field values don't match")
+				}
+			} else {
+				assert.False(t, fieldValue.Exists(), "Expected %s to not exist", fieldPath)
+			}
+		})
+	}
+}
+
 func TestFlattenArrayField(t *testing.T) {
 	tests := []struct {
 		name          string
