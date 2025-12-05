@@ -343,3 +343,113 @@ func RemoveEmptyBlocks(body *hclwrite.Body, blockType string) {
 		body.RemoveBlock(block)
 	}
 }
+
+// AttributeTransform defines how to transform attributes from an original block to a new block
+type AttributeTransform struct {
+	// Copy specifies attributes to copy as-is from original to new block
+	Copy []string
+	// Rename specifies attributes to copy with a new name: map[oldName]newName
+	Rename map[string]string
+	// Set specifies new attributes to set with default values: map[name]value
+	Set map[string]interface{}
+	// CopyMetaArguments specifies whether to copy lifecycle and other meta-argument blocks
+	CopyMetaArguments bool
+}
+
+// CreateDerivedBlock creates a new block derived from an existing block with attribute transformations.
+// This is useful when splitting resources or creating related resources during migration.
+//
+// Parameters:
+//   - original: The source block to derive from
+//   - newResourceType: The resource type for the new block (e.g., "cloudflare_argo_smart_routing")
+//   - newResourceName: The resource name for the new block
+//   - transform: Specification of how to transform attributes
+//
+// Example - Creating smart_routing block from argo block:
+//
+//	Before (original block):
+//	  resource "cloudflare_argo" "main" {
+//	    zone_id        = "abc123"
+//	    smart_routing  = "on"
+//	    tiered_caching = "on"
+//	    lifecycle {
+//	      ignore_changes = [smart_routing]
+//	    }
+//	  }
+//
+//	Call:
+//	  newBlock := CreateDerivedBlock(originalBlock, "cloudflare_argo_smart_routing", "main",
+//	    AttributeTransform{
+//	      Copy:   []string{"zone_id"},
+//	      Rename: map[string]string{"smart_routing": "value"},
+//	      CopyMetaArguments: true,
+//	    })
+//
+//	After (new block):
+//	  resource "cloudflare_argo_smart_routing" "main" {
+//	    zone_id = "abc123"
+//	    value   = "on"
+//	    lifecycle {
+//	      ignore_changes = [smart_routing]
+//	    }
+//	  }
+func CreateDerivedBlock(original *hclwrite.Block, newResourceType, newResourceName string, transform AttributeTransform) *hclwrite.Block {
+	// Create new block with the specified type and name
+	newBlock := hclwrite.NewBlock("resource", []string{newResourceType, newResourceName})
+	newBody := newBlock.Body()
+	originalBody := original.Body()
+
+	// Copy specified attributes as-is
+	for _, attrName := range transform.Copy {
+		CopyAttribute(originalBody, newBody, attrName)
+	}
+
+	// Copy and rename specified attributes
+	for oldName, newName := range transform.Rename {
+		CopyAndRenameAttribute(originalBody, newBody, oldName, newName)
+	}
+
+	// Set new attributes with default values
+	for name, value := range transform.Set {
+		tokens := TokensForSimpleValue(value)
+		if tokens != nil {
+			newBody.SetAttributeRaw(name, tokens)
+		}
+	}
+
+	// Copy meta-arguments (lifecycle, provider, etc.) if requested
+	if transform.CopyMetaArguments {
+		copyMetaArguments(original, newBlock)
+	}
+
+	return newBlock
+}
+
+// copyMetaArguments copies lifecycle and other meta-argument blocks from original to new block
+func copyMetaArguments(original, newBlock *hclwrite.Block) {
+	originalBody := original.Body()
+	newBody := newBlock.Body()
+
+	// Copy lifecycle block if it exists
+	for _, block := range originalBody.Blocks() {
+		if block.Type() == "lifecycle" {
+			// Clone the lifecycle block
+			lifecycleBlock := newBody.AppendNewBlock("lifecycle", nil)
+			lifecycleBody := lifecycleBlock.Body()
+
+			// Copy all attributes from the original lifecycle block
+			for name, attr := range block.Body().Attributes() {
+				tokens := attr.Expr().BuildTokens(nil)
+				lifecycleBody.SetAttributeRaw(name, tokens)
+			}
+		}
+	}
+
+	// Copy other meta-argument blocks (provider, etc.) if any
+	for _, block := range originalBody.Blocks() {
+		// Skip lifecycle (already handled) and resource blocks
+		if block.Type() != "lifecycle" && block.Type() != "resource" {
+			newBody.AppendBlock(block)
+		}
+	}
+}

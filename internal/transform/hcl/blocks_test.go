@@ -514,3 +514,271 @@ resource "test" "example" {
 		})
 	}
 }
+
+func TestCreateDerivedBlock(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		newType   string
+		newName   string
+		transform AttributeTransform
+		contains  []string
+		notContains []string
+	}{
+		{
+			name: "Copy attributes only",
+			input: `
+resource "cloudflare_argo" "main" {
+  zone_id        = "abc123"
+  smart_routing  = "on"
+  tiered_caching = "on"
+}`,
+			newType: "cloudflare_argo_smart_routing",
+			newName: "main",
+			transform: AttributeTransform{
+				Copy: []string{"zone_id"},
+			},
+			contains: []string{
+				`resource "cloudflare_argo_smart_routing" "main"`,
+				"zone_id",
+				"abc123",
+			},
+			notContains: []string{"smart_routing =", "tiered_caching"},
+		},
+		{
+			name: "Rename attributes",
+			input: `
+resource "cloudflare_argo" "main" {
+  zone_id       = "abc123"
+  smart_routing = "on"
+}`,
+			newType: "cloudflare_argo_smart_routing",
+			newName: "main",
+			transform: AttributeTransform{
+				Copy:   []string{"zone_id"},
+				Rename: map[string]string{"smart_routing": "value"},
+			},
+			contains: []string{
+				`resource "cloudflare_argo_smart_routing" "main"`,
+				"zone_id",
+				"value",
+				`"on"`,
+			},
+			notContains: []string{"smart_routing ="},
+		},
+		{
+			name: "Set default values",
+			input: `
+resource "cloudflare_argo" "main" {
+  zone_id = "abc123"
+}`,
+			newType: "cloudflare_argo_smart_routing",
+			newName: "main",
+			transform: AttributeTransform{
+				Copy: []string{"zone_id"},
+				Set:  map[string]interface{}{"value": "off"},
+			},
+			contains: []string{
+				`resource "cloudflare_argo_smart_routing" "main"`,
+				"zone_id",
+				"value",
+				`"off"`,
+			},
+		},
+		{
+			name: "Copy meta-arguments (lifecycle)",
+			input: `
+resource "cloudflare_argo" "main" {
+  zone_id       = "abc123"
+  smart_routing = "on"
+
+  lifecycle {
+    ignore_changes = [smart_routing]
+  }
+}`,
+			newType: "cloudflare_argo_smart_routing",
+			newName: "main",
+			transform: AttributeTransform{
+				Copy:              []string{"zone_id"},
+				Rename:            map[string]string{"smart_routing": "value"},
+				CopyMetaArguments: true,
+			},
+			contains: []string{
+				`resource "cloudflare_argo_smart_routing" "main"`,
+				"zone_id",
+				"value",
+				"lifecycle",
+				"ignore_changes",
+			},
+		},
+		{
+			name: "Complex transformation with all features",
+			input: `
+resource "cloudflare_argo" "example" {
+  zone_id        = var.zone_id
+  smart_routing  = "on"
+  tiered_caching = "on"
+
+  lifecycle {
+    ignore_changes = [smart_routing]
+    create_before_destroy = true
+  }
+}`,
+			newType: "cloudflare_argo_tiered_caching",
+			newName: "example_tiered",
+			transform: AttributeTransform{
+				Copy:              []string{"zone_id"},
+				Rename:            map[string]string{"tiered_caching": "value"},
+				Set:               map[string]interface{}{"enabled": true},
+				CopyMetaArguments: true,
+			},
+			contains: []string{
+				`resource "cloudflare_argo_tiered_caching" "example_tiered"`,
+				"zone_id",
+				"var.zone_id",
+				"value",
+				`"on"`,
+				"enabled",
+				"true",
+				"lifecycle",
+				"ignore_changes",
+				"create_before_destroy",
+			},
+			// Note: smart_routing appears in the lifecycle block (ignore_changes)
+			// This is expected - lifecycle blocks are copied as-is
+		},
+		{
+			name: "Set with different value types",
+			input: `
+resource "test" "example" {
+  zone_id = "abc123"
+}`,
+			newType: "test_derived",
+			newName: "example",
+			transform: AttributeTransform{
+				Copy: []string{"zone_id"},
+				Set: map[string]interface{}{
+					"string_val":  "test",
+					"int_val":     42,
+					"float_val":   3.14,
+					"bool_val":    true,
+				},
+			},
+			contains: []string{
+				`resource "test_derived" "example"`,
+				"zone_id",
+				"string_val",
+				`"test"`,
+				"int_val",
+				"42",
+				"float_val",
+				"3.14",
+				"bool_val",
+				"true",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclwrite.ParseConfig([]byte(tt.input), "", hcl.InitialPos)
+			require.False(t, diags.HasErrors())
+
+			originalBlock := file.Body().Blocks()[0]
+			newBlock := CreateDerivedBlock(originalBlock, tt.newType, tt.newName, tt.transform)
+
+			// Create a new file with just the new block to get its output
+			newFile := hclwrite.NewEmptyFile()
+			newFile.Body().AppendBlock(newBlock)
+			output := string(newFile.Bytes())
+
+			for _, contains := range tt.contains {
+				assert.Contains(t, output, contains, "Output should contain: %s", contains)
+			}
+
+			for _, notContains := range tt.notContains {
+				assert.NotContains(t, output, notContains, "Output should not contain: %s", notContains)
+			}
+		})
+	}
+}
+
+func TestCreateDerivedBlock_ResourceLabels(t *testing.T) {
+	// Test that the new block has correct resource type and name labels
+	input := `
+resource "cloudflare_argo" "main" {
+  zone_id = "abc123"
+}`
+
+	file, diags := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+
+	originalBlock := file.Body().Blocks()[0]
+	newBlock := CreateDerivedBlock(originalBlock, "cloudflare_argo_smart_routing", "smart_main", AttributeTransform{
+		Copy: []string{"zone_id"},
+	})
+
+	assert.Equal(t, "resource", newBlock.Type())
+	labels := newBlock.Labels()
+	assert.Equal(t, 2, len(labels))
+	assert.Equal(t, "cloudflare_argo_smart_routing", labels[0])
+	assert.Equal(t, "smart_main", labels[1])
+}
+
+func TestCreateDerivedBlock_NoMetaArguments(t *testing.T) {
+	// Test that lifecycle blocks are NOT copied when CopyMetaArguments is false
+	input := `
+resource "cloudflare_argo" "main" {
+  zone_id       = "abc123"
+  smart_routing = "on"
+
+  lifecycle {
+    ignore_changes = [smart_routing]
+  }
+}`
+
+	file, diags := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+
+	originalBlock := file.Body().Blocks()[0]
+	newBlock := CreateDerivedBlock(originalBlock, "cloudflare_argo_smart_routing", "main", AttributeTransform{
+		Copy:              []string{"zone_id"},
+		Rename:            map[string]string{"smart_routing": "value"},
+		CopyMetaArguments: false, // Explicitly false
+	})
+
+	file.Body().AppendBlock(newBlock)
+	output := string(file.Bytes())
+
+	// The new block should not have lifecycle
+	assert.Contains(t, output, `resource "cloudflare_argo_smart_routing" "main"`)
+	assert.Contains(t, output, "value")
+
+	// Count occurrences of "lifecycle" - should only be in the original block
+	// We'll check that the second resource doesn't have lifecycle by verifying
+	// the new block has no nested blocks
+	assert.Equal(t, 0, len(newBlock.Body().Blocks()), "New block should have no nested blocks")
+}
+
+func TestCreateDerivedBlock_EmptyTransform(t *testing.T) {
+	// Test with an empty transform (no attributes copied, renamed, or set)
+	input := `
+resource "cloudflare_argo" "main" {
+  zone_id       = "abc123"
+  smart_routing = "on"
+}`
+
+	file, diags := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+
+	originalBlock := file.Body().Blocks()[0]
+	newBlock := CreateDerivedBlock(originalBlock, "cloudflare_argo_smart_routing", "main", AttributeTransform{})
+
+	file.Body().AppendBlock(newBlock)
+	output := string(file.Bytes())
+
+	assert.Contains(t, output, `resource "cloudflare_argo_smart_routing" "main"`)
+
+	// The new block should be essentially empty (just the resource declaration)
+	assert.Equal(t, 0, len(newBlock.Body().Attributes()), "New block should have no attributes")
+}
