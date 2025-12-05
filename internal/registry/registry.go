@@ -6,6 +6,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
+	"github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpush_job"
 	"github.com/cloudflare/tf-migrate/internal/resources/notification_policy_webhooks"
@@ -36,6 +37,7 @@ func RegisterAllMigrations() {
 	account_member.NewV4ToV5Migrator()
 	api_token.NewV4ToV5Migrator()
 	dns_record.NewV4ToV5Migrator()
+	healthcheck.NewV4ToV5Migrator()
 	zone.NewV4ToV5Migrator()
 	zone_dnssec.NewV4ToV5Migrator()
 	logpull_retention.NewV4ToV5Migrator()

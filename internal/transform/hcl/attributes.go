@@ -5,6 +5,7 @@
 package hcl
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -346,4 +347,113 @@ func AttributeValueContainsKey(attr *hclwrite.Attribute, key string) bool {
 		}
 	}
 	return false
+}
+
+// CreateNestedAttributeFromFields creates a nested attribute (object) from a map of field names to tokens.
+// This is useful for restructuring flat attributes into nested objects (e.g., http_config, tcp_config).
+//
+// Example - Creating http_config from collected HTTP fields:
+//
+// Before:
+//
+//	resource "cloudflare_healthcheck" "example" {
+//	  zone_id = "abc123"
+//	  type    = "HTTP"
+//	  port    = 80
+//	  path    = "/health"
+//	  method  = "GET"
+//	}
+//
+// After collecting fields and calling CreateNestedAttributeFromFields(body, "http_config", fields):
+//
+//	resource "cloudflare_healthcheck" "example" {
+//	  zone_id = "abc123"
+//	  type    = "HTTP"
+//	  http_config = {
+//	    port   = 80
+//	    path   = "/health"
+//	    method = "GET"
+//	  }
+//	}
+func CreateNestedAttributeFromFields(body *hclwrite.Body, attrName string, fields map[string]hclwrite.Tokens) {
+	if len(fields) == 0 {
+		return
+	}
+
+	// Build object attribute tokens from the fields map
+	var attrs []hclwrite.ObjectAttrTokens
+
+	// Sort keys for consistent output (optional but nice for testing)
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// Create object attributes
+	for _, fieldName := range keys {
+		nameTokens := hclwrite.TokensForIdentifier(fieldName)
+		valueTokens := fields[fieldName]
+
+		attrs = append(attrs, hclwrite.ObjectAttrTokens{
+			Name:  nameTokens,
+			Value: valueTokens,
+		})
+	}
+
+	// Create the object tokens and set the attribute
+	objTokens := hclwrite.TokensForObject(attrs)
+	body.SetAttributeRaw(attrName, objTokens)
+}
+
+// MoveAttributesToNestedObject moves multiple attributes from the body into a nested object attribute.
+// This is the most common pattern for flat-to-nested migrations.
+// Returns the number of attributes that were moved.
+//
+// Example - Moving HTTP fields into http_config:
+//
+// Before:
+//
+//	resource "cloudflare_healthcheck" "example" {
+//	  zone_id = "abc123"
+//	  type    = "HTTP"
+//	  port    = 80
+//	  path    = "/health"
+//	  method  = "GET"
+//	}
+//
+// After calling MoveAttributesToNestedObject(body, "http_config", []string{"port", "path", "method"}):
+//
+//	resource "cloudflare_healthcheck" "example" {
+//	  zone_id = "abc123"
+//	  type    = "HTTP"
+//	  http_config = {
+//	    port   = 80
+//	    path   = "/health"
+//	    method = "GET"
+//	  }
+//	}
+func MoveAttributesToNestedObject(body *hclwrite.Body, nestedAttrName string, fieldNames []string) int {
+	fields := make(map[string]hclwrite.Tokens)
+
+	// Collect the field tokens
+	for _, fieldName := range fieldNames {
+		if attr := body.GetAttribute(fieldName); attr != nil {
+			fields[fieldName] = attr.Expr().BuildTokens(nil)
+		}
+	}
+
+	if len(fields) == 0 {
+		return 0
+	}
+
+	// Create the nested attribute
+	CreateNestedAttributeFromFields(body, nestedAttrName, fields)
+
+	// Remove the original attributes
+	for fieldName := range fields {
+		body.RemoveAttribute(fieldName)
+	}
+
+	return len(fields)
 }
