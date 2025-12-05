@@ -11,7 +11,7 @@ variable "cloudflare_zone_id" {
 # Standard DNS records
 resource "cloudflare_record" "example_a" {
   zone_id = var.cloudflare_zone_id
-  name    = "example"
+  name = "${local.name_prefix}-example"
   value   = "192.0.2.1"
   type    = "A"
   proxied = true
@@ -40,7 +40,7 @@ resource "cloudflare_record" "example_caa" {
 # CAA record with data attribute map
 resource "cloudflare_record" "example_caa_map" {
   zone_id = var.cloudflare_zone_id
-  name    = "caa-map"
+  name = "${local.name_prefix}-caa-map"
   type    = "CAA"
   data {
     flags   = "128"
@@ -52,7 +52,7 @@ resource "cloudflare_record" "example_caa_map" {
 # SRV record with data block - priority should be hoisted
 resource "cloudflare_record" "example_srv" {
   zone_id  = var.cloudflare_zone_id
-  name     = "_service._tcp"
+  name = "${local.name_prefix}-service._tcp"
   type     = "SRV"
   priority = 5
   data {
@@ -66,7 +66,7 @@ resource "cloudflare_record" "example_srv" {
 # URI record with data block - priority should be hoisted
 resource "cloudflare_record" "example_uri" {
   zone_id  = var.cloudflare_zone_id
-  name     = "_http._tcp"
+  name = "${local.name_prefix}-http._tcp"
   type     = "URI"
   priority = 10
   data {
@@ -78,7 +78,7 @@ resource "cloudflare_record" "example_uri" {
 # Record without TTL - should add default TTL
 resource "cloudflare_record" "example_cname" {
   zone_id = var.cloudflare_zone_id
-  name    = "www-e2e-test"
+  name = "${local.name_prefix}-www"
   value   = "example.com"
   type    = "CNAME"
   proxied = false
@@ -97,7 +97,7 @@ resource "cloudflare_record" "example_txt" {
 # This tests migrating custom TXT records
 resource "cloudflare_record" "example_openpgpkey" {
   zone_id = var.cloudflare_zone_id
-  name    = "user._openpgpkey"
+  name = "${local.name_prefix}-user._openpgpkey"
   type    = "TXT"
   value   = "mQENBFzjqGoBCADTKLKfh..."
   ttl     = 3600
@@ -125,7 +125,7 @@ locals {
   common_zone_id = var.cloudflare_zone_id
 
   # Complex expression
-  subdomain_prefix = "test"
+  subdomain_prefix = "cftftest"
   full_subdomain   = "${local.subdomain_prefix}.${var.domain_name}"
 }
 
@@ -217,7 +217,7 @@ resource "cloudflare_record" "ipv6_aaaa" {
   count = var.enable_ipv6 ? 1 : 0
 
   zone_id = var.cloudflare_zone_id
-  name    = "ipv6"
+  name = "${local.name_prefix}-ipv6"
   value   = "2001:db8:85a3::8a2e:370:7334"
   type    = "AAAA"
   proxied = true
@@ -248,7 +248,7 @@ variable "caa_records" {
 # Pattern 8: Resource with complex data structures
 resource "cloudflare_record" "dnslink" {
   zone_id = var.cloudflare_zone_id
-  name    = "_dnslink"
+  name = "${local.name_prefix}-dnslink"
   type    = "TXT"
   value   = "dnslink=/ipfs/QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco"
   ttl     = var.record_ttl
@@ -257,7 +257,7 @@ resource "cloudflare_record" "dnslink" {
 # Pattern 9: Cross-resource references
 resource "cloudflare_record" "cname_to_a" {
   zone_id = var.cloudflare_zone_id
-  name    = "alias"
+  name = "${local.name_prefix}-alias"
   value   = "example.${var.domain_name}"
   type    = "CNAME"
   proxied = false
@@ -267,7 +267,7 @@ resource "cloudflare_record" "cname_to_a" {
 # Pattern 10: Resource with lifecycle meta-arguments
 resource "cloudflare_record" "protected_record" {
   zone_id = var.cloudflare_zone_id
-  name    = "protected"
+  name = "${local.name_prefix}-protected"
   value   = "192.0.2.99"
   type    = "A"
   proxied = true
@@ -282,7 +282,7 @@ resource "cloudflare_record" "protected_record" {
 # Pattern 11: Using terraform expressions
 resource "cloudflare_record" "conditional_value" {
   zone_id = var.cloudflare_zone_id
-  name    = "conditional"
+  name = "${local.name_prefix}-conditional"
   value   = var.enable_ipv6 ? "2001:db8::1" : "192.0.2.100"
   type    = var.enable_ipv6 ? "AAAA" : "A"
   proxied = true
@@ -292,7 +292,7 @@ resource "cloudflare_record" "conditional_value" {
 # Pattern 12: Resource with tags/comments
 resource "cloudflare_record" "tagged_record" {
   zone_id = var.cloudflare_zone_id
-  name    = "tagged"
+  name = "${local.name_prefix}-tagged"
   value   = "192.0.2.200"
   type    = "A"
   proxied = true

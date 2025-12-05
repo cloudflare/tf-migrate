@@ -16,7 +16,7 @@ variable "cloudflare_zone_id" {
 # ============================================================================
 locals {
   common_account = var.cloudflare_account_id
-  name_prefix    = "cf-tf-test"
+  name_prefix    = "cftftest"
   locations = {
     "wnam" = "WNAM"
     "enam" = "ENAM"
@@ -72,7 +72,7 @@ resource "cloudflare_r2_bucket" "location_apac" {
 
 resource "cloudflare_r2_bucket" "location_oc" {
   account_id = var.cloudflare_account_id
-  name       = "bucket-oc"
+  name       = "${local.name_prefix}-bucket-oc"
   location   = "OC"
 }
 
@@ -193,10 +193,16 @@ resource "cloudflare_r2_bucket" "with_prevent_destroy" {
 # Pattern Group 9: Edge Cases
 # ============================================================================
 
+# Special characters in bucket names (hyphens and numbers)
+resource "cloudflare_r2_bucket" "special_chars" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-bucket-with-dashes-and-numbers-123"
+}
+
 # Long bucket name (testing near max length - 63 chars max)
 resource "cloudflare_r2_bucket" "long_name" {
   account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-long-bucket-name-to-test-migration-limits-max-len"
+  name       = "${local.name_prefix}-very-long-bucket-name-for-testing-migration-lim"
 }
 
 # Bucket name with all allowed characters (lowercase, numbers, hyphens)

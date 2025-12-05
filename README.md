@@ -131,6 +131,18 @@ tf-migrate migrate \
 | `--output-state` | Output path for migrated state file | In-place |
 | `--backup` | Create backup of original files before migration | true |
 
+### Development Tools
+
+#### Linting Testdata
+
+The project includes a linter to ensure all integration test resources follow naming conventions (prefixed with `cftftest`):
+
+```bash
+make lint-testdata
+```
+
+See [scripts/README.md](scripts/README.md) for more details on the testdata linter.
+
 ### Running Tests
 
 #### Unit Tests

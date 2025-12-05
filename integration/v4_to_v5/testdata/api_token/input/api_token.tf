@@ -10,7 +10,7 @@ variable "cloudflare_zone_id" {
 
 # Test Case 1: Basic API token with single policy
 resource "cloudflare_api_token" "basic_token" {
-  name = "Basic API Token"
+  name = "${local.name_prefix} Basic API Token"
 
   policy {
     effect = "allow"
@@ -26,7 +26,7 @@ resource "cloudflare_api_token" "basic_token" {
 
 # Test Case 2: API token with multiple policies
 resource "cloudflare_api_token" "multi_policy_token" {
-  name = "Multi Policy Token"
+  name = "${local.name_prefix} Multi Policy Token"
 
   policy {
     effect = "allow"
@@ -51,7 +51,7 @@ resource "cloudflare_api_token" "multi_policy_token" {
 
 # Test Case 3: API token with condition block
 resource "cloudflare_api_token" "conditional_token" {
-  name = "Conditional Token"
+  name = "${local.name_prefix} Conditional Token"
 
   policy {
     effect = "allow"
@@ -75,7 +75,7 @@ resource "cloudflare_api_token" "conditional_token" {
 
 # Test Case 4: API token with condition including not_in
 resource "cloudflare_api_token" "advanced_condition_token" {
-  name = "Advanced Condition Token"
+  name = "${local.name_prefix} Advanced Condition Token"
 
   policy {
     effect = "allow"
@@ -105,7 +105,7 @@ resource "cloudflare_api_token" "advanced_condition_token" {
 
 # Test Case 5: API token with TTL fields
 resource "cloudflare_api_token" "time_limited_token" {
-  name       = "Time Limited Token"
+  name = "${local.name_prefix} Time Limited Token"
   expires_on = "2025-12-31T23:59:59Z"
   not_before = "2024-01-01T00:00:00Z"
 
@@ -122,7 +122,7 @@ resource "cloudflare_api_token" "time_limited_token" {
 
 # Test Case 6: API token with minimal permission groups
 resource "cloudflare_api_token" "empty_perms_token" {
-  name = "Minimal Permissions Token"
+  name = "${local.name_prefix} Minimal Permissions Token"
 
   policy {
     effect = "allow"
@@ -137,7 +137,7 @@ resource "cloudflare_api_token" "empty_perms_token" {
 
 # Test Case 7: Full example with all features
 resource "cloudflare_api_token" "full_example" {
-  name       = "Full Example Token"
+  name = "${local.name_prefix} Full Example Token"
   expires_on = "2035-12-31T23:59:59Z"
   not_before = "2024-01-01T00:00:00Z"
 
@@ -182,7 +182,7 @@ resource "cloudflare_api_token" "full_example" {
 data "cloudflare_api_token_permission_groups" "all" {}
 
 resource "cloudflare_api_token" "api_token_create" {
-  name = "api_token_create"
+  name = "${local.name_prefix} api_token_create"
 
   policy {
     permission_groups = [
@@ -206,7 +206,7 @@ resource "cloudflare_api_token" "api_token_create" {
 
 # Test Case 9: Token with complex multi-key resources map
 resource "cloudflare_api_token" "complex_resources_token" {
-  name = "Complex Resources Token"
+  name = "${local.name_prefix} Complex Resources Token"
 
   policy {
     effect = "allow"
@@ -222,7 +222,7 @@ resource "cloudflare_api_token" "complex_resources_token" {
 
 # Test Case 10: Token with multiple permission groups (v4 string format)
 resource "cloudflare_api_token" "multi_perms_token" {
-  name = "Multiple Permissions Token"
+  name = "${local.name_prefix} Multiple Permissions Token"
 
   policy {
     effect = "allow"
@@ -238,7 +238,7 @@ resource "cloudflare_api_token" "multi_perms_token" {
 
 # Test Case 11: Token without effect (should default to allow)
 resource "cloudflare_api_token" "no_effect_token" {
-  name = "No Effect Token"
+  name = "${local.name_prefix} No Effect Token"
 
   policy {
     permission_groups = [
@@ -252,7 +252,7 @@ resource "cloudflare_api_token" "no_effect_token" {
 
 # Test Case 12: Token with variable references in resources
 resource "cloudflare_api_token" "variable_resources_token" {
-  name = "Variable Resources Token"
+  name = "${local.name_prefix} Variable Resources Token"
 
   policy {
     effect = "allow"

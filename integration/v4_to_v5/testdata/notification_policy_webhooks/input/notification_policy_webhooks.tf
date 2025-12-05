@@ -20,7 +20,7 @@ variable "cloudflare_zone_id" {
 # ========================================
 locals {
   common_account = var.cloudflare_account_id
-  name_prefix    = "test-integration"
+  name_prefix = "cftftest"
   webhook_base_url = "https://www.cloudflare.com/cdn-cgi/trace"
   enable_backup    = true
   enable_test      = false
