@@ -39,7 +39,7 @@ data "external" "zone_apex_ip" {
 # Locals for common values
 locals {
   zone_id       = var.cloudflare_zone_id
-  name_prefix   = "migration-test"
+  name_prefix   = "cftftest-migration-test"
   real_domain   = data.cloudflare_zone.test_zone.name
   # Use provided IP, otherwise use zone apex IP, otherwise use test IP
   resolved_ip   = var.healthcheck_test_ip != "" ? var.healthcheck_test_ip : data.external.zone_apex_ip.result.ip
