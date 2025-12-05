@@ -55,6 +55,7 @@ variable "config_source" {
 
 # Local values with expressions for tunnels
 locals {
+  name_prefix = "cftftest"
   tunnel_secret_base = "generated-secret-that-is-32-bytes-long"
   common_account_id  = var.cloudflare_account_id
   tunnel_suffix      = "prod"

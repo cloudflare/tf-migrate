@@ -1,3 +1,7 @@
+locals {
+  name_prefix = "cftftest"
+}
+
 # Integration Test for cloudflare_logpull_retention v4 → v5 Migration
 # Simplified to single resource since logpull_retention is a zone-level setting
 

@@ -32,6 +32,7 @@ variable "config_source" {
 
 # Pattern 2: Local values with expressions
 locals {
+  name_prefix = "cftftest"
   tunnel_secret_base = "generated-secret-that-is-32-bytes-long"
   common_account_id  = var.cloudflare_account_id
   tunnel_suffix      = "prod"
