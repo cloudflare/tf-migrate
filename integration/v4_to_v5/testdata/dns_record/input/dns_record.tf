@@ -120,6 +120,7 @@ variable "record_ttl" {
 
 # Pattern 2: Local values with expressions
 locals {
+  name_prefix    = "cftftest"
   proxied_ttl = 1
   tags        = ["e2e-test", "migration-test"]
   common_zone_id = var.cloudflare_zone_id

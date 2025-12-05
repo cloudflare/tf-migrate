@@ -46,6 +46,7 @@ variable "policy_configs" {
 
 # Locals with multiple values
 locals {
+  name_prefix               = "cftftest"
   common_account_id         = var.cloudflare_account_id
   policy_name_prefix        = "${var.policy_prefix}-policy"
   dns_filter                = ["dns"]

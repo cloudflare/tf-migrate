@@ -14,7 +14,7 @@ variable "cloudflare_zone_id" {
 
 locals {
   common_account = var.cloudflare_account_id
-  name_prefix = "cftftest"
+  name_prefix                        = "cftftest"
   tags           = ["test", "migration", "v4_to_v5"]
   token_duration = "8760h"
   enable_long_duration = true
