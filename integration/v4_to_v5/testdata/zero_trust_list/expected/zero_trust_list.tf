@@ -42,7 +42,7 @@ variable "security_domains" {
 
 # Locals with multiple values
 locals {
-  name_prefix = "cftftest"
+  name_prefix       = "cftftest"
   common_account_id = var.cloudflare_account_id
   list_name_prefix  = "${var.list_prefix}-list"
   ip_ranges = [

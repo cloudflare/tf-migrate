@@ -20,7 +20,7 @@ variable "cloudflare_zone_id" {
 
 locals {
   common_account = var.cloudflare_account_id
-  name_prefix = "cftftest"
+  name_prefix                        = "cftftest"
   zone_types     = ["full", "partial", "secondary"]
   test_domains   = ["example.com", "test.com", "demo.com"]
 }

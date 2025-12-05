@@ -14,7 +14,7 @@ variable "cloudflare_zone_id" {
 
 locals {
   common_account = var.cloudflare_account_id
-  name_prefix = "cftftest"
+  name_prefix                        = "cftftest"
   default_schedule = "24h"
   enable_firewall_rules = true
   enable_test_rules = false
