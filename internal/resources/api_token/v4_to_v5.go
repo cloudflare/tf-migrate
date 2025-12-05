@@ -5,7 +5,6 @@ import (
 	"regexp"
 
 	"github.com/cloudflare/tf-migrate/internal"
-	"github.com/cloudflare/tf-migrate/internal/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform/state"
@@ -87,7 +86,7 @@ func (m *V4ToV5Migrator) transformPolicyBlocks(body *hclwrite.Body) {
 		// v5: resources = jsonencode({ "com.cloudflare.api.account.*" = "*" })
 		m.transformResources(policyBody)
 
-		objTokens := hcl.BuildObjectFromBlock(policyBlock)
+		objTokens := tfhcl.BuildObjectFromBlock(policyBlock)
 		policyObjects = append(policyObjects, objTokens)
 	}
 
@@ -193,7 +192,7 @@ func (m *V4ToV5Migrator) transformConditionBlock(body *hclwrite.Body) {
 	var conditionAttrs []hclwrite.ObjectAttrTokens
 	for _, nestedBlock := range conditionBlock.Body().Blocks() {
 		if nestedBlock.Type() == "request_ip" {
-			requestIPTokens := hcl.BuildObjectFromBlock(nestedBlock)
+			requestIPTokens := tfhcl.BuildObjectFromBlock(nestedBlock)
 			conditionAttrs = append(conditionAttrs, hclwrite.ObjectAttrTokens{
 				Name:  hclwrite.TokensForIdentifier("request_ip"),
 				Value: requestIPTokens,
