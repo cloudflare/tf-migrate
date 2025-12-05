@@ -11,6 +11,7 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/page_rule"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/pages_project"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
