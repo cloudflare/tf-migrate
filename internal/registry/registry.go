@@ -5,6 +5,7 @@ import (
 	zonesdata "github.com/cloudflare/tf-migrate/internal/datasources/zones"
 	"github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_token"
+	"github.com/cloudflare/tf-migrate/internal/resources/bot_management"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	"github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
@@ -39,6 +40,7 @@ func RegisterAllMigrations() {
 	// Resources
 	account_member.NewV4ToV5Migrator()
 	api_token.NewV4ToV5Migrator()
+	bot_management.NewV4ToV5Migrator()
 	dns_record.NewV4ToV5Migrator()
 	healthcheck.NewV4ToV5Migrator()
 	zone.NewV4ToV5Migrator()
