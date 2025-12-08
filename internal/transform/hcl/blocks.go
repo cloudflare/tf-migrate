@@ -224,9 +224,57 @@ func ConvertSingleBlockToAttribute(body *hclwrite.Body, blockType, attrName stri
 	if block == nil {
 		return false
 	}
-	
+
 	objTokens := hcl.BuildObjectFromBlock(block)
 	body.SetAttributeRaw(attrName, objTokens)
 	body.RemoveBlock(block)
 	return true
 }
+
+// ConvertBlocksToArrayAttribute converts multiple blocks to an array attribute
+// This is useful when migrating from v4 block syntax to v5 array attribute syntax
+//
+// Example - Converting managed headers:
+//
+// Before:
+//   managed_request_headers {
+//     id      = "header_1"
+//     enabled = true
+//   }
+//   managed_request_headers {
+//     id      = "header_2"
+//     enabled = false
+//   }
+//
+// After calling ConvertBlocksToArrayAttribute(body, "managed_request_headers"):
+//   managed_request_headers = [
+//     { id = "header_1", enabled = true },
+//     { id = "header_2", enabled = false }
+//   ]
+//
+// If no blocks are found and emptyIfNone is true, sets an empty array [].
+func ConvertBlocksToArrayAttribute(body *hclwrite.Body, blockType string, emptyIfNone bool) {
+	blocks := FindBlocksByType(body, blockType)
+
+	if len(blocks) == 0 {
+		if emptyIfNone {
+			body.SetAttributeRaw(blockType, hcl.TokensForEmptyArray())
+		}
+		return
+	}
+
+	// Convert each block to object tokens
+	var objectTokens []hclwrite.Tokens
+	for _, block := range blocks {
+		objTokens := hcl.BuildObjectFromBlock(block)
+		objectTokens = append(objectTokens, objTokens)
+	}
+
+	// Build array tokens from the objects and set as attribute
+	arrayTokens := hcl.BuildArrayFromObjects(objectTokens)
+	body.SetAttributeRaw(blockType, arrayTokens)
+
+	// Remove all original blocks
+	RemoveBlocksByType(body, blockType)
+}
+
