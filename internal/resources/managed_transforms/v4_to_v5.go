@@ -81,24 +81,3 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 
 	return result, nil
 }
-
-// convertBlocksToArrayAttribute converts multiple blocks of a given type to an array attribute
-// This handles the v4 block syntax -> v5 attribute syntax transformation
-//
-// v4 block syntax:
-//   managed_request_headers {
-//     id      = "header_id"
-//     enabled = true
-//   }
-//
-// v5 attribute syntax:
-//   managed_request_headers = [
-//     {
-//       id      = "header_id"
-//       enabled = true
-//     }
-//   ]
-func convertBlocksToArrayAttribute(body *hclwrite.Body, blockType string) {
-	// TODO: Implement in Subtask 4
-	// This is a placeholder for now - will be implemented when we do config transformations
-}
