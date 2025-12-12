@@ -13,6 +13,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/notification_policy_webhooks"
 	"github.com/cloudflare/tf-migrate/internal/resources/pages_project"
 	"github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
+	"github.com/cloudflare/tf-migrate/internal/resources/url_normalization_settings"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
@@ -47,6 +48,7 @@ func RegisterAllMigrations() {
 	notification_policy_webhooks.NewV4ToV5Migrator()
 	pages_project.NewV4ToV5Migrator()
 	r2_bucket.NewV4ToV5Migrator()
+	url_normalization_settings.NewV4ToV5Migrator()
 	workers_kv.NewV4ToV5Migrator()
 	workers_kv_namespace.NewV4ToV5Migrator()
 	zero_trust_access_service_token.NewV4ToV5Migrator()
