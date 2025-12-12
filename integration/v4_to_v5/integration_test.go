@@ -12,6 +12,7 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/page_rule"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/managed_transforms"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/pages_project"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
