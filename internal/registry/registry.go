@@ -6,12 +6,15 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
+	"github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpush_job"
+	"github.com/cloudflare/tf-migrate/internal/resources/managed_transforms"
 	"github.com/cloudflare/tf-migrate/internal/resources/notification_policy_webhooks"
 	"github.com/cloudflare/tf-migrate/internal/resources/page_rule"
 	"github.com/cloudflare/tf-migrate/internal/resources/pages_project"
 	"github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
+	"github.com/cloudflare/tf-migrate/internal/resources/url_normalization_settings"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
@@ -37,14 +40,17 @@ func RegisterAllMigrations() {
 	account_member.NewV4ToV5Migrator()
 	api_token.NewV4ToV5Migrator()
 	dns_record.NewV4ToV5Migrator()
+	healthcheck.NewV4ToV5Migrator()
 	zone.NewV4ToV5Migrator()
 	zone_dnssec.NewV4ToV5Migrator()
 	logpull_retention.NewV4ToV5Migrator()
 	logpush_job.NewV4ToV5Migrator()
+	managed_transforms.NewV4ToV5Migrator()
 	notification_policy_webhooks.NewV4ToV5Migrator()
 	page_rule.NewV4ToV5Migrator()
 	pages_project.NewV4ToV5Migrator()
 	r2_bucket.NewV4ToV5Migrator()
+	url_normalization_settings.NewV4ToV5Migrator()
 	workers_kv.NewV4ToV5Migrator()
 	workers_kv_namespace.NewV4ToV5Migrator()
 	zero_trust_access_service_token.NewV4ToV5Migrator()

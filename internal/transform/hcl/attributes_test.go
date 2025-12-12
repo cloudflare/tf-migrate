@@ -623,3 +623,253 @@ resource "test" "example" {
 		})
 	}
 }
+
+func TestCreateNestedAttributeFromFields(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		attrName string
+		fields   map[string]string // fieldName -> value (as string for easy testing)
+		expected []string          // strings that should appear in output
+	}{
+		{
+			name: "Create nested attribute from simple fields",
+			input: `
+resource "test" "example" {
+  name = "test"
+}`,
+			attrName: "http_config",
+			fields: map[string]string{
+				"port":   "80",
+				"path":   `"/health"`,
+				"method": `"GET"`,
+			},
+			expected: []string{
+				"http_config = {",
+				`method = "GET"`,
+				`path   = "/health"`,
+				"port   = 80",
+			},
+		},
+		{
+			name: "Create nested attribute with complex values",
+			input: `
+resource "test" "example" {
+  name = "test"
+}`,
+			attrName: "config",
+			fields: map[string]string{
+				"enabled": "true",
+				"codes":   `["200", "201"]`,
+				"timeout": "30",
+			},
+			expected: []string{
+				"config = {",
+				`codes   = ["200", "201"]`,
+				"enabled = true",
+				"timeout = 30",
+			},
+		},
+		{
+			name: "Do nothing with empty fields map",
+			input: `
+resource "test" "example" {
+  name = "test"
+}`,
+			attrName: "empty_config",
+			fields:   map[string]string{},
+			expected: []string{
+				"name = \"test\"",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclwrite.ParseConfig([]byte(tt.input), "", hcl.InitialPos)
+			require.False(t, diags.HasErrors())
+
+			body := file.Body().Blocks()[0].Body()
+
+			// Convert string values to tokens for the fields map
+			tokensMap := make(map[string]hclwrite.Tokens)
+			for fieldName, value := range tt.fields {
+				// Parse the value string to tokens
+				valueFile, _ := hclwrite.ParseConfig([]byte("dummy = "+value), "", hcl.InitialPos)
+				if attr := valueFile.Body().GetAttribute("dummy"); attr != nil {
+					tokensMap[fieldName] = attr.Expr().BuildTokens(nil)
+				}
+			}
+
+			CreateNestedAttributeFromFields(body, tt.attrName, tokensMap)
+
+			output := string(file.Bytes())
+			for _, expected := range tt.expected {
+				assert.Contains(t, output, expected)
+			}
+		})
+	}
+}
+
+func TestMoveAttributesToNestedObject(t *testing.T) {
+	tests := []struct {
+		name             string
+		input            string
+		nestedAttrName   string
+		fieldNames       []string
+		expectedMoved    int
+		shouldContain    []string
+		shouldNotContain []string
+	}{
+		{
+			name: "Move HTTP fields into http_config",
+			input: `
+resource "cloudflare_healthcheck" "example" {
+  zone_id = "abc123"
+  type    = "HTTP"
+  port    = 80
+  path    = "/health"
+  method  = "GET"
+}`,
+			nestedAttrName: "http_config",
+			fieldNames:     []string{"port", "path", "method"},
+			expectedMoved:  3,
+			shouldContain: []string{
+				"http_config = {",
+				`method = "GET"`,
+				`path   = "/health"`,
+				"port   = 80",
+				"zone_id = \"abc123\"",
+				`type    = "HTTP"`,
+			},
+			shouldNotContain: []string{
+				"port    = 80\n  path",    // Should not be at root level
+				"method  = \"GET\"\n  zone", // Should not be at root level
+			},
+		},
+		{
+			name: "Move TCP fields into tcp_config",
+			input: `
+resource "cloudflare_healthcheck" "example" {
+  zone_id = "abc123"
+  type    = "TCP"
+  port    = 8080
+  method  = "connection_established"
+}`,
+			nestedAttrName: "tcp_config",
+			fieldNames:     []string{"port", "method"},
+			expectedMoved:  2,
+			shouldContain: []string{
+				"tcp_config = {",
+				`method = "connection_established"`,
+				"port   = 8080",
+			},
+			shouldNotContain: []string{
+				"port    = 8080\n  method",
+			},
+		},
+		{
+			name: "Move subset of fields",
+			input: `
+resource "test" "example" {
+  name   = "test"
+  field1 = "value1"
+  field2 = "value2"
+  field3 = "value3"
+}`,
+			nestedAttrName: "config",
+			fieldNames:     []string{"field1", "field3"},
+			expectedMoved:  2,
+			shouldContain: []string{
+				"config = {",
+				`field1 = "value1"`,
+				`field3 = "value3"`,
+				`field2 = "value2"`, // Should remain at root level
+			},
+		},
+		{
+			name: "Move no fields when none exist",
+			input: `
+resource "test" "example" {
+  name = "test"
+}`,
+			nestedAttrName: "config",
+			fieldNames:     []string{"missing1", "missing2"},
+			expectedMoved:  0,
+			shouldContain: []string{
+				`name = "test"`,
+			},
+			shouldNotContain: []string{
+				"config = {",
+			},
+		},
+		{
+			name: "Move only existing fields",
+			input: `
+resource "test" "example" {
+  name    = "test"
+  present = "value"
+}`,
+			nestedAttrName: "config",
+			fieldNames:     []string{"present", "missing"},
+			expectedMoved:  1,
+			shouldContain: []string{
+				"config = {",
+				`present = "value"`,
+			},
+			shouldNotContain: []string{
+				"missing",
+				"present = \"value\"\n  name", // Should not be at root level
+			},
+		},
+		{
+			name: "Move fields with complex values",
+			input: `
+resource "test" "example" {
+  name           = "test"
+  expected_codes = ["200", "201", "204"]
+  header_map     = {
+    "Host" = ["example.com"]
+  }
+}`,
+			nestedAttrName: "http_config",
+			fieldNames:     []string{"expected_codes", "header_map"},
+			expectedMoved:  2,
+			shouldContain: []string{
+				"http_config = {",
+				`expected_codes = ["200", "201", "204"]`,
+				`header_map = {`, // Whitespace alignment may vary
+				`"Host" = ["example.com"]`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclwrite.ParseConfig([]byte(tt.input), "", hcl.InitialPos)
+			require.False(t, diags.HasErrors())
+
+			body := file.Body().Blocks()[0].Body()
+			count := MoveAttributesToNestedObject(body, tt.nestedAttrName, tt.fieldNames)
+
+			assert.Equal(t, tt.expectedMoved, count, "Should move %d attributes", tt.expectedMoved)
+
+			output := string(file.Bytes())
+			for _, expected := range tt.shouldContain {
+				assert.Contains(t, output, expected)
+			}
+			for _, notExpected := range tt.shouldNotContain {
+				assert.NotContains(t, output, notExpected)
+			}
+
+			// Verify moved fields are removed from root level
+			if tt.expectedMoved > 0 {
+				for _, fieldName := range tt.fieldNames {
+					if body.GetAttribute(fieldName) != nil {
+						t.Errorf("Field %s should have been removed from root level", fieldName)
+					}
+				}
+			}
+		})
+	}
+}
