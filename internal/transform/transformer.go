@@ -9,17 +9,18 @@ import (
 
 // Context carries data through the transformation pipeline
 type Context struct {
-	Content       []byte
-	Filename      string
-	CFGFile       *hclwrite.File
-	CFGFiles      map[string]*hclwrite.File
-	StateJSON     string
-	Diagnostics   hcl.Diagnostics
-	Metadata      map[string]interface{}
-	Resources     []string
-	SourceVersion string             // Source provider version (e.g., "v4")
-	TargetVersion string             // Target provider version (e.g., "v5")
-	APIClient     *cloudflare.Client // Optional: Cloudflare API client for migrations that need to query the API
+	Content          []byte
+	Filename         string
+	CFGFile          *hclwrite.File
+	CFGFiles         map[string]*hclwrite.File
+	StateJSON        string
+	Diagnostics      hcl.Diagnostics
+	Metadata         map[string]interface{}
+	Resources        []string
+	SourceVersion    string             // Source provider version (e.g., "v4")
+	TargetVersion    string             // Target provider version (e.g., "v5")
+	APIClient        *cloudflare.Client // Optional: Cloudflare API client for migrations that need to query the API
+	StateTypeRenames map[string]interface{}
 }
 
 // TransformResult represents the result of a resource transformation

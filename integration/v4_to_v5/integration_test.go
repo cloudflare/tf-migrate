@@ -18,6 +18,7 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/pages_project"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/regional_hostname"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/tiered_cache"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/spectrum_application"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/url_normalization_settings"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_kv"

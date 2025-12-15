@@ -171,13 +171,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// Set schema_version to 0 for v5
 	result, _ = sjson.Set(result, "schema_version", 0)
 
-	// Store the determined resource type in context metadata for the handler to use
-	// The handler will read this after processing the instance and update the resource-level type
-	metadataKey := fmt.Sprintf("argo_resource_type:%s", resourceName)
-	if ctx.Metadata == nil {
-		ctx.Metadata = make(map[string]interface{})
-	}
-	ctx.Metadata[metadataKey] = targetType
+	transform.SetStateTypeRename(ctx, resourceName, "cloudflare_argo", targetType)
 
 	return result, nil
 }

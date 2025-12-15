@@ -138,11 +138,11 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 			return true
 		})
 
-		// Check if the migrator stored a dynamic resource type in the context metadata
+		// Check if the migrator stored a dynamic resource type in StateTypeRenames
 		// This handles cases like cloudflare_argo which splits into different types based on instance attributes
-		if ctx.Metadata != nil {
-			metadataKey := fmt.Sprintf("argo_resource_type:%s", resourceName)
-			if dynamicType, ok := ctx.Metadata[metadataKey]; ok {
+		if ctx.StateTypeRenames != nil {
+			stateTypeRenameKey := fmt.Sprintf("%s.%s", resourceType, resourceName)
+			if dynamicType, ok := ctx.StateTypeRenames[stateTypeRenameKey]; ok {
 				if dynamicTypeStr, ok := dynamicType.(string); ok && dynamicTypeStr != "" && dynamicTypeStr != resourceType {
 					resourceTypePath := fmt.Sprintf("resources.%d.type", key.Int())
 					modifiedState, _ = sjson.Set(modifiedState, resourceTypePath, dynamicTypeStr)
