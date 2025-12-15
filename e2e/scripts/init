@@ -94,20 +94,40 @@ while IFS= read -r input_dir; do
     rm -rf "$module_dir"
     mkdir -p "$module_dir"
 
-    # Sync all .tf files from testdata
-    tf_files=$(find "$input_dir" -maxdepth 1 -name "*.tf" -type f)
+    # Sync .tf files from testdata, preferring _e2e.tf versions for single-zone resources
+    # First, check for *_e2e.tf files
+    e2e_files=$(find "$input_dir" -maxdepth 1 -name "*_e2e.tf" -type f)
 
-    if [[ -n "$tf_files" ]]; then
+    if [[ -n "$e2e_files" ]]; then
+        # Use e2e-specific files and rename them (remove _e2e suffix)
         while IFS= read -r tf_file; do
             [[ -z "$tf_file" ]] && continue
             filename=$(basename "$tf_file")
-            dest_file="${module_dir}/${filename}"
+            # Remove _e2e suffix from filename
+            dest_filename="${filename/_e2e.tf/.tf}"
+            dest_file="${module_dir}/${dest_filename}"
 
             # Copy file
             cp "$tf_file" "$dest_file"
-            echo -e "  ${GREEN}✓ ${resource_type}/${filename}${NC}"
+            echo -e "  ${GREEN}✓ ${resource_type}/${dest_filename} (from ${filename})${NC}"
             FILE_COUNT=$((FILE_COUNT + 1))
-        done <<< "$tf_files"
+        done <<< "$e2e_files"
+    else
+        # Fall back to regular .tf files
+        tf_files=$(find "$input_dir" -maxdepth 1 -name "*.tf" -type f)
+
+        if [[ -n "$tf_files" ]]; then
+            while IFS= read -r tf_file; do
+                [[ -z "$tf_file" ]] && continue
+                filename=$(basename "$tf_file")
+                dest_file="${module_dir}/${filename}"
+
+                # Copy file
+                cp "$tf_file" "$dest_file"
+                echo -e "  ${GREEN}✓ ${resource_type}/${filename}${NC}"
+                FILE_COUNT=$((FILE_COUNT + 1))
+            done <<< "$tf_files"
+        fi
     fi
 
     # Create versions.tf dynamically for each module
