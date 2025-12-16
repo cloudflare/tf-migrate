@@ -16,6 +16,7 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/managed_transforms"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/pages_project"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/spectrum_application"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/url_normalization_settings"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
