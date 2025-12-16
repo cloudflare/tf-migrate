@@ -22,7 +22,7 @@ variable "account_id" {
 
 variable "zone_name" {
   type    = string
-  default = "test-zone.example.com"
+  default = "test-zone.cf-tf-test.com"
 }
 
 variable "status" {

@@ -24,7 +24,7 @@ resource "cloudflare_dns_record" "example_mx" {
   type     = "MX"
   priority = 10
   ttl      = 1
-  content  = "mail.example.com"
+  content  = "mail.cf-tf-test.com"
 }
 
 # CAA record with data block - flags should be numeric, content renamed to value
@@ -36,7 +36,7 @@ resource "cloudflare_dns_record" "example_caa" {
   data = {
     flags = "0"
     tag   = "issue"
-    value = "ca.example.com"
+    value = "ca.cf-tf-test.com"
   }
 }
 
@@ -49,7 +49,7 @@ resource "cloudflare_dns_record" "example_caa_map" {
   data = {
     flags = "128"
     tag   = "issuewild"
-    value = "ca.example.com"
+    value = "ca.cf-tf-test.com"
   }
 }
 
@@ -64,7 +64,7 @@ resource "cloudflare_dns_record" "example_srv" {
     priority = 5
     weight   = 10
     port     = 5060
-    target   = "sip.example.com"
+    target   = "sip.cf-tf-test.com"
   }
 }
 
@@ -77,7 +77,7 @@ resource "cloudflare_dns_record" "example_uri" {
   ttl      = 1
   data = {
     weight = 20
-    target = "http://example.com/path"
+    target = "http://cf-tf-test.com/path"
   }
 }
 
@@ -88,7 +88,7 @@ resource "cloudflare_dns_record" "example_cname" {
   type    = "CNAME"
   proxied = false
   ttl     = 1
-  content = "example.com"
+  content = "cf-tf-test.com"
 }
 
 # Record with existing TTL
@@ -97,7 +97,7 @@ resource "cloudflare_dns_record" "example_txt" {
   name    = "@"
   type    = "TXT"
   ttl     = 3600
-  content = "v=spf1 include:_spf.example.com ~all"
+  content = "v=spf1 include:_spf.cf-tf-test.com ~all"
 }
 
 # TXT record for OPENPGPKEY (not a native type in v4)
@@ -117,7 +117,7 @@ resource "cloudflare_dns_record" "example_openpgpkey" {
 # Pattern 1: Variable references
 variable "domain_name" {
   type    = string
-  default = "example.com"
+  default = "cf-tf-test.com"
 }
 
 variable "record_ttl" {
@@ -179,7 +179,7 @@ variable "txt_records" {
   default = [
     {
       name  = "_dmarc"
-      value = "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com"
+      value = "v=DMARC1; p=quarantine; rua=mailto:dmarc@cf-tf-test.com"
     },
     {
       name  = "_dkim"
