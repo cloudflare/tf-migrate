@@ -22,7 +22,7 @@ locals {
   common_account = var.cloudflare_account_id
   name_prefix    = "cftftest"
   zone_types     = ["full", "partial", "secondary"]
-  test_domains   = ["example.com", "test.com", "demo.com"]
+  test_domains   = ["cf-tf-test.com", "test.com", "demo.com"]
 }
 
 # ========================================
@@ -31,7 +31,7 @@ locals {
 
 # Test Case 1: Minimal zone (only required fields)
 resource "cloudflare_zone" "minimal" {
-  name = "${local.name_prefix}-minimal.example.com"
+  name = "${local.name_prefix}-minimal.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -41,7 +41,7 @@ resource "cloudflare_zone" "minimal" {
 resource "cloudflare_zone" "paused_zone" {
   paused = true
   type   = "full"
-  name   = "${local.name_prefix}-paused.example.com"
+  name   = "${local.name_prefix}-paused.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -54,17 +54,17 @@ resource "cloudflare_zone" "paused_zone" {
 resource "cloudflare_zone" "map_zones" {
   for_each = {
     "prod" = {
-      domain = "cftftest-prod.example.com"
+      domain = "cftftest-prod.cf-tf-test.com"
       type   = "full"
       paused = false
     }
     "staging" = {
-      domain = "cftftest-staging.example.com"
+      domain = "cftftest-staging.cf-tf-test.com"
       type   = "full"
       paused = false
     }
     # "dev" = {
-    #   domain = "cftftest-dev.example.com"
+    #   domain = "cftftest-dev.cf-tf-test.com"
     #   type   = "partial"
     #   paused = true
     # }
@@ -84,10 +84,10 @@ resource "cloudflare_zone" "map_zones" {
 
 resource "cloudflare_zone" "set_zones" {
   for_each = toset([
-    "cftftest-alpha.example.com",
-    "cftftest-beta.example.com",
-    "cftftest-gamma.example.com",
-    "cftftest-delta.example.com"
+    "cftftest-alpha.cf-tf-test.com",
+    "cftftest-beta.cf-tf-test.com",
+    "cftftest-gamma.cf-tf-test.com",
+    "cftftest-delta.cf-tf-test.com"
   ])
 
   type = "full"
@@ -106,7 +106,7 @@ resource "cloudflare_zone" "counted_zones" {
 
   type   = "full"
   paused = count.index == 1 ? true : false
-  name   = "${local.name_prefix}-zone-${count.index}.example.com"
+  name   = "${local.name_prefix}-zone-${count.index}.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -125,7 +125,7 @@ resource "cloudflare_zone" "conditional_enabled" {
   count = local.enable_test_zone ? 1 : 0
 
   type = "full"
-  name = "${local.name_prefix}-conditional-enabled.example.com"
+  name = "${local.name_prefix}-conditional-enabled.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -135,7 +135,7 @@ resource "cloudflare_zone" "conditional_disabled" {
   count = local.enable_feature_zone ? 1 : 0
 
   type = "full"
-  name = "${local.name_prefix}-conditional-disabled.example.com"
+  name = "${local.name_prefix}-conditional-disabled.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -147,7 +147,7 @@ resource "cloudflare_zone" "conditional_disabled" {
 
 resource "cloudflare_zone" "with_functions" {
   type = "full"
-  name = join("-", ["cftftest", "function", "test.example.com"])
+  name = join("-", ["cftftest", "function", "test.cf-tf-test.com"])
   account = {
     id = var.cloudflare_account_id
   }
@@ -156,7 +156,7 @@ resource "cloudflare_zone" "with_functions" {
 resource "cloudflare_zone" "with_interpolation" {
   type   = "full"
   paused = false
-  name   = "${local.name_prefix}-interpolated.example.com"
+  name   = "${local.name_prefix}-interpolated.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -164,7 +164,7 @@ resource "cloudflare_zone" "with_interpolation" {
 
 resource "cloudflare_zone" "with_locals" {
   type = local.zone_types[0]
-  name = "${local.name_prefix}-with-locals.example.com"
+  name = "${local.name_prefix}-with-locals.cf-tf-test.com"
   account = {
     id = local.common_account
   }
@@ -181,7 +181,7 @@ resource "cloudflare_zone" "with_lifecycle" {
   lifecycle {
     create_before_destroy = true
   }
-  name = "${local.name_prefix}-lifecycle-test.example.com"
+  name = "${local.name_prefix}-lifecycle-test.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -193,7 +193,7 @@ resource "cloudflare_zone" "with_ignore_changes" {
   lifecycle {
     ignore_changes = [paused]
   }
-  name = "${local.name_prefix}-ignore-changes.example.com"
+  name = "${local.name_prefix}-ignore-changes.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -205,7 +205,7 @@ resource "cloudflare_zone" "with_prevent_destroy" {
   lifecycle {
     prevent_destroy = false
   }
-  name = "${local.name_prefix}-prevent-destroy.example.com"
+  name = "${local.name_prefix}-prevent-destroy.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -218,7 +218,7 @@ resource "cloudflare_zone" "with_prevent_destroy" {
 # Test Case: Hyphenated domain
 resource "cloudflare_zone" "hyphenated_domain" {
   type = "full"
-  name = "${local.name_prefix}-hyphen-domain.example.com"
+  name = "${local.name_prefix}-hyphen-domain.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -227,7 +227,7 @@ resource "cloudflare_zone" "hyphenated_domain" {
 # Test Case: Subdomain with many levels
 resource "cloudflare_zone" "deep_subdomain" {
   type = "full"
-  name = "${local.name_prefix}-level4.level3.level2.level1.example.com"
+  name = "${local.name_prefix}-level4.level3.level2.level1.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -236,7 +236,7 @@ resource "cloudflare_zone" "deep_subdomain" {
 # Test Case: Zone with removed attributes (jump_start and plan)
 resource "cloudflare_zone" "with_removed_attrs" {
   type = "full"
-  name = "${local.name_prefix}-removed-attrs.example.com"
+  name = "${local.name_prefix}-removed-attrs.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -245,7 +245,7 @@ resource "cloudflare_zone" "with_removed_attrs" {
 # Test Case: Zone with all plan types
 resource "cloudflare_zone" "with_pro_plan" {
   type = "full"
-  name = "${local.name_prefix}-pro-plan.example.com"
+  name = "${local.name_prefix}-pro-plan.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }
@@ -253,7 +253,7 @@ resource "cloudflare_zone" "with_pro_plan" {
 
 resource "cloudflare_zone" "with_business_plan" {
   type = "full"
-  name = "${local.name_prefix}-business-plan.example.com"
+  name = "${local.name_prefix}-business-plan.cf-tf-test.com"
   account = {
     id = var.cloudflare_account_id
   }

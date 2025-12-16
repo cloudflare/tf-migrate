@@ -71,15 +71,15 @@ resource "cloudflare_teams_list" "maximal" {
   name        = "${local.list_name_prefix}-maximal"
   type        = "DOMAIN"
   description = local.common_description
-  items       = ["example.com", "test.example.com", "api.example.com"]
+  items       = ["cf-tf-test.com", "test.cf-tf-test.com", "api.cf-tf-test.com"]
 
   items_with_description {
-    value       = "secure.example.com"
+    value       = "secure.cf-tf-test.com"
     description = "Secure subdomain"
   }
 
   items_with_description {
-    value       = "admin.example.com"
+    value       = "admin.cf-tf-test.com"
     description = "Admin portal"
   }
 }
@@ -109,17 +109,17 @@ resource "cloudflare_teams_list" "domain_list" {
   description = "Company approved domains"
 
   items_with_description {
-    value       = "example.com"
+    value       = "cf-tf-test.com"
     description = "Main company domain"
   }
 
   items_with_description {
-    value       = "api.example.com"
+    value       = "api.cf-tf-test.com"
     description = "API subdomain"
   }
 
   items_with_description {
-    value       = "test.example.com"
+    value       = "test.cf-tf-test.com"
     description = "Testing environment"
   }
 }
@@ -129,15 +129,15 @@ resource "cloudflare_teams_list" "email_list" {
   account_id = var.cloudflare_account_id
   name = "${local.name_prefix} VIP Emails"
   type       = "EMAIL"
-  items      = ["admin@example.com", "security@example.com"]
+  items      = ["admin@cf-tf-test.com", "security@cf-tf-test.com"]
 
   items_with_description {
-    value       = "ceo@example.com"
+    value       = "ceo@cf-tf-test.com"
     description = "CEO email address"
   }
 
   items_with_description {
-    value       = "cto@example.com"
+    value       = "cto@cf-tf-test.com"
     description = "CTO email address"
   }
 }
@@ -154,7 +154,7 @@ resource "cloudflare_teams_list" "security_domains" {
   name        = "${local.list_name_prefix}-${each.key}"
   type        = each.value.type
   description = each.value.description
-  items       = ["${each.key}.example.com", "www.${each.key}.example.com"]
+  items       = ["${each.key}.cf-tf-test.com", "www.${each.key}.cf-tf-test.com"]
 }
 
 # ============================================================================
@@ -169,7 +169,7 @@ resource "cloudflare_teams_list" "list_types" {
   name        = "${local.list_name_prefix}-${each.value}"
   type        = "DOMAIN"
   description = "List for ${each.value} environment"
-  items       = ["${each.value}.example.com"]
+  items       = ["${each.value}.cf-tf-test.com"]
 }
 
 # ============================================================================
@@ -199,7 +199,7 @@ resource "cloudflare_teams_list" "conditional_enabled" {
   name = "${local.name_prefix} Security List - Enabled"
   type        = "DOMAIN"
   description = "This list is conditionally created"
-  items       = ["secure.example.com", "protected.example.com"]
+  items       = ["secure.cf-tf-test.com", "protected.cf-tf-test.com"]
 }
 
 # 18. Conditionally not created resource
@@ -210,7 +210,7 @@ resource "cloudflare_teams_list" "conditional_disabled" {
   name = "${local.name_prefix} Security List - Disabled"
   type        = "DOMAIN"
   description = "This list is conditionally not created"
-  items       = ["insecure.example.com"]
+  items       = ["insecure.cf-tf-test.com"]
 }
 
 # ============================================================================
@@ -232,7 +232,7 @@ resource "cloudflare_teams_list" "with_interpolation" {
   name        = "List for account ${var.cloudflare_account_id}"
   type        = "URL"
   description = "Description with ${local.list_name_prefix} interpolation"
-  items       = ["https://${var.list_prefix}.example.com/path"]
+  items       = ["https://${var.list_prefix}.cf-tf-test.com/path"]
 }
 
 # ============================================================================
@@ -259,7 +259,7 @@ resource "cloudflare_teams_list" "with_prevent_destroy" {
   name = "${local.name_prefix} Important List"
   type        = "DOMAIN"
   description = "Critical list"
-  items       = ["critical.example.com"]
+  items       = ["critical.cf-tf-test.com"]
 
   lifecycle {
     prevent_destroy = false  # Set to false for testing
@@ -277,7 +277,7 @@ resource "cloudflare_teams_list" "url_list" {
   type       = "URL"
 
   items_with_description {
-    value       = "https://malicious.example.com/path"
+    value       = "https://malicious.cf-tf-test.com/path"
     description = "Known phishing site"
   }
 
@@ -326,9 +326,9 @@ resource "cloudflare_teams_list" "complex_emails" {
   type        = "EMAIL"
   description = "Emails with various formats"
   items       = [
-    "user+tag@example.com",
-    "user.name@subdomain.example.com",
-    "admin@test.example.com"
+    "user+tag@cf-tf-test.com",
+    "user.name@subdomain.cf-tf-test.com",
+    "admin@test.cf-tf-test.com"
   ]
 }
 

@@ -52,7 +52,7 @@ locals {
   dns_filter                = ["dns"]
   http_filter               = ["http"]
   l4_filter                 = ["l4"]
-  common_traffic_expression = "any(dns.domains[*] == \"example.com\")"
+  common_traffic_expression = "any(dns.domains[*] == \"cf-tf-test.com\")"
   block_reason              = "Access blocked by company policy - ${var.policy_prefix}"
 }
 
@@ -80,7 +80,7 @@ resource "cloudflare_zero_trust_gateway_policy" "maximal" {
   action      = "block"
   enabled     = true
   filters     = local.dns_filter
-  traffic     = "any(dns.domains[*] in {\"blocked.example.com\" \"malware.example.com\"})"
+  traffic     = "any(dns.domains[*] in {\"blocked.cf-tf-test.com\" \"malware.cf-tf-test.com\"})"
 
   rule_settings = {
     block_page_enabled = true
@@ -99,7 +99,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_settings" {
   action      = "block"
   enabled     = true
   filters     = ["dns"]
-  traffic     = "any(dns.domains[*] in {\"blocked.example.com\" \"malware.example.com\"})"
+  traffic     = "any(dns.domains[*] in {\"blocked.cf-tf-test.com\" \"malware.cf-tf-test.com\"})"
 
   rule_settings = {
     block_page_enabled = true
@@ -167,7 +167,7 @@ resource "cloudflare_zero_trust_gateway_policy" "simple_resolver" {
   action      = "allow"
   enabled     = true
   filters     = ["dns"]
-  traffic     = "any(dns.domains[*] == \"allowed.example.com\")"
+  traffic     = "any(dns.domains[*] == \"allowed.cf-tf-test.com\")"
 
   rule_settings = {
     block_page_enabled = false
@@ -189,7 +189,7 @@ resource "cloudflare_zero_trust_gateway_policy" "policy_configs" {
   action      = each.value.action
   enabled     = true
   filters     = ["dns"]
-  traffic     = "any(dns.domains[*] == \"${each.key}.example.com\")"
+  traffic     = "any(dns.domains[*] == \"${each.key}.cf-tf-test.com\")"
 }
 
 # ============================================================================
@@ -207,7 +207,7 @@ resource "cloudflare_zero_trust_gateway_policy" "environment_policies" {
   action      = "allow"
   enabled     = true
   filters     = ["dns"]
-  traffic     = "any(dns.domains[*] == \"${each.value}.example.com\")"
+  traffic     = "any(dns.domains[*] == \"${each.value}.cf-tf-test.com\")"
 }
 
 # ============================================================================
@@ -225,7 +225,7 @@ resource "cloudflare_zero_trust_gateway_policy" "tiered_policies" {
   action      = count.index == 0 ? "block" : "allow"
   enabled     = true
   filters     = ["dns"]
-  traffic     = "any(dns.domains[*] == \"tier${count.index}.example.com\")"
+  traffic     = "any(dns.domains[*] == \"tier${count.index}.cf-tf-test.com\")"
 }
 
 # ============================================================================
@@ -243,7 +243,7 @@ resource "cloudflare_zero_trust_gateway_policy" "conditional_enabled" {
   action      = "block"
   enabled     = true
   filters     = ["dns"]
-  traffic     = "any(dns.domains[*] in {\"malware.example.com\" \"phishing.example.com\"})"
+  traffic     = "any(dns.domains[*] in {\"malware.cf-tf-test.com\" \"phishing.cf-tf-test.com\"})"
 
   rule_settings = {
     block_page_enabled = true
@@ -262,7 +262,7 @@ resource "cloudflare_zero_trust_gateway_policy" "conditional_disabled" {
   action      = "allow"
   enabled     = false
   filters     = ["dns"]
-  traffic     = "any(dns.domains[*] == \"insecure.example.com\")"
+  traffic     = "any(dns.domains[*] == \"insecure.cf-tf-test.com\")"
 }
 
 # ============================================================================
@@ -290,7 +290,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_interpolation" {
   action      = "allow"
   enabled     = true
   filters     = ["http"]
-  traffic     = "http.request.host == \"${var.policy_prefix}.example.com\""
+  traffic     = "http.request.host == \"${var.policy_prefix}.cf-tf-test.com\""
 }
 
 # ============================================================================
@@ -306,7 +306,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_lifecycle" {
   action      = "block"
   enabled     = true
   filters     = ["dns"]
-  traffic     = "any(dns.domains[*] == \"protected.example.com\")"
+  traffic     = "any(dns.domains[*] == \"protected.cf-tf-test.com\")"
 
   lifecycle {
     create_before_destroy = true
@@ -323,7 +323,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_prevent_destroy" {
   action      = "block"
   enabled     = true
   filters     = ["dns"]
-  traffic     = "any(dns.domains[*] == \"critical.example.com\")"
+  traffic     = "any(dns.domains[*] == \"critical.cf-tf-test.com\")"
 
   lifecycle {
     prevent_destroy = false # Set to false for testing
@@ -385,7 +385,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_check_session" {
   action      = "allow"
   enabled     = true
   filters     = ["http"]
-  traffic     = "http.request.host == \"secure.example.com\""
+  traffic     = "http.request.host == \"secure.cf-tf-test.com\""
 
   rule_settings = {
     check_session = {
@@ -404,7 +404,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_biso" {
   action      = "isolate"
   enabled     = true
   filters     = ["http"]
-  traffic     = "http.request.host == \"isolated.example.com\""
+  traffic     = "http.request.host == \"isolated.cf-tf-test.com\""
 
   rule_settings = {
     biso_admin_controls = {
@@ -442,7 +442,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_override_ips" {
   action      = "allow"
   enabled     = true
   filters     = ["dns"]
-  traffic     = "any(dns.domains[*] == \"override.example.com\")"
+  traffic     = "any(dns.domains[*] == \"override.cf-tf-test.com\")"
 
   rule_settings = {
     override_ips  = ["1.1.1.1", "8.8.8.8", "9.9.9.9"]
