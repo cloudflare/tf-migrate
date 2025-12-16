@@ -9,6 +9,7 @@ import (
 	// Explicitly import the migrations we want to test
 	_ "github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/api_token"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/custom_pages"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
