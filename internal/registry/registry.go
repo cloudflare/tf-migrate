@@ -9,6 +9,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/bot_management"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	"github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
+	"github.com/cloudflare/tf-migrate/internal/resources/load_balancer_monitor"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpush_job"
 	"github.com/cloudflare/tf-migrate/internal/resources/managed_transforms"
@@ -45,6 +46,7 @@ func RegisterAllMigrations() {
 	bot_management.NewV4ToV5Migrator()
 	dns_record.NewV4ToV5Migrator()
 	healthcheck.NewV4ToV5Migrator()
+	load_balancer_monitor.NewV4ToV5Migrator()
 	zone.NewV4ToV5Migrator()
 	zone_dnssec.NewV4ToV5Migrator()
 	logpull_retention.NewV4ToV5Migrator()
