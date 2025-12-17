@@ -19,7 +19,7 @@ locals {
 # DNS Records (required before creating regional hostnames)
 resource "cloudflare_record" "rh_minimal" {
   zone_id = var.cloudflare_zone_id
-  name    = "rh-minimal"
+  name    = "cftftest-rh-minimal"
   value   = "192.0.2.1"
   type    = "A"
   proxied = true
@@ -27,7 +27,7 @@ resource "cloudflare_record" "rh_minimal" {
 
 resource "cloudflare_record" "rh_timeouts" {
   zone_id = var.cloudflare_zone_id
-  name    = "rh-timeouts"
+  name    = "cftftest-rh-timeouts"
   value   = "192.0.2.2"
   type    = "A"
   proxied = true
@@ -35,7 +35,7 @@ resource "cloudflare_record" "rh_timeouts" {
 
 resource "cloudflare_record" "rh_create_timeout" {
   zone_id = var.cloudflare_zone_id
-  name    = "rh-create-timeout"
+  name    = "cftftest-rh-create-timeout"
   value   = "192.0.2.3"
   type    = "A"
   proxied = true
@@ -43,7 +43,7 @@ resource "cloudflare_record" "rh_create_timeout" {
 
 resource "cloudflare_record" "rh_no_timeouts" {
   zone_id = var.cloudflare_zone_id
-  name    = "rh-no-timeouts"
+  name    = "cftftest-rh-no-timeouts"
   value   = "192.0.2.4"
   type    = "A"
   proxied = true
@@ -52,7 +52,7 @@ resource "cloudflare_record" "rh_no_timeouts" {
 # Regional hostname with no timeouts
 resource "cloudflare_regional_hostname" "minimal" {
   zone_id    = var.cloudflare_zone_id
-  hostname   = "rh-minimal.${local.domain}"
+  hostname   = "cftftest-rh-minimal.${local.domain}"
   region_key = "us"
 
   depends_on = [cloudflare_record.rh_minimal]
@@ -61,7 +61,7 @@ resource "cloudflare_regional_hostname" "minimal" {
 # Regional hostname with timeouts (timeouts should be removed in v5)
 resource "cloudflare_regional_hostname" "with_timeouts" {
   zone_id    = var.cloudflare_zone_id
-  hostname   = "rh-timeouts.${local.domain}"
+  hostname   = "cftftest-rh-timeouts.${local.domain}"
   region_key = "eu"
 
   timeouts {
@@ -75,7 +75,7 @@ resource "cloudflare_regional_hostname" "with_timeouts" {
 # Regional hostname with only create timeout
 resource "cloudflare_regional_hostname" "create_timeout" {
   zone_id    = var.cloudflare_zone_id
-  hostname   = "rh-create-timeout.${local.domain}"
+  hostname   = "cftftest-rh-create-timeout.${local.domain}"
   region_key = "ca"
 
   timeouts {
@@ -87,7 +87,7 @@ resource "cloudflare_regional_hostname" "create_timeout" {
 
 resource "cloudflare_regional_hostname" "no_timeouts" {
   zone_id    = var.cloudflare_zone_id
-  hostname   = "rh-no-timeouts.${local.domain}"
+  hostname   = "cftftest-rh-no-timeouts.${local.domain}"
   region_key = "ca"
 
   depends_on = [cloudflare_record.rh_no_timeouts]
