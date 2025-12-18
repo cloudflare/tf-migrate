@@ -304,6 +304,66 @@ func EnsureTimestamps(stateJSON string, path string, instance gjson.Result, defa
 	return stateJSON
 }
 
+// ConvertMaxItemsOneArrayToObject converts a MaxItems:1 array field to an object.
+// This is commonly used when a TypeList with MaxItems:1 in v4 becomes a SingleNestedAttribute in v5.
+// Empty arrays are deleted from the state.
+//
+// Example - Converting dns field from array to object:
+//
+// Before state JSON:
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "protocol": "tcp/22",
+//	        "dns": [
+//	          {
+//	            "type": "CNAME",
+//	            "name": "test.example.com"
+//	          }
+//	        ]
+//	      }
+//	    }]
+//	  }]
+//	}
+//
+// After calling ConvertMaxItemsOneArrayToObject(stateJSON, path, instance, "dns"):
+//
+//	{
+//	  "resources": [{
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "abc123",
+//	        "protocol": "tcp/22",
+//	        "dns": {
+//	          "type": "CNAME",
+//	          "name": "test.example.com"
+//	        }
+//	      }
+//	    }]
+//	  }]
+//	}
+//
+// If the array is empty, the field is deleted:
+//
+//	"dns": []  →  field removed entirely
+func ConvertMaxItemsOneArrayToObject(stateJSON string, path string, instance gjson.Result, fieldName string) string {
+	field := instance.Get(fieldName)
+	if field.Exists() && field.IsArray() {
+		array := field.Array()
+		if len(array) > 0 {
+			// Take first element and set as object
+			stateJSON, _ = sjson.Set(stateJSON, path+"."+fieldName, array[0].Value())
+		} else {
+			// Empty array - delete it
+			stateJSON, _ = sjson.Delete(stateJSON, path+"."+fieldName)
+		}
+	}
+	return stateJSON
+}
+
 // ConvertGjsonValue converts a gjson value to appropriate Go type
 func ConvertGjsonValue(value gjson.Result) interface{} {
 	switch value.Type {

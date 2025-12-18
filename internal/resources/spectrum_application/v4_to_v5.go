@@ -11,6 +11,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
+	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 type V4ToV5Migrator struct {
@@ -117,14 +118,14 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 		return result, nil
 	}
 
-	// 1. Convert dns array to object
-	result = m.convertArrayToObject(result, attrs, "dns")
+	// 1. Convert dns array to object (MaxItems:1 → SingleNestedAttribute)
+	result = state.ConvertMaxItemsOneArrayToObject(result, "attributes", attrs, "dns")
 
-	// 2. Convert origin_dns array to object
-	result = m.convertArrayToObject(result, attrs, "origin_dns")
+	// 2. Convert origin_dns array to object (MaxItems:1 → SingleNestedAttribute)
+	result = state.ConvertMaxItemsOneArrayToObject(result, "attributes", attrs, "origin_dns")
 
-	// 3. Convert edge_ips array to object
-	result = m.convertArrayToObject(result, attrs, "edge_ips")
+	// 3. Convert edge_ips array to object (MaxItems:1 → SingleNestedAttribute)
+	result = state.ConvertMaxItemsOneArrayToObject(result, "attributes", attrs, "edge_ips")
 
 	// 4. Convert origin_port_range to origin_port string (wrapped in DynamicAttribute format)
 	result = m.convertOriginPortRangeState(result, attrs)
@@ -136,22 +137,6 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	result, _ = sjson.Set(result, "schema_version", 0)
 
 	return result, nil
-}
-
-// convertArrayToObject converts a MaxItems:1 array field to an object
-func (m *V4ToV5Migrator) convertArrayToObject(result string, attrs gjson.Result, fieldName string) string {
-	field := attrs.Get(fieldName)
-	if field.Exists() && field.IsArray() {
-		array := field.Array()
-		if len(array) > 0 {
-			// Take first element and set as object
-			result, _ = sjson.Set(result, "attributes."+fieldName, array[0].Value())
-		} else {
-			// Empty array - delete it
-			result, _ = sjson.Delete(result, "attributes."+fieldName)
-		}
-	}
-	return result
 }
 
 // convertOriginPortRangeState converts origin_port_range array to origin_port string

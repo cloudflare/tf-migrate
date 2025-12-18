@@ -316,7 +316,10 @@ func testStateTransformations(t *testing.T, migrator transform.ResourceTransform
       "name": "test.example.com"
     },
     "origin_direct": ["tcp://128.66.0.2:3306"],
-    "origin_port": 3306
+    "origin_port": {
+      "type": "number",
+      "value": 3306
+    }
   }
 }`,
 		},
@@ -352,7 +355,10 @@ func testStateTransformations(t *testing.T, migrator transform.ResourceTransform
       "name": "test.example.com"
     },
     "origin_direct": ["tcp://128.66.0.1:23"],
-    "origin_port": "3306-3310"
+    "origin_port": {
+      "type": "string",
+      "value": "3306-3310"
+    }
   }
 }`,
 		},
