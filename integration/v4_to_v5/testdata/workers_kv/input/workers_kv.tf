@@ -53,7 +53,7 @@ resource "cloudflare_workers_kv" "special_chars" {
   account_id   = var.cloudflare_account_id
   namespace_id = cloudflare_workers_kv_namespace.test_namespace.id
   key          = "api/token"
-  value        = "{\"api_key\": \"test123\", \"endpoint\": \"https://api.example.com\"}"
+  value        = "{\"api_key\": \"test123\", \"endpoint\": \"https://api.cf-tf-test.com\"}"
 }
 
 # Test Case 4: KV with empty value

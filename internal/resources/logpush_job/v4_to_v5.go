@@ -6,7 +6,6 @@ import (
 	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
-	"github.com/cloudflare/tf-migrate/internal/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform/state"
@@ -94,7 +93,7 @@ func (m *V4ToV5Migrator) ensureV4SchemaDefaults(body *hclwrite.Body) {
 	for _, pair := range v4Defaults {
 		if body.GetAttribute(pair.field) == nil {
 			// Field not present, add the v4 default
-			tokens := hcl.TokensForSimpleValue(pair.value)
+			tokens := tfhcl.TokensForSimpleValue(pair.value)
 			if tokens != nil {
 				body.SetAttributeRaw(pair.field, tokens)
 			}

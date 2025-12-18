@@ -78,19 +78,19 @@ resource "cloudflare_zero_trust_list" "maximal" {
 
   items = [{
     description = "Secure subdomain"
-    value       = "secure.example.com"
+    value       = "secure.cf-tf-test.com"
     }, {
     description = "Admin portal"
-    value       = "admin.example.com"
+    value       = "admin.cf-tf-test.com"
     }, {
     description = null
-    value       = "example.com"
+    value       = "cf-tf-test.com"
     }, {
     description = null
-    value       = "test.example.com"
+    value       = "test.cf-tf-test.com"
     }, {
     description = null
-    value       = "api.example.com"
+    value       = "api.cf-tf-test.com"
   }]
 }
 
@@ -130,13 +130,13 @@ resource "cloudflare_zero_trust_list" "domain_list" {
 
   items = [{
     description = "Main company domain"
-    value       = "example.com"
+    value       = "cf-tf-test.com"
     }, {
     description = "API subdomain"
-    value       = "api.example.com"
+    value       = "api.cf-tf-test.com"
     }, {
     description = "Testing environment"
-    value       = "test.example.com"
+    value       = "test.cf-tf-test.com"
   }]
 }
 
@@ -149,16 +149,16 @@ resource "cloudflare_zero_trust_list" "email_list" {
 
   items = [{
     description = "CEO email address"
-    value       = "ceo@example.com"
+    value       = "ceo@cf-tf-test.com"
     }, {
     description = "CTO email address"
-    value       = "cto@example.com"
+    value       = "cto@cf-tf-test.com"
     }, {
     description = null
-    value       = "admin@example.com"
+    value       = "admin@cf-tf-test.com"
     }, {
     description = null
-    value       = "security@example.com"
+    value       = "security@cf-tf-test.com"
   }]
 }
 
@@ -176,11 +176,11 @@ resource "cloudflare_zero_trust_list" "security_domains" {
   description = each.value.description
   items = [
     {
-      value       = "${each.key}.example.com"
+      value       = "${each.key}.cf-tf-test.com"
       description = null
     },
     {
-      value       = "www.${each.key}.example.com"
+      value       = "www.${each.key}.cf-tf-test.com"
       description = null
     }
   ]
@@ -200,7 +200,7 @@ resource "cloudflare_zero_trust_list" "list_types" {
   description = "List for ${each.value} environment"
   items = [
     {
-      value       = "${each.value}.example.com"
+      value       = "${each.value}.cf-tf-test.com"
       description = null
     }
   ]
@@ -240,10 +240,10 @@ resource "cloudflare_zero_trust_list" "conditional_enabled" {
   description = "This list is conditionally created"
   items = [{
     description = null
-    value       = "secure.example.com"
+    value       = "secure.cf-tf-test.com"
     }, {
     description = null
-    value       = "protected.example.com"
+    value       = "protected.cf-tf-test.com"
   }]
 }
 
@@ -257,7 +257,7 @@ resource "cloudflare_zero_trust_list" "conditional_disabled" {
   description = "This list is conditionally not created"
   items = [{
     description = null
-    value       = "insecure.example.com"
+    value       = "insecure.cf-tf-test.com"
   }]
 }
 
@@ -287,7 +287,7 @@ resource "cloudflare_zero_trust_list" "with_interpolation" {
   description = "Description with ${local.list_name_prefix} interpolation"
   items = [
     {
-      value       = "https://${var.list_prefix}.example.com/path"
+      value       = "https://${var.list_prefix}.cf-tf-test.com/path"
       description = null
     }
   ]
@@ -326,7 +326,7 @@ resource "cloudflare_zero_trust_list" "with_prevent_destroy" {
   }
   items = [{
     description = null
-    value       = "critical.example.com"
+    value       = "critical.cf-tf-test.com"
   }]
 }
 
@@ -343,7 +343,7 @@ resource "cloudflare_zero_trust_list" "url_list" {
 
   items = [{
     description = "Known phishing site"
-    value       = "https://malicious.example.com/path"
+    value       = "https://malicious.cf-tf-test.com/path"
     }, {
     description = "Spam website"
     value       = "https://spam.example.org/ads"
@@ -399,13 +399,13 @@ resource "cloudflare_zero_trust_list" "complex_emails" {
   description = "Emails with various formats"
   items = [{
     description = null
-    value       = "user+tag@example.com"
+    value       = "user+tag@cf-tf-test.com"
     }, {
     description = null
-    value       = "user.name@subdomain.example.com"
+    value       = "user.name@subdomain.cf-tf-test.com"
     }, {
     description = null
-    value       = "admin@test.example.com"
+    value       = "admin@test.cf-tf-test.com"
   }]
 }
 

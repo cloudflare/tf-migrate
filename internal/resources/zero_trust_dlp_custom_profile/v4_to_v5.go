@@ -9,7 +9,6 @@ import (
 	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
-	"github.com/cloudflare/tf-migrate/internal/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform/state"
@@ -109,7 +108,7 @@ func (m *V4ToV5Migrator) transformCustomEntryBlocks(body *hclwrite.Body) {
 			entryBody := entryBlock.Body()
 			tfhcl.RemoveAttributes(entryBody, "id")
 			m.transformPatternBlock(entryBody)
-			objTokens := hcl.BuildObjectFromBlock(entryBlock)
+			objTokens := tfhcl.BuildObjectFromBlock(entryBlock)
 			entryObjects = append(entryObjects, objTokens)
 		}
 
@@ -145,7 +144,7 @@ func (m *V4ToV5Migrator) transformPatternBlock(entryBody *hclwrite.Body) {
 		return
 	}
 
-	objTokens := hcl.BuildObjectFromBlock(patternBlock)
+	objTokens := tfhcl.BuildObjectFromBlock(patternBlock)
 	entryBody.SetAttributeRaw("pattern", objTokens)
 	entryBody.RemoveBlock(patternBlock)
 }

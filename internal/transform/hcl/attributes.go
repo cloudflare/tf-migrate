@@ -10,8 +10,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-
-	"github.com/cloudflare/tf-migrate/internal/hcl"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // EnsureAttribute ensures an attribute exists with a default value if not present.
@@ -39,7 +38,7 @@ import (
 //	}
 func EnsureAttribute(body *hclwrite.Body, attrName string, defaultValue interface{}) {
 	if body.GetAttribute(attrName) == nil {
-		tokens := hcl.TokensForSimpleValue(defaultValue)
+		tokens := TokensForSimpleValue(defaultValue)
 		if tokens != nil {
 			body.SetAttributeRaw(attrName, tokens)
 		}
@@ -67,7 +66,7 @@ func EnsureAttribute(body *hclwrite.Body, attrName string, defaultValue interfac
 //     }
 //   }
 func SetAttribute(body *hclwrite.Body, attrName string, value interface{}) {
-	tokens := hcl.TokensForSimpleValue(value)
+	tokens := TokensForSimpleValue(value)
 	if tokens != nil {
 		body.SetAttributeRaw(attrName, tokens)
 	}
@@ -376,6 +375,94 @@ func AttributeValueContainsKey(attr *hclwrite.Attribute, key string) bool {
 		}
 	}
 	return false
+}
+
+// AttributeInfo holds an attribute name and its corresponding Attribute object
+type AttributeInfo struct {
+	Name      string
+	Attribute *hclwrite.Attribute
+}
+
+// AttributesOrdered returns attributes from a body in their original order
+// This is important when generating HCL that needs to maintain specific field ordering
+func AttributesOrdered(body *hclwrite.Body) []AttributeInfo {
+	// Get all attributes as a map for lookup
+	attrMap := body.Attributes()
+
+	// Get tokens to find the original order
+	tokens := body.BuildTokens(nil)
+
+	var orderedAttrs []AttributeInfo
+	seenAttrs := make(map[string]bool)
+
+	// Scan through tokens to find attribute names in order
+	for i := range tokens {
+		token := tokens[i]
+
+		// Look for identifier tokens that could be attribute names
+		if token.Type == hclsyntax.TokenIdent && i+1 < len(tokens) {
+			// Check if the next token is an equals sign
+			nextToken := tokens[i+1]
+			if nextToken.Type == hclsyntax.TokenEqual {
+				attrName := string(token.Bytes)
+
+				// Check if this is actually an attribute and we haven't seen it yet
+				if attr, exists := attrMap[attrName]; exists && !seenAttrs[attrName] {
+					orderedAttrs = append(orderedAttrs, AttributeInfo{
+						Name:      attrName,
+						Attribute: attr,
+					})
+					seenAttrs[attrName] = true
+				}
+			}
+		}
+	}
+
+	return orderedAttrs
+}
+
+// SetAttributeValue is a helper that sets an attribute value based on its Go type
+// It automatically converts common Go types to their cty equivalents
+func SetAttributeValue(body *hclwrite.Body, name string, val interface{}) {
+	switch v := val.(type) {
+	case string:
+		body.SetAttributeValue(name, cty.StringVal(v))
+	case int:
+		body.SetAttributeValue(name, cty.NumberIntVal(int64(v)))
+	case int64:
+		body.SetAttributeValue(name, cty.NumberIntVal(v))
+	case float64:
+		body.SetAttributeValue(name, cty.NumberFloatVal(v))
+	case bool:
+		body.SetAttributeValue(name, cty.BoolVal(v))
+	case []string:
+		if len(v) == 0 {
+			body.SetAttributeValue(name, cty.ListValEmpty(cty.String))
+		} else {
+			values := make([]cty.Value, len(v))
+			for i, s := range v {
+				values[i] = cty.StringVal(s)
+			}
+			body.SetAttributeValue(name, cty.ListVal(values))
+		}
+	case map[string]string:
+		values := make(map[string]cty.Value)
+		for k, v := range v {
+			values[k] = cty.StringVal(v)
+		}
+		body.SetAttributeValue(name, cty.ObjectVal(values))
+	default:
+		// For complex types, caller should use SetAttributeRaw with tokens
+		// or SetAttributeValue with a properly constructed cty.Value
+	}
+}
+
+// CopyAttribute copies an attribute from one body to another, preserving its expression
+func CopyAttribute(from, to *hclwrite.Body, attrName string) {
+	if attr := from.GetAttribute(attrName); attr != nil {
+		tokens := attr.Expr().BuildTokens(nil)
+		to.SetAttributeRaw(attrName, tokens)
+	}
 }
 
 // CreateNestedAttributeFromFields creates a nested attribute (object) from a map of field names to tokens.

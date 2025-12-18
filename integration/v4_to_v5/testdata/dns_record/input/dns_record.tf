@@ -21,7 +21,7 @@ resource "cloudflare_record" "example_mx" {
   zone_id = var.cloudflare_zone_id
   name    = "@"
   type    = "MX"
-  value   = "mail.example.com"
+  value   = "mail.cf-tf-test.com"
   priority = 10
 }
 
@@ -33,7 +33,7 @@ resource "cloudflare_record" "example_caa" {
   data {
     flags = "0"
     tag   = "issue"
-    value = "ca.example.com"
+    value = "ca.cf-tf-test.com"
   }
 }
 
@@ -45,7 +45,7 @@ resource "cloudflare_record" "example_caa_map" {
   data {
     flags   = "128"
     tag     = "issuewild"
-    value   = "ca.example.com"
+    value   = "ca.cf-tf-test.com"
   }
 }
 
@@ -59,7 +59,7 @@ resource "cloudflare_record" "example_srv" {
     priority = 5
     weight   = 10
     port     = 5060
-    target   = "sip.example.com"
+    target   = "sip.cf-tf-test.com"
   }
 }
 
@@ -71,7 +71,7 @@ resource "cloudflare_record" "example_uri" {
   priority = 10
   data {
     weight = 20
-    target = "http://example.com/path"
+    target = "http://cf-tf-test.com/path"
   }
 }
 
@@ -79,7 +79,7 @@ resource "cloudflare_record" "example_uri" {
 resource "cloudflare_record" "example_cname" {
   zone_id = var.cloudflare_zone_id
   name = "${local.name_prefix}-www"
-  value   = "example.com"
+  value   = "cf-tf-test.com"
   type    = "CNAME"
   proxied = false
 }
@@ -88,7 +88,7 @@ resource "cloudflare_record" "example_cname" {
 resource "cloudflare_record" "example_txt" {
   zone_id = var.cloudflare_zone_id
   name    = "@"
-  value   = "v=spf1 include:_spf.example.com ~all"
+  value   = "v=spf1 include:_spf.cf-tf-test.com ~all"
   type    = "TXT"
   ttl     = 3600
 }
@@ -110,7 +110,7 @@ resource "cloudflare_record" "example_openpgpkey" {
 # Pattern 1: Variable references
 variable "domain_name" {
   type    = string
-  default = "example.com"
+  default = "cf-tf-test.com"
 }
 
 variable "record_ttl" {
@@ -172,7 +172,7 @@ variable "txt_records" {
   default = [
     {
       name  = "_dmarc"
-      value = "v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com"
+      value = "v=DMARC1; p=quarantine; rua=mailto:dmarc@cf-tf-test.com"
     },
     {
       name  = "_dkim"
