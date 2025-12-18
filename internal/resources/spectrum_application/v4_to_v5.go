@@ -126,10 +126,13 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// 3. Convert edge_ips array to object
 	result = m.convertArrayToObject(result, attrs, "edge_ips")
 
-	// 4. Convert origin_port_range to origin_port string
+	// 4. Convert origin_port_range to origin_port string (wrapped in DynamicAttribute format)
 	result = m.convertOriginPortRangeState(result, attrs)
 
-	// 5. Set schema_version to 0 for v5
+	// 5. Wrap any existing origin_port integer in DynamicAttribute format
+	result = m.wrapOriginPortDynamic(result, attrs)
+
+	// 6. Set schema_version to 0 for v5
 	result, _ = sjson.Set(result, "schema_version", 0)
 
 	return result, nil
@@ -161,10 +164,58 @@ func (m *V4ToV5Migrator) convertOriginPortRangeState(result string, attrs gjson.
 			end := array[0].Get("end").Int()
 			// Create string "start-end"
 			portRange := fmt.Sprintf("%d-%d", start, end)
-			result, _ = sjson.Set(result, "attributes.origin_port", portRange)
+
+			// For DynamicAttribute, wrap value with type information
+			// Format: {"type": "string", "value": "start-end"}
+			dynamicValue := map[string]interface{}{
+				"type":  "string",
+				"value": portRange,
+			}
+			result, _ = sjson.Set(result, "attributes.origin_port", dynamicValue)
 		}
 		// Remove origin_port_range
 		result, _ = sjson.Delete(result, "attributes.origin_port_range")
 	}
+	return result
+}
+
+// wrapOriginPortDynamic wraps any existing origin_port value in DynamicAttribute format
+// This handles cases where origin_port was already an integer in v4
+func (m *V4ToV5Migrator) wrapOriginPortDynamic(result string, attrs gjson.Result) string {
+	originPortField := attrs.Get("origin_port")
+
+	// Only wrap if origin_port exists and is not already wrapped
+	// (convertOriginPortRangeState may have already set it)
+	if !originPortField.Exists() {
+		return result
+	}
+
+	// Check if it's already wrapped (has "type" field)
+	if originPortField.IsObject() && originPortField.Get("type").Exists() {
+		// Already wrapped, skip
+		return result
+	}
+
+	// Wrap the value based on its type
+	var dynamicValue map[string]interface{}
+
+	if originPortField.Type == gjson.Number {
+		// Integer port - wrap as number type
+		dynamicValue = map[string]interface{}{
+			"type":  "number",
+			"value": originPortField.Int(),
+		}
+	} else if originPortField.Type == gjson.String {
+		// String port (shouldn't happen in v4, but handle it)
+		dynamicValue = map[string]interface{}{
+			"type":  "string",
+			"value": originPortField.String(),
+		}
+	} else {
+		// Unexpected type, leave as-is
+		return result
+	}
+
+	result, _ = sjson.Set(result, "attributes.origin_port", dynamicValue)
 	return result
 }
