@@ -121,7 +121,23 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// 1. Transform config array to object
 	result = m.transformConfigField(result, attrs)
 
-	// 2. Transform scim_config array to object
+	// 2. Transform empty values to null for config fields not explicitly set in user's HCL
+	// Re-parse attrs after config transformation
+	attrs = gjson.Parse(result).Get("attributes")
+	configField := attrs.Get("config")
+	if configField.Exists() && configField.IsObject() {
+		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+			Ctx:              ctx,
+			Result:           result,
+			FieldPath:        "attributes.config",
+			FieldResult:      configField,
+			ResourceName:     resourceName,
+			HCLAttributePath: "config",
+			CanHandle:        m.CanHandle,
+		})
+	}
+
+	// 3. Transform scim_config array to object
 	result = m.transformScimConfigField(result, attrs)
 
 	// Always set schema_version to 0 for v5
