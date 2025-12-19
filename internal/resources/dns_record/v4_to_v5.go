@@ -311,7 +311,7 @@ func (m *V4ToV5Migrator) transformDataFieldForInstance(result string, instance g
 	}
 
 	// Transform the data field
-	result = state.TransformDataFieldArrayToObject(result, "attributes", instance.Get("attributes"), recordType, options)
+	result = state.TransformFieldArrayToObject(result, "attributes", instance.Get("attributes"), "data", options)
 
 	// Generate content field for CAA records
 	if recordType == "CAA" {
@@ -453,4 +453,3 @@ func (m *V4ToV5Migrator) isSimpleRecordType(recordType string) bool {
 	}
 	return simpleTypes[recordType]
 }
-
