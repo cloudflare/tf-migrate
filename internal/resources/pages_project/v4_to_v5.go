@@ -100,25 +100,12 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		deploymentConfigsBlock = body.AppendNewBlock("deployment_configs", nil)
 		deploymentConfigsBody := deploymentConfigsBlock.Body()
 
-		// Add preview block
-		previewBlock := deploymentConfigsBody.AppendNewBlock("preview", nil)
-		previewBody := previewBlock.Body()
-		// Set compatibility_flags to empty list using proper HCL tokens
-		previewBody.SetAttributeRaw("compatibility_flags", hclwrite.TokensForValue(cty.ListValEmpty(cty.String)))
-
-		// Add production block
-		productionBlock := deploymentConfigsBody.AppendNewBlock("production", nil)
-		productionBody := productionBlock.Body()
-		// Set compatibility_flags to empty list using proper HCL tokens
-		productionBody.SetAttributeRaw("compatibility_flags", hclwrite.TokensForValue(cty.ListValEmpty(cty.String)))
-	} else if deploymentConfigsAttr != nil {
-		// deployment_configs exists as an attribute - need to ensure compatibility_flags in preview/production
-		// We need to add compatibility_flags to the nested objects
-		newTokens := m.addCompatibilityFlagsToDeploymentConfigsAttr(deploymentConfigsAttr)
-		if newTokens != nil {
-			body.SetAttributeRaw("deployment_configs", newTokens)
-		}
+		// Add preview and production blocks (without compatibility_flags - let provider handle default)
+		deploymentConfigsBody.AppendNewBlock("preview", nil)
+		deploymentConfigsBody.AppendNewBlock("production", nil)
 	}
+	// If deployment_configs exists as an attribute, leave it as-is
+	// Don't add compatibility_flags - let provider handle defaults
 
 	// Important: Process nested blocks BEFORE converting parent blocks
 	// This ensures we can access and transform the nested structure
@@ -146,10 +133,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		previewBlock := tfhcl.FindBlockByType(deploymentConfigsBody, "preview")
 		if previewBlock != nil {
 			previewBody := previewBlock.Body()
-			// Ensure compatibility_flags exists (preserve if already present)
-			if previewBody.GetAttribute("compatibility_flags") == nil {
-				previewBody.SetAttributeRaw("compatibility_flags", hclwrite.TokensForValue(cty.ListValEmpty(cty.String)))
-			}
+			// Don't add compatibility_flags if missing - let provider handle default (null)
+			// Only preserve it if already present in config
 			if previewBody.GetAttribute("usage_model") == nil {
 				previewBody.SetAttributeRaw("usage_model", hclwrite.TokensForValue(cty.StringVal(previewUsageModel)))
 			}
@@ -165,10 +150,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		productionBlock := tfhcl.FindBlockByType(deploymentConfigsBody, "production")
 		if productionBlock != nil {
 			productionBody := productionBlock.Body()
-			// Ensure compatibility_flags exists (preserve if already present)
-			if productionBody.GetAttribute("compatibility_flags") == nil {
-				productionBody.SetAttributeRaw("compatibility_flags", hclwrite.TokensForValue(cty.ListValEmpty(cty.String)))
-			}
+			// Don't add compatibility_flags if missing - let provider handle default (null)
+			// Only preserve it if already present in config
 			// Ensure fail_open is set to false (preserve if already present)
 			if productionBody.GetAttribute("fail_open") == nil {
 				productionBody.SetAttributeRaw("fail_open", hclwrite.TokensForValue(cty.False))
@@ -458,10 +441,11 @@ func (m *V4ToV5Migrator) processDeploymentConfigState(result string, basePath st
 		result, _ = sjson.Set(result, basePath+".compatibility_date", nil)
 	}
 
-	// Convert compatibility_flags from null to empty array (v5 requirement)
+	// Leave compatibility_flags as null if not present (matches provider behavior)
+	// The provider returns null for this field when not explicitly set
 	compatFlags := freshDeploymentConfig.Get("compatibility_flags")
 	if !compatFlags.Exists() || compatFlags.Type == gjson.Null {
-		result, _ = sjson.Set(result, basePath+".compatibility_flags", []interface{}{})
+		result, _ = sjson.Set(result, basePath+".compatibility_flags", nil)
 	}
 
 	deploymentConf := freshDeploymentConfig.Get("usage_model")

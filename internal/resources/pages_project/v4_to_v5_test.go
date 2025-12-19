@@ -25,12 +25,10 @@ func TestV4ToV5Transformation(t *testing.T) {
   build_config      = {}
   deployment_configs = {
     preview = {
-      compatibility_flags = []
       usage_model         = "bundled"
       fail_open           = false
     }
     production = {
-      compatibility_flags = []
       fail_open           = false
       usage_model         = "bundled"
     }
@@ -58,11 +56,9 @@ func TestV4ToV5Transformation(t *testing.T) {
   production_branch = "main"
   deployment_configs = {
     preview = {
-      compatibility_flags = []
       fail_open           = true
     }
     production = {
-      compatibility_flags = []
       fail_open           = true
     }
   }
@@ -92,12 +88,10 @@ func TestV4ToV5Transformation(t *testing.T) {
   }
   deployment_configs = {
     preview = {
-      compatibility_flags = []
       usage_model         = "bundled"
       fail_open           = false
     }
     production = {
-      compatibility_flags = []
       fail_open           = false
       usage_model         = "bundled"
     }
@@ -139,12 +133,10 @@ func TestV4ToV5Transformation(t *testing.T) {
   }
   deployment_configs = {
     preview = {
-      compatibility_flags = []
       usage_model         = "bundled"
       fail_open           = false
     }
     production = {
-      compatibility_flags = []
       fail_open           = false
       usage_model         = "bundled"
     }
@@ -185,7 +177,6 @@ func TestV4ToV5Transformation(t *testing.T) {
   deployment_configs = {
     preview = {
       compatibility_date  = "2024-01-01"
-      compatibility_flags = []
       usage_model         = "bundled"
       fail_open           = false
       placement = {
@@ -194,7 +185,6 @@ func TestV4ToV5Transformation(t *testing.T) {
     }
     production = {
       compatibility_date  = "2024-01-01"
-      compatibility_flags = []
       fail_open           = false
       usage_model         = "bundled"
       placement = {
@@ -253,7 +243,6 @@ func TestV4ToV5Transformation(t *testing.T) {
   }
   deployment_configs = {
     preview = {
-      compatibility_flags = []
       usage_model         = "bundled"
       fail_open           = false
       placement = {
@@ -431,7 +420,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "preview": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": null,
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false,
         "env_vars": {
@@ -520,7 +509,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "preview": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": null,
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false,
         "kv_namespaces": {
@@ -606,7 +595,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "preview": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": null,
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false,
         "services": {
@@ -729,7 +718,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "preview": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": null,
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false,
         "env_vars": {
@@ -768,7 +757,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "production": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": null,
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false,
         "env_vars": {
@@ -842,7 +831,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "production": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": "2024-01-01",
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false,
         "ai_bindings": null,
@@ -910,7 +899,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "preview": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": "2024-01-01",
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "standard",
         "fail_open": false,
         "ai_bindings": null,
@@ -978,7 +967,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "production": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": "2024-01-01",
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "standard",
         "fail_open": false,
         "ai_bindings": null,
@@ -1046,7 +1035,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "production": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": "2024-01-01",
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false,
         "ai_bindings": null,
@@ -1116,7 +1105,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "preview": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": "2024-01-01",
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false,
         "ai_bindings": null,
@@ -1140,7 +1129,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "production": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": "2024-01-01",
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false,
         "ai_bindings": null,
@@ -1192,13 +1181,13 @@ func TestV4ToV5Transformation(t *testing.T) {
     "deployment_configs": [{
       "preview": [{
         "compatibility_date": "2024-01-01",
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false
       }],
       "production": [{
         "compatibility_date": "2024-01-01",
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false
       }]
@@ -1216,7 +1205,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "preview": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": "2024-01-01",
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false,
         "ai_bindings": null,
@@ -1240,7 +1229,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       "production": {
         "always_use_latest_compatibility_date": false,
         "compatibility_date": "2024-01-01",
-        "compatibility_flags": [],
+        "compatibility_flags": null,
         "usage_model": "bundled",
         "fail_open": false,
         "ai_bindings": null,
