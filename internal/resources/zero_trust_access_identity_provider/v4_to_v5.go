@@ -1,7 +1,6 @@
 package zero_trust_access_identity_provider
 
 import (
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -9,6 +8,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
+	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of Zero Trust Access Identity Provider resources from v4 to v5
@@ -60,23 +60,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.RemoveAttributes(configBody, "api_token")
 
 		// Rename idp_public_cert to idp_public_certs and wrap in array
-		if certAttr := configBody.GetAttribute("idp_public_cert"); certAttr != nil {
-			// Get the certificate value
-			certTokens := certAttr.Expr().BuildTokens(nil)
-
-			// Create array with the certificate value
-			arrayTokens := hclwrite.Tokens{
-				{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")},
-			}
-			arrayTokens = append(arrayTokens, certTokens...)
-			arrayTokens = append(arrayTokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
-
-			// Set as idp_public_certs
-			configBody.SetAttributeRaw("idp_public_certs", arrayTokens)
-
-			// Remove old attribute
-			configBody.RemoveAttribute("idp_public_cert")
-		}
+		tfhcl.RenameAndWrapInArray(configBody, "idp_public_cert", "idp_public_certs")
 	})
 
 	// 2. Convert scim_config block to attribute (with preprocessing)
@@ -91,13 +75,9 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	})
 
 	// 3. Ensure config attribute exists (required in v5)
-	// If no config block was found and no config attribute exists, add empty config
+	// Create empty config object if it doesn't exist (EnsureAttribute doesn't work for objects)
 	if body.GetAttribute("config") == nil {
-		emptyObjTokens := hclwrite.Tokens{
-			{Type: hclsyntax.TokenOBrace, Bytes: []byte("{")},
-			{Type: hclsyntax.TokenCBrace, Bytes: []byte("}")},
-		}
-		body.SetAttributeRaw("config", emptyObjTokens)
+		body.SetAttributeRaw("config", hclwrite.TokensForObject([]hclwrite.ObjectAttrTokens{}))
 	}
 
 	return &transform.TransformResult{
@@ -148,129 +128,38 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 
 // transformConfigField unwraps the config array and handles field transformations
 func (m *V4ToV5Migrator) transformConfigField(result string, attrs gjson.Result) string {
-	configField := attrs.Get("config")
-
-	// Handle missing config (e.g., onetimepin type)
-	if !configField.Exists() || configField.Type == gjson.Null {
-		// Config is required in v5, set to empty object
-		result, _ = sjson.Set(result, "attributes.config", map[string]interface{}{})
-		return result
-	}
-
-	// Unwrap array to object [{}] → {}
-	if configField.IsArray() {
-		configArray := configField.Array()
-		if len(configArray) > 0 {
-			// Get the first element (config is MaxItems:1)
-			configObj := configArray[0]
-
-			// Convert to map for manipulation
-			configMap := make(map[string]interface{})
-			configObj.ForEach(func(key, value gjson.Result) bool {
-				fieldName := key.String()
-
-				// Skip deprecated api_token field
-				if fieldName == "api_token" {
-					return true
-				}
-
-				// Handle idp_public_cert → idp_public_certs transformation
-				if fieldName == "idp_public_cert" {
-					if value.Type == gjson.String && value.String() != "" {
-						// Wrap string in array
-						configMap["idp_public_certs"] = []string{value.String()}
-					}
-					return true
-				}
-
-				// Keep all other fields
-				configMap[fieldName] = value.Value()
-				return true
-			})
-
-			result, _ = sjson.Set(result, "attributes.config", configMap)
-		} else {
-			// Empty array, set to empty object
-			result, _ = sjson.Set(result, "attributes.config", map[string]interface{}{})
-		}
-	} else if configField.IsObject() {
-		// Already an object (shouldn't happen in v4, but handle gracefully)
-		// Still need to check for deprecated fields and transformations
-		configMap := make(map[string]interface{})
-		configField.ForEach(func(key, value gjson.Result) bool {
-			fieldName := key.String()
-
-			if fieldName == "api_token" {
-				return true
-			}
-
-			if fieldName == "idp_public_cert" {
+	// Use TransformFieldArrayToObject helper to handle the array-to-object transformation
+	options := state.ArrayToObjectOptions{
+		SkipFields: []string{"api_token"}, // Remove deprecated field
+		RenameFields: map[string]string{
+			"idp_public_cert": "idp_public_certs", // Rename field
+		},
+		FieldTransforms: map[string]func(gjson.Result) interface{}{
+			// Note: FieldTransforms uses the NEW field name (after renaming)
+			"idp_public_certs": func(value gjson.Result) interface{} {
+				// Transform string to array
 				if value.Type == gjson.String && value.String() != "" {
-					configMap["idp_public_certs"] = []string{value.String()}
+					return []string{value.String()}
 				}
-				return true
-			}
-
-			configMap[fieldName] = value.Value()
-			return true
-		})
-		result, _ = sjson.Set(result, "attributes.config", configMap)
+				return []string{}
+			},
+		},
+		EnsureObjectExists: true, // Config is required in v5, ensure it exists as an object
 	}
+
+	result = state.TransformFieldArrayToObject(result, "attributes", attrs, "config", options)
 
 	return result
 }
 
 // transformScimConfigField unwraps the scim_config array and handles field transformations
 func (m *V4ToV5Migrator) transformScimConfigField(result string, attrs gjson.Result) string {
-	scimConfigField := attrs.Get("scim_config")
-
-	// scim_config is optional, if missing just return
-	if !scimConfigField.Exists() || scimConfigField.Type == gjson.Null {
-		return result
+	// Use TransformFieldArrayToObject helper to handle the array-to-object transformation
+	options := state.ArrayToObjectOptions{
+		SkipFields: []string{"group_member_deprovision"}, // Remove deprecated field
 	}
 
-	// Unwrap array to object [{}] → {}
-	if scimConfigField.IsArray() {
-		scimArray := scimConfigField.Array()
-		if len(scimArray) > 0 {
-			// Get the first element (scim_config is MaxItems:1)
-			scimObj := scimArray[0]
-
-			// Convert to map for manipulation
-			scimMap := make(map[string]interface{})
-			scimObj.ForEach(func(key, value gjson.Result) bool {
-				fieldName := key.String()
-
-				// Skip deprecated group_member_deprovision field
-				if fieldName == "group_member_deprovision" {
-					return true
-				}
-
-				// Keep all other fields (including secret - it's computed but preserve existing value)
-				scimMap[fieldName] = value.Value()
-				return true
-			})
-
-			result, _ = sjson.Set(result, "attributes.scim_config", scimMap)
-		} else {
-			// Empty array, delete scim_config (it's optional)
-			result, _ = sjson.Delete(result, "attributes.scim_config")
-		}
-	} else if scimConfigField.IsObject() {
-		// Already an object (shouldn't happen in v4, but handle gracefully)
-		scimMap := make(map[string]interface{})
-		scimConfigField.ForEach(func(key, value gjson.Result) bool {
-			fieldName := key.String()
-
-			if fieldName == "group_member_deprovision" {
-				return true
-			}
-
-			scimMap[fieldName] = value.Value()
-			return true
-		})
-		result, _ = sjson.Set(result, "attributes.scim_config", scimMap)
-	}
+	result = state.TransformFieldArrayToObject(result, "attributes", attrs, "scim_config", options)
 
 	return result
 }

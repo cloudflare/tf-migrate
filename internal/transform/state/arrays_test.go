@@ -152,142 +152,240 @@ func TestTransformArrayToObject(t *testing.T) {
 	}
 }
 
-func TestTransformDataFieldArrayToObject(t *testing.T) {
+func TestTransformFieldArrayToObject_EnsureObjectExists(t *testing.T) {
 	tests := []struct {
-		name        string
-		inputJSON   string
-		path        string
-		recordType  string
-		options     ArrayToObjectOptions
-		expectedKey string
-		expectValue bool
+		name            string
+		inputJSON       string
+		path            string
+		fieldName       string
+		options         ArrayToObjectOptions
+		expectedExists  bool
+		expectedIsEmpty bool
+		expectedValue   map[string]interface{}
 	}{
 		{
-			name: "Transform array data field to object",
+			name: "EnsureObjectExists creates empty object when field missing",
 			inputJSON: `{
-				"resources": [{
-					"instances": [{
-						"attributes": {
-							"type": "SRV",
-							"data": [
-								{
-									"priority": 10,
-									"weight": 60,
-									"port": 5060,
-									"target": "sipserver.example.com"
-								}
-							]
-						}
-					}]
-				}]
+				"attributes": {
+					"id": "test-id",
+					"name": "Test"
+				}
 			}`,
-			path:        "resources.0.instances.0.attributes",
-			recordType:  "SRV",
-			options:     ArrayToObjectOptions{},
-			expectedKey: "data.priority",
-			expectValue: true,
-		},
-		{
-			name: "Remove empty array data field",
-			inputJSON: `{
-				"resources": [{
-					"instances": [{
-						"attributes": {
-							"type": "A",
-							"data": []
-						}
-					}]
-				}]
-			}`,
-			path:        "resources.0.instances.0.attributes",
-			recordType:  "A",
-			options:     ArrayToObjectOptions{},
-			expectedKey: "data",
-			expectValue: false,
-		},
-		{
-			name: "Handle existing object data field",
-			inputJSON: `{
-				"resources": [{
-					"instances": [{
-						"attributes": {
-							"type": "CAA",
-							"data": {
-								"flags": 0,
-								"tag": "issue",
-								"value": "letsencrypt.org"
-							}
-						}
-					}]
-				}]
-			}`,
-			path:       "resources.0.instances.0.attributes",
-			recordType: "CAA",
+			path:      "attributes",
+			fieldName: "config",
 			options: ArrayToObjectOptions{
-				SkipFields: []string{"flags"},
+				EnsureObjectExists: true,
 			},
-			expectedKey: "data.tag",
-			expectValue: true,
+			expectedExists:  true,
+			expectedIsEmpty: true,
+			expectedValue:   map[string]interface{}{},
 		},
 		{
-			name: "Add default fields when data doesn't exist",
+			name: "EnsureObjectExists creates empty object when field is null",
 			inputJSON: `{
-				"resources": [{
-					"instances": [{
-						"attributes": {
-							"type": "A"
-						}
-					}]
-				}]
+				"attributes": {
+					"id": "test-id",
+					"name": "Test",
+					"config": null
+				}
 			}`,
-			path:       "resources.0.instances.0.attributes",
-			recordType: "A",
+			path:      "attributes",
+			fieldName: "config",
 			options: ArrayToObjectOptions{
+				EnsureObjectExists: true,
+			},
+			expectedExists:  true,
+			expectedIsEmpty: true,
+			expectedValue:   map[string]interface{}{},
+		},
+		{
+			name: "EnsureObjectExists creates empty object when field is empty array",
+			inputJSON: `{
+				"attributes": {
+					"id": "test-id",
+					"name": "Test",
+					"config": []
+				}
+			}`,
+			path:      "attributes",
+			fieldName: "config",
+			options: ArrayToObjectOptions{
+				EnsureObjectExists: true,
+			},
+			expectedExists:  true,
+			expectedIsEmpty: true,
+			expectedValue:   map[string]interface{}{},
+		},
+		{
+			name: "EnsureObjectExists with DefaultFields creates object with defaults when field missing",
+			inputJSON: `{
+				"attributes": {
+					"id": "test-id",
+					"name": "Test"
+				}
+			}`,
+			path:      "attributes",
+			fieldName: "config",
+			options: ArrayToObjectOptions{
+				EnsureObjectExists: true,
 				DefaultFields: map[string]interface{}{
-					"value": "192.0.2.1",
+					"enabled": false,
+					"timeout": 30,
 				},
 			},
-			expectedKey: "data.value",
-			expectValue: true,
+			expectedExists:  true,
+			expectedIsEmpty: false,
+			expectedValue: map[string]interface{}{
+				"enabled": false,
+				"timeout": int64(30),
+			},
 		},
 		{
-			name: "Delete data field when all fields are skipped",
+			name: "Without EnsureObjectExists, missing field stays missing",
 			inputJSON: `{
-				"resources": [{
-					"instances": [{
-						"attributes": {
-							"type": "A",
-							"data": [
-								{
-									"priority": 10
-								}
-							]
-						}
-					}]
-				}]
+				"attributes": {
+					"id": "test-id",
+					"name": "Test"
+				}
 			}`,
-			path:       "resources.0.instances.0.attributes",
-			recordType: "A",
+			path:      "attributes",
+			fieldName: "config",
 			options: ArrayToObjectOptions{
-				SkipFields: []string{"priority"},
+				EnsureObjectExists: false,
 			},
-			expectedKey: "data",
-			expectValue: false,
+			expectedExists: false,
+		},
+		{
+			name: "Without EnsureObjectExists, empty array is deleted",
+			inputJSON: `{
+				"attributes": {
+					"id": "test-id",
+					"name": "Test",
+					"config": []
+				}
+			}`,
+			path:      "attributes",
+			fieldName: "config",
+			options: ArrayToObjectOptions{
+				EnsureObjectExists: false,
+			},
+			expectedExists: false,
+		},
+		{
+			name: "EnsureObjectExists transforms array with SkipFields and RenameFields",
+			inputJSON: `{
+				"attributes": {
+					"id": "test-id",
+					"config": [
+						{
+							"client_id": "test-client",
+							"api_token": "deprecated",
+							"idp_public_cert": "CERT123"
+						}
+					]
+				}
+			}`,
+			path:      "attributes",
+			fieldName: "config",
+			options: ArrayToObjectOptions{
+				EnsureObjectExists: true,
+				SkipFields:         []string{"api_token"},
+				RenameFields: map[string]string{
+					"idp_public_cert": "idp_public_certs",
+				},
+			},
+			expectedExists:  true,
+			expectedIsEmpty: false,
+			expectedValue: map[string]interface{}{
+				"client_id":       "test-client",
+				"idp_public_certs": "CERT123",
+			},
+		},
+		{
+			name: "EnsureObjectExists with FieldTransforms",
+			inputJSON: `{
+				"attributes": {
+					"id": "test-id",
+					"config": [
+						{
+							"cert": "CERT123"
+						}
+					]
+				}
+			}`,
+			path:      "attributes",
+			fieldName: "config",
+			options: ArrayToObjectOptions{
+				EnsureObjectExists: true,
+				RenameFields: map[string]string{
+					"cert": "certs",
+				},
+				FieldTransforms: map[string]func(gjson.Result) interface{}{
+					"certs": func(value gjson.Result) interface{} {
+						// Wrap string in array
+						return []string{value.String()}
+					},
+				},
+			},
+			expectedExists:  true,
+			expectedIsEmpty: false,
+			expectedValue: map[string]interface{}{
+				"certs": []interface{}{"CERT123"},
+			},
+		},
+		{
+			name: "EnsureObjectExists preserves existing object and applies transformations",
+			inputJSON: `{
+				"attributes": {
+					"id": "test-id",
+					"config": {
+						"client_id": "test-client",
+						"api_token": "deprecated",
+						"enabled": true
+					}
+				}
+			}`,
+			path:      "attributes",
+			fieldName: "config",
+			options: ArrayToObjectOptions{
+				EnsureObjectExists: true,
+				SkipFields:         []string{"api_token"},
+			},
+			expectedExists:  true,
+			expectedIsEmpty: false,
+			expectedValue: map[string]interface{}{
+				"client_id": "test-client",
+				"enabled":   true,
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			instance := gjson.Get(tt.inputJSON, tt.path)
-			result := TransformDataFieldArrayToObject(tt.inputJSON, tt.path, instance, tt.recordType, tt.options)
+			instance := gjson.Parse(tt.inputJSON).Get(tt.path)
+			result := TransformFieldArrayToObject(tt.inputJSON, tt.path, instance, tt.fieldName, tt.options)
 
-			fullPath := tt.path + "." + tt.expectedKey
-			value := gjson.Get(result, fullPath)
+			// Check if field exists
+			fieldPath := tt.path + "." + tt.fieldName
+			fieldValue := gjson.Get(result, fieldPath)
 
-			if tt.expectValue {
-				assert.True(t, value.Exists(), "Expected %s to exist", fullPath)
+			if tt.expectedExists {
+				assert.True(t, fieldValue.Exists(), "Expected %s to exist", fieldPath)
+				assert.True(t, fieldValue.IsObject(), "Expected %s to be an object", fieldPath)
+
+				if tt.expectedIsEmpty {
+					assert.Equal(t, 0, len(fieldValue.Map()), "Expected %s to be an empty object", fieldPath)
+				} else {
+					// Check expected value
+					actualMap := make(map[string]interface{})
+					fieldValue.ForEach(func(key, value gjson.Result) bool {
+						actualMap[key.String()] = ConvertGjsonValue(value)
+						return true
+					})
+					assert.Equal(t, tt.expectedValue, actualMap, "Field values don't match")
+				}
 			} else {
-				assert.False(t, value.Exists(), "Expected %s to not exist", fullPath)
+				assert.False(t, fieldValue.Exists(), "Expected %s to not exist", fieldPath)
 			}
 		})
 	}

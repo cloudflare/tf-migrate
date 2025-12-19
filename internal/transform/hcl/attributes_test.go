@@ -121,6 +121,76 @@ resource "test" "example" {
 	}
 }
 
+func TestRenameAndWrapInArray(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		oldName     string
+		newName     string
+		expected    bool
+		contains    string
+		notContains string
+	}{
+		{
+			name: "Rename and wrap string in array",
+			input: `
+resource "test" "example" {
+  issuer_url      = "https://saml.example.com"
+  idp_public_cert = "MIIDpDCCAoygAwIBAgIGAV..."
+}`,
+			oldName:     "idp_public_cert",
+			newName:     "idp_public_certs",
+			expected:    true,
+			contains:    `idp_public_certs = ["MIIDpDCCAoygAwIBAgIGAV..."]`,
+			notContains: "idp_public_cert =",
+		},
+		{
+			name: "Rename and wrap number in array",
+			input: `
+resource "test" "example" {
+  name = "test"
+  port = 443
+}`,
+			oldName:     "port",
+			newName:     "ports",
+			expected:    true,
+			contains:    "ports = [443]",
+			notContains: "port =",
+		},
+		{
+			name: "Return false for non-existent attribute",
+			input: `
+resource "test" "example" {
+  name = "test"
+}`,
+			oldName:     "missing",
+			newName:     "missing_list",
+			expected:    false,
+			notContains: "missing",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclwrite.ParseConfig([]byte(tt.input), "", hcl.InitialPos)
+			require.False(t, diags.HasErrors())
+
+			body := file.Body().Blocks()[0].Body()
+			result := RenameAndWrapInArray(body, tt.oldName, tt.newName)
+
+			assert.Equal(t, tt.expected, result)
+
+			output := string(file.Bytes())
+			if tt.contains != "" {
+				assert.Contains(t, output, tt.contains)
+			}
+			if tt.notContains != "" {
+				assert.NotContains(t, output, tt.notContains)
+			}
+		})
+	}
+}
+
 func TestRemoveAttributes(t *testing.T) {
 	tests := []struct {
 		name             string

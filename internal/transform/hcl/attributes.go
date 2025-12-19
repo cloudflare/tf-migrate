@@ -140,6 +140,45 @@ func RenameAttribute(body *hclwrite.Body, oldName, newName string) bool {
 	return renamed
 }
 
+// RenameAndWrapInArray renames an attribute and wraps its value in an array.
+// This is useful when a field changes from scalar to list type during migration.
+//
+// Example - Converting certificate string to list:
+//
+// Before:
+//
+//	config {
+//	  issuer_url      = "https://saml.example.com"
+//	  idp_public_cert = "MIIDpDCCAoygAwIBAgIGAV..."
+//	}
+//
+// After calling RenameAndWrapInArray(configBody, "idp_public_cert", "idp_public_certs"):
+//
+//	config {
+//	  issuer_url       = "https://saml.example.com"
+//	  idp_public_certs = ["MIIDpDCCAoygAwIBAgIGAV..."]
+//	}
+func RenameAndWrapInArray(body *hclwrite.Body, oldName, newName string) bool {
+	attr := body.GetAttribute(oldName)
+	if attr == nil {
+		return false
+	}
+
+	// Get the original value tokens
+	valueTokens := attr.Expr().BuildTokens(nil)
+
+	// Wrap in array: [value]
+	arrayTokens := hclwrite.TokensForTuple([]hclwrite.Tokens{valueTokens})
+
+	// Set as new attribute name
+	body.SetAttributeRaw(newName, arrayTokens)
+
+	// Remove old attribute
+	body.RemoveAttribute(oldName)
+
+	return true
+}
+
 // updateAttributeListReferences updates references to oldName in a list attribute (like ignore_changes)
 // Returns updated tokens if any replacements were made, nil otherwise
 func updateAttributeListReferences(attr *hclwrite.Attribute, oldName, newName string) hclwrite.Tokens {
