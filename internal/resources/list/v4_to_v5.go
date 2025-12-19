@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
@@ -116,6 +115,29 @@ func transformStaticItemBlocks(body *hclwrite.Body, itemBlocks []*hclwrite.Block
 		return
 	}
 
+	// Check if any item block contains non-literal expressions (like each.key, each.value)
+	// If so, use the string-based expression building approach to preserve them
+	hasExpressions := false
+	for _, itemBlock := range itemBlocks {
+		if itemBlockHasExpressions(itemBlock) {
+			hasExpressions = true
+			break
+		}
+	}
+
+	if hasExpressions {
+		// Use string-based approach to preserve expressions
+		itemsExpr := buildStaticItemsExpressionStringPreserving(itemBlocks, kind)
+		for _, itemBlock := range itemBlocks {
+			body.RemoveBlock(itemBlock)
+		}
+		if itemsExpr != "" {
+			setItemsAttributeFromString(body, itemsExpr)
+		}
+		return
+	}
+
+	// For simple literal values, use cty.Value approach
 	var itemObjects []cty.Value
 
 	for _, itemBlock := range itemBlocks {
@@ -197,6 +219,7 @@ func buildItemObjectFromBlock(itemBlock *hclwrite.Block, kind string) cty.Value 
 						if sourceAttr := redirectBody.GetAttribute("source_url"); sourceAttr != nil {
 							sourceValue := tfhcl.ExtractStringFromAttribute(sourceAttr)
 							if sourceValue != "" {
+								sourceValue = ensureSourceURLHasPath(sourceValue)
 								redirectMap["source_url"] = cty.StringVal(sourceValue)
 							}
 						}
@@ -362,7 +385,7 @@ func buildObjectFromContentBlock(contentBlock *hclwrite.Block, kind string, iter
 	// Then add comment attribute
 	if commentAttr := contentBody.GetAttribute("comment"); commentAttr != nil {
 		commentExpr := strings.TrimSpace(string(commentAttr.Expr().BuildTokens(nil).Bytes()))
-		commentExpr = stripIteratorValueSuffix(commentExpr, iteratorName)
+		commentExpr = tfhcl.StripIteratorValueSuffix(commentExpr, iteratorName)
 		fields = append(fields, fmt.Sprintf("comment = %s", commentExpr))
 	}
 
@@ -382,14 +405,14 @@ func extractValueBlockFields(vBlock *hclwrite.Block, kind string, iteratorName s
 	case "ip":
 		if ipAttr := vBody.GetAttribute("ip"); ipAttr != nil {
 			ipExpr := strings.TrimSpace(string(ipAttr.Expr().BuildTokens(nil).Bytes()))
-			ipExpr = stripIteratorValueSuffix(ipExpr, iteratorName)
+			ipExpr = tfhcl.StripIteratorValueSuffix(ipExpr, iteratorName)
 			fields = append(fields, fmt.Sprintf("ip = %s", ipExpr))
 		}
 
 	case "asn":
 		if asnAttr := vBody.GetAttribute("asn"); asnAttr != nil {
 			asnExpr := strings.TrimSpace(string(asnAttr.Expr().BuildTokens(nil).Bytes()))
-			asnExpr = stripIteratorValueSuffix(asnExpr, iteratorName)
+			asnExpr = tfhcl.StripIteratorValueSuffix(asnExpr, iteratorName)
 			fields = append(fields, fmt.Sprintf("asn = %s", asnExpr))
 		}
 
@@ -424,7 +447,7 @@ func buildHostnameObjectString(hBlock *hclwrite.Block, iteratorName string) stri
 
 	if urlAttr := hBody.GetAttribute("url_hostname"); urlAttr != nil {
 		urlExpr := strings.TrimSpace(string(urlAttr.Expr().BuildTokens(nil).Bytes()))
-		urlExpr = stripIteratorValueSuffix(urlExpr, iteratorName)
+		urlExpr = tfhcl.StripIteratorValueSuffix(urlExpr, iteratorName)
 		fields = append(fields, fmt.Sprintf("url_hostname = %s", urlExpr))
 	}
 
@@ -443,13 +466,15 @@ func buildRedirectObjectString(rBlock *hclwrite.Block, iteratorName string) stri
 	// Required fields
 	if sourceAttr := rBody.GetAttribute("source_url"); sourceAttr != nil {
 		sourceExpr := strings.TrimSpace(string(sourceAttr.Expr().BuildTokens(nil).Bytes()))
-		sourceExpr = stripIteratorValueSuffix(sourceExpr, iteratorName)
+		sourceExpr = tfhcl.StripIteratorValueSuffix(sourceExpr, iteratorName)
+		// For literal strings, ensure path is present
+		sourceExpr = ensureSourceURLHasPathInExpr(sourceExpr)
 		fields = append(fields, fmt.Sprintf("source_url = %s", sourceExpr))
 	}
 
 	if targetAttr := rBody.GetAttribute("target_url"); targetAttr != nil {
 		targetExpr := strings.TrimSpace(string(targetAttr.Expr().BuildTokens(nil).Bytes()))
-		targetExpr = stripIteratorValueSuffix(targetExpr, iteratorName)
+		targetExpr = tfhcl.StripIteratorValueSuffix(targetExpr, iteratorName)
 		fields = append(fields, fmt.Sprintf("target_url = %s", targetExpr))
 	}
 
@@ -471,9 +496,9 @@ func buildRedirectObjectString(rBlock *hclwrite.Block, iteratorName string) stri
 			} else {
 				// Keep original expression (might be dynamic)
 				exprStr := strings.TrimSpace(string(attr.Expr().BuildTokens(nil).Bytes()))
-				exprStr = stripIteratorValueSuffix(exprStr, iteratorName)
+				exprStr = tfhcl.StripIteratorValueSuffix(exprStr, iteratorName)
 				// Convert "enabled"/"disabled" strings in expressions
-				exprStr = convertEnabledDisabledInExpr(exprStr)
+				exprStr = tfhcl.ConvertEnabledDisabledInExpr(exprStr)
 				fields = append(fields, fmt.Sprintf("%s = %s", field, exprStr))
 			}
 		}
@@ -482,7 +507,7 @@ func buildRedirectObjectString(rBlock *hclwrite.Block, iteratorName string) stri
 	// Optional status_code
 	if statusAttr := rBody.GetAttribute("status_code"); statusAttr != nil {
 		statusExpr := strings.TrimSpace(string(statusAttr.Expr().BuildTokens(nil).Bytes()))
-		statusExpr = stripIteratorValueSuffix(statusExpr, iteratorName)
+		statusExpr = tfhcl.StripIteratorValueSuffix(statusExpr, iteratorName)
 		fields = append(fields, fmt.Sprintf("status_code = %s", statusExpr))
 	}
 
@@ -491,40 +516,6 @@ func buildRedirectObjectString(rBlock *hclwrite.Block, iteratorName string) stri
 	}
 
 	return fmt.Sprintf("{\n      %s\n    }", strings.Join(fields, "\n      "))
-}
-
-// stripIteratorValueSuffix handles iterator references when converting from dynamic blocks to for expressions
-// In dynamic blocks: item.value or item.value.field
-// In for expressions: item or item.field
-func stripIteratorValueSuffix(expr string, iteratorName string) string {
-	if iteratorName == "" {
-		return expr
-	}
-
-	// Replace iterator.value.something with iterator.something
-	expr = strings.ReplaceAll(expr, iteratorName+".value.", iteratorName+".")
-
-	// Replace iterator.value with iterator (when it's the whole value)
-	// Be careful not to replace partial matches
-	oldPattern := iteratorName + ".value"
-	if expr == oldPattern {
-		return iteratorName
-	}
-
-	// Handle cases like "${item.value}" -> "${item}"
-	expr = strings.ReplaceAll(expr, "${"+iteratorName+".value}", "${"+iteratorName+"}")
-
-	// Handle interpolated cases like "IP ${item.value}" -> "IP ${item}"
-	expr = strings.ReplaceAll(expr, "${"+iteratorName+".value.", "${"+iteratorName+".")
-
-	return expr
-}
-
-// convertEnabledDisabledInExpr converts "enabled"/"disabled" string literals to booleans in expressions
-func convertEnabledDisabledInExpr(expr string) string {
-	expr = strings.ReplaceAll(expr, `"enabled"`, "true")
-	expr = strings.ReplaceAll(expr, `"disabled"`, "false")
-	return expr
 }
 
 // buildStaticItemsExpressionString creates a tuple expression string from static item blocks
@@ -573,26 +564,18 @@ func buildObjectStringFromItemBlock(block *hclwrite.Block, kind string) string {
 	return fmt.Sprintf("{ %s }", strings.Join(fields, ", "))
 }
 
-// setItemsAttributeFromString sets the items attribute from a string expression
+// setItemsAttributeFromString sets the items attribute from a string expression.
+// Uses the tfhcl.SetAttributeFromExpressionString utility with error handling.
 func setItemsAttributeFromString(body *hclwrite.Body, exprStr string) {
-	// Parse the expression to get proper HCL tokens
-	attrHCL := fmt.Sprintf("items = %s", exprStr)
-	file, diags := hclwrite.ParseConfig([]byte(attrHCL), "items", hcl.InitialPos)
-	if diags.HasErrors() {
+	if err := tfhcl.SetAttributeFromExpressionString(body, "items", exprStr); err != nil {
 		// Fallback: add as comment with warning
 		comment := hclwrite.Tokens{
 			&hclwrite.Token{
 				Type:  hclsyntax.TokenComment,
-				Bytes: []byte(fmt.Sprintf("# MIGRATION WARNING: Could not parse items expression. Manual conversion needed.\n# Attempted: %s\n", attrHCL)),
+				Bytes: []byte(fmt.Sprintf("# MIGRATION WARNING: Could not parse items expression. Manual conversion needed.\n# Attempted: items = %s\n", exprStr)),
 			},
 		}
 		body.AppendUnstructuredTokens(comment)
-		return
-	}
-
-	// Extract the items attribute from the parsed file
-	if itemsAttr := file.Body().GetAttribute("items"); itemsAttr != nil {
-		body.SetAttributeRaw("items", itemsAttr.Expr().BuildTokens(nil))
 	}
 }
 
@@ -678,7 +661,7 @@ func transformRedirectData(data gjson.Result) map[string]interface{} {
 	redirectObj := make(map[string]interface{})
 
 	if sourceURL := data.Get("source_url"); sourceURL.Exists() {
-		redirectObj["source_url"] = sourceURL.String()
+		redirectObj["source_url"] = ensureSourceURLHasPath(sourceURL.String())
 	}
 	if targetURL := data.Get("target_url"); targetURL.Exists() {
 		redirectObj["target_url"] = targetURL.String()
@@ -687,6 +670,7 @@ func transformRedirectData(data gjson.Result) map[string]interface{} {
 		redirectObj["status_code"] = state.ConvertToInt64(statusCode)
 	}
 
+	// Boolean fields that need "enabled"/"disabled" to true/false conversion
 	boolFields := []string{
 		"include_subdomains",
 		"subpath_matching",
@@ -696,12 +680,9 @@ func transformRedirectData(data gjson.Result) map[string]interface{} {
 
 	for _, field := range boolFields {
 		if fieldVal := data.Get(field); fieldVal.Exists() {
-			if fieldVal.String() == "enabled" {
-				redirectObj[field] = true
-			} else if fieldVal.String() == "disabled" {
-				redirectObj[field] = false
-			} else if fieldVal.Type == gjson.True || fieldVal.Type == gjson.False {
-				redirectObj[field] = fieldVal.Bool()
+			// Use the utility function for conversion
+			if converted := state.ConvertEnabledDisabledToBool(fieldVal); converted != nil {
+				redirectObj[field] = converted
 			}
 		}
 	}
@@ -717,4 +698,245 @@ func parseNumber(s string) int64 {
 		}
 	}
 	return n
+}
+
+// itemBlockHasExpressions checks if an item block contains non-literal expressions
+// like each.key, each.value, var.something, etc.
+func itemBlockHasExpressions(itemBlock *hclwrite.Block) bool {
+	itemBody := itemBlock.Body()
+
+	// Check comment attribute
+	if commentAttr := itemBody.GetAttribute("comment"); commentAttr != nil {
+		if tfhcl.IsExpressionAttribute(commentAttr) {
+			return true
+		}
+	}
+
+	// Check value block attributes
+	for _, valueBlock := range itemBody.Blocks() {
+		if valueBlock.Type() == "value" {
+			valueBody := valueBlock.Body()
+
+			// Check direct attributes (ip, asn)
+			for _, attr := range valueBody.Attributes() {
+				if tfhcl.IsExpressionAttribute(attr) {
+					return true
+				}
+			}
+
+			// Check nested blocks (hostname, redirect)
+			for _, nestedBlock := range valueBody.Blocks() {
+				nestedBody := nestedBlock.Body()
+				for _, attr := range nestedBody.Attributes() {
+					if tfhcl.IsExpressionAttribute(attr) {
+						return true
+					}
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// buildStaticItemsExpressionStringPreserving creates a tuple expression string
+// from static item blocks, preserving expressions like each.key, each.value
+func buildStaticItemsExpressionStringPreserving(blocks []*hclwrite.Block, kind string) string {
+	var itemStrs []string
+
+	for _, block := range blocks {
+		objStr := buildObjectStringFromItemBlockPreserving(block, kind)
+		if objStr != "" {
+			itemStrs = append(itemStrs, objStr)
+		}
+	}
+
+	if len(itemStrs) == 0 {
+		return ""
+	}
+
+	// Format as multi-line array for complex objects
+	return fmt.Sprintf("[%s]", strings.Join(itemStrs, ", "))
+}
+
+// buildObjectStringFromItemBlockPreserving creates an object expression string
+// from a static item block, preserving expressions
+func buildObjectStringFromItemBlockPreserving(block *hclwrite.Block, kind string) string {
+	body := block.Body()
+	var fields []string
+
+	// Handle comment - preserve expression if present
+	if commentAttr := body.GetAttribute("comment"); commentAttr != nil {
+		commentExpr := strings.TrimSpace(string(commentAttr.Expr().BuildTokens(nil).Bytes()))
+		if commentExpr != "" {
+			fields = append(fields, fmt.Sprintf("comment = %s", commentExpr))
+		}
+	}
+
+	// Process value block
+	for _, vBlock := range body.Blocks() {
+		if vBlock.Type() == "value" {
+			valueFields := extractValueBlockFieldsPreserving(vBlock, kind)
+			fields = append(fields, valueFields...)
+		}
+	}
+
+	if len(fields) == 0 {
+		return ""
+	}
+
+	// Format as multi-line object for proper HCL output
+	return fmt.Sprintf("{\n    %s\n  }", strings.Join(fields, "\n    "))
+}
+
+// extractValueBlockFieldsPreserving extracts field expressions from a value block,
+// preserving expressions like each.value
+func extractValueBlockFieldsPreserving(vBlock *hclwrite.Block, kind string) []string {
+	vBody := vBlock.Body()
+	var fields []string
+
+	switch kind {
+	case "ip":
+		if ipAttr := vBody.GetAttribute("ip"); ipAttr != nil {
+			ipExpr := strings.TrimSpace(string(ipAttr.Expr().BuildTokens(nil).Bytes()))
+			fields = append(fields, fmt.Sprintf("ip = %s", ipExpr))
+		}
+
+	case "asn":
+		if asnAttr := vBody.GetAttribute("asn"); asnAttr != nil {
+			asnExpr := strings.TrimSpace(string(asnAttr.Expr().BuildTokens(nil).Bytes()))
+			fields = append(fields, fmt.Sprintf("asn = %s", asnExpr))
+		}
+
+	case "hostname":
+		for _, hBlock := range vBody.Blocks() {
+			if hBlock.Type() == "hostname" {
+				hostnameObj := buildHostnameObjectStringPreserving(hBlock)
+				if hostnameObj != "" {
+					fields = append(fields, fmt.Sprintf("hostname = %s", hostnameObj))
+				}
+			}
+		}
+
+	case "redirect":
+		for _, rBlock := range vBody.Blocks() {
+			if rBlock.Type() == "redirect" {
+				redirectObj := buildRedirectObjectStringPreserving(rBlock)
+				if redirectObj != "" {
+					fields = append(fields, fmt.Sprintf("redirect = %s", redirectObj))
+				}
+			}
+		}
+	}
+
+	return fields
+}
+
+// buildHostnameObjectStringPreserving creates a hostname object expression string,
+// preserving expressions
+func buildHostnameObjectStringPreserving(hBlock *hclwrite.Block) string {
+	hBody := hBlock.Body()
+	var fields []string
+
+	if urlAttr := hBody.GetAttribute("url_hostname"); urlAttr != nil {
+		urlExpr := strings.TrimSpace(string(urlAttr.Expr().BuildTokens(nil).Bytes()))
+		fields = append(fields, fmt.Sprintf("url_hostname = %s", urlExpr))
+	}
+
+	if len(fields) == 0 {
+		return ""
+	}
+
+	// Format as multi-line nested object
+	return fmt.Sprintf("{\n      %s\n    }", strings.Join(fields, "\n      "))
+}
+
+// buildRedirectObjectStringPreserving creates a redirect object expression string
+// with boolean conversions, preserving expressions
+func buildRedirectObjectStringPreserving(rBlock *hclwrite.Block) string {
+	rBody := rBlock.Body()
+	var fields []string
+
+	// Required fields
+	if sourceAttr := rBody.GetAttribute("source_url"); sourceAttr != nil {
+		sourceExpr := strings.TrimSpace(string(sourceAttr.Expr().BuildTokens(nil).Bytes()))
+		// For literal strings, ensure path is present
+		sourceExpr = ensureSourceURLHasPathInExpr(sourceExpr)
+		fields = append(fields, fmt.Sprintf("source_url = %s", sourceExpr))
+	}
+
+	if targetAttr := rBody.GetAttribute("target_url"); targetAttr != nil {
+		targetExpr := strings.TrimSpace(string(targetAttr.Expr().BuildTokens(nil).Bytes()))
+		fields = append(fields, fmt.Sprintf("target_url = %s", targetExpr))
+	}
+
+	// Boolean fields that need conversion from "enabled"/"disabled"
+	boolFields := []string{
+		"include_subdomains",
+		"subpath_matching",
+		"preserve_query_string",
+		"preserve_path_suffix",
+	}
+
+	for _, field := range boolFields {
+		if attr := rBody.GetAttribute(field); attr != nil {
+			value := tfhcl.ExtractStringFromAttribute(attr)
+			if value == "enabled" {
+				fields = append(fields, fmt.Sprintf("%s = true", field))
+			} else if value == "disabled" {
+				fields = append(fields, fmt.Sprintf("%s = false", field))
+			} else {
+				// Keep original expression (might be dynamic)
+				exprStr := strings.TrimSpace(string(attr.Expr().BuildTokens(nil).Bytes()))
+				// Convert "enabled"/"disabled" strings in expressions
+				exprStr = tfhcl.ConvertEnabledDisabledInExpr(exprStr)
+				fields = append(fields, fmt.Sprintf("%s = %s", field, exprStr))
+			}
+		}
+	}
+
+	// Optional status_code
+	if statusAttr := rBody.GetAttribute("status_code"); statusAttr != nil {
+		statusExpr := strings.TrimSpace(string(statusAttr.Expr().BuildTokens(nil).Bytes()))
+		fields = append(fields, fmt.Sprintf("status_code = %s", statusExpr))
+	}
+
+	if len(fields) == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("{ %s }", strings.Join(fields, ", "))
+}
+
+// ensureSourceURLHasPath ensures the source_url has a path component.
+// The v5 provider requires source_url to have a non-empty path.
+// If the URL doesn't have a path, append "/" to it.
+func ensureSourceURLHasPath(url string) string {
+	if url == "" {
+		return url
+	}
+	// If URL doesn't contain "/" (no path), append "/"
+	if !strings.Contains(url, "/") {
+		return url + "/"
+	}
+	return url
+}
+
+// ensureSourceURLHasPathInExpr ensures source_url has a path in an HCL expression.
+// For literal strings like "test.com", transforms to "test.com/".
+// For dynamic expressions, returns unchanged.
+func ensureSourceURLHasPathInExpr(expr string) string {
+	if expr == "" {
+		return expr
+	}
+	// Check if it's a quoted string literal
+	if strings.HasPrefix(expr, `"`) && strings.HasSuffix(expr, `"`) {
+		// Extract the URL value
+		url := strings.Trim(expr, `"`)
+		// If URL doesn't contain "/" (no path), append "/"
+		if !strings.Contains(url, "/") {
+			return `"` + url + `/"`
+		}
+	}
+	return expr
 }

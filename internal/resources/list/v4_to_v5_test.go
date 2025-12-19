@@ -275,7 +275,7 @@ func testRedirectListConfig(t *testing.T) {
   }, {
     redirect = {
       include_subdomains = false
-      source_url         = "test.com"
+      source_url         = "test.com/"
       target_url         = "newtest.com"
     }
   }]
