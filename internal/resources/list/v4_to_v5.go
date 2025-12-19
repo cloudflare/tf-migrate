@@ -11,6 +11,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
+	"github.com/cloudflare/tf-migrate/internal/resources/list_item"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform/state"
@@ -33,11 +34,23 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
+	// Check if this is JSON state content (starts with '{')
+	trimmed := strings.TrimSpace(content)
+	if strings.HasPrefix(trimmed, "{") {
+		// Process cross-resource state migrations (merge list_item into list, remove list_items)
+		return list_item.ProcessCrossResourceStateMigration(content)
+	}
 	return content
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
+
+	// Process cross-resource migrations (merge list_item resources into this list)
+	// This is idempotent - if called multiple times, subsequent calls are no-ops
+	if ctx.CFGFile != nil {
+		list_item.ProcessCrossResourceConfigMigration(ctx.CFGFile)
+	}
 
 	kind := tfhcl.ExtractStringFromAttribute(body.GetAttribute("kind"))
 	if kind == "" {
