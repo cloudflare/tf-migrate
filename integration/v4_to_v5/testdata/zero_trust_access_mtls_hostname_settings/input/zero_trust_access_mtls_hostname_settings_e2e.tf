@@ -13,7 +13,7 @@ resource "cloudflare_zero_trust_access_mtls_hostname_settings" "e2e_account" {
   account_id = var.cloudflare_account_id
 
   settings {
-    hostname                      = "tamas.terraform.cfapi.net"
+    hostname                      = "e2e.terraform.cfapi.net"
     china_network                 = false
     client_certificate_forwarding = false
   }
@@ -24,7 +24,7 @@ resource "cloudflare_zero_trust_access_mtls_hostname_settings" "e2e_zone" {
   zone_id = var.cloudflare_zone_id
 
   settings {
-    hostname                      = "tamas.terraform.cfapi.net"
+    hostname                      = "e2e.terraform.cfapi.net"
     china_network                 = false
     client_certificate_forwarding = true
   }
