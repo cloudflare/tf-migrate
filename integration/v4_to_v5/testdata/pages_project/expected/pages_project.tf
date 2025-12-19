@@ -23,14 +23,12 @@ resource "cloudflare_pages_project" "minimal" {
   build_config      = {}
   deployment_configs = {
     preview = {
-      compatibility_flags = []
-      usage_model         = "bundled"
-      fail_open           = false
+      usage_model = "bundled"
+      fail_open   = false
     }
     production = {
-      compatibility_flags = []
-      fail_open           = false
-      usage_model         = "bundled"
+      fail_open   = false
+      usage_model = "bundled"
     }
   }
 }
@@ -50,14 +48,12 @@ resource "cloudflare_pages_project" "with_build_config" {
   }
   deployment_configs = {
     preview = {
-      compatibility_flags = []
-      usage_model         = "bundled"
-      fail_open           = false
+      usage_model = "bundled"
+      fail_open   = false
     }
     production = {
-      compatibility_flags = []
-      fail_open           = false
-      usage_model         = "bundled"
+      fail_open   = false
+      usage_model = "bundled"
     }
   }
 }
@@ -86,14 +82,12 @@ resource "cloudflare_pages_project" "with_source" {
   build_config = {}
   deployment_configs = {
     preview = {
-      compatibility_flags = []
-      usage_model         = "bundled"
-      fail_open           = false
+      usage_model = "bundled"
+      fail_open   = false
     }
     production = {
-      compatibility_flags = []
-      fail_open           = false
-      usage_model         = "bundled"
+      fail_open   = false
+      usage_model = "bundled"
     }
   }
 }
@@ -153,19 +147,17 @@ resource "cloudflare_pages_project" "full" {
   }
   deployment_configs = {
     preview = {
-      compatibility_date  = "2024-01-01"
-      compatibility_flags = []
-      usage_model         = "bundled"
-      fail_open           = false
+      compatibility_date = "2024-01-01"
+      usage_model        = "bundled"
+      fail_open          = false
       placement = {
         mode = "smart"
       }
     }
     production = {
-      compatibility_date  = "2024-01-01"
-      compatibility_flags = []
-      fail_open           = false
-      usage_model         = "bundled"
+      compatibility_date = "2024-01-01"
+      fail_open          = false
+      usage_model        = "bundled"
       placement = {
         mode = "smart"
       }
@@ -182,19 +174,17 @@ resource "cloudflare_pages_project" "deployment_only" {
   build_config = {}
   deployment_configs = {
     preview = {
-      compatibility_date  = "2024-01-15"
-      compatibility_flags = []
-      usage_model         = "bundled"
-      fail_open           = false
+      compatibility_date = "2024-01-15"
+      usage_model        = "bundled"
+      fail_open          = false
       placement = {
         mode = "smart"
       }
     }
     production = {
-      compatibility_date  = "2024-01-15"
-      compatibility_flags = []
-      fail_open           = false
-      usage_model         = "bundled"
+      compatibility_date = "2024-01-15"
+      fail_open          = false
+      usage_model        = "bundled"
       placement = {
         mode = "smart"
       }
