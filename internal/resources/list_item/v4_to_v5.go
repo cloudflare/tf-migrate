@@ -54,8 +54,8 @@ func (m *V4ToV5Migrator) GetCrossResourceDependency() string {
 	return "cloudflare_list"
 }
 
-// ProcessCrossResourceMigrations merges list_item resources into their parent list resources.
-func ProcessCrossResourceMigrations(file *hclwrite.File) {
+// ProcessCrossResourceConfigMigration merges list_item resources into their parent cloudflare_list resources.
+func ProcessCrossResourceConfigMigration(file *hclwrite.File) {
 	body := file.Body()
 
 	listResources := make(map[string]*hclwrite.Block)
@@ -377,8 +377,8 @@ func setItemsAttributeFromString(body *hclwrite.Body, exprStr string) {
 	}
 }
 
-// ProcessCrossResourceStateMigrations merges list_item state into parent list state.
-func ProcessCrossResourceStateMigrations(stateJSON string) string {
+// ProcessCrossResourceStateMigration merges list_item state into parent list state.
+func ProcessCrossResourceStateMigration(stateJSON string) string {
 	result := stateJSON
 
 	lists := make(map[string]int)
@@ -703,7 +703,7 @@ func extractListItemStateInfo(resource gjson.Result, index int) *listItemStateIn
 func mergeItemsIntoListState(jsonStr string, listIndex int, items []listItemStateInfo) string {
 	result := jsonStr
 
-	itemsPath := "resources." + string(rune('0'+listIndex)) + ".instances.0.attributes.items"
+	itemsPath := fmt.Sprintf("resources.%d.instances.0.attributes.items", listIndex)
 	existingItems := gjson.Get(jsonStr, itemsPath)
 
 	var allItems []interface{}
@@ -720,7 +720,7 @@ func mergeItemsIntoListState(jsonStr string, listIndex int, items []listItemStat
 
 	if len(allItems) > 0 {
 		result, _ = sjson.Set(result, itemsPath, allItems)
-		numItemsPath := "resources." + string(rune('0'+listIndex)) + ".instances.0.attributes.num_items"
+		numItemsPath := fmt.Sprintf("resources.%d.instances.0.attributes.num_items", listIndex)
 		result, _ = sjson.Set(result, numItemsPath, float64(len(allItems)))
 	}
 
@@ -743,8 +743,9 @@ func removeListItemResourcesFromState(jsonStr string) string {
 		}
 	}
 
+	// Remove in reverse order to preserve indices
 	for i := len(indicesToRemove) - 1; i >= 0; i-- {
-		path := "resources." + string(rune('0'+indicesToRemove[i]))
+		path := fmt.Sprintf("resources.%d", indicesToRemove[i])
 		result, _ = sjson.Delete(result, path)
 	}
 

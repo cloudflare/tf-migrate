@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 )
 
 func TestV4ToV5Transformation(t *testing.T) {
@@ -87,7 +89,7 @@ func TestProcessCrossResourceMigrations(t *testing.T) {
   ]
 }`
 
-		result := ProcessCrossResourceStateMigrations(input)
+		result := ProcessCrossResourceStateMigration(input)
 
 		// Verify list_item resources are removed
 		if containsString(result, `"type":"cloudflare_list_item"`) {
@@ -160,7 +162,7 @@ func TestProcessCrossResourceMigrations(t *testing.T) {
   ]
 }`
 
-		result := ProcessCrossResourceStateMigrations(input)
+		result := ProcessCrossResourceStateMigration(input)
 
 		// Verify list_item resources are removed
 		if containsString(result, `"type":"cloudflare_list_item"`) {
@@ -220,7 +222,7 @@ func TestProcessCrossResourceMigrations(t *testing.T) {
   ]
 }`
 
-		result := ProcessCrossResourceStateMigrations(input)
+		result := ProcessCrossResourceStateMigration(input)
 
 		// Verify list_item resources are removed
 		if containsString(result, `"type":"cloudflare_list_item"`) {
@@ -258,4 +260,115 @@ func contains(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestProcessCrossResourceConfigMigrations(t *testing.T) {
+	t.Run("MergeListItemsIntoParentList", func(t *testing.T) {
+		input := `resource "cloudflare_list" "test" {
+  account_id  = "abc123"
+  name        = "testlist"
+  kind        = "ip"
+  description = "Test list"
+}
+
+resource "cloudflare_list_item" "item1" {
+  account_id = "abc123"
+  list_id    = cloudflare_list.test.id
+  ip         = "192.0.2.1"
+  comment    = "Test IP 1"
+}
+
+resource "cloudflare_list_item" "item2" {
+  account_id = "abc123"
+  list_id    = cloudflare_list.test.id
+  ip         = "192.0.2.2"
+  comment    = "Test IP 2"
+}
+`
+		// Parse the input config
+		file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+		if diags.HasErrors() {
+			t.Fatalf("Failed to parse input: %v", diags)
+		}
+
+		// Run the cross-resource migration
+		ProcessCrossResourceConfigMigration(file)
+
+		result := string(file.Bytes())
+
+		// Verify list_item resources are removed
+		if containsString(result, `resource "cloudflare_list_item"`) {
+			t.Error("Expected cloudflare_list_item resources to be removed from config")
+		}
+
+		// Verify the list still exists
+		if !containsString(result, `resource "cloudflare_list" "test"`) {
+			t.Error("Expected cloudflare_list resource to still exist in config")
+		}
+
+		// Verify items attribute is added
+		if !containsString(result, "items = [") {
+			t.Error("Expected items attribute to be added to cloudflare_list")
+		}
+
+		// Verify item data is present (use flexible whitespace check)
+		if !containsString(result, `"192.0.2.1"`) {
+			t.Error("Expected first IP in items array")
+		}
+
+		if !containsString(result, `"192.0.2.2"`) {
+			t.Error("Expected second IP in items array")
+		}
+
+		if !containsString(result, `"Test IP 1"`) {
+			t.Error("Expected first comment in items array")
+		}
+
+		t.Logf("Result:\n%s", result)
+	})
+
+	t.Run("NoMergeWhenListHasExistingItems", func(t *testing.T) {
+		input := `resource "cloudflare_list" "test" {
+  account_id  = "abc123"
+  name        = "testlist"
+  kind        = "ip"
+  description = "Test list"
+  items = [
+    { ip = "10.0.0.1", comment = "Existing" }
+  ]
+}
+
+resource "cloudflare_list_item" "item1" {
+  account_id = "abc123"
+  list_id    = cloudflare_list.test.id
+  ip         = "192.0.2.1"
+  comment    = "Test IP 1"
+}
+`
+		file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+		if diags.HasErrors() {
+			t.Fatalf("Failed to parse input: %v", diags)
+		}
+
+		ProcessCrossResourceConfigMigration(file)
+
+		result := string(file.Bytes())
+
+		// The list_item should still be removed
+		if containsString(result, `resource "cloudflare_list_item"`) {
+			t.Error("Expected cloudflare_list_item resources to be removed")
+		}
+
+		// The existing items should be preserved (with warning)
+		if !containsString(result, `ip = "10.0.0.1"`) {
+			t.Error("Expected existing items to be preserved")
+		}
+
+		// Should have a warning comment
+		if !containsString(result, "MIGRATION WARNING") {
+			t.Error("Expected migration warning when list already has items")
+		}
+
+		t.Logf("Result:\n%s", result)
+	})
 }
