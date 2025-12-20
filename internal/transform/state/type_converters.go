@@ -63,3 +63,38 @@ func ConvertToInt64(value gjson.Result) interface{} {
 		return value.Value()
 	}
 }
+
+// ConvertEnabledDisabledToBool converts "enabled"/"disabled" string values to booleans.
+// Returns nil for null values. Returns the original value if not "enabled" or "disabled".
+//
+// Before → After transformations:
+//
+//	"enabled"  → true
+//	"disabled" → false
+//	true       → true (already boolean)
+//	false      → false (already boolean)
+//	null       → nil
+//
+// This is a common pattern in Cloudflare v4 resources where boolean fields
+// were represented as "enabled"/"disabled" strings.
+func ConvertEnabledDisabledToBool(value gjson.Result) interface{} {
+	switch value.Type {
+	case gjson.String:
+		switch value.String() {
+		case "enabled":
+			return true
+		case "disabled":
+			return false
+		default:
+			return value.String()
+		}
+	case gjson.True:
+		return true
+	case gjson.False:
+		return false
+	case gjson.Null:
+		return nil
+	default:
+		return value.Value()
+	}
+}
