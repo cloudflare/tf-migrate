@@ -21,6 +21,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/pages_project"
 	"github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
 	"github.com/cloudflare/tf-migrate/internal/resources/regional_hostname"
+	"github.com/cloudflare/tf-migrate/internal/resources/snippet"
 	"github.com/cloudflare/tf-migrate/internal/resources/spectrum_application"
 	"github.com/cloudflare/tf-migrate/internal/resources/tiered_cache"
 	"github.com/cloudflare/tf-migrate/internal/resources/url_normalization_settings"
@@ -69,6 +70,7 @@ func RegisterAllMigrations() {
 	pages_project.NewV4ToV5Migrator()
 	r2_bucket.NewV4ToV5Migrator()
 	regional_hostname.NewV4ToV5Migrator()
+	snippet.NewV4ToV5Migrator()
 	tiered_cache.NewV4ToV5Migrator()
 	spectrum_application.NewV4ToV5Migrator()
 	url_normalization_settings.NewV4ToV5Migrator()
