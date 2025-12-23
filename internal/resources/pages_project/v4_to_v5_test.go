@@ -277,14 +277,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
-    "build_config": {
-      "build_caching": null,
-      "build_command": null,
-      "destination_dir": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
-    },
+    "build_config": {},
     "canonical_deployment": null,
     "framework": "",
     "framework_version": "",
@@ -319,11 +312,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "production_branch": "main",
     "build_config": {
       "build_command": "npm run build",
-      "destination_dir": "public",
-      "build_caching": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
+      "destination_dir": "public"
     },
     "canonical_deployment": null,
     "framework": "",
@@ -369,14 +358,7 @@ func TestV4ToV5Transformation(t *testing.T) {
         "production_deployments_enabled": true
       }
     },
-    "build_config": {
-      "build_caching": null,
-      "build_command": null,
-      "destination_dir": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
-    },
+    "build_config": {},
     "canonical_deployment": null,
     "framework": "",
     "framework_version": "",
@@ -459,14 +441,7 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {
-      "build_caching": null,
-      "build_command": null,
-      "destination_dir": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
-    },
+    "build_config": {},
     "canonical_deployment": null,
     "framework": "",
     "framework_version": "",
@@ -539,14 +514,7 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {
-      "build_caching": null,
-      "build_command": null,
-      "destination_dir": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
-    },
+    "build_config": {},
     "canonical_deployment": null,
     "framework": "",
     "framework_version": "",
@@ -626,14 +594,7 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {
-      "build_caching": null,
-      "build_command": null,
-      "destination_dir": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
-    },
+    "build_config": {},
     "canonical_deployment": null,
     "framework": "",
     "framework_version": "",
@@ -700,11 +661,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "production_branch": "main",
     "build_config": {
       "build_command": "npm run build",
-      "destination_dir": "public",
-      "build_caching": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
+      "destination_dir": "public"
     },
     "source": {
       "type": "github",
@@ -853,14 +810,7 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {
-      "build_caching": null,
-      "build_command": null,
-      "destination_dir": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
-    },
+    "build_config": {},
     "canonical_deployment": null,
     "framework": "",
     "framework_version": "",
@@ -921,14 +871,7 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {
-      "build_caching": null,
-      "build_command": null,
-      "destination_dir": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
-    },
+    "build_config": {},
     "canonical_deployment": null,
     "framework": "",
     "framework_version": "",
@@ -989,14 +932,7 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {
-      "build_caching": null,
-      "build_command": null,
-      "destination_dir": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
-    },
+    "build_config": {},
     "canonical_deployment": null,
     "framework": "",
     "framework_version": "",
@@ -1057,14 +993,7 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {
-      "build_caching": null,
-      "build_command": null,
-      "destination_dir": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
-    },
+    "build_config": {},
     "canonical_deployment": null,
     "framework": "",
     "framework_version": "",
@@ -1151,14 +1080,7 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {
-      "build_caching": null,
-      "build_command": null,
-      "destination_dir": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
-    },
+    "build_config": {},
     "canonical_deployment": null,
     "framework": "",
     "framework_version": "",
@@ -1251,14 +1173,7 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {
-      "build_caching": null,
-      "build_command": null,
-      "destination_dir": null,
-      "root_dir": null,
-      "web_analytics_tag": null,
-      "web_analytics_token": null
-    },
+    "build_config": {},
     "canonical_deployment": null,
     "framework": "",
     "framework_version": "",
