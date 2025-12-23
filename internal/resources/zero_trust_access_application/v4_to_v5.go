@@ -1,8 +1,10 @@
 package zero_trust_access_application
 
 import (
+	"fmt"
 	"strconv"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
@@ -274,7 +276,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 
 	// Handle both full state and single instance transformation
 	if stateJSON.Get("resources").Exists() {
-		return m.transformFullState(result, stateJSON)
+		return m.transformFullState(result, stateJSON, ctx)
 	}
 
 	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
@@ -287,12 +289,12 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 		result, _ = sjson.Set(result, "type", "cloudflare_zero_trust_access_application")
 	}
 
-	result = m.transformSingleInstance(result, stateJSON)
+	result = m.transformSingleInstance(result, stateJSON, ctx, resourcePath, resourceName)
 
 	return result, nil
 }
 
-func (m *V4ToV5Migrator) transformFullState(result string, stateJSON gjson.Result) (string, error) {
+func (m *V4ToV5Migrator) transformFullState(result string, stateJSON gjson.Result, ctx *transform.Context) (string, error) {
 	resources := stateJSON.Get("resources")
 	if !resources.Exists() {
 		return result, nil
@@ -311,14 +313,16 @@ func (m *V4ToV5Migrator) transformFullState(result string, stateJSON gjson.Resul
 			result, _ = sjson.Set(result, resourcePath, "cloudflare_zero_trust_access_application")
 		}
 
+		resourceName := resource.Get("name").String()
 		instances := resource.Get("instances")
 		instances.ForEach(func(instKey, instance gjson.Result) bool {
 			instPath := "resources." + key.String() + ".instances." + instKey.String()
+			resourcePath := "resources." + key.String()
 
 			attrs := instance.Get("attributes")
 			if attrs.Exists() {
 				instJSON := instance.String()
-				transformedInst := m.transformSingleInstance(instJSON, instance)
+				transformedInst := m.transformSingleInstance(instJSON, instance, ctx, resourcePath, resourceName)
 				transformedInstParsed := gjson.Parse(transformedInst)
 				result, _ = sjson.SetRaw(result, instPath, transformedInstParsed.Raw)
 			}
@@ -331,11 +335,32 @@ func (m *V4ToV5Migrator) transformFullState(result string, stateJSON gjson.Resul
 	return result, nil
 }
 
-func (m *V4ToV5Migrator) transformSingleInstance(result string, instance gjson.Result) string {
+func (m *V4ToV5Migrator) transformSingleInstance(result string, instance gjson.Result, ctx *transform.Context, resourcePath, resourceName string) string {
 	attrs := instance.Get("attributes")
 
 	if !attrs.Exists() {
 		return result
+	}
+
+	// Debug: Log CFGFiles status
+	if ctx != nil {
+		fmt.Printf("DEBUG transformSingleInstance: resource=%s, CFGFiles count=%d\n", resourceName, len(ctx.CFGFiles))
+		if len(ctx.CFGFiles) > 0 {
+			fmt.Printf("DEBUG transformSingleInstance: CFGFiles keys: ")
+			for k := range ctx.CFGFiles {
+				fmt.Printf("%s, ", k)
+			}
+			fmt.Printf("\n")
+		}
+	} else {
+		fmt.Printf("DEBUG transformSingleInstance: ctx is nil for resource=%s\n", resourceName)
+	}
+
+	// If ctx is nil, create an empty context so transformations can still run
+	if ctx == nil {
+		ctx = &transform.Context{
+			Diagnostics: make(hcl.Diagnostics, 0),
+		}
 	}
 
 	attrPath := "attributes"
@@ -348,13 +373,24 @@ func (m *V4ToV5Migrator) transformSingleInstance(result string, instance gjson.R
 
 	// Apply transformations in logical order
 	result = m.transformSetToListFields(result, attrs, attrPath)
-	result = m.transformCoorsHeaders(result, attrs, attrPath)
-	result = m.transformLandingPageDesign(result, attrs, attrPath)
-	result = m.transformSaasApp(result, attrs, attrPath)
-	result = m.transformScimConfig(result, attrs, attrPath)
+	result = m.transformCoorsHeaders(result, attrs, attrPath, ctx, resourceName)
+	result = m.transformLandingPageDesign(result, attrs, attrPath, ctx, resourceName)
+	result = m.transformSaasApp(result, attrs, attrPath, ctx, resourceName)
+	result = m.transformScimConfig(result, attrs, attrPath, ctx, resourceName)
 	result = m.transformPolicies(result, attrs, attrPath)
 	result = m.transformTargetCriteria(result, attrs, attrPath)
 	result = m.transformDestinations(result, attrPath)
+
+	// Transform empty values to null for top-level attributes not explicitly set in config
+	result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+		Ctx:              ctx,
+		Result:           result,
+		FieldPath:        attrPath,
+		FieldResult:      gjson.Parse(result).Get(attrPath),
+		ResourceName:     resourceName,
+		HCLAttributePath: "",
+		CanHandle:        m.CanHandle,
+	})
 
 	// Always set schema_version
 	result, _ = sjson.Set(result, "schema_version", 0)
@@ -385,8 +421,22 @@ func (m *V4ToV5Migrator) transformSetToListFields(result string, attrs gjson.Res
 	return result
 }
 
-func (m *V4ToV5Migrator) transformCoorsHeaders(result string, attrs gjson.Result, attrPath string) string {
-	// Transform cors_headers from array format to object format
+func (m *V4ToV5Migrator) transformCoorsHeaders(result string, attrs gjson.Result, attrPath string, ctx *transform.Context, resourceName string) string {
+	// First, check if cors_headers field should be null based on HCL config
+	result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+		Ctx:              ctx,
+		Result:           result,
+		FieldPath:        attrPath,
+		FieldResult:      attrs,
+		ResourceName:     resourceName,
+		HCLAttributePath: "cors_headers",
+		CanHandle:        m.CanHandle,
+	})
+
+	// Re-parse to check if field still exists after transformation
+	attrs = gjson.Parse(result).Get(attrPath)
+
+	// Transform cors_headers from array format to object format (if it still exists)
 	result = state.TransformFieldArrayToObject(result, attrPath, attrs, "cors_headers", state.ArrayToObjectOptions{
 		TransformEmptyToNull: true,
 	})
@@ -397,13 +447,38 @@ func (m *V4ToV5Migrator) transformCoorsHeaders(result string, attrs gjson.Result
 		if maxAge.Exists() {
 			result, _ = sjson.Set(result, attrPath+".cors_headers.max_age", state.ConvertToFloat64(maxAge))
 		}
+
+		// Transform empty values within cors_headers nested fields
+		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+			Ctx:              ctx,
+			Result:           result,
+			FieldPath:        attrPath + ".cors_headers",
+			FieldResult:      gjson.Parse(result).Get(attrPath + ".cors_headers"),
+			ResourceName:     resourceName,
+			HCLAttributePath: "cors_headers",
+			CanHandle:        m.CanHandle,
+		})
 	}
 
 	return result
 }
 
-func (m *V4ToV5Migrator) transformLandingPageDesign(result string, attrs gjson.Result, attrPath string) string {
-	// Transform landing_page_design from array format to object format
+func (m *V4ToV5Migrator) transformLandingPageDesign(result string, attrs gjson.Result, attrPath string, ctx *transform.Context, resourceName string) string {
+	// First, check if landing_page_design field should be null based on HCL config
+	result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+		Ctx:              ctx,
+		Result:           result,
+		FieldPath:        attrPath,
+		FieldResult:      attrs,
+		ResourceName:     resourceName,
+		HCLAttributePath: "landing_page_design",
+		CanHandle:        m.CanHandle,
+	})
+
+	// Re-parse to check if field still exists after transformation
+	attrs = gjson.Parse(result).Get(attrPath)
+
+	// Transform landing_page_design from array format to object format (if it still exists)
 	result = state.TransformFieldArrayToObject(result, attrPath, attrs, "landing_page_design", state.ArrayToObjectOptions{
 		TransformEmptyToNull: true,
 	})
@@ -412,14 +487,39 @@ func (m *V4ToV5Migrator) transformLandingPageDesign(result string, attrs gjson.R
 	transformedLandingPage := gjson.Parse(result).Get(attrPath + ".landing_page_design")
 	if transformedLandingPage.Exists() && transformedLandingPage.IsObject() {
 		result = state.EnsureField(result, attrPath+".landing_page_design", transformedLandingPage, "title", "Welcome!")
+
+		// Transform empty values within landing_page_design nested fields
+		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+			Ctx:              ctx,
+			Result:           result,
+			FieldPath:        attrPath + ".landing_page_design",
+			FieldResult:      gjson.Parse(result).Get(attrPath + ".landing_page_design"),
+			ResourceName:     resourceName,
+			HCLAttributePath: "landing_page_design",
+			CanHandle:        m.CanHandle,
+		})
 	}
 
 	return result
 }
 
 // transformSaasApp transforms the saas_app block and its nested structures
-func (m *V4ToV5Migrator) transformSaasApp(result string, attrs gjson.Result, attrPath string) string {
-	// Transform saas_app from array format to object format
+func (m *V4ToV5Migrator) transformSaasApp(result string, attrs gjson.Result, attrPath string, ctx *transform.Context, resourceName string) string {
+	// First, check if saas_app field should be null based on HCL config
+	result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+		Ctx:              ctx,
+		Result:           result,
+		FieldPath:        attrPath,
+		FieldResult:      attrs,
+		ResourceName:     resourceName,
+		HCLAttributePath: "saas_app",
+		CanHandle:        m.CanHandle,
+	})
+
+	// Re-parse to check if field still exists after transformation
+	attrs = gjson.Parse(result).Get(attrPath)
+
+	// Transform saas_app from array format to object format (if it still exists)
 	result = state.TransformFieldArrayToObject(result, attrPath, attrs, "saas_app", state.ArrayToObjectOptions{
 		TransformEmptyToNull: true,
 	})
@@ -427,16 +527,72 @@ func (m *V4ToV5Migrator) transformSaasApp(result string, attrs gjson.Result, att
 	// Transform nested MaxItems:1 fields within saas_app
 	transformedSaasApp := gjson.Parse(result).Get(attrPath + ".saas_app")
 	if transformedSaasApp.Exists() {
-		// Transform hybrid_and_implicit_options from array to object
+		// First check if hybrid_and_implicit_options should be null
+		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+			Ctx:              ctx,
+			Result:           result,
+			FieldPath:        attrPath + ".saas_app",
+			FieldResult:      transformedSaasApp,
+			ResourceName:     resourceName,
+			HCLAttributePath: "saas_app.hybrid_and_implicit_options",
+			CanHandle:        m.CanHandle,
+		})
+
+		// Re-parse after transformation
+		transformedSaasApp = gjson.Parse(result).Get(attrPath + ".saas_app")
+
+		// Transform hybrid_and_implicit_options from array to object (if it still exists)
 		result = state.TransformFieldArrayToObject(result, attrPath+".saas_app", transformedSaasApp, "hybrid_and_implicit_options", state.ArrayToObjectOptions{
 			TransformEmptyToNull: true,
 		})
 
-		// Transform refresh_token_options from array to object
+		// Transform empty values within hybrid_and_implicit_options nested fields
+		transformedHybrid := gjson.Parse(result).Get(attrPath + ".saas_app.hybrid_and_implicit_options")
+		if transformedHybrid.Exists() && transformedHybrid.IsObject() {
+			result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+				Ctx:              ctx,
+				Result:           result,
+				FieldPath:        attrPath + ".saas_app.hybrid_and_implicit_options",
+				FieldResult:      transformedHybrid,
+				ResourceName:     resourceName,
+				HCLAttributePath: "saas_app.hybrid_and_implicit_options",
+				CanHandle:        m.CanHandle,
+			})
+		}
+
+		// First check if refresh_token_options should be null
 		transformedSaasApp = gjson.Parse(result).Get(attrPath + ".saas_app")
+		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+			Ctx:              ctx,
+			Result:           result,
+			FieldPath:        attrPath + ".saas_app",
+			FieldResult:      transformedSaasApp,
+			ResourceName:     resourceName,
+			HCLAttributePath: "saas_app.refresh_token_options",
+			CanHandle:        m.CanHandle,
+		})
+
+		// Re-parse after transformation
+		transformedSaasApp = gjson.Parse(result).Get(attrPath + ".saas_app")
+
+		// Transform refresh_token_options from array to object (if it still exists)
 		result = state.TransformFieldArrayToObject(result, attrPath+".saas_app", transformedSaasApp, "refresh_token_options", state.ArrayToObjectOptions{
 			TransformEmptyToNull: true,
 		})
+
+		// Transform empty values within refresh_token_options nested fields
+		transformedRefresh := gjson.Parse(result).Get(attrPath + ".saas_app.refresh_token_options")
+		if transformedRefresh.Exists() && transformedRefresh.IsObject() {
+			result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+				Ctx:              ctx,
+				Result:           result,
+				FieldPath:        attrPath + ".saas_app.refresh_token_options",
+				FieldResult:      transformedRefresh,
+				ResourceName:     resourceName,
+				HCLAttributePath: "saas_app.refresh_token_options",
+				CanHandle:        m.CanHandle,
+			})
+		}
 
 		// Transform custom_attribute[].source from array to object for each item
 		customAttrs := transformedSaasApp.Get("custom_attribute")
@@ -445,7 +601,7 @@ func (m *V4ToV5Migrator) transformSaasApp(result string, attrs gjson.Result, att
 				itemPath := attrPath + ".saas_app.custom_attribute." + idx.String()
 				result = state.TransformFieldArrayToObject(result, itemPath, item, "source", state.ArrayToObjectOptions{})
 				return true
-			})
+		})
 
 			// Transform custom_attributes[].source.name_by_idp from map to list of objects (SAML)
 			transformedSaasApp = gjson.Parse(result).Get(attrPath + ".saas_app")
@@ -482,7 +638,7 @@ func (m *V4ToV5Migrator) transformSaasApp(result string, attrs gjson.Result, att
 				itemPath := attrPath + ".saas_app.custom_claim." + idx.String()
 				result = state.TransformFieldArrayToObject(result, itemPath, item, "source", state.ArrayToObjectOptions{})
 				return true
-			})
+		})
 			// Rename custom_claim to custom_claims (plural)
 			transformedSaasApp = gjson.Parse(result).Get(attrPath + ".saas_app")
 			result = state.RenameField(result, attrPath+".saas_app", transformedSaasApp, "custom_claim", "custom_claims")
@@ -493,14 +649,40 @@ func (m *V4ToV5Migrator) transformSaasApp(result string, attrs gjson.Result, att
 		if transformedSaasApp.Exists() && transformedSaasApp.IsObject() {
 			result = state.EnsureField(result, attrPath+".saas_app", transformedSaasApp, "auth_type", "saml")
 		}
+
+		// Transform empty values within saas_app (top level of saas_app)
+		transformedSaasApp = gjson.Parse(result).Get(attrPath + ".saas_app")
+		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+			Ctx:              ctx,
+			Result:           result,
+			FieldPath:        attrPath + ".saas_app",
+			FieldResult:      transformedSaasApp,
+			ResourceName:     resourceName,
+			HCLAttributePath: "saas_app",
+			CanHandle:        m.CanHandle,
+		})
 	}
 
 	return result
 }
 
 // transformScimConfig transforms the scim_config block and its nested structures
-func (m *V4ToV5Migrator) transformScimConfig(result string, attrs gjson.Result, attrPath string) string {
-	// Transform scim_config from array format to object format
+func (m *V4ToV5Migrator) transformScimConfig(result string, attrs gjson.Result, attrPath string, ctx *transform.Context, resourceName string) string {
+	// First, check if scim_config field should be null based on HCL config
+		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+			Ctx:              ctx,
+			Result:           result,
+			FieldPath:        attrPath,
+			FieldResult:      attrs,
+			ResourceName:     resourceName,
+			HCLAttributePath: "scim_config",
+			CanHandle:        m.CanHandle,
+		})
+
+	// Re-parse to check if field still exists after transformation
+	attrs = gjson.Parse(result).Get(attrPath)
+
+	// Transform scim_config from array format to object format (if it still exists)
 	result = state.TransformFieldArrayToObject(result, attrPath, attrs, "scim_config", state.ArrayToObjectOptions{
 		TransformEmptyToNull: true,
 	})
@@ -508,8 +690,36 @@ func (m *V4ToV5Migrator) transformScimConfig(result string, attrs gjson.Result, 
 	// Transform nested MaxItems:1 fields within scim_config
 	transformedScimConfig := gjson.Parse(result).Get(attrPath + ".scim_config")
 	if transformedScimConfig.Exists() && transformedScimConfig.IsObject() {
-		// Transform authentication from array to object
+		// First check if authentication should be null
+		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+			Ctx:              ctx,
+			Result:           result,
+			FieldPath:        attrPath + ".scim_config",
+			FieldResult:      transformedScimConfig,
+			ResourceName:     resourceName,
+			HCLAttributePath: "scim_config.authentication",
+			CanHandle:        m.CanHandle,
+		})
+
+		// Re-parse after transformation
+		transformedScimConfig = gjson.Parse(result).Get(attrPath + ".scim_config")
+
+		// Transform authentication from array to object (if it still exists)
 		result = state.TransformFieldArrayToObject(result, attrPath+".scim_config", transformedScimConfig, "authentication", state.ArrayToObjectOptions{})
+
+		// Transform empty values within authentication nested fields
+		transformedAuth := gjson.Parse(result).Get(attrPath + ".scim_config.authentication")
+		if transformedAuth.Exists() && transformedAuth.IsObject() {
+			result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+				Ctx:              ctx,
+				Result:           result,
+				FieldPath:        attrPath + ".scim_config.authentication",
+				FieldResult:      transformedAuth,
+				ResourceName:     resourceName,
+				HCLAttributePath: "scim_config.authentication",
+				CanHandle:        m.CanHandle,
+			})
+		}
 
 		// Transform mappings[].operations from array to object for each mapping
 		transformedScimConfig = gjson.Parse(result).Get(attrPath + ".scim_config")
@@ -517,10 +727,52 @@ func (m *V4ToV5Migrator) transformScimConfig(result string, attrs gjson.Result, 
 		if mappings.Exists() && mappings.IsArray() {
 			mappings.ForEach(func(idx, mapping gjson.Result) bool {
 				itemPath := attrPath + ".scim_config.mappings." + idx.String()
+
+				// First check if operations should be null
+					result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+						Ctx:              ctx,
+						Result:           result,
+						FieldPath:        itemPath,
+						FieldResult:      gjson.Parse(result).Get(itemPath),
+						ResourceName:     resourceName,
+						HCLAttributePath: "scim_config.mappings.operations",
+						CanHandle:        m.CanHandle,
+					})
+
+				// Re-parse after transformation
+				mapping = gjson.Parse(result).Get(itemPath)
+
+				// Transform operations from array to object (if it still exists)
 				result = state.TransformFieldArrayToObject(result, itemPath, mapping, "operations", state.ArrayToObjectOptions{})
+
+				// Transform empty values within operations nested fields
+				transformedOps := gjson.Parse(result).Get(itemPath + ".operations")
+				if transformedOps.Exists() && transformedOps.IsObject() {
+					result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+						Ctx:              ctx,
+						Result:           result,
+						FieldPath:        itemPath + ".operations",
+						FieldResult:      transformedOps,
+						ResourceName:     resourceName,
+						HCLAttributePath: "scim_config.mappings.operations",
+						CanHandle:        m.CanHandle,
+					})
+				}
 				return true
-			})
+		})
 		}
+
+		// Transform empty values within scim_config (top level of scim_config)
+		transformedScimConfig = gjson.Parse(result).Get(attrPath + ".scim_config")
+		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
+			Ctx:              ctx,
+			Result:           result,
+			FieldPath:        attrPath + ".scim_config",
+			FieldResult:      transformedScimConfig,
+			ResourceName:     resourceName,
+			HCLAttributePath: "scim_config",
+			CanHandle:        m.CanHandle,
+		})
 	}
 
 	return result

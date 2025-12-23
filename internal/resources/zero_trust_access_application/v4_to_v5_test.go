@@ -1636,12 +1636,12 @@ func TestV4ToV5Transformation(t *testing.T) {
 							"operations": [{
 								"create": true,
 								"update": true,
-								"delete": false
+								"delete": true
 							}]
 						},
 						{
 							"schema": "urn:ietf:params:scim:schemas:core:2.0:Group",
-							"enabled": false,
+							"enabled": true,
 							"strictness": "strict"
 						}
 					]
@@ -1682,12 +1682,12 @@ func TestV4ToV5Transformation(t *testing.T) {
 							"operations": {
 								"create": true,
 								"update": true,
-								"delete": false
+								"delete": true
 							}
 						},
 						{
 							"schema": "urn:ietf:params:scim:schemas:core:2.0:Group",
-							"enabled": false,
+							"enabled": true,
 							"strictness": "strict"
 						}
 					]
@@ -1840,7 +1840,7 @@ func TestV4ToV5Transformation(t *testing.T) {
 				"type": "self_hosted",
 				"cors_headers": [{
 					"allowed_methods": ["GET", "POST"],
-					"allow_credentials": false
+					"allow_credentials": true
 				}],
 				"landing_page_design": [{
 					"title": "Welcome",
@@ -1873,7 +1873,7 @@ func TestV4ToV5Transformation(t *testing.T) {
 				"type": "self_hosted",
 				"cors_headers": {
 					"allowed_methods": ["GET", "POST"],
-					"allow_credentials": false
+					"allow_credentials": true
 				},
 				"landing_page_design": {
 					"title": "Welcome",
@@ -2739,6 +2739,114 @@ func TestV4ToV5Transformation(t *testing.T) {
 				"account_id": "1234",
 				"name": "My Application",
 				"type": "self_hosted"
+			},
+			"schema_version": 0
+		}]
+	}]
+}`,
+			},
+			{
+				Name: "comprehensive empty values transformation to null test",
+				Input: `{
+	"version": 4,
+	"resources": [{
+		"type": "cloudflare_zero_trust_access_application",
+		"name": "empty_values_test",
+		"instances": [{
+			"attributes": {
+				"id": "test-id",
+				"name": "Test Empty Values",
+				"type": "self_hosted",
+				"domain": "test.example.com",
+				"auto_redirect_to_identity": false,
+				"enable_binding_cookie": false,
+				"http_only_cookie_attribute": false,
+				"service_auth_401_redirect": false,
+				"skip_interstitial": false,
+				"cors_headers": [{
+					"allow_all_headers": false,
+					"allow_all_methods": false,
+					"allow_all_origins": false,
+					"allow_credentials": false,
+					"max_age": 0,
+					"allowed_methods": [],
+					"allowed_origins": [],
+					"allowed_headers": []
+				}],
+				"landing_page_design": [{
+					"button_color": "",
+					"button_text_color": "",
+					"image_url": "",
+					"message": ""
+				}],
+				"saas_app": [],
+				"scim_config": [{
+					"enabled": false,
+					"deactivate_on_delete": false,
+					"idp_uid": "test-idp",
+					"remote_uri": "https://example.com/scim",
+					"mappings": [{
+						"schema": "urn:ietf:params:scim:schemas:core:2.0:User",
+						"enabled": false,
+						"filter": "",
+						"operations": [{
+							"create": false,
+							"update": false,
+							"delete": false
+						}]
+					}]
+				}],
+				"policies": [],
+				"allowed_idps": [],
+				"custom_pages": []
+			}
+		}]
+	}]
+}`,
+				Expected: `{
+	"version": 4,
+	"resources": [{
+		"type": "cloudflare_zero_trust_access_application",
+		"name": "empty_values_test",
+		"instances": [{
+			"attributes": {
+				"id": "test-id",
+				"name": "Test Empty Values",
+				"type": "self_hosted",
+				"domain": "test.example.com",
+				"auto_redirect_to_identity": null,
+				"enable_binding_cookie": null,
+				"http_only_cookie_attribute": null,
+				"service_auth_401_redirect": null,
+				"skip_interstitial": null,
+				"cors_headers": null,
+				"landing_page_design": {
+					"button_color": null,
+					"button_text_color": null,
+					"image_url": null,
+					"message": null,
+					"title": "Welcome!"
+				},
+				"saas_app": null,
+				"scim_config": {
+					"enabled": null,
+					"deactivate_on_delete": null,
+					"idp_uid": "test-idp",
+					"remote_uri": "https://example.com/scim",
+					"mappings": [{
+						"schema": "urn:ietf:params:scim:schemas:core:2.0:User",
+						"enabled": null,
+						"filter": null,
+						"operations": {
+							"create": null,
+							"update": null,
+							"delete": null
+						}
+					}]
+				},
+				"policies": null,
+				"allowed_idps": null,
+				"custom_pages": null
 			},
 			"schema_version": 0
 		}]
