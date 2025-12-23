@@ -56,7 +56,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		actionsBody := actionsBlock.Body()
 
 		// Step 1a: Remove deprecated fields
-		tfhcl.RemoveAttributes(actionsBody, "minify", "disable_railgun", "server_side_exclude")
+		tfhcl.RemoveAttributes(actionsBody, "minify", "disable_railgun")
 
 		// Step 1b: Transform cache_ttl_by_status (TypeSet blocks → MapAttribute)
 		// MUST do this BEFORE converting actions block, while blocks still exist
@@ -74,12 +74,6 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		// Must process deepest blocks first, then parent
 		if cacheKeyBlock := tfhcl.FindBlockByType(actionsBody, "cache_key_fields"); cacheKeyBlock != nil {
 			cacheKeyBody := cacheKeyBlock.Body()
-
-			// Remove deprecated "ignore" field from query_string before conversion
-			if queryStringBlock := tfhcl.FindBlockByType(cacheKeyBody, "query_string"); queryStringBlock != nil {
-				queryStringBody := queryStringBlock.Body()
-				tfhcl.RemoveAttributes(queryStringBody, "ignore")
-			}
 
 			// Convert deepest nested blocks first (TypeList MaxItems:1 → SingleNestedAttribute)
 			tfhcl.ConvertSingleBlockToAttribute(cacheKeyBody, "cookie", "cookie")
@@ -138,14 +132,9 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 			// 3a. Remove deprecated fields
 			result, _ = sjson.Delete(result, "attributes.actions.minify")
 			result, _ = sjson.Delete(result, "attributes.actions.disable_railgun")
-			result, _ = sjson.Delete(result, "attributes.actions.server_side_exclude")
 
 			// 3b. Transform nested MaxItems:1 arrays to objects
 			result = m.transformActionsNestedArrays(result, attrs.Get("actions"))
-
-			// 3b2. Remove deprecated "ignore" field from cache_key_fields.query_string
-			// This must be done after transformActionsNestedArrays converts the arrays to objects
-			result, _ = sjson.Delete(result, "attributes.actions.cache_key_fields.query_string.ignore")
 
 			// 3c. Transform cache_ttl_by_status array → map
 			result = m.transformCacheTTLByStatusState(result, attrs.Get("actions"))
