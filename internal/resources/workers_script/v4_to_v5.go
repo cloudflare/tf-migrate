@@ -31,7 +31,6 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
-	// No preprocessing needed - all transformations can be done with HCL helpers
 	return content
 }
 
@@ -268,7 +267,7 @@ func quoteValue(value string) string {
 	if len(value) == 0 {
 		return "\"\""
 	}
-	if (value[0] == '"' && value[len(value)-1] == '"') {
+	if value[0] == '"' && value[len(value)-1] == '"' {
 		return value
 	}
 	if len(value) >= 4 && value[0:4] == "var." {
@@ -456,10 +455,11 @@ func (m *V4ToV5Migrator) transformStateModule(result string, attrs gjson.Result)
 		moduleBool := moduleAttr.Bool()
 
 		// Add main_module if true, body_part if false
+		// Use a default filename since we don't have the actual filename
 		if moduleBool {
-			result, _ = sjson.Set(result, "attributes.main_module", "true")
+			result, _ = sjson.Set(result, "attributes.main_module", "worker.js")
 		} else {
-			result, _ = sjson.Set(result, "attributes.body_part", "false")
+			result, _ = sjson.Set(result, "attributes.body_part", "worker.js")
 		}
 	}
 

@@ -70,7 +70,7 @@ func TestWorkerScriptStateTransform_BasicRename(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "my-worker",
@@ -90,7 +90,7 @@ func TestWorkerScriptStateTransform_BasicRename(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "my-worker",
@@ -124,7 +124,7 @@ func TestWorkerScriptStateTransform_Bindings(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "my-worker",
@@ -156,7 +156,7 @@ func TestWorkerScriptStateTransform_Bindings(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "my-worker",
@@ -188,7 +188,7 @@ func TestWorkerScriptStateTransform_Bindings(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "my-worker",
@@ -220,7 +220,7 @@ func TestWorkerScriptStateTransform_Bindings(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "my-worker",
@@ -252,7 +252,7 @@ func TestWorkerScriptStateTransform_Bindings(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "my-worker",
@@ -284,7 +284,7 @@ func TestWorkerScriptStateTransform_Bindings(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "my-worker",
@@ -311,7 +311,7 @@ func TestWorkerScriptStateTransform_Bindings(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "my-worker",
@@ -354,7 +354,7 @@ func TestWorkerScriptStateTransform_Bindings(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "my-worker",
@@ -400,7 +400,7 @@ func TestWorkerScriptStateTransform_Module(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "my-worker",
@@ -421,7 +421,7 @@ func TestWorkerScriptStateTransform_Module(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "my-worker",
@@ -465,7 +465,7 @@ func TestWorkerScriptStateTransform_Comprehensive(t *testing.T) {
   }
 }`,
 			Expected: `{
-  "schema_version": 0,
+  "schema_version": 1,
   "attributes": {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "script_name": "comprehensive-worker",
