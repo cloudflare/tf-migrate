@@ -14,6 +14,11 @@ import (
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
 
+// contains checks if a string contains a substring
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
+}
+
 // V4ToV5Migrator handles migration of Pages Project resources from v4 to v5
 type V4ToV5Migrator struct {
 }
@@ -163,27 +168,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			tfhcl.ConvertSingleBlockToAttribute(productionBody, "placement", "placement")
 		}
 
-		// Check if one has placement and the other doesn't, then add empty placement to the one without
-		var previewHasPlacement, productionHasPlacement bool
-		if previewBlock != nil {
-			previewBody := previewBlock.Body()
-			previewHasPlacement = previewBody.GetAttribute("placement") != nil || tfhcl.FindBlockByType(previewBody, "placement") != nil
-		}
-		if productionBlock != nil {
-			productionBody := productionBlock.Body()
-			productionHasPlacement = productionBody.GetAttribute("placement") != nil || tfhcl.FindBlockByType(productionBody, "placement") != nil
-		}
-
-		// If one has placement and the other doesn't, add empty placement to the one without
-		if previewHasPlacement && !productionHasPlacement && productionBlock != nil {
-			productionBody := productionBlock.Body()
-			productionBody.SetAttributeValue("placement", cty.EmptyObjectVal)
-		} else if productionHasPlacement && !previewHasPlacement && previewBlock != nil {
-			previewBody := previewBlock.Body()
-			previewBody.SetAttributeValue("placement", cty.EmptyObjectVal)
-		}
-
-		// Now convert preview and production blocks to attributes
+		// Convert preview and production blocks to attributes
 		tfhcl.ConvertSingleBlockToAttribute(deploymentConfigsBody, "preview", "preview")
 		tfhcl.ConvertSingleBlockToAttribute(deploymentConfigsBody, "production", "production")
 	}
@@ -218,6 +203,49 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 		return result, nil
 	}
 
+	// Parse config to determine which build_config fields were explicitly set
+	buildConfigFieldsInConfig := make(map[string]bool)
+	if ctx.CFGFile != nil {
+		// Find the resource block in the HCL config
+		for _, block := range ctx.CFGFile.Body().Blocks() {
+			if block.Type() == "resource" {
+				labels := block.Labels()
+				if len(labels) >= 2 && labels[0] == "cloudflare_pages_project" && labels[1] == resourceName {
+					// Found our resource - check for build_config
+					buildConfigBlock := tfhcl.FindBlockByType(block.Body(), "build_config")
+					buildConfigAttr := block.Body().GetAttribute("build_config")
+
+					if buildConfigBlock != nil {
+						// build_config is a block - get all attributes
+						for name := range buildConfigBlock.Body().Attributes() {
+							buildConfigFieldsInConfig[name] = true
+						}
+					} else if buildConfigAttr != nil {
+						// build_config is an attribute - parse the value by checking if field names appear in the string
+						attrStr := string(buildConfigAttr.Expr().BuildTokens(nil).Bytes())
+						// Simple string-based check for field names in HCL
+						// This works because HCL syntax is "field = value"
+						fieldsToCheck := []string{"build_caching", "build_command", "destination_dir", "root_dir", "web_analytics_tag", "web_analytics_token"}
+						for _, field := range fieldsToCheck {
+							// Check if the field name appears in the attribute string
+							// Use a simple string search - if it's there, it was in the config
+							if len(attrStr) > 0 {
+								// Check for "field =" or "field=" patterns
+								fieldPattern := field + " ="
+								fieldPatternNoSpace := field + "="
+								if contains(attrStr, fieldPattern) || contains(attrStr, fieldPatternNoSpace) {
+									buildConfigFieldsInConfig[field] = true
+								}
+							}
+						}
+					}
+					break
+				}
+			}
+		}
+	}
+
+
 	// Step 1: Convert TypeList MaxItems:1 arrays to objects (deepest first)
 	result = m.convertListToObject(result, "attributes.build_config", attrs.Get("build_config"))
 	result = m.convertListToObject(result, "attributes.source", attrs.Get("source"))
@@ -247,17 +275,33 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 	}
 
 	if buildConfigObj := attrs.Get("build_config"); buildConfigObj.Exists() && buildConfigObj.IsObject() {
-		result = m.populateBuildConfigV5Fields(result, "attributes.build_config", buildConfigObj)
-	} else {
-		// No build_config - set it to an object with all null fields to match v5
-		result, _ = sjson.Set(result, "attributes.build_config", map[string]interface{}{
-			"build_caching":       nil,
-			"build_command":       nil,
-			"destination_dir":     nil,
-			"root_dir":            nil,
-			"web_analytics_tag":   nil,
-			"web_analytics_token": nil,
+		// Check if build_config has any truthy values (not null, not false, not empty string)
+		hasValues := false
+		buildConfigObj.ForEach(func(key, value gjson.Result) bool {
+			if value.Exists() && value.Type != gjson.Null {
+				// Check for truthy values: not false, not empty string
+				if value.Type == gjson.False {
+					return true // continue - false is falsy
+				}
+				if value.Type == gjson.String && value.String() == "" {
+					return true // continue - empty string is falsy
+				}
+				// Has a truthy value
+				hasValues = true
+				return false // early exit
+			}
+			return true
 		})
+
+		if hasValues {
+			result = m.populateBuildConfigV5Fields(result, "attributes.build_config", buildConfigObj, buildConfigFieldsInConfig)
+		} else {
+			// All fields are null/empty/false - set to empty object to match v5 provider behavior
+			result, _ = sjson.Set(result, "attributes.build_config", map[string]interface{}{})
+		}
+	} else {
+		// No build_config - set to empty object to match v5 provider behavior
+		result, _ = sjson.Set(result, "attributes.build_config", map[string]interface{}{})
 	}
 
 	// Refresh attrs
@@ -325,7 +369,7 @@ func (m *V4ToV5Migrator) convertListToObject(result string, path string, field g
 
 	if field.IsArray() {
 		arr := field.Array()
-		if len(arr) == 0 && !strings.Contains(path, "compatibility_flags") {
+		if len(arr) == 0 {
 			// Empty array - delete it (v4 stores as nil, v5 must too)
 			// This includes compatibility_flags: [] which the v5 provider removes when not in config
 			result, _ = sjson.Delete(result, path)
@@ -443,8 +487,12 @@ func (m *V4ToV5Migrator) processDeploymentConfigState(result string, basePath st
 
 	// Leave compatibility_flags as null if not present (matches provider behavior)
 	// The provider returns null for this field when not explicitly set
+	// Also convert empty arrays to null
 	compatFlags := freshDeploymentConfig.Get("compatibility_flags")
 	if !compatFlags.Exists() || compatFlags.Type == gjson.Null {
+		result, _ = sjson.Set(result, basePath+".compatibility_flags", nil)
+	} else if compatFlags.IsArray() && len(compatFlags.Array()) == 0 {
+		// Empty array - convert to null to match provider behavior
 		result, _ = sjson.Set(result, basePath+".compatibility_flags", nil)
 	}
 
@@ -492,22 +540,65 @@ func (m *V4ToV5Migrator) processDeploymentConfigState(result string, basePath st
 	}
 	if !freshDeploymentConfig.Get("placement").Exists() {
 		result, _ = sjson.Set(result, basePath+".placement", nil)
+	} else {
+		// Check if placement exists but all its fields are empty/null
+		placementObj := freshDeploymentConfig.Get("placement")
+		if placementObj.IsObject() {
+			hasValues := false
+			placementObj.ForEach(func(key, value gjson.Result) bool {
+				if value.Exists() && value.Type != gjson.Null && value.String() != "" {
+					hasValues = true
+					return false // early exit
+				}
+				return true
+			})
+
+			if !hasValues {
+				// All placement fields are empty/null - set placement to null
+				result, _ = sjson.Set(result, basePath+".placement", nil)
+			} else {
+				// Placement has values - clean up empty mode field to be null
+				if mode := placementObj.Get("mode"); mode.Exists() && mode.String() == "" {
+					result, _ = sjson.Set(result, basePath+".placement.mode", nil)
+				}
+			}
+		}
 	}
 
 	return result
 }
 
 // populateBuildConfigV5Fields ensures all v5 build_config fields are present
-func (m *V4ToV5Migrator) populateBuildConfigV5Fields(result string, basePath string, buildConfig gjson.Result) string {
-	// Set all v5 fields, keeping existing values or setting to null
-	fields := []string{"build_caching", "build_command", "destination_dir", "root_dir", "web_analytics_tag", "web_analytics_token"}
+// Only include fields that were explicitly set in the config OR have truthy values
+func (m *V4ToV5Migrator) populateBuildConfigV5Fields(result string, basePath string, buildConfig gjson.Result, fieldsInConfig map[string]bool) string {
+	// Rebuild build_config with only fields that:
+	// 1. Were explicitly set in the config, OR
+	// 2. Have truthy values (not null, not false, not empty string)
+	newBuildConfig := make(map[string]interface{})
+	fieldsToCheck := []string{"build_caching", "build_command", "destination_dir", "root_dir", "web_analytics_tag", "web_analytics_token"}
 
-	for _, field := range fields {
-		if !buildConfig.Get(field).Exists() {
-			result, _ = sjson.Set(result, basePath+"."+field, nil)
+	for _, field := range fieldsToCheck {
+		fieldValue := buildConfig.Get(field)
+		if !fieldValue.Exists() {
+			// Field doesn't exist - don't add it
+			continue
+		}
+
+		// Include field if:
+		// - It was explicitly in the config, OR
+		// - It has a truthy value (not null, not false, not empty string)
+		inConfig := fieldsInConfig[field] || fieldsInConfig["*"] // "*" means build_config exists as attribute
+		hasTruthyValue := fieldValue.Type != gjson.Null &&
+			fieldValue.Type != gjson.False &&
+			!(fieldValue.Type == gjson.String && fieldValue.String() == "")
+
+		if inConfig || hasTruthyValue {
+			newBuildConfig[field] = fieldValue.Value()
 		}
 	}
 
+	// Replace build_config with the new object
+	result, _ = sjson.Set(result, basePath, newBuildConfig)
 	return result
 }
 
