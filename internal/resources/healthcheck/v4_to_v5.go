@@ -40,6 +40,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// cloudflare_healthcheck doesn't rename, so return the same name
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_healthcheck", "cloudflare_healthcheck"
+}
+
 // TransformConfig handles HCL configuration transformations
 // Major transformation: Flat structure → Nested http_config/tcp_config based on type
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

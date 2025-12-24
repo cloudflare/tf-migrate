@@ -35,6 +35,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// Returns rename from cloudflare_managed_headers to cloudflare_managed_transforms
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_managed_headers", "cloudflare_managed_transforms"
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	// Rename resource type
 	tfhcl.RenameResourceType(block, "cloudflare_managed_headers", "cloudflare_managed_transforms")

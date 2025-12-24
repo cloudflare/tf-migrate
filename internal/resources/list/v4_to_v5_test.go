@@ -775,3 +775,109 @@ func testRedirectListState(t *testing.T) {
 
 	testhelpers.RunStateTransformTests(t, tests, migrator)
 }
+
+func TestNormalizeIPAddress(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "CIDR /8",
+			input: "10.0.0.0/8",
+			want:  "10.0.0.0",
+		},
+		{
+			name:  "CIDR /16",
+			input: "192.168.0.0/16",
+			want:  "192.168.0.0",
+		},
+		{
+			name:  "CIDR /24",
+			input: "192.168.1.0/24",
+			want:  "192.168.1.0",
+		},
+		{
+			name:  "IPv4 without CIDR",
+			input: "1.1.1.1",
+			want:  "1.1.1.1",
+		},
+		{
+			name:  "IPv6 without CIDR",
+			input: "2001:db8::1",
+			want:  "2001:db8::1",
+		},
+		{
+			name:  "Empty string",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "IPv6 with CIDR",
+			input: "2001:db8::/32",
+			want:  "2001:db8::",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeIPAddress(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeIPAddress(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeIPAddressInExpr(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "Quoted CIDR /8",
+			input: `"10.0.0.0/8"`,
+			want:  `"10.0.0.0"`,
+		},
+		{
+			name:  "Quoted CIDR /24",
+			input: `"192.168.1.0/24"`,
+			want:  `"192.168.1.0"`,
+		},
+		{
+			name:  "Quoted IPv4 without CIDR",
+			input: `"1.1.1.1"`,
+			want:  `"1.1.1.1"`,
+		},
+		{
+			name:  "Variable expression (unchanged)",
+			input: `var.ip_address`,
+			want:  `var.ip_address`,
+		},
+		{
+			name:  "each.value expression (unchanged)",
+			input: `each.value`,
+			want:  `each.value`,
+		},
+		{
+			name:  "Empty string",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "Quoted IPv6 with CIDR",
+			input: `"2001:db8::/32"`,
+			want:  `"2001:db8::"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeIPAddressInExpr(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeIPAddressInExpr(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
