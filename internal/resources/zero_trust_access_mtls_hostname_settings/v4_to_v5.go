@@ -37,6 +37,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// cloudflare_zero_trust_access_mtls_hostname_settings doesn't rename, so return the same name
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_zero_trust_access_mtls_hostname_settings", "cloudflare_zero_trust_access_mtls_hostname_settings"
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
 

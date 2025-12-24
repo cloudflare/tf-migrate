@@ -39,6 +39,13 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// Argo is special - it splits into multiple resources (argo_smart_routing, argo_tiered_caching)
+// We use the old name for both to indicate it doesn't have a 1:1 rename
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_argo", "cloudflare_argo"
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
 	resourceName := tfhcl.GetResourceName(block)

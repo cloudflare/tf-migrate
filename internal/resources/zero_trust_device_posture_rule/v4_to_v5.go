@@ -42,6 +42,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// Returns rename from cloudflare_device_posture_rule to cloudflare_zero_trust_device_posture_rule
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_device_posture_rule", "cloudflare_zero_trust_device_posture_rule"
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	tfhcl.RenameResourceType(block, "cloudflare_device_posture_rule", "cloudflare_zero_trust_device_posture_rule")
 
