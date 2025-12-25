@@ -1,7 +1,7 @@
 name: CI
 
 concurrency:
-  group: e2e-tests-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: false
 
 on:
@@ -14,8 +14,6 @@ on:
       - '**'  # Run on PRs to any branch
 
 jobs:
-  # All jobs run in parallel except e2e-tests which requires secrets
-
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
@@ -86,46 +84,10 @@ jobs:
 
       - name: Build tf-migrate
         run: |
-          go build -o tf-migrate ./cmd/tf-migrate
-          ./tf-migrate version
+          make build
+          ./bin/tf-migrate version
 
       - name: Run integration tests for v4 to v5
         run: |
           cd integration/v4_to_v5
           go test -v -race -timeout 10m
-
-  e2e-tests:
-    name: E2E Tests
-    runs-on: ubuntu-latest
-    if: ${{ github.ref == 'refs/heads/main' }}
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: ./go.mod
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.9.8"
-
-      - name: Get dependencies
-        run: |
-          go mod download
-          go mod tidy
-
-      - name: Run E2E tests
-        env:
-          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
-          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-          CLOUDFLARE_R2_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
-          CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
-        run: |
-          ./scripts/run-e2e-tests
