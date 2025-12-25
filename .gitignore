@@ -1,4 +1,5 @@
 tf-migrate
+bin/
 .terraformrc-tf-migrate
 
 # Local provider dev overrides
