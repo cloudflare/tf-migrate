@@ -43,6 +43,11 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// cloudflare_zone doesn't rename, so return the same name
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_zone", "cloudflare_zone"
+}
 
 // TransformConfig handles configuration file transformations.
 // Transformations:

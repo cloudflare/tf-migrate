@@ -28,7 +28,7 @@ locals {
 # Parent resource: KV Namespace for dependency testing
 resource "cloudflare_workers_kv_namespace" "test_namespace" {
   account_id = local.common_account
-  title = "${local.namespace_prefix}-namespace"
+  title = "${local.namespace_prefix}-namespace-primary"
 }
 
 # Pattern Group 1: Basic Resources

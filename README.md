@@ -211,9 +211,26 @@ E2E tests validate the complete migration workflow with real Cloudflare resource
 ./scripts/run-e2e-tests
 
 # Run E2E tests for specific resources only
-./scripts/run-e2e-tests --resources dns_record,api_token
+./scripts/run-e2e-tests --resources dns_record,api_token --apply-exemptions
 ```
 
 **Output:**
 - Test logs saved to `e2e/tmp/*.log`
 - State snapshots saved to `e2e/tmp/*-state.json`
+
+**Cleaning State:**
+
+If you need to remove specific modules from the remote Terraform state (useful for re-running failed tests or cleaning up partial deployments):
+
+```bash
+# Remove specific modules from remote state
+./scripts/clean-state-modules.sh dns,healthcheck,zone
+
+# The script will:
+# 1. Build the latest e2e-runner binary
+# 2. Pull state from R2
+# 3. Filter out specified modules
+# 4. Push cleaned state back to R2
+```
+
+**Note:** This directly modifies the remote Terraform state. Use with caution and only in test environments.

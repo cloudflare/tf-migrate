@@ -40,6 +40,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// cloudflare_custom_pages doesn't rename, so return the same name
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_custom_pages", "cloudflare_custom_pages"
+}
+
 // TransformConfig handles configuration file transformations.
 // Transformations:
 // 1. type → identifier

@@ -40,6 +40,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// cloudflare_url_normalization_settings doesn't rename, so return the same name
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_url_normalization_settings", "cloudflare_url_normalization_settings"
+}
+
 // TransformConfig handles configuration file transformations.
 // No transformations needed - all fields map directly and resource name is unchanged.
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
