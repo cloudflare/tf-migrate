@@ -22,7 +22,7 @@ locals {
 
 # Create test application (required for policies)
 # Using SaaS type which doesn't require domain validation
-resource "cloudflare_zero_trust_access_application" "test_app" {
+resource "cloudflare_access_application" "test_app" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-test-app"
   type       = "saas"
@@ -37,7 +37,7 @@ resource "cloudflare_zero_trust_access_application" "test_app" {
 # Basic test cases
 resource "cloudflare_access_policy" "example" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 1
   name           = "${local.name_prefix}-example-policy"
   decision       = "allow"
@@ -54,7 +54,7 @@ resource "cloudflare_access_policy" "example" {
 
 resource "cloudflare_access_policy" "complex" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 2
   name           = "${local.name_prefix}-complex-policy"
   decision       = "allow"
@@ -95,7 +95,7 @@ resource "cloudflare_access_policy" "map_example" {
   }
 
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = each.value.precedence
   name           = "${local.name_prefix}-map-${each.key}-policy"
   decision       = each.value.decision
@@ -126,7 +126,7 @@ resource "cloudflare_access_policy" "set_example" {
   }
 
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = each.value.precedence
   name           = "${local.name_prefix}-set-${each.key}"
   decision       = "allow"
@@ -141,7 +141,7 @@ resource "cloudflare_access_policy" "counted" {
   count = 3
 
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 30 + count.index
   name           = "${local.name_prefix}-counted-${count.index}"
   decision       = "allow"
@@ -156,7 +156,7 @@ resource "cloudflare_access_policy" "conditional_enabled" {
   count = local.enable_test ? 1 : 0
 
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 40
   name           = "${local.name_prefix}-conditional-enabled"
   decision       = "allow"
@@ -170,7 +170,7 @@ resource "cloudflare_access_policy" "conditional_disabled" {
   count = local.enable_demo ? 1 : 0
 
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 41
   name           = "${local.name_prefix}-conditional-disabled"
   decision       = "deny"
@@ -183,7 +183,7 @@ resource "cloudflare_access_policy" "conditional_disabled" {
 # Pattern Group 6: Terraform Functions
 resource "cloudflare_access_policy" "with_functions" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 50
   name           = join("-", [local.name_prefix, "functions", "test"])
   decision       = "allow"
@@ -196,7 +196,7 @@ resource "cloudflare_access_policy" "with_functions" {
 # Pattern Group 7: Lifecycle Meta-Arguments
 resource "cloudflare_access_policy" "with_lifecycle" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 60
   name           = "${local.name_prefix}-lifecycle-test"
   decision       = "allow"
@@ -213,7 +213,7 @@ resource "cloudflare_access_policy" "with_lifecycle" {
 
 resource "cloudflare_access_policy" "with_prevent_destroy" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 61
   name           = "${local.name_prefix}-prevent-destroy"
   decision       = "allow"
@@ -232,7 +232,7 @@ resource "cloudflare_access_policy" "with_prevent_destroy" {
 # Minimal resource (only required fields)
 resource "cloudflare_access_policy" "minimal" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 70
   name           = "${local.name_prefix}-minimal"
   decision       = "allow"
@@ -245,7 +245,7 @@ resource "cloudflare_access_policy" "minimal" {
 # Maximal resource (all optional fields populated)
 resource "cloudflare_access_policy" "maximal" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 71
   name           = "${local.name_prefix}-maximal"
   decision       = "allow"
@@ -275,7 +275,7 @@ resource "cloudflare_access_policy" "maximal" {
 # Policy with common_name
 resource "cloudflare_access_policy" "with_common_name" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 72
   name           = "${local.name_prefix}-common-name"
   decision       = "allow"
@@ -288,7 +288,7 @@ resource "cloudflare_access_policy" "with_common_name" {
 # Policy with auth_method
 resource "cloudflare_access_policy" "with_auth_method" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 73
   name           = "${local.name_prefix}-auth-method"
   decision       = "allow"
@@ -301,7 +301,7 @@ resource "cloudflare_access_policy" "with_auth_method" {
 # Policy with login_method
 resource "cloudflare_access_policy" "with_login_method" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 74
   name           = "${local.name_prefix}-login-method"
   decision       = "allow"
@@ -314,7 +314,7 @@ resource "cloudflare_access_policy" "with_login_method" {
 # Policy with any_valid_service_token
 resource "cloudflare_access_policy" "with_service_token" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 75
   name           = "${local.name_prefix}-service-token"
   decision       = "allow"
@@ -327,7 +327,7 @@ resource "cloudflare_access_policy" "with_service_token" {
 # Deny policy
 resource "cloudflare_access_policy" "deny_policy" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 80
   name           = "${local.name_prefix}-deny"
   decision       = "deny"
@@ -340,7 +340,7 @@ resource "cloudflare_access_policy" "deny_policy" {
 # Bypass policy
 resource "cloudflare_access_policy" "bypass_policy" {
   account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.test_app.id
+  application_id = cloudflare_access_application.test_app.id
   precedence     = 81
   name           = "${local.name_prefix}-bypass"
   decision       = "bypass"
