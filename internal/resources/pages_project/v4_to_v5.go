@@ -46,6 +46,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// cloudflare_pages_project doesn't rename, so return the same name
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_pages_project", "cloudflare_pages_project"
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	// Resource name doesn't change (cloudflare_pages_project in both v4 and v5)
 	body := block.Body()

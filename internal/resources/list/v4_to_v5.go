@@ -43,6 +43,12 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface
+// cloudflare_list doesn't rename, so return the same name
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_list", "cloudflare_list"
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
 
@@ -189,7 +195,7 @@ func buildItemObjectFromBlock(itemBlock *hclwrite.Block, kind string) cty.Value 
 				if ipAttr := valueBody.GetAttribute("ip"); ipAttr != nil {
 					ipValue := tfhcl.ExtractStringFromAttribute(ipAttr)
 					if ipValue != "" {
-						itemMap["ip"] = cty.StringVal(ipValue)
+						itemMap["ip"] = cty.StringVal(normalizeIPAddress(ipValue))
 					}
 				}
 
@@ -419,6 +425,7 @@ func extractValueBlockFields(vBlock *hclwrite.Block, kind string, iteratorName s
 		if ipAttr := vBody.GetAttribute("ip"); ipAttr != nil {
 			ipExpr := strings.TrimSpace(string(ipAttr.Expr().BuildTokens(nil).Bytes()))
 			ipExpr = tfhcl.StripIteratorValueSuffix(ipExpr, iteratorName)
+			ipExpr = normalizeIPAddressInExpr(ipExpr)
 			fields = append(fields, fmt.Sprintf("ip = %s", ipExpr))
 		}
 
@@ -616,7 +623,7 @@ func transformStateItem(item gjson.Result, kind string) map[string]interface{} {
 	switch kind {
 	case "ip":
 		if ip := value.Get("ip"); ip.Exists() && ip.String() != "" {
-			result["ip"] = ip.String()
+			result["ip"] = normalizeIPAddress(ip.String())
 		}
 
 	case "asn":
@@ -812,6 +819,7 @@ func extractValueBlockFieldsPreserving(vBlock *hclwrite.Block, kind string) []st
 	case "ip":
 		if ipAttr := vBody.GetAttribute("ip"); ipAttr != nil {
 			ipExpr := strings.TrimSpace(string(ipAttr.Expr().BuildTokens(nil).Bytes()))
+			ipExpr = normalizeIPAddressInExpr(ipExpr)
 			fields = append(fields, fmt.Sprintf("ip = %s", ipExpr))
 		}
 
@@ -951,5 +959,42 @@ func ensureSourceURLHasPathInExpr(expr string) string {
 			return `"` + url + `/"`
 		}
 	}
+	return expr
+}
+
+// normalizeIPAddress normalizes an IP address by removing CIDR notation.
+// The v5 provider requires IP addresses to be normalized without CIDR suffix.
+// Examples:
+//   "10.0.0.0/8" -> "10.0.0.0"
+//   "192.168.1.0/24" -> "192.168.1.0"
+//   "1.1.1.1" -> "1.1.1.1" (no change)
+func normalizeIPAddress(ip string) string {
+	if ip == "" {
+		return ip
+	}
+	// Check if IP contains CIDR notation
+	if idx := strings.Index(ip, "/"); idx != -1 {
+		// Return only the IP address part, removing /prefix
+		return ip[:idx]
+	}
+	return ip
+}
+
+// normalizeIPAddressInExpr normalizes IP addresses in HCL expressions.
+// For literal strings like "10.0.0.0/8", transforms to "10.0.0.0".
+// For dynamic expressions, returns unchanged (cannot normalize at migration time).
+func normalizeIPAddressInExpr(expr string) string {
+	if expr == "" {
+		return expr
+	}
+	// Check if it's a quoted string literal
+	if strings.HasPrefix(expr, `"`) && strings.HasSuffix(expr, `"`) {
+		// Extract the IP value
+		ip := strings.Trim(expr, `"`)
+		// Normalize and re-quote
+		return `"` + normalizeIPAddress(ip) + `"`
+	}
+	// For non-literal expressions (e.g., variables, each.value), return as-is
+	// The user will need to ensure their data source provides normalized IPs
 	return expr
 }

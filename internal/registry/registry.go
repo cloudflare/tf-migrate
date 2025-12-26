@@ -30,6 +30,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_script"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_group"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_identity_provider"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_mtls_certificate"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_mtls_hostname_settings"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_posture_rule"
@@ -80,6 +81,7 @@ func RegisterAllMigrations() {
 	workers_script.NewV4ToV5Migrator()
 	zero_trust_access_group.NewV4ToV5Migrator()
 	zero_trust_access_identity_provider.NewV4ToV5Migrator()
+	zero_trust_access_mtls_certificate.NewV4ToV5Migrator()
 	zero_trust_access_mtls_hostname_settings.NewV4ToV5Migrator()
 	zero_trust_access_service_token.NewV4ToV5Migrator()
 	zero_trust_dlp_custom_profile.NewV4ToV5Migrator()

@@ -14,7 +14,7 @@ variable "cloudflare_zone_id" {
 
 resource "cloudflare_workers_kv_namespace" "test_kv" {
   account_id = var.cloudflare_account_id
-  title      = "cftftest-kv-namespace"
+  title      = "cftftest-kv-namespace-for-workers-script"
 }
 
 resource "cloudflare_workers_kv_namespace" "test_kv_multiple" {
