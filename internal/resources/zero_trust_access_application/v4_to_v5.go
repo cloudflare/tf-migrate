@@ -1,14 +1,16 @@
 package zero_trust_access_application
 
 import (
-	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -59,7 +61,19 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// V4 has type default = "self_hosted", default to this value if type is not specified in V4 config
 	tfhcl.EnsureAttribute(body, "type", "self_hosted")
 
+	// V5 changed the default for http_only_cookie_attribute from false to true
+	// Explicitly set to false to maintain v4 behavior when not specified
+	// Only applicable for types: self_hosted, ssh, vnc, rdp, mcp_portal
+	appType := tfhcl.ExtractStringFromAttribute(body.GetAttribute("type"))
+	if appType == "self_hosted" || appType == "ssh" || appType == "vnc" || appType == "rdp" || appType == "mcp_portal" {
+		tfhcl.EnsureAttribute(body, "http_only_cookie_attribute", "false")
+	}
+
 	tfhcl.RemoveAttributes(body, "domain_type")
+
+	// Remove attributes with default/empty values that v4 provider removes from state
+	// This prevents drift when migrating to v5
+	removeDefaultValueAttributes(body)
 
 	tfhcl.ConvertBlocksToAttribute(body, "cors_headers", "cors_headers", nil)
 	tfhcl.ConvertBlocksToAttributeList(body, "destinations", nil)
@@ -82,6 +96,9 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	tfhcl.RemoveFunctionWrapper(body, "custom_pages", "toset")
 	tfhcl.RemoveFunctionWrapper(body, "self_hosted_domains", "toset")
 
+	// Sort self_hosted_domains to match provider ordering and avoid drift
+	sortStringArrayAttribute(body, "self_hosted_domains")
+
 	m.transformSaasAppBlock(body)
 	m.transformScimConfigBlock(body)
 	m.transformTargetCriteriaBlocks(body)
@@ -90,6 +107,137 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
+}
+
+// removeDefaultValueAttributes removes attributes that have default/empty values.
+// v4 provider removes these from state, so we should remove them from config to avoid drift.
+func removeDefaultValueAttributes(body *hclwrite.Body) {
+	// Boolean attributes that should be removed if false
+	boolAttrs := []string{
+		"auto_redirect_to_identity",
+		"enable_binding_cookie",
+		"options_preflight_bypass",
+		"service_auth_401_redirect",
+		"skip_interstitial",
+	}
+
+	for _, attrName := range boolAttrs {
+		if attr := body.GetAttribute(attrName); attr != nil {
+			if val, ok := tfhcl.ExtractBoolFromAttribute(attr); ok && !val {
+				// Remove if value is explicitly false
+				tfhcl.RemoveAttributes(body, attrName)
+			}
+		}
+	}
+
+	// Array attributes that should be removed if empty
+	arrayAttrs := []string{"allowed_idps", "tags"}
+	for _, attrName := range arrayAttrs {
+		if attr := body.GetAttribute(attrName); attr != nil {
+			tokens := attr.Expr().BuildTokens(nil)
+			// Check if it's an empty array []
+			tokenStr := string(tokens.Bytes())
+			if strings.TrimSpace(tokenStr) == "[]" {
+				tfhcl.RemoveAttributes(body, attrName)
+			}
+		}
+	}
+}
+
+// sortStringArrayAttribute sorts a string array attribute alphabetically.
+// This is needed when the provider returns arrays in a consistent (sorted) order
+// different from the user-specified order, causing drift.
+func sortStringArrayAttribute(body *hclwrite.Body, attrName string) {
+	attr := body.GetAttribute(attrName)
+	if attr == nil {
+		return
+	}
+
+	// Parse the expression to extract string values
+	expr := attr.Expr()
+
+	// Try to parse as tuple (array)
+	tokens := expr.BuildTokens(nil)
+	tokenBytes := tokens.Bytes()
+
+	// Parse the HCL expression
+	parsed, diags := hclsyntax.ParseExpression(tokenBytes, "", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		return
+	}
+
+	// Check if it's a tuple (array)
+	tuple, ok := parsed.(*hclsyntax.TupleConsExpr)
+	if !ok {
+		return
+	}
+
+	// Extract string values
+	var strings []string
+	for _, elem := range tuple.Exprs {
+		if template, ok := elem.(*hclsyntax.TemplateExpr); ok {
+			// Handle string literals
+			if len(template.Parts) == 1 {
+				if lit, ok := template.Parts[0].(*hclsyntax.LiteralValueExpr); ok {
+					if lit.Val.Type() == cty.String {
+						strings = append(strings, lit.Val.AsString())
+					}
+				}
+			}
+		}
+	}
+
+	// If we couldn't extract all strings, don't modify
+	if len(strings) != len(tuple.Exprs) {
+		return
+	}
+
+	// Sort the strings
+	// Special handling for OIDC scopes: use canonical OIDC scope ordering
+	// The provider orders scopes according to the OIDC spec: openid, profile, email, then others alphabetically
+	if attrName == "scopes" && len(strings) > 0 {
+		// Define canonical OIDC scope order
+		scopeOrder := map[string]int{
+			"openid":         1,
+			"profile":        2,
+			"email":          3,
+			"address":        4,
+			"phone":          5,
+			"offline_access": 6,
+		}
+
+		sort.SliceStable(strings, func(i, j int) bool {
+			orderI, hasI := scopeOrder[strings[i]]
+			orderJ, hasJ := scopeOrder[strings[j]]
+
+			// Both have defined order - use it
+			if hasI && hasJ {
+				return orderI < orderJ
+			}
+			// Only i has order - it comes first
+			if hasI {
+				return true
+			}
+			// Only j has order - it comes first
+			if hasJ {
+				return false
+			}
+			// Neither has order - sort alphabetically
+			return strings[i] < strings[j]
+		})
+	} else {
+		// Not scopes, sort normally
+		sort.Strings(strings)
+	}
+
+	// Build new array tokens with sorted values
+	var sortedTokens []hclwrite.Tokens
+	for _, s := range strings {
+		sortedTokens = append(sortedTokens, hclwrite.TokensForValue(cty.StringVal(s)))
+	}
+
+	// Set the attribute with sorted values
+	body.SetAttributeRaw(attrName, hclwrite.TokensForTuple(sortedTokens))
 }
 
 func (m *V4ToV5Migrator) transformSaasAppBlock(body *hclwrite.Body) {
@@ -137,6 +285,9 @@ func (m *V4ToV5Migrator) transformSaasAppBlock(body *hclwrite.Body) {
 
 		tfhcl.ConvertSingleBlockToAttribute(saasAppBody, "hybrid_and_implicit_options", "hybrid_and_implicit_options")
 		tfhcl.ConvertSingleBlockToAttribute(saasAppBody, "refresh_token_options", "refresh_token_options")
+
+		// Sort scopes array to match provider ordering and avoid drift
+		sortStringArrayAttribute(saasAppBody, "scopes")
 	}
 
 	tfhcl.ConvertSingleBlockToAttribute(body, "saas_app", "saas_app")
@@ -340,20 +491,6 @@ func (m *V4ToV5Migrator) transformSingleInstance(result string, instance gjson.R
 
 	if !attrs.Exists() {
 		return result
-	}
-
-	// Debug: Log CFGFiles status
-	if ctx != nil {
-		fmt.Printf("DEBUG transformSingleInstance: resource=%s, CFGFiles count=%d\n", resourceName, len(ctx.CFGFiles))
-		if len(ctx.CFGFiles) > 0 {
-			fmt.Printf("DEBUG transformSingleInstance: CFGFiles keys: ")
-			for k := range ctx.CFGFiles {
-				fmt.Printf("%s, ", k)
-			}
-			fmt.Printf("\n")
-		}
-	} else {
-		fmt.Printf("DEBUG transformSingleInstance: ctx is nil for resource=%s\n", resourceName)
 	}
 
 	// If ctx is nil, create an empty context so transformations can still run
@@ -637,6 +774,24 @@ func (m *V4ToV5Migrator) transformSaasApp(result string, attrs gjson.Result, att
 			customClaims.ForEach(func(idx, item gjson.Result) bool {
 				itemPath := attrPath + ".saas_app.custom_claim." + idx.String()
 				result = state.TransformFieldArrayToObject(result, itemPath, item, "source", state.ArrayToObjectOptions{})
+
+				// Remove empty name_by_idp maps from custom_claims (OIDC)
+				// Empty maps should be null/absent, not {}
+				transformedItem := gjson.Parse(result).Get(itemPath)
+				nameByIdp := transformedItem.Get("source.name_by_idp")
+				if nameByIdp.Exists() && nameByIdp.IsObject() {
+					// Check if it's an empty object
+					isEmpty := true
+					nameByIdp.ForEach(func(key, value gjson.Result) bool {
+						isEmpty = false
+						return false // Stop iteration
+					})
+					if isEmpty {
+						// Remove the empty name_by_idp field
+						result, _ = sjson.Delete(result, itemPath+".source.name_by_idp")
+					}
+				}
+
 				return true
 		})
 			// Rename custom_claim to custom_claims (plural)

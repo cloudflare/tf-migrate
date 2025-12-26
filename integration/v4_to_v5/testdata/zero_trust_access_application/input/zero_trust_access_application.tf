@@ -8,6 +8,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare Domain"
+  type        = string
+}
+
 # Resource-specific variables with defaults
 variable "app_prefix" {
   type    = string
@@ -28,7 +33,7 @@ variable "policy_ids" {
 locals {
   name_prefix       = "cftftest"
   common_account_id = var.cloudflare_account_id
-  app_domain_suffix = "cort.terraform.cfapi.net"
+  app_domain_suffix = var.cloudflare_domain
   common_policies   = ["default-policy-id"]
 }
 

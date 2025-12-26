@@ -217,9 +217,7 @@ cloudflare_domain     = "%s"
 `
 
 	for _, moduleName := range moduleNames {
-		// Check if this module needs the domain variable
-		if moduleName == "zero_trust_access_mtls_hostname_settings" || moduleName == "zero_trust_access_application" {
-			mainTfContent += fmt.Sprintf(`
+		mainTfContent += fmt.Sprintf(`
 module "%s" {
   source = "./%s"
 
@@ -228,16 +226,6 @@ module "%s" {
   cloudflare_domain     = var.cloudflare_domain
 }
 `, moduleName, moduleName)
-		} else {
-			mainTfContent += fmt.Sprintf(`
-module "%s" {
-  source = "./%s"
-
-  cloudflare_account_id = var.cloudflare_account_id
-  cloudflare_zone_id    = var.cloudflare_zone_id
-}
-`, moduleName, moduleName)
-		}
 	}
 
 	mainTfPath := filepath.Join(v4Dir, "main.tf")

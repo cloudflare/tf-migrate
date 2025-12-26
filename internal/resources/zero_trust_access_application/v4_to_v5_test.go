@@ -41,6 +41,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       precedence = 2
     }
   ]
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -69,6 +70,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       precedence = 2
     }
   ]
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -105,6 +107,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       precedence = 3
     }
   ]
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -131,6 +134,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       precedence = 1
     }
   ]
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -143,10 +147,11 @@ func TestV4ToV5Transformation(t *testing.T) {
   domain_type = "public"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id = "abc123"
-  name       = "Test App"
-  domain     = "test.example.com"
-  type       = "self_hosted"
+  account_id                 = "abc123"
+  name                       = "Test App"
+  domain                     = "test.example.com"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -168,7 +173,8 @@ func TestV4ToV5Transformation(t *testing.T) {
   domain           = "test.example.com"
   session_duration = "24h"
 
-  type = "self_hosted"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
   cors_headers = {
     allow_all_origins = true
   }
@@ -183,10 +189,11 @@ func TestV4ToV5Transformation(t *testing.T) {
   type       = "self_hosted"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id = "abc123"
-  name       = "Test App"
-  domain     = "test.example.com"
-  type       = "self_hosted"
+  account_id                 = "abc123"
+  name                       = "Test App"
+  domain                     = "test.example.com"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -232,6 +239,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   name       = "Test App"
   type       = "warp"
 
+
   destinations = [
     {
       uri = "https://example.com"
@@ -276,10 +284,11 @@ func TestV4ToV5Transformation(t *testing.T) {
   type       = "self_hosted"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id = "abc123"
-  name       = "Test App"
-  domain     = "test.example.com"
-  type       = "self_hosted"
+  account_id                 = "abc123"
+  name                       = "Test App"
+  domain                     = "test.example.com"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -301,6 +310,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   account_id = "abc123"
   name       = "Test App"
   type       = "warp"
+
 
   destinations = [
     {
@@ -330,6 +340,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   account_id = "abc123"
   name       = "Test App"
   type       = "warp"
+
 
   policies = [
     {
@@ -376,6 +387,8 @@ func TestV4ToV5Transformation(t *testing.T) {
   type         = "warp"
   allowed_idps = ["idp-1", "idp-2"]
 
+
+
   policies = [
     {
       id         = cloudflare_zero_trust_access_policy.allow.id
@@ -406,11 +419,12 @@ func TestV4ToV5Transformation(t *testing.T) {
   allowed_idps = toset(["idp-1", "idp-2", "idp-3"])
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id   = "abc123"
-  name         = "Test App"
-  domain       = "test.example.com"
-  type         = "self_hosted"
-  allowed_idps = ["idp-1", "idp-2", "idp-3"]
+  account_id                 = "abc123"
+  name                       = "Test App"
+  domain                     = "test.example.com"
+  type                       = "self_hosted"
+  allowed_idps               = ["idp-1", "idp-2", "idp-3"]
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -423,11 +437,12 @@ func TestV4ToV5Transformation(t *testing.T) {
   allowed_idps = ["idp-1", "idp-2"]
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id   = "abc123"
-  name         = "Test App"
-  domain       = "test.example.com"
-  type         = "self_hosted"
-  allowed_idps = ["idp-1", "idp-2"]
+  account_id                 = "abc123"
+  name                       = "Test App"
+  domain                     = "test.example.com"
+  type                       = "self_hosted"
+  allowed_idps               = ["idp-1", "idp-2"]
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -440,11 +455,12 @@ func TestV4ToV5Transformation(t *testing.T) {
   custom_pages  = toset(["page1", "page2"])
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id   = "abc123"
-  name         = "Test App"
-  domain       = "test.example.com"
-  type         = "self_hosted"
-  custom_pages = ["page1", "page2"]
+  account_id                 = "abc123"
+  name                       = "Test App"
+  domain                     = "test.example.com"
+  type                       = "self_hosted"
+  custom_pages               = ["page1", "page2"]
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -457,11 +473,12 @@ func TestV4ToV5Transformation(t *testing.T) {
   self_hosted_domains  = toset(["page1", "page2"])
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id           = "abc123"
-  name                 = "Test App"
-  domain               = "test.example.com"
-  type                 = "self_hosted"
-  self_hosted_domains = ["page1", "page2"]
+  account_id                 = "abc123"
+  name                       = "Test App"
+  domain                     = "test.example.com"
+  type                       = "self_hosted"
+  self_hosted_domains        = ["page1", "page2"]
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -474,11 +491,12 @@ func TestV4ToV5Transformation(t *testing.T) {
   policies   = []
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id = "abc123"
-  name       = "Test App"
-  domain     = "test.example.com"
-  type       = "self_hosted"
-  policies   = []
+  account_id                 = "abc123"
+  name                       = "Test App"
+  domain                     = "test.example.com"
+  type                       = "self_hosted"
+  policies                   = []
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -594,6 +612,8 @@ func TestV4ToV5Transformation(t *testing.T) {
   name       = "Test App"
   type       = "warp"
 
+
+
   destinations = [
     {
       uri         = "https://app1.example.com"
@@ -613,8 +633,9 @@ func TestV4ToV5Transformation(t *testing.T) {
   account_id = "f037e56e89293a057740de681ac9abbe"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "rename" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
-  type       = "self_hosted"
+  account_id                 = "f037e56e89293a057740de681ac9abbe"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -623,8 +644,9 @@ func TestV4ToV5Transformation(t *testing.T) {
   account_id = "f037e56e89293a057740de681ac9abbe"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "no_rename" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
-  type       = "self_hosted"
+  account_id                 = "f037e56e89293a057740de681ac9abbe"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -655,29 +677,29 @@ func TestV4ToV5Transformation(t *testing.T) {
   zone_id                       = "1234"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "basic" {
-  account_id                    = "1234"
-  allow_authenticate_via_warp   = true
-  app_launcher_logo_url         = true
-  app_launcher_visible          = true
-  auto_redirect_to_identity     = true
-  bg_color                      = "#000000"
-  custom_deny_message           = "message"
-  custom_deny_url               = "www.example.com"
-  custom_non_identity_deny_url  = "www.example.com"
-  domain                        = "test.example.com/admin"
-  enable_binding_cookie         = true
-  header_bg_color               = "#000000"
-  http_only_cookie_attribute    = true
-  logo_url                      = "www.example.com"
-  name                          = "test"
-  options_preflight_bypass      = true
-  same_site_cookie_attribute    = "strict"
-  service_auth_401_redirect     = true
-  session_duration              = "24h"
-  skip_app_launcher_login_page  = true
-  skip_interstitial             = true
-  type                          = "self_hosted"
-  zone_id                       = "1234"
+  account_id                   = "1234"
+  allow_authenticate_via_warp  = true
+  app_launcher_logo_url        = true
+  app_launcher_visible         = true
+  auto_redirect_to_identity    = true
+  bg_color                     = "#000000"
+  custom_deny_message          = "message"
+  custom_deny_url              = "www.example.com"
+  custom_non_identity_deny_url = "www.example.com"
+  domain                       = "test.example.com/admin"
+  enable_binding_cookie        = true
+  header_bg_color              = "#000000"
+  http_only_cookie_attribute   = true
+  logo_url                     = "www.example.com"
+  name                         = "test"
+  options_preflight_bypass     = true
+  same_site_cookie_attribute   = "strict"
+  service_auth_401_redirect    = true
+  session_duration             = "24h"
+  skip_app_launcher_login_page = true
+  skip_interstitial            = true
+  type                         = "self_hosted"
+  zone_id                      = "1234"
 }`,
 			},
 			{
@@ -691,12 +713,13 @@ func TestV4ToV5Transformation(t *testing.T) {
   tags                = ["1234", "5678"]
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "basic_string_set" {
-  account_id          = "1234"
-  type                = "self_hosted"
-  allowed_idps        = ["1234", "5678"]
-  custom_pages        = ["1234", "5678"]
-  self_hosted_domains = ["1234", "5678"]
-  tags                = ["1234", "5678"]
+  account_id                 = "1234"
+  type                       = "self_hosted"
+  allowed_idps               = ["1234", "5678"]
+  custom_pages               = ["1234", "5678"]
+  self_hosted_domains        = ["1234", "5678"]
+  tags                       = ["1234", "5678"]
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -707,8 +730,9 @@ func TestV4ToV5Transformation(t *testing.T) {
   domain_type = "public"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "remove_domain_type" {
-  account_id = "1234"
-  type       = "self_hosted"
+  account_id                 = "1234"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -728,8 +752,9 @@ func TestV4ToV5Transformation(t *testing.T) {
   }
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "cors_headers" {
-  account_id = "1234"
-  type       = "self_hosted"
+  account_id                 = "1234"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
   cors_headers = {
     allow_all_headers = true
     allow_all_methods = true
@@ -757,8 +782,9 @@ func TestV4ToV5Transformation(t *testing.T) {
   }
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "single_destinations" {
-  account_id = "1234"
-  type       = "self_hosted"
+  account_id                 = "1234"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
   destinations = [
     {
       cidr        = "10.5.0.0/24"
@@ -790,8 +816,9 @@ func TestV4ToV5Transformation(t *testing.T) {
   }
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "multiple_destinations" {
-  account_id = "1234"
-  type       = "self_hosted"
+  account_id                 = "1234"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
   destinations = [
     {
       type = "public"
@@ -851,8 +878,9 @@ func TestV4ToV5Transformation(t *testing.T) {
   }
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "landing_page_design" {
-  account_id          = "1234"
-  type                = "self_hosted"
+  account_id                 = "1234"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
   landing_page_design = {
     button_color      = "#000000"
     button_text_color = "#000000"
@@ -999,6 +1027,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       precedence = 2
     }
   ]
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			// TODO scim_config
@@ -1120,6 +1149,8 @@ func TestV4ToV5Transformation(t *testing.T) {
   name       = "SSH App"
   type       = "ssh"
 
+
+  http_only_cookie_attribute = "false"
   target_criteria = [
     {
       port     = 22
@@ -1154,6 +1185,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   account_id = "1234"
   type       = "self_hosted"
 
+  http_only_cookie_attribute = "false"
   destinations = [
     {
       uri = "https://example.com"
@@ -1175,6 +1207,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   account_id = "1234"
   type       = "self_hosted"
 
+  http_only_cookie_attribute = "false"
   landing_page_design = {
     message = "Welcome to our app"
   }
@@ -1216,6 +1249,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   account_id = "1234"
   type       = "self_hosted"
 
+  http_only_cookie_attribute = "false"
   cors_headers = {
     allowed_methods = ["GET", "POST"]
     max_age         = 3600
@@ -1232,11 +1266,12 @@ func TestV4ToV5Transformation(t *testing.T) {
   session_duration = "12h"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id       = "1234"
-  name             = "Test App"
-  domain           = "test.example.com"
-  session_duration = "12h"
-  type             = "self_hosted"
+  account_id                 = "1234"
+  name                       = "Test App"
+  domain                     = "test.example.com"
+  session_duration           = "12h"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -1255,7 +1290,8 @@ func TestV4ToV5Transformation(t *testing.T) {
   name       = "Test App"
   domain     = "test.example.com"
 
-  type = "self_hosted"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
   cors_headers = {
     allowed_methods = ["GET", "POST"]
   }
@@ -1271,11 +1307,12 @@ func TestV4ToV5Transformation(t *testing.T) {
   session_duration = "8h"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id       = "1234"
-  name             = "Test App"
-  domain           = "test.example.com"
-  type             = "ssh"
-  session_duration = "8h"
+  account_id                 = "1234"
+  name                       = "Test App"
+  domain                     = "test.example.com"
+  type                       = "ssh"
+  session_duration           = "8h"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -1286,10 +1323,11 @@ func TestV4ToV5Transformation(t *testing.T) {
   domain     = "test.example.com"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id = "abc123"
-  name       = "Test App"
-  domain     = "test.example.com"
-  type       = "self_hosted"
+  account_id                 = "abc123"
+  name                       = "Test App"
+  domain                     = "test.example.com"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -1300,10 +1338,11 @@ func TestV4ToV5Transformation(t *testing.T) {
   self_hosted_domains = ["app1.example.com", "app2.example.com"]
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id          = "abc123"
-  name                = "Test App"
-  self_hosted_domains = ["app1.example.com", "app2.example.com"]
-  type                = "self_hosted"
+  account_id                 = "abc123"
+  name                       = "Test App"
+  self_hosted_domains        = ["app1.example.com", "app2.example.com"]
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -1313,9 +1352,10 @@ func TestV4ToV5Transformation(t *testing.T) {
   name       = "My Application"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "test" {
-  account_id = "1234"
-  name       = "My Application"
-  type       = "self_hosted"
+  account_id                 = "1234"
+  name                       = "My Application"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 		}
@@ -1351,27 +1391,37 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"terraform_version": "1.12.2",
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"name": "Test App",
-				"type": "self_hosted",
-				"cors_headers": {
-					"allowed_methods": ["GET", "POST", "OPTIONS"],
-					"allowed_origins": ["https://example.com"],
-					"allow_credentials": true,
-					"max_age": 600
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"cors_headers": {
+							"allow_credentials": true,
+							"allowed_methods": [
+								"GET",
+								"POST",
+								"OPTIONS"
+							],
+							"allowed_origins": [
+								"https://example.com"
+							],
+							"max_age": 600
+						},
+						"id": "app-id-123",
+						"name": "Test App",
+						"type": "self_hosted"
+					},
+					"identity_schema_version": 0,
+					"schema_version": 0
 				}
-			},
-			"identity_schema_version": 0,
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"terraform_version": "1.12.2",
+	"version": 4
 }`,
 			},
 			{
@@ -1392,20 +1442,24 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"name": "Test App",
-				"type": "self_hosted",
-				"cors_headers": null
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"cors_headers": null,
+						"id": "app-id-123",
+						"name": "Test App",
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -1429,23 +1483,32 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"name": "Test App",
-				"type": "self_hosted",
-				"cors_headers": {
-					"allowed_methods": ["GET", "POST"],
-					"allowed_origins": ["https://test.com"]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"cors_headers": {
+							"allowed_methods": [
+								"GET",
+								"POST"
+							],
+							"allowed_origins": [
+								"https://test.com"
+							]
+						},
+						"id": "app-id-123",
+						"name": "Test App",
+						"type": "self_hosted"
+					},
+					"schema_version": 0
 				}
-			},
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -1470,24 +1533,28 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"name": "Test App",
-				"type": "self_hosted",
-				"landing_page_design": {
-					"title": "Welcome",
-					"message": "Please sign in",
-					"image_url": "https://example.com/logo.png"
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"id": "app-id-123",
+						"landing_page_design": {
+							"image_url": "https://example.com/logo.png",
+							"message": "Please sign in",
+							"title": "Welcome"
+						},
+						"name": "Test App",
+						"type": "self_hosted"
+					},
+					"schema_version": 0
 				}
-			},
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -1508,20 +1575,24 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"name": "Test App",
-				"type": "self_hosted",
-				"landing_page_design": null
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"id": "app-id-123",
+						"landing_page_design": null,
+						"name": "Test App",
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -1547,25 +1618,29 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"name": "Test SAAS App",
-				"type": "saas",
-				"saas_app": {
-					"consumer_service_url": "https://example.com/sso/saml/consume",
-					"sp_entity_id": "example.com",
-					"name_id_format": "email",
-					"auth_type": "saml"
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"id": "app-id-123",
+						"name": "Test SAAS App",
+						"saas_app": {
+							"auth_type": "saml",
+							"consumer_service_url": "https://example.com/sso/saml/consume",
+							"name_id_format": "email",
+							"sp_entity_id": "example.com"
+						},
+						"type": "saas"
+					},
+					"schema_version": 0
 				}
-			},
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -1586,20 +1661,24 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"name": "Test App",
-				"type": "saas",
-				"saas_app": null
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"id": "app-id-123",
+						"name": "Test App",
+						"saas_app": null,
+						"type": "saas"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -1651,51 +1730,58 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"name": "Test App",
-				"type": "saas",
-				"scim_config": {
-					"enabled": true,
-					"remote_uri": "https://example.com/scim/v2",
-					"idp_uid": "idp-123",
-					"deactivate_on_delete": true,
-					"authentication": {
-						"scheme": "oauth2",
-						"client_id": "client-123",
-						"client_secret": "secret-456",
-						"authorization_url": "https://auth.example.com/authorize",
-						"token_url": "https://auth.example.com/token",
-						"scopes": ["read", "write"]
-					},
-					"mappings": [
-						{
-							"schema": "urn:ietf:params:scim:schemas:core:2.0:User",
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"id": "app-id-123",
+						"name": "Test App",
+						"scim_config": {
+							"authentication": {
+								"authorization_url": "https://auth.example.com/authorize",
+								"client_id": "client-123",
+								"client_secret": "secret-456",
+								"scheme": "oauth2",
+								"scopes": [
+									"read",
+									"write"
+								],
+								"token_url": "https://auth.example.com/token"
+							},
+							"deactivate_on_delete": true,
 							"enabled": true,
-							"filter": "userName sw \"test\"",
-							"transform_jsonata": "$",
-							"operations": {
-								"create": true,
-								"update": true,
-								"delete": true
-							}
+							"idp_uid": "idp-123",
+							"mappings": [
+								{
+									"enabled": true,
+									"filter": "userName sw \"test\"",
+									"operations": {
+										"create": true,
+										"delete": true,
+										"update": true
+									},
+									"schema": "urn:ietf:params:scim:schemas:core:2.0:User",
+									"transform_jsonata": "$"
+								},
+								{
+									"enabled": true,
+									"schema": "urn:ietf:params:scim:schemas:core:2.0:Group",
+									"strictness": "strict"
+								}
+							],
+							"remote_uri": "https://example.com/scim/v2"
 						},
-						{
-							"schema": "urn:ietf:params:scim:schemas:core:2.0:Group",
-							"enabled": true,
-							"strictness": "strict"
-						}
-					]
+						"type": "saas"
+					},
+					"schema_version": 0
 				}
-			},
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -1716,20 +1802,24 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"name": "Test App",
-				"type": "self_hosted",
-				"scim_config": null
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"id": "app-id-123",
+						"name": "Test App",
+						"scim_config": null,
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -1756,26 +1846,30 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"name": "Test SAML App",
-				"type": "saas",
-				"saas_app": {
-					"consumer_service_url": "https://saml.example.com/sso/saml",
-					"sp_entity_id": "saml-app-test",
-					"name_id_format": "email",
-					"auth_type": "saml",
-					"hybrid_and_implicit_options": null
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"id": "app-id-123",
+						"name": "Test SAML App",
+						"saas_app": {
+							"auth_type": "saml",
+							"consumer_service_url": "https://saml.example.com/sso/saml",
+							"hybrid_and_implicit_options": null,
+							"name_id_format": "email",
+							"sp_entity_id": "saml-app-test"
+						},
+						"type": "saas"
+					},
+					"schema_version": 0
 				}
-			},
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -1803,27 +1897,39 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"name": "Test OIDC App",
-				"type": "saas",
-				"saas_app": {
-					"auth_type": "oidc",
-					"app_launcher_url": "https://oidc.example.com/launch",
-					"grant_types": ["authorization_code"],
-					"scopes": ["openid", "email", "profile"],
-					"redirect_uris": ["https://oidc.example.com/callback"],
-					"refresh_token_options": null
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"id": "app-id-123",
+						"name": "Test OIDC App",
+						"saas_app": {
+							"app_launcher_url": "https://oidc.example.com/launch",
+							"auth_type": "oidc",
+							"grant_types": [
+								"authorization_code"
+							],
+							"redirect_uris": [
+								"https://oidc.example.com/callback"
+							],
+							"refresh_token_options": null,
+							"scopes": [
+								"openid",
+								"email",
+								"profile"
+							]
+						},
+						"type": "saas"
+					},
+					"schema_version": 0
 				}
-			},
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -1862,39 +1968,56 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"name": "Test App",
-				"type": "self_hosted",
-				"cors_headers": {
-					"allowed_methods": ["GET", "POST"],
-					"allow_credentials": true
-				},
-				"landing_page_design": {
-					"title": "Welcome",
-					"message": "Please sign in"
-				},
-				"saas_app": {
-					"consumer_service_url": "https://example.com/callback",
-					"sp_entity_id": "example.com",
-					"auth_type": "saml"
-				},
-				"scim_config": {
-					"enabled": true,
-					"remote_uri": "https://example.com/scim"
-				},
-				"policies": [{"id": "policy-123", "precedence": 1}],
-				"allowed_idps": ["idp-1", "idp-2"],
-				"custom_pages": ["page-1"]
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"allowed_idps": [
+							"idp-1",
+							"idp-2"
+						],
+						"cors_headers": {
+							"allow_credentials": true,
+							"allowed_methods": [
+								"GET",
+								"POST"
+							]
+						},
+						"custom_pages": [
+							"page-1"
+						],
+						"id": "app-id-123",
+						"landing_page_design": {
+							"message": "Please sign in",
+							"title": "Welcome"
+						},
+						"name": "Test App",
+						"policies": [
+							{
+								"id": "policy-123",
+								"precedence": 1
+							}
+						],
+						"saas_app": {
+							"auth_type": "saml",
+							"consumer_service_url": "https://example.com/callback",
+							"sp_entity_id": "example.com"
+						},
+						"scim_config": {
+							"enabled": true,
+							"remote_uri": "https://example.com/scim"
+						},
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			// New Tests - State versions of config tests
@@ -1936,40 +2059,44 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "basic",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"allow_authenticate_via_warp": true,
-				"app_launcher_logo_url": true,
-				"app_launcher_visible": true,
-				"auto_redirect_to_identity": true,
-				"bg_color": "#000000",
-				"custom_deny_message": "message",
-				"custom_deny_url": "www.example.com",
-				"custom_non_identity_deny_url": "www.example.com",
-				"domain": "test.example.com/admin",
-				"enable_binding_cookie": true,
-				"header_bg_color": "#000000",
-				"http_only_cookie_attribute": true,
-				"logo_url": "www.example.com",
-				"name": "test",
-				"options_preflight_bypass": true,
-				"same_site_cookie_attribute": "strict",
-				"service_auth_401_redirect": true,
-				"session_duration": "24h",
-				"skip_app_launcher_login_page": true,
-				"skip_interstitial": true,
-				"type": "self_hosted",
-				"zone_id": "1234"
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"allow_authenticate_via_warp": true,
+						"app_launcher_logo_url": true,
+						"app_launcher_visible": true,
+						"auto_redirect_to_identity": true,
+						"bg_color": "#000000",
+						"custom_deny_message": "message",
+						"custom_deny_url": "www.example.com",
+						"custom_non_identity_deny_url": "www.example.com",
+						"domain": "test.example.com/admin",
+						"enable_binding_cookie": true,
+						"header_bg_color": "#000000",
+						"http_only_cookie_attribute": true,
+						"id": "app-id-123",
+						"logo_url": "www.example.com",
+						"name": "test",
+						"options_preflight_bypass": true,
+						"same_site_cookie_attribute": "strict",
+						"service_auth_401_redirect": true,
+						"session_duration": "24h",
+						"skip_app_launcher_login_page": true,
+						"skip_interstitial": true,
+						"type": "self_hosted",
+						"zone_id": "1234"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "basic",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -1993,23 +2120,39 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "basic_string_set",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"allowed_idps": ["1234", "5678"],
-				"custom_pages": ["1234", "5678"],
-				"self_hosted_domains": ["1234", "5678"],
-				"tags": ["1234", "5678"]
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"allowed_idps": [
+							"1234",
+							"5678"
+						],
+						"custom_pages": [
+							"1234",
+							"5678"
+						],
+						"id": "app-id-123",
+						"self_hosted_domains": [
+							"1234",
+							"5678"
+						],
+						"tags": [
+							"1234",
+							"5678"
+						],
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "basic_string_set",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2030,19 +2173,23 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "remove_domain_type",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted"
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"id": "app-id-123",
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "remove_domain_type",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2072,29 +2219,39 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "cors_headers",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"cors_headers": {
-					"allow_all_headers": true,
-					"allow_all_methods": true,
-					"allow_all_origins": true,
-					"allow_credentials": true,
-					"allowed_headers": ["string"],
-					"allowed_methods": ["GET"],
-					"allowed_origins": ["https://example.com"],
-					"max_age": 1
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"cors_headers": {
+							"allow_all_headers": true,
+							"allow_all_methods": true,
+							"allow_all_origins": true,
+							"allow_credentials": true,
+							"allowed_headers": [
+								"string"
+							],
+							"allowed_methods": [
+								"GET"
+							],
+							"allowed_origins": [
+								"https://example.com"
+							],
+							"max_age": 1
+						},
+						"id": "app-id-123",
+						"type": "self_hosted"
+					},
+					"schema_version": 0
 				}
-			},
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "cors_headers",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2122,27 +2279,33 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "single_destinations",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"destinations": [{
-					"cidr": "10.5.0.0/24",
-					"hostname": "hostname",
-					"l4_protocol": "tcp",
-					"port_range": "80-90",
-					"type": "private",
-					"vnet_id": "vnet_id"
-				}]
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"destinations": [
+							{
+								"cidr": "10.5.0.0/24",
+								"hostname": "hostname",
+								"l4_protocol": "tcp",
+								"port_range": "80-90",
+								"type": "private",
+								"vnet_id": "vnet_id"
+							}
+						],
+						"id": "app-id-123",
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "single_destinations",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2176,33 +2339,37 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "multiple_destinations",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"destinations": [
-					{
-						"type": "public",
-						"uri": "test.example.com/admin"
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"destinations": [
+							{
+								"type": "public",
+								"uri": "test.example.com/admin"
+							},
+							{
+								"cidr": "10.5.0.0/24",
+								"hostname": "hostname",
+								"l4_protocol": "tcp",
+								"port_range": "80-90",
+								"type": "private",
+								"vnet_id": "vnet_id"
+							}
+						],
+						"id": "app-id-123",
+						"type": "self_hosted"
 					},
-					{
-						"cidr": "10.5.0.0/24",
-						"hostname": "hostname",
-						"l4_protocol": "tcp",
-						"port_range": "80-90",
-						"type": "private",
-						"vnet_id": "vnet_id"
-					}
-				]
-			},
-			"schema_version": 0
-		}]
-	}]
+					"schema_version": 0
+				}
+			],
+			"name": "multiple_destinations",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2232,29 +2399,33 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "footer_links",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"footer_links": [
-					{
-						"name": "Privacy Policy",
-						"url": "https://example.com/privacy"
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"footer_links": [
+							{
+								"name": "Privacy Policy",
+								"url": "https://example.com/privacy"
+							},
+							{
+								"name": "Terms",
+								"url": "https://example.com/terms"
+							}
+						],
+						"id": "app-id-123",
+						"type": "self_hosted"
 					},
-					{
-						"name": "Terms",
-						"url": "https://example.com/terms"
-					}
-				]
-			},
-			"schema_version": 0
-		}]
-	}]
+					"schema_version": 0
+				}
+			],
+			"name": "footer_links",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2281,26 +2452,30 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "landing_page_design",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"landing_page_design": {
-					"button_color": "#000000",
-					"button_text_color": "#000000",
-					"image_url": "example.com",
-					"message": "message",
-					"title": "title"
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"id": "app-id-123",
+						"landing_page_design": {
+							"button_color": "#000000",
+							"button_text_color": "#000000",
+							"image_url": "example.com",
+							"message": "message",
+							"title": "title"
+						},
+						"type": "self_hosted"
+					},
+					"schema_version": 0
 				}
-			},
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "landing_page_design",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2368,73 +2543,90 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "saas_app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"saas_app": {
-					"access_token_lifetime": "24h",
-					"allow_pkce_without_client_secret": true,
-					"app_launcher_url": "www.example.com",
-					"auth_type": "saml",
-					"consumer_service_url": "www.example.com",
-					"custom_attributes": [{
-						"source": {
-							"name": "name",
-							"name_by_idp": [
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"id": "app-id-123",
+						"saas_app": {
+							"access_token_lifetime": "24h",
+							"allow_pkce_without_client_secret": true,
+							"app_launcher_url": "www.example.com",
+							"auth_type": "saml",
+							"consumer_service_url": "www.example.com",
+							"custom_attributes": [
 								{
-									"idp_id": "idp1",
-									"source_name": "1234"
-								},
-								{
-									"idp_id": "idp2",
-									"source_name": "5678"
+									"friendly_name": "friendly_name",
+									"name": "name",
+									"name_format": "name_format",
+									"required": true,
+									"source": {
+										"name": "name",
+										"name_by_idp": [
+											{
+												"idp_id": "idp1",
+												"source_name": "1234"
+											},
+											{
+												"idp_id": "idp2",
+												"source_name": "5678"
+											}
+										]
+									}
 								}
-							]
+							],
+							"custom_claims": [
+								{
+									"name": "name",
+									"required": true,
+									"scope": "scope",
+									"source": {
+										"name": "name",
+										"name_by_idp": {
+											"idp1": "1234",
+											"idp2": "5678"
+										}
+									}
+								}
+							],
+							"default_relay_state": "default_relay_state",
+							"grant_types": [
+								"grant_1",
+								"grant_2"
+							],
+							"group_filter_regex": "group_filter_regex",
+							"hybrid_and_implicit_options": {
+								"return_access_token_from_authorization_endpoint": true,
+								"return_id_token_from_authorization_endpoint": true
+							},
+							"idp_entity_id": "idp_entity_id",
+							"name_id_transform_jsonata": "name_id_transform_jsonata",
+							"redirect_uris": [
+								"uri_1",
+								"uri_2"
+							],
+							"refresh_token_options": {
+								"lifetime": "10m"
+							},
+							"saml_attribute_transform_jsonata": "saml_attribute_transform_jsonata",
+							"scopes": [
+								"scope_1",
+								"scope_2"
+							],
+							"sp_entity_id": "sp_entity_id"
 						},
-						"friendly_name": "friendly_name",
-						"name": "name",
-						"name_format": "name_format",
-						"required": true
-					}],
-					"custom_claims": [{
-						"source": {
-							"name": "name",
-							"name_by_idp": {
-								"idp1": "1234",
-								"idp2": "5678"
-							}
-						},
-						"name": "name",
-						"required": true,
-						"scope": "scope"
-					}],
-					"default_relay_state": "default_relay_state",
-					"grant_types": ["grant_1", "grant_2"],
-					"group_filter_regex": "group_filter_regex",
-					"hybrid_and_implicit_options": {
-						"return_access_token_from_authorization_endpoint": true,
-						"return_id_token_from_authorization_endpoint": true
+						"type": "self_hosted"
 					},
-					"idp_entity_id": "idp_entity_id",
-					"name_id_transform_jsonata": "name_id_transform_jsonata",
-					"redirect_uris": ["uri_1", "uri_2"],
-					"refresh_token_options": {
-						"lifetime": "10m"
-					},
-					"saml_attribute_transform_jsonata": "saml_attribute_transform_jsonata",
-					"scopes": ["scope_1", "scope_2"],
-					"sp_entity_id": "sp_entity_id"
+					"schema_version": 0
 				}
-			},
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "saas_app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2455,20 +2647,33 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "policies",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"policies": [{"id": "policy-1", "precedence": 1}, {"id": "policy-2", "precedence": 2}]
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"id": "app-id-123",
+						"policies": [
+							{
+								"id": "policy-1",
+								"precedence": 1
+							},
+							{
+								"id": "policy-2",
+								"precedence": 2
+							}
+						],
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "policies",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2515,37 +2720,49 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "target_criteria",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"name": "SSH App",
-				"type": "ssh",
-				"target_criteria": [
-					{
-						"port": 22,
-						"protocol": "SSH",
-						"target_attributes": {
-							"hostname": ["server1.example.com", "server2.example.com"],
-							"username": ["admin", "root"]
-						}
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"id": "app-id-123",
+						"name": "SSH App",
+						"target_criteria": [
+							{
+								"port": 22,
+								"protocol": "SSH",
+								"target_attributes": {
+									"hostname": [
+										"server1.example.com",
+										"server2.example.com"
+									],
+									"username": [
+										"admin",
+										"root"
+									]
+								}
+							},
+							{
+								"port": 3389,
+								"protocol": "RDP",
+								"target_attributes": {
+									"hostname": [
+										"windows-server.example.com"
+									]
+								}
+							}
+						],
+						"type": "ssh"
 					},
-					{
-						"port": 3389,
-						"protocol": "RDP",
-						"target_attributes": {
-							"hostname": ["windows-server.example.com"]
-						}
-					}
-				]
-			},
-			"schema_version": 0
-		}]
-	}]
+					"schema_version": 0
+				}
+			],
+			"name": "target_criteria",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			// P0/P1 Gap Tests
@@ -2569,23 +2786,29 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "test",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"destinations": [{
-					"uri": "https://example.com",
-					"type": "public"
-				}]
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"destinations": [
+							{
+								"type": "public",
+								"uri": "https://example.com"
+							}
+						],
+						"id": "app-id-123",
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "test",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2609,24 +2832,28 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "test",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"landing_page_design": {
-					"message": "Welcome to our app",
-					"button_color": "#000000",
-					"title": "Welcome!"
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"id": "app-id-123",
+						"landing_page_design": {
+							"button_color": "#000000",
+							"message": "Welcome to our app",
+							"title": "Welcome!"
+						},
+						"type": "self_hosted"
+					},
+					"schema_version": 0
 				}
-			},
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "test",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2650,24 +2877,28 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "test",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"saas_app": {
-					"consumer_service_url": "https://example.com/saml/consume",
-					"sp_entity_id": "example-entity",
-					"auth_type": "saml"
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"id": "app-id-123",
+						"saas_app": {
+							"auth_type": "saml",
+							"consumer_service_url": "https://example.com/saml/consume",
+							"sp_entity_id": "example-entity"
+						},
+						"type": "self_hosted"
+					},
+					"schema_version": 0
 				}
-			},
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "test",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2692,24 +2923,33 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "test",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"cors_headers": {
-					"allowed_methods": ["GET", "POST"],
-					"allowed_origins": ["https://example.com"],
-					"max_age": 3600.0
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"cors_headers": {
+							"allowed_methods": [
+								"GET",
+								"POST"
+							],
+							"allowed_origins": [
+								"https://example.com"
+							],
+							"max_age": 3600
+						},
+						"id": "app-id-123",
+						"type": "self_hosted"
+					},
+					"schema_version": 0
 				}
-			},
-			"schema_version": 0
-		}]
-	}]
+			],
+			"name": "test",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2729,20 +2969,24 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "test",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"name": "My Application",
-				"type": "self_hosted"
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"id": "app-id-123",
+						"name": "My Application",
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "test",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2804,53 +3048,59 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "empty_values_test",
-		"instances": [{
-			"attributes": {
-				"id": "test-id",
-				"name": "Test Empty Values",
-				"type": "self_hosted",
-				"domain": "test.example.com",
-				"auto_redirect_to_identity": null,
-				"enable_binding_cookie": null,
-				"http_only_cookie_attribute": null,
-				"service_auth_401_redirect": null,
-				"skip_interstitial": null,
-				"cors_headers": null,
-				"landing_page_design": {
-					"button_color": null,
-					"button_text_color": null,
-					"image_url": null,
-					"message": null,
-					"title": "Welcome!"
-				},
-				"saas_app": null,
-				"scim_config": {
-					"enabled": null,
-					"deactivate_on_delete": null,
-					"idp_uid": "test-idp",
-					"remote_uri": "https://example.com/scim",
-					"mappings": [{
-						"schema": "urn:ietf:params:scim:schemas:core:2.0:User",
-						"enabled": null,
-						"filter": null,
-						"operations": {
-							"create": null,
-							"update": null,
-							"delete": null
-						}
-					}]
-				},
-				"policies": null,
-				"allowed_idps": null,
-				"custom_pages": null
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"allowed_idps": null,
+						"auto_redirect_to_identity": null,
+						"cors_headers": null,
+						"custom_pages": null,
+						"domain": "test.example.com",
+						"enable_binding_cookie": null,
+						"http_only_cookie_attribute": null,
+						"id": "test-id",
+						"landing_page_design": {
+							"button_color": null,
+							"button_text_color": null,
+							"image_url": null,
+							"message": null,
+							"title": "Welcome!"
+						},
+						"name": "Test Empty Values",
+						"policies": null,
+						"saas_app": null,
+						"scim_config": {
+							"deactivate_on_delete": null,
+							"enabled": null,
+							"idp_uid": "test-idp",
+							"mappings": [
+								{
+									"enabled": null,
+									"filter": null,
+									"operations": {
+										"create": null,
+										"delete": null,
+										"update": null
+									},
+									"schema": "urn:ietf:params:scim:schemas:core:2.0:User"
+								}
+							],
+							"remote_uri": "https://example.com/scim"
+						},
+						"service_auth_401_redirect": null,
+						"skip_interstitial": null,
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "empty_values_test",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 		}
@@ -2878,33 +3128,73 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"policies": [
-					{"id": "p1", "precedence": 1},
-					{"id": "p2", "precedence": 2},
-					{"id": "p3", "precedence": 3},
-					{"id": "p4", "precedence": 4},
-					{"id": "p5", "precedence": 5},
-					{"id": "p6", "precedence": 6},
-					{"id": "p7", "precedence": 7},
-					{"id": "p8", "precedence": 8},
-					{"id": "p9", "precedence": 9},
-					{"id": "p10", "precedence": 10},
-					{"id": "p11", "precedence": 11},
-					{"id": "p12", "precedence": 12}
-				]
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"id": "app-id-123",
+						"policies": [
+							{
+								"id": "p1",
+								"precedence": 1
+							},
+							{
+								"id": "p2",
+								"precedence": 2
+							},
+							{
+								"id": "p3",
+								"precedence": 3
+							},
+							{
+								"id": "p4",
+								"precedence": 4
+							},
+							{
+								"id": "p5",
+								"precedence": 5
+							},
+							{
+								"id": "p6",
+								"precedence": 6
+							},
+							{
+								"id": "p7",
+								"precedence": 7
+							},
+							{
+								"id": "p8",
+								"precedence": 8
+							},
+							{
+								"id": "p9",
+								"precedence": 9
+							},
+							{
+								"id": "p10",
+								"precedence": 10
+							},
+							{
+								"id": "p11",
+								"precedence": 11
+							},
+							{
+								"id": "p12",
+								"precedence": 12
+							}
+						],
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2929,24 +3219,30 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"target_criteria": [{
-					"port": 22,
-					"protocol": "SSH",
-					"target_attributes": []
-				}]
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"id": "app-id-123",
+						"target_criteria": [
+							{
+								"port": 22,
+								"protocol": "SSH",
+								"target_attributes": []
+							}
+						],
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 			{
@@ -2970,23 +3266,27 @@ func TestV4ToV5Transformation(t *testing.T) {
 	}]
 }`,
 				Expected: `{
-	"version": 4,
-	"resources": [{
-		"type": "cloudflare_zero_trust_access_application",
-		"name": "app",
-		"instances": [{
-			"attributes": {
-				"id": "app-id-123",
-				"account_id": "1234",
-				"type": "self_hosted",
-				"name": "Test",
-				"session_duration": null,
-				"custom_deny_url": null,
-				"cors_headers": null
-			},
-			"schema_version": 0
-		}]
-	}]
+	"resources": [
+		{
+			"instances": [
+				{
+					"attributes": {
+						"account_id": "1234",
+						"cors_headers": null,
+						"custom_deny_url": null,
+						"id": "app-id-123",
+						"name": "Test",
+						"session_duration": null,
+						"type": "self_hosted"
+					},
+					"schema_version": 0
+				}
+			],
+			"name": "app",
+			"type": "cloudflare_zero_trust_access_application"
+		}
+	],
+	"version": 4
 }`,
 			},
 		}
@@ -3020,6 +3320,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       precedence = 1
     }
   ]
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -3050,6 +3351,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       precedence = 2
     }
   ]
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -3089,11 +3391,12 @@ func TestV4ToV5Transformation(t *testing.T) {
   type       = "self_hosted"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "app" {
-  count      = var.create_app ? 1 : 0
-  account_id = "abc123"
-  name       = "Test App"
-  domain     = "test.example.com"
-  type       = "self_hosted"
+  count                      = var.create_app ? 1 : 0
+  account_id                 = "abc123"
+  name                       = "Test App"
+  domain                     = "test.example.com"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
@@ -3106,11 +3409,12 @@ func TestV4ToV5Transformation(t *testing.T) {
   type                = "self_hosted"
 }`,
 				Expected: `resource "cloudflare_zero_trust_access_application" "app" {
-  account_id          = "abc123"
-  name                = "App with \"quotes\" and 'apostrophes'"
-  custom_deny_message = "Access denied: contact admin@example.com\nFor help: https://help.example.com"
-  domain              = "test.example.com"
-  type                = "self_hosted"
+  account_id                 = "abc123"
+  name                       = "App with \"quotes\" and 'apostrophes'"
+  custom_deny_message        = "Access denied: contact admin@example.com\nFor help: https://help.example.com"
+  domain                     = "test.example.com"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }`,
 			},
 			{
