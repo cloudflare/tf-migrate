@@ -41,4 +41,5 @@ lint-testdata:
 clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf bin/
+	@rm -f tf-migrate e2e-runner
 	@echo "Clean complete"

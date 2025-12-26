@@ -8,6 +8,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 variable "spectrum_origin_ip" {
   description = "Origin IP address for Spectrum applications"
   type        = string

@@ -11,6 +11,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 resource "cloudflare_page_rule" "minimal" {
   zone_id  = var.cloudflare_zone_id
   target   = "cf-tf-test.com/minimal"

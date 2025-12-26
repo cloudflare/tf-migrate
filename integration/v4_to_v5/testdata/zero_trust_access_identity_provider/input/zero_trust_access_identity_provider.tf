@@ -10,6 +10,11 @@ variable "cloudflare_zone_id" {
   default     = ""
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 variable "enable_conditional_provider" {
   type    = bool
   default = true

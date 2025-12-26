@@ -8,6 +8,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 resource "cloudflare_argo" "both_with_lifecycle" {
   zone_id        = var.cloudflare_zone_id
   smart_routing  = "on"

@@ -8,6 +8,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 locals {
   name_prefix    = "cftftest_list"
   common_account = var.cloudflare_account_id

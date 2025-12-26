@@ -11,6 +11,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 # Use Cloudflare trace endpoint for webhook testing
 # URL: https://www.cloudflare.com/cdn-cgi/trace
 # This endpoint responds with 200 OK to all requests for webhook validation

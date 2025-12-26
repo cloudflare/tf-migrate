@@ -9,6 +9,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 # Basic zone-scoped custom page with real URL
 resource "cloudflare_custom_pages" "error_500" {
   zone_id = var.cloudflare_zone_id

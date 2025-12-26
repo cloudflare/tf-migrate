@@ -12,6 +12,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 # Test variables for variable reference preservation tests
 # These are only used to test that variable references are preserved during migration
 # They won't be queried in E2E tests
