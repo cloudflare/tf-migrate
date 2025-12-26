@@ -1,9 +1,11 @@
 package hcl
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -692,6 +694,401 @@ resource "test" "example" {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestConvertMapAttributeToObjectArray(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		attrName    string
+		transformer MapEntryTransformer
+		expected    string
+	}{
+		{
+			name: "Convert simple map to object array",
+			input: `
+resource "test" "example" {
+  name_by_idp = {
+    "idp1" = "value1"
+    "idp2" = "value2"
+  }
+}`,
+			attrName: "name_by_idp",
+			transformer: func(key, value hclwrite.Tokens) map[string]hclwrite.Tokens {
+				return map[string]hclwrite.Tokens{
+					"idp_id":      key,
+					"source_name": value,
+				}
+			},
+			expected: `
+resource "test" "example" {
+  name_by_idp = [
+    {
+      idp_id      = "idp1"
+      source_name = "value1"
+    },
+    {
+      idp_id      = "idp2"
+      source_name = "value2"
+    }
+  ]
+}`,
+		},
+		{
+			name: "Convert map with single entry",
+			input: `
+resource "test" "example" {
+  mapping = {
+    "key" = "val"
+  }
+}`,
+			attrName: "mapping",
+			transformer: func(key, value hclwrite.Tokens) map[string]hclwrite.Tokens {
+				return map[string]hclwrite.Tokens{
+					"name":  key,
+					"value": value,
+				}
+			},
+			expected: `
+resource "test" "example" {
+  mapping = [
+    {
+      name  = "key"
+      value = "val"
+    }
+  ]
+}`,
+		},
+		{
+			name: "Return false for non-existent attribute",
+			input: `
+resource "test" "example" {
+  other_attr = "value"
+}`,
+			attrName: "missing",
+			transformer: func(key, value hclwrite.Tokens) map[string]hclwrite.Tokens {
+				return map[string]hclwrite.Tokens{
+					"k": key,
+					"v": value,
+				}
+			},
+			expected: `
+resource "test" "example" {
+  other_attr = "value"
+}`,
+		},
+		{
+			name: "Convert map with three entries",
+			input: `
+resource "test" "example" {
+  config = {
+    "a" = "1"
+    "b" = "2"
+    "c" = "3"
+  }
+}`,
+			attrName: "config",
+			transformer: func(key, value hclwrite.Tokens) map[string]hclwrite.Tokens {
+				return map[string]hclwrite.Tokens{
+					"key":   key,
+					"value": value,
+				}
+			},
+			expected: `
+resource "test" "example" {
+  config = [
+    {
+      key   = "a"
+      value = "1"
+    },
+    {
+      key   = "b"
+      value = "2"
+    },
+    {
+      key   = "c"
+      value = "3"
+    }
+  ]
+}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclwrite.ParseConfig([]byte(tt.input), "", hcl.InitialPos)
+			require.False(t, diags.HasErrors())
+
+			body := file.Body().Blocks()[0].Body()
+			ConvertMapAttributeToObjectArray(body, tt.attrName, tt.transformer)
+
+			output := string(file.Bytes())
+			assert.Equal(t, tt.expected, output)
+		})
+	}
+}
+
+func TestConvertMapAttributeToObjectArray_NestedBlock(t *testing.T) {
+	input := `
+resource "cloudflare_zero_trust_access_application" "example" {
+  saas_app {
+    custom_attribute {
+      source {
+        name = "email"
+        name_by_idp = {
+          "idp1" = "1234"
+          "idp2" = "5678"
+        }
+      }
+    }
+  }
+}`
+
+	expected := `
+resource "cloudflare_zero_trust_access_application" "example" {
+  saas_app {
+    custom_attribute {
+      source {
+        name = "email"
+        name_by_idp = [
+          {
+            idp_id      = "idp1"
+            source_name = "1234"
+          },
+          {
+            idp_id      = "idp2"
+            source_name = "5678"
+          }
+        ]
+      }
+    }
+  }
+}`
+
+	file, diags := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+
+	// Navigate to the nested source block
+	resourceBlock := file.Body().Blocks()[0]
+	saasAppBlock := FindBlockByType(resourceBlock.Body(), "saas_app")
+	require.NotNil(t, saasAppBlock)
+
+	customAttrBlock := FindBlockByType(saasAppBlock.Body(), "custom_attribute")
+	require.NotNil(t, customAttrBlock)
+
+	sourceBlock := FindBlockByType(customAttrBlock.Body(), "source")
+	require.NotNil(t, sourceBlock)
+
+	// Apply the transformation
+	transformer := func(key, value hclwrite.Tokens) map[string]hclwrite.Tokens {
+		return map[string]hclwrite.Tokens{
+			"idp_id":      key,
+			"source_name": value,
+		}
+	}
+
+	result := ConvertMapAttributeToObjectArray(sourceBlock.Body(), "name_by_idp", transformer)
+	assert.True(t, result, "Transformation should succeed")
+
+	output := string(file.Bytes())
+	assert.Equal(t, expected, output)
+}
+
+func TestConvertArrayAttributeToObjectArray(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		attrName    string
+		transformer ArrayElementTransformer
+		expected    string
+	}{
+		{
+			name: "Convert simple string array to object array",
+			input: `
+resource "test" "example" {
+  policies = ["policy-id-1", "policy-id-2"]
+}`,
+			attrName: "policies",
+			transformer: func(element hclwrite.Tokens, index int) map[string]hclwrite.Tokens {
+				return map[string]hclwrite.Tokens{
+					"id": element,
+					"precedence": hclwrite.Tokens{&hclwrite.Token{
+						Type:  hclsyntax.TokenNumberLit,
+						Bytes: []byte(fmt.Sprintf("%d", index+1)),
+					}},
+				}
+			},
+			expected: `
+resource "test" "example" {
+  policies = [
+    {
+      id         = "policy-id-1"
+      precedence = 1
+    },
+    {
+      id         = "policy-id-2"
+      precedence = 2
+    }
+  ]
+}`,
+		},
+		{
+			name: "Convert single element array",
+			input: `
+resource "test" "example" {
+  policies = ["single-policy"]
+}`,
+			attrName: "policies",
+			transformer: func(element hclwrite.Tokens, index int) map[string]hclwrite.Tokens {
+				return map[string]hclwrite.Tokens{
+					"id": element,
+					"precedence": hclwrite.Tokens{&hclwrite.Token{
+						Type:  hclsyntax.TokenNumberLit,
+						Bytes: []byte(fmt.Sprintf("%d", index+1)),
+					}},
+				}
+			},
+			expected: `
+resource "test" "example" {
+  policies = [
+    {
+      id         = "single-policy"
+      precedence = 1
+    }
+  ]
+}`,
+		},
+		{
+			name: "Non-existent attribute returns false",
+			input: `
+resource "test" "example" {
+  name = "test"
+}`,
+			attrName: "policies",
+			transformer: func(element hclwrite.Tokens, index int) map[string]hclwrite.Tokens {
+				return map[string]hclwrite.Tokens{
+					"id": element,
+				}
+			},
+			expected: `
+resource "test" "example" {
+  name = "test"
+}`,
+		},
+		{
+			name: "Multiple elements with different transformer",
+			input: `
+resource "test" "example" {
+  items = ["a", "b", "c"]
+}`,
+			attrName: "items",
+			transformer: func(element hclwrite.Tokens, index int) map[string]hclwrite.Tokens {
+				return map[string]hclwrite.Tokens{
+					"value": element,
+					"index": hclwrite.Tokens{&hclwrite.Token{
+						Type:  hclsyntax.TokenNumberLit,
+						Bytes: []byte(fmt.Sprintf("%d", index)),
+					}},
+					"name": hclwrite.Tokens{&hclwrite.Token{
+						Type:  hclsyntax.TokenIdent,
+						Bytes: []byte(fmt.Sprintf("\"item_%d\"", index)),
+					}},
+				}
+			},
+			expected: `
+resource "test" "example" {
+  items = [
+    {
+      index = 0
+      name  = "item_0"
+      value = "a"
+    },
+    {
+      index = 1
+      name  = "item_1"
+      value = "b"
+    },
+    {
+      index = 2
+      name  = "item_2"
+      value = "c"
+    }
+  ]
+}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclwrite.ParseConfig([]byte(tt.input), "test.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), "Parse should succeed")
+			require.NotNil(t, file)
+
+			resourceBlock := file.Body().Blocks()[0]
+			result := ConvertArrayAttributeToObjectArray(resourceBlock.Body(), tt.attrName, tt.transformer)
+
+			if tt.name == "Non-existent attribute returns false" {
+				assert.False(t, result, "Transformation should return false for non-existent attribute")
+			} else {
+				assert.True(t, result, "Transformation should succeed")
+			}
+
+			output := string(file.Bytes())
+			assert.Equal(t, tt.expected, output)
+		})
+	}
+}
+
+func TestConvertArrayAttributeToObjectArray_RealWorld(t *testing.T) {
+	input := `
+resource "cloudflare_zero_trust_access_application" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "My App"
+  policies   = ["policy-uuid-1", "policy-uuid-2", "policy-uuid-3"]
+}`
+
+	expected := `
+resource "cloudflare_zero_trust_access_application" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "My App"
+  policies = [
+    {
+      id         = "policy-uuid-1"
+      precedence = 1
+    },
+    {
+      id         = "policy-uuid-2"
+      precedence = 2
+    },
+    {
+      id         = "policy-uuid-3"
+      precedence = 3
+    }
+  ]
+}`
+
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), "Parse should succeed")
+	require.NotNil(t, file)
+
+	resourceBlock := file.Body().Blocks()[0]
+
+	// Apply the transformation
+	transformer := func(element hclwrite.Tokens, index int) map[string]hclwrite.Tokens {
+		return map[string]hclwrite.Tokens{
+			"id": element,
+			"precedence": hclwrite.Tokens{&hclwrite.Token{
+				Type:  hclsyntax.TokenNumberLit,
+				Bytes: []byte(fmt.Sprintf("%d", index+1)),
+			}},
+		}
+	}
+
+	result := ConvertArrayAttributeToObjectArray(resourceBlock.Body(), "policies", transformer)
+	assert.True(t, result, "Transformation should succeed")
+
+	output := string(file.Bytes())
+	assert.Equal(t, expected, output)
 }
 
 func TestCreateNestedAttributeFromFields(t *testing.T) {

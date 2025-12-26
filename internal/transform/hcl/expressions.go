@@ -73,3 +73,87 @@ func IsExpressionAttribute(attr *hclwrite.Attribute) bool {
 
 	return false
 }
+
+// RemoveFunctionWrapper removes a function wrapper from an attribute expression.
+// This is useful when migrating from v4 to v5 where certain function calls need to be unwrapped.
+//
+// Common use case: Converting toset() calls to plain lists when v5 changes a set type to a list type.
+//
+// Example with toset:
+//
+//	Before: allowed_idps = toset(["abc-123", "def-456"])
+//	After:  allowed_idps = ["abc-123", "def-456"]
+//
+// The function extracts the argument from funcName(arg) and replaces the entire expression with just arg.
+// If the attribute doesn't exist or doesn't contain the specified function, no changes are made.
+//
+// Parameters:
+//   - body: The HCL body containing the attribute
+//   - attrName: The name of the attribute to transform
+//   - funcName: The name of the function to remove (e.g., "toset", "tonumber")
+func RemoveFunctionWrapper(body *hclwrite.Body, attrName string, funcName string) {
+	attr := body.GetAttribute(attrName)
+	if attr == nil {
+		return
+	}
+
+	tokens := attr.Expr().BuildTokens(nil)
+
+	// Look for the pattern: funcName ( arg )
+	// We need to find funcName followed by "(" and extract the content until matching ")"
+	var result []*hclwrite.Token
+	inFunction := false
+	parenDepth := 0
+	skipUntilArgStart := false
+
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+
+		// Check if this is the start of funcName(
+		if !inFunction && token.Type == hclsyntax.TokenIdent && string(token.Bytes) == funcName {
+			inFunction = true
+			skipUntilArgStart = true
+			continue
+		}
+
+		if inFunction {
+			if skipUntilArgStart {
+				if token.Type == hclsyntax.TokenOParen {
+					parenDepth++
+					continue
+				}
+				// Found the start of the argument (could be a list, object, or other expression)
+				// For toset specifically, this is typically a list literal [...]
+				if token.Type == hclsyntax.TokenOBrack {
+					skipUntilArgStart = false
+					result = append(result, token)
+					continue
+				}
+				// Skip whitespace and other tokens before the argument
+				continue
+			}
+
+			// Track parentheses depth to know when funcName() ends
+			if token.Type == hclsyntax.TokenOParen {
+				parenDepth++
+			} else if token.Type == hclsyntax.TokenCParen {
+				parenDepth--
+				if parenDepth == 0 {
+					// End of funcName(), we're done
+					break
+				}
+			}
+
+			// Collect all other tokens (the function argument)
+			result = append(result, token)
+		} else {
+			// Not in function call, keep token as-is
+			result = append(result, token)
+		}
+	}
+
+	// If we found and transformed the function, update the attribute
+	if inFunction && len(result) > 0 {
+		body.SetAttributeRaw(attrName, result)
+	}
+}

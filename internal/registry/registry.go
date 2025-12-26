@@ -10,9 +10,9 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/custom_pages"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	"github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
-	"github.com/cloudflare/tf-migrate/internal/resources/load_balancer_monitor"
 	"github.com/cloudflare/tf-migrate/internal/resources/list"
 	"github.com/cloudflare/tf-migrate/internal/resources/list_item"
+	"github.com/cloudflare/tf-migrate/internal/resources/load_balancer_monitor"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpush_job"
 	"github.com/cloudflare/tf-migrate/internal/resources/managed_transforms"
@@ -27,6 +27,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/url_normalization_settings"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_application"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_script"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_group"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_identity_provider"
@@ -78,6 +79,7 @@ func RegisterAllMigrations() {
 	workers_kv.NewV4ToV5Migrator()
 	workers_kv_namespace.NewV4ToV5Migrator()
 	workers_script.NewV4ToV5Migrator()
+	zero_trust_access_application.NewV4ToV5Migrator()
 	zero_trust_access_group.NewV4ToV5Migrator()
 	zero_trust_access_identity_provider.NewV4ToV5Migrator()
 	zero_trust_access_mtls_hostname_settings.NewV4ToV5Migrator()

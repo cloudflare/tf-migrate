@@ -17,20 +17,22 @@ import (
 // Example - Renaming legacy resource type:
 //
 // Before:
-//   resource "cloudflare_record" "example" {
-//     zone_id = "abc123"
-//     name    = "test"
-//     type    = "A"
-//     value   = "192.0.2.1"
-//   }
+//
+//	resource "cloudflare_record" "example" {
+//	  zone_id = "abc123"
+//	  name    = "test"
+//	  type    = "A"
+//	  value   = "192.0.2.1"
+//	}
 //
 // After calling RenameResourceType(block, "cloudflare_record", "cloudflare_dns_record"):
-//   resource "cloudflare_dns_record" "example" {
-//     zone_id = "abc123"
-//     name    = "test"
-//     type    = "A"
-//     value   = "192.0.2.1"
-//   }
+//
+//	resource "cloudflare_dns_record" "example" {
+//	  zone_id = "abc123"
+//	  name    = "test"
+//	  type    = "A"
+//	  value   = "192.0.2.1"
+//	}
 func RenameResourceType(block *hclwrite.Block, oldType, newType string) bool {
 	labels := block.Labels()
 	if len(labels) >= 2 && labels[0] == oldType {
@@ -71,48 +73,50 @@ func GetResourceName(block *hclwrite.Block) string {
 // Example - Converting data blocks to attribute for CAA records:
 //
 // Before:
-//   resource "cloudflare_dns_record" "caa" {
-//     zone_id = "abc123"
-//     name    = "example.com"
-//     type    = "CAA"
-//     
-//     data {
-//       flags   = "0"
-//       tag     = "issue"
-//       content = "letsencrypt.org"
-//     }
-//   }
+//
+//	resource "cloudflare_dns_record" "caa" {
+//	  zone_id = "abc123"
+//	  name    = "example.com"
+//	  type    = "CAA"
+//
+//	  data {
+//	    flags   = "0"
+//	    tag     = "issue"
+//	    content = "letsencrypt.org"
+//	  }
+//	}
 //
 // After calling ConvertBlocksToAttribute(body, "data", "data", preProcess):
-//   resource "cloudflare_dns_record" "caa" {
-//     zone_id = "abc123"
-//     name    = "example.com"
-//     type    = "CAA"
-//     data = {
-//       flags = "0"
-//       tag   = "issue"
-//       value = "letsencrypt.org"  # Renamed by preProcess
-//     }
-//   }
+//
+//	resource "cloudflare_dns_record" "caa" {
+//	  zone_id = "abc123"
+//	  name    = "example.com"
+//	  type    = "CAA"
+//	  data = {
+//	    flags = "0"
+//	    tag   = "issue"
+//	    value = "letsencrypt.org"  # Renamed by preProcess
+//	  }
+//	}
 func ConvertBlocksToAttribute(body *hclwrite.Body, blockType, attrName string, preProcess func(*hclwrite.Block)) {
 	var blocksToRemove []*hclwrite.Block
-	
+
 	for _, block := range body.Blocks() {
 		if block.Type() != blockType {
 			continue
 		}
-		
+
 		// Apply preprocessing if provided
 		if preProcess != nil {
 			preProcess(block)
 		}
-		
+
 		// Convert block to object tokens
 		objTokens := BuildObjectFromBlock(block)
 		body.SetAttributeRaw(attrName, objTokens)
 		blocksToRemove = append(blocksToRemove, block)
 	}
-	
+
 	// Remove the converted blocks
 	for _, block := range blocksToRemove {
 		body.RemoveBlock(block)
@@ -125,32 +129,34 @@ func ConvertBlocksToAttribute(body *hclwrite.Body, blockType, attrName string, p
 // Example - Hoisting priority from SRV record data block:
 //
 // Before:
-//   resource "cloudflare_dns_record" "srv" {
-//     zone_id = "abc123"
-//     name    = "_sip._tcp"
-//     type    = "SRV"
-//     
-//     data {
-//       priority = 10
-//       weight   = 60
-//       port     = 5060
-//       target   = "sipserver.example.com"
-//     }
-//   }
+//
+//	resource "cloudflare_dns_record" "srv" {
+//	  zone_id = "abc123"
+//	  name    = "_sip._tcp"
+//	  type    = "SRV"
+//
+//	  data {
+//	    priority = 10
+//	    weight   = 60
+//	    port     = 5060
+//	    target   = "sipserver.example.com"
+//	  }
+//	}
 //
 // After calling HoistAttributeFromBlock(body, "data", "priority"):
-//   resource "cloudflare_dns_record" "srv" {
-//     zone_id  = "abc123"
-//     name     = "_sip._tcp"
-//     type     = "SRV"
-//     priority = 10  # Hoisted from data block
-//     
-//     data {
-//       weight = 60
-//       port   = 5060
-//       target = "sipserver.example.com"
-//     }
-//   }
+//
+//	resource "cloudflare_dns_record" "srv" {
+//	  zone_id  = "abc123"
+//	  name     = "_sip._tcp"
+//	  type     = "SRV"
+//	  priority = 10  # Hoisted from data block
+//
+//	  data {
+//	    weight = 60
+//	    port   = 5060
+//	    target = "sipserver.example.com"
+//	  }
+//	}
 func HoistAttributeFromBlock(parentBody *hclwrite.Body, blockType, attrName string) bool {
 	for _, block := range parentBody.Blocks() {
 		if block.Type() != blockType {
@@ -229,10 +235,112 @@ func ConvertSingleBlockToAttribute(body *hclwrite.Body, blockType, attrName stri
 	}
 
 	objTokens := BuildObjectFromBlock(block)
+
 	body.SetAttributeRaw(attrName, objTokens)
 	body.RemoveBlock(block)
 	return true
 }
+
+// ConvertBlocksToAttributeList converts multiple blocks of a certain type to an array attribute.
+// The preProcess function is called on each block before conversion (can be nil).
+//
+// Example - Converting destinations blocks to array attribute:
+//
+// Before:
+//
+//	resource "cloudflare_zero_trust_access_application" "example" {
+//	  name       = "App"
+//	  account_id = "abc123"
+//
+//	  destinations {
+//	    type = "public"
+//	    uri  = "https://app.example.com"
+//	  }
+//
+//	  destinations {
+//	    type = "private"
+//	    cidr = "10.0.0.0/24"
+//	  }
+//	}
+//
+// After calling ConvertBlocksToAttributeList(body, "destinations", nil):
+//
+//	resource "cloudflare_zero_trust_access_application" "example" {
+//	  name       = "App"
+//	  account_id = "abc123"
+//
+//	  destinations = [
+//	    {
+//	      type = "public"
+//	      uri  = "https://app.example.com"
+//	    },
+//	    {
+//	      type = "private"
+//	      cidr = "10.0.0.0/24"
+//	    }
+//	  ]
+//	}
+func ConvertBlocksToAttributeList(body *hclwrite.Body, blockType string, preProcess func(*hclwrite.Block)) bool {
+	blocks := FindBlocksByType(body, blockType)
+	if len(blocks) == 0 {
+		return false
+	}
+
+	var arrayTokens hclwrite.Tokens
+
+	// Opening bracket
+	arrayTokens = append(arrayTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenOBrack,
+		Bytes: []byte("["),
+	})
+
+	// Process each block
+	for i, block := range blocks {
+		// Apply preprocessing if provided
+		if preProcess != nil {
+			preProcess(block)
+		}
+
+		// Add comma and newline for all but first element
+		if i > 0 {
+			arrayTokens = append(arrayTokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenComma,
+				Bytes: []byte(","),
+			})
+		}
+
+		// Add newline before each object
+		arrayTokens = append(arrayTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenNewline,
+			Bytes: []byte("\n"),
+		})
+
+		// Convert block to object tokens
+		objTokens := BuildObjectFromBlock(block)
+		arrayTokens = append(arrayTokens, objTokens...)
+	}
+
+	// Closing newline and bracket
+	arrayTokens = append(arrayTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenNewline,
+		Bytes: []byte("\n"),
+	})
+	arrayTokens = append(arrayTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenCBrack,
+		Bytes: []byte("]"),
+	})
+
+	// Set the attribute with the array using the same name as the block type
+	body.SetAttributeRaw(blockType, arrayTokens)
+
+	// Remove the converted blocks
+	for _, block := range blocks {
+		body.RemoveBlock(block)
+	}
+
+	return true
+}
+
 // CreateMovedBlock creates a moved block for resource migration
 // This is used when resources are renamed or restructured between provider versions
 func CreateMovedBlock(from, to string) *hclwrite.Block {
