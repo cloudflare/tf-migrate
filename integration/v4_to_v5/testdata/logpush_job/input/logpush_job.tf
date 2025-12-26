@@ -12,6 +12,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 # Minimal logpush job
 resource "cloudflare_logpush_job" "minimal" {
   account_id       = var.cloudflare_account_id

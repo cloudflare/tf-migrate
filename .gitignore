@@ -1,6 +1,10 @@
 bin/
 .terraformrc-tf-migrate
 
+# Binaries (should be in bin/ directory only)
+/tf-migrate
+/e2e-runner
+
 # Local provider dev overrides
 .terraformrc-tf-migrate
 

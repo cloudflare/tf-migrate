@@ -8,6 +8,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 # Comprehensive bot management test with available fields
 # Note: bot_management is a singleton per zone - only one config per zone
 resource "cloudflare_bot_management" "test" {

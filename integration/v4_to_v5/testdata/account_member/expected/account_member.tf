@@ -12,6 +12,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 # Test Case 1: Basic account member
 resource "cloudflare_account_member" "basic_am" {
   account_id = var.cloudflare_account_id

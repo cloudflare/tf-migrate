@@ -7,6 +7,11 @@ variable "cloudflare_zone_id" {
   type = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 # Pattern 1: Simple email selector
 resource "cloudflare_zero_trust_access_group" "simple_email" {
   account_id = var.cloudflare_account_id

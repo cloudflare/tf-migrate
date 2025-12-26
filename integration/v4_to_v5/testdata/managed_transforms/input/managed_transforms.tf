@@ -8,6 +8,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 # Single comprehensive test covering all valid header types
 resource "cloudflare_managed_headers" "test" {
   zone_id = var.cloudflare_zone_id

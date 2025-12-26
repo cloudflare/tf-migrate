@@ -12,6 +12,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 # Test Case 1: Basic API token with single policy
 resource "cloudflare_api_token" "basic_token" {
   name = "${local.name_prefix} Basic API Token"

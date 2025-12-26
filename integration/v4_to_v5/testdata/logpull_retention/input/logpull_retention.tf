@@ -10,6 +10,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 variable "cloudflare_account_id" {
   description = "Cloudflare account ID"
   type        = string

@@ -12,6 +12,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 # Test variables for variable/local reference preservation tests
 # For E2E: These will use values from the first zone lookup to ensure they work
 variable "account_id" {

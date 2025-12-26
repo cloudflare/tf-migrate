@@ -11,6 +11,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
+}
+
 # Variable for test IP - override if default doesn't work
 variable "healthcheck_test_ip" {
   description = "IP for healthcheck test DNS record - use an IP you control if needed"
