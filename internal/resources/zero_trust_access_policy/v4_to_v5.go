@@ -1,6 +1,8 @@
 package zero_trust_access_policy
 
 import (
+	"sort"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -769,11 +771,178 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 		result, _ = sjson.Set(result, "attributes.session_duration", "24h")
 	}
 
-	// 6. TODO: Transform include/exclude/require conditions in state
-	// This is complex and will require custom logic similar to config transformation
+	// 6. Transform include/exclude/require conditions in state
+	conditionFields := []string{"include", "exclude", "require"}
+	for _, field := range conditionFields {
+		if conditionValue := attrs.Get(field); conditionValue.Exists() && conditionValue.IsArray() {
+			transformedConditions := m.transformStateConditions(conditionValue)
+			// Always set the transformed conditions, even if empty (e.g., when all items were "false" booleans)
+			// Special handling for empty arrays to ensure they serialize as [] not null
+			if len(transformedConditions) == 0 {
+				result, _ = sjson.SetRaw(result, "attributes."+field, "[]")
+			} else {
+				result, _ = sjson.Set(result, "attributes."+field, transformedConditions)
+			}
+		}
+	}
 
 	// Always set schema_version to 0 for v5
 	result, _ = sjson.Set(result, "schema_version", 0)
 
 	return result, nil
+}
+
+// transformStateConditions transforms condition arrays in state
+// Handles boolean → object conversion and array expansion
+func (m *V4ToV5Migrator) transformStateConditions(conditionsArray gjson.Result) []map[string]interface{} {
+	var result []map[string]interface{}
+
+	conditionsArray.ForEach(func(_, conditionItem gjson.Result) bool {
+		// Each condition item is an object with keys like "everyone", "email", "ip", etc.
+		conditionMap := conditionItem.Map()
+
+		// Sort keys for deterministic output (Go map iteration order is non-deterministic)
+		keys := make([]string, 0, len(conditionMap))
+		for key := range conditionMap {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+
+		for _, key := range keys {
+			value := conditionMap[key]
+			// Handle boolean attributes (everyone, certificate, any_valid_service_token)
+			if key == "everyone" || key == "certificate" || key == "any_valid_service_token" {
+				if value.IsBool() {
+					if value.Bool() {
+						// true → {}
+						result = append(result, map[string]interface{}{
+							key: map[string]interface{}{},
+						})
+					}
+					// false → skip (remove)
+					continue
+				} else if value.IsObject() {
+					// Already an object, keep as-is
+					result = append(result, map[string]interface{}{
+						key: value.Value(),
+					})
+					continue
+				}
+			}
+
+			// Handle array fields that need expansion
+			arrayFields := map[string]string{
+				"email":        "email",
+				"ip":           "ip",
+				"email_domain": "domain",
+				"geo":          "country_code",
+				"group":        "id",
+				"login_method": "id",
+			}
+
+			if nestedKey, isArrayField := arrayFields[key]; isArrayField {
+				if value.IsArray() {
+					// Expand array: email = ["a", "b"] → [{email: {email: "a"}}, {email: {email: "b"}}]
+					value.ForEach(func(_, arrayItem gjson.Result) bool {
+						result = append(result, map[string]interface{}{
+							key: map[string]interface{}{
+								nestedKey: arrayItem.Value(),
+							},
+						})
+						return true
+					})
+					continue
+				}
+			}
+
+			// Handle MaxItems:1 fields that were arrays in v4 but are single objects in v5
+			// These fields should convert array → first element object
+			maxItemsOneFields := map[string]bool{
+				"auth_context":        true,
+				"auth_method":         true,
+				"azure_ad":            true,
+				"common_name":         true,
+				"device_posture":      true,
+				"email_list":          true,
+				"external_evaluation": true,
+				"gsuite":              true,
+				"ip_list":             true,
+				"linked_app_token":    true,
+				"oidc":                true,
+				"okta":                true,
+				"saml":                true,
+				"service_token":       true,
+			}
+
+			if maxItemsOneFields[key] {
+				if value.IsArray() {
+					arr := value.Array()
+					if len(arr) > 0 && arr[0].Exists() {
+						// Array → take first element as single object
+						result = append(result, map[string]interface{}{
+							key: arr[0].Value(),
+						})
+					}
+					// Empty array → skip
+					continue
+				} else if value.IsObject() {
+					// Already an object, keep as-is
+					result = append(result, map[string]interface{}{
+						key: value.Value(),
+					})
+					continue
+				}
+			}
+
+			// Handle github_organization special case
+			if key == "github_organization" {
+				if value.IsObject() {
+					org := value.Map()
+					name := org["name"]
+					identityProviderID := org["identity_provider_id"]
+					teams := org["teams"]
+
+					if teams.Exists() && teams.IsArray() {
+						// Expand teams
+						teams.ForEach(func(_, team gjson.Result) bool {
+							newOrg := map[string]interface{}{
+								"github_organization": map[string]interface{}{
+									"name": name.Value(),
+									"team": team.Value(),
+								},
+							}
+							if identityProviderID.Exists() {
+								newOrg["github_organization"].(map[string]interface{})["identity_provider_id"] = identityProviderID.Value()
+							}
+							result = append(result, newOrg)
+							return true
+						})
+					} else {
+						// No teams, keep as-is
+						newOrg := map[string]interface{}{
+							"github_organization": map[string]interface{}{
+								"name": name.Value(),
+							},
+						}
+						if identityProviderID.Exists() {
+							newOrg["github_organization"].(map[string]interface{})["identity_provider_id"] = identityProviderID.Value()
+						}
+						result = append(result, newOrg)
+					}
+					continue
+				}
+			}
+
+			// For all other fields, keep as-is (wrapped in the key)
+			if value.IsObject() || value.IsArray() {
+				result = append(result, map[string]interface{}{
+					key: value.Value(),
+				})
+			}
+		}
+
+		return true
+	})
+
+	return result
 }

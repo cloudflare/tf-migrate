@@ -421,7 +421,7 @@ func TestStateTransformation_Simple(t *testing.T) {
     "account_id": "account-123",
     "name": "Test Policy",
     "decision": "allow",
-    "include": [{"everyone": true}],
+    "include": [{"everyone": {}}],
     "session_duration": "24h"
   }
 }`,
@@ -449,7 +449,7 @@ func TestStateTransformation_Simple(t *testing.T) {
     "account_id": "account-123",
     "name": "Test Policy",
     "decision": "allow",
-    "include": [{"everyone": true}],
+    "include": [{"everyone": {}}],
     "approval_groups": [{
       "approvals_needed": 2.0,
       "email_addresses": ["admin@example.com"]
@@ -483,7 +483,7 @@ func TestStateTransformation_Simple(t *testing.T) {
     "account_id": "account-123",
     "name": "SSH Policy",
     "decision": "allow",
-    "include": [{"everyone": true}],
+    "include": [{"everyone": {}}],
     "connection_rules": {
       "ssh": {
         "usernames": ["admin", "deploy"],
@@ -514,8 +514,331 @@ func TestStateTransformation_Simple(t *testing.T) {
     "account_id": "account-123",
     "name": "Test Policy",
     "decision": "allow",
-    "include": [{"everyone": true}],
+    "include": [{"everyone": {}}],
     "session_duration": "12h"
+  }
+}`,
+		},
+	}
+
+	testhelpers.RunStateTransformTests(t, tests, migrator)
+}
+
+func TestStateTransformation_Conditions(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	tests := []testhelpers.StateTestCase{
+		{
+			Name: "boolean conversion - any_valid_service_token false removed",
+			Input: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [{"any_valid_service_token": false}]
+  }
+}`,
+			Expected: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [],
+    "session_duration": "24h"
+  }
+}`,
+		},
+		{
+			Name: "boolean conversion - everyone true to empty object",
+			Input: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [{"everyone": true}]
+  }
+}`,
+			Expected: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [{"everyone": {}}],
+    "session_duration": "24h"
+  }
+}`,
+		},
+		{
+			Name: "array expansion - email array",
+			Input: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [{"email": ["alice@example.com", "bob@example.com"]}]
+  }
+}`,
+			Expected: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [
+      {"email": {"email": "alice@example.com"}},
+      {"email": {"email": "bob@example.com"}}
+    ],
+    "session_duration": "24h"
+  }
+}`,
+		},
+		{
+			Name: "array expansion - ip array",
+			Input: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "exclude": [{"ip": ["192.168.1.0/24", "10.0.0.0/8"]}]
+  }
+}`,
+			Expected: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "exclude": [
+      {"ip": {"ip": "192.168.1.0/24"}},
+      {"ip": {"ip": "10.0.0.0/8"}}
+    ],
+    "session_duration": "24h"
+  }
+}`,
+		},
+		{
+			Name: "array expansion - geo country codes",
+			Input: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "exclude": [{"geo": ["CN", "RU", "KP"]}]
+  }
+}`,
+			Expected: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "exclude": [
+      {"geo": {"country_code": "CN"}},
+      {"geo": {"country_code": "RU"}},
+      {"geo": {"country_code": "KP"}}
+    ],
+    "session_duration": "24h"
+  }
+}`,
+		},
+		{
+			Name: "github organization with teams expansion",
+			Input: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [{
+      "github_organization": {
+        "name": "my-org",
+        "teams": ["engineering", "devops"],
+        "identity_provider_id": "provider-123"
+      }
+    }]
+  }
+}`,
+			Expected: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [
+      {
+        "github_organization": {
+          "name": "my-org",
+          "team": "engineering",
+          "identity_provider_id": "provider-123"
+        }
+      },
+      {
+        "github_organization": {
+          "name": "my-org",
+          "team": "devops",
+          "identity_provider_id": "provider-123"
+        }
+      }
+    ],
+    "session_duration": "24h"
+  }
+}`,
+		},
+		{
+			Name: "array expansion - group array",
+			Input: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [{"group": ["group-id-1", "group-id-2"]}]
+  }
+}`,
+			Expected: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [
+      {"group": {"id": "group-id-1"}},
+      {"group": {"id": "group-id-2"}}
+    ],
+    "session_duration": "24h"
+  }
+}`,
+		},
+		{
+			Name: "array expansion - login_method array",
+			Input: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [{"login_method": ["otp", "warp", "swk"]}]
+  }
+}`,
+			Expected: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [
+      {"login_method": {"id": "otp"}},
+      {"login_method": {"id": "warp"}},
+      {"login_method": {"id": "swk"}}
+    ],
+    "session_duration": "24h"
+  }
+}`,
+		},
+		{
+			Name: "mixed conditions - multiple types",
+			Input: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [
+      {"email": ["admin@example.com"]},
+      {"group": ["group-123"]},
+      {"everyone": true}
+    ],
+    "exclude": [{"ip": ["198.51.100.0/24"]}],
+    "require": [{"certificate": true}]
+  }
+}`,
+			Expected: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [
+      {"email": {"email": "admin@example.com"}},
+      {"group": {"id": "group-123"}},
+      {"everyone": {}}
+    ],
+    "exclude": [{"ip": {"ip": "198.51.100.0/24"}}],
+    "require": [{"certificate": {}}],
+    "session_duration": "24h"
+  }
+}`,
+		},
+		{
+			Name: "MaxItems:1 array to object - auth_context",
+			Input: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [{"auth_context": [{"ac_id": "ac-123", "id": "ctx-456", "identity_provider_id": "idp-789"}]}]
+  }
+}`,
+			Expected: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [{"auth_context": {"ac_id": "ac-123", "id": "ctx-456", "identity_provider_id": "idp-789"}}],
+    "session_duration": "24h"
+  }
+}`,
+		},
+		{
+			Name: "empty array handling - empty auth_context",
+			Input: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [{"auth_context": [], "everyone": true}]
+  }
+}`,
+			Expected: `{
+  "schema_version": 0,
+  "attributes": {
+    "id": "policy-123",
+    "account_id": "account-123",
+    "name": "Test Policy",
+    "decision": "allow",
+    "include": [{"everyone": {}}],
+    "session_duration": "24h"
   }
 }`,
 		},
