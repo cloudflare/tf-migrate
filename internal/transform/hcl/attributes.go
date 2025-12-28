@@ -416,6 +416,511 @@ func AttributeValueContainsKey(attr *hclwrite.Attribute, key string) bool {
 	return false
 }
 
+// MapEntryTransformer is a function that transforms a map entry (key-value pair) into object attributes.
+// The function receives the key and value tokens and returns a map of field names to their token values.
+//
+// Example - Simple key-value transformation:
+//
+//	func(key, value hclwrite.Tokens) map[string]hclwrite.Tokens {
+//	  return map[string]hclwrite.Tokens{
+//	    "idp_id":      key,
+//	    "source_name": value,
+//	  }
+//	}
+//
+// Example - Transformation with modifications:
+//
+//	func(key, value hclwrite.Tokens) map[string]hclwrite.Tokens {
+//	  // Add quotes around the key if not already quoted
+//	  quotedKey := ensureQuoted(key)
+//	  return map[string]hclwrite.Tokens{
+//	    "name":  quotedKey,
+//	    "value": value,
+//	  }
+//	}
+type MapEntryTransformer func(key, value hclwrite.Tokens) map[string]hclwrite.Tokens
+
+// ConvertMapAttributeToObjectArray converts a map attribute to an array of objects.
+// Each map entry is transformed using the provided transformer function.
+//
+// Parameters:
+//   - body: The HCL body containing the map attribute
+//   - attrName: Name of the map attribute to convert
+//   - transformer: Function that defines how to transform each map entry into object fields
+//
+// Returns true if the attribute was found and converted, false otherwise.
+//
+// Example - Converting name_by_idp map to array for SAML:
+//
+// Before:
+//
+//	source {
+//	  name = "email"
+//	  name_by_idp = {
+//	    "idp1" = "1234"
+//	    "idp2" = "5678"
+//	  }
+//	}
+//
+// After calling ConvertMapAttributeToObjectArray(body, "name_by_idp", transformer):
+//
+//	source {
+//	  name = "email"
+//	  name_by_idp = [
+//	    {
+//	      idp_id      = "idp1"
+//	      source_name = "1234"
+//	    },
+//	    {
+//	      idp_id      = "idp2"
+//	      source_name = "5678"
+//	    }
+//	  ]
+//	}
+//
+// Where transformer is:
+//
+//	func(key, value hclwrite.Tokens) map[string]hclwrite.Tokens {
+//	  return map[string]hclwrite.Tokens{
+//	    "idp_id":      key,
+//	    "source_name": value,
+//	  }
+//	}
+func ConvertMapAttributeToObjectArray(body *hclwrite.Body, attrName string, transformer MapEntryTransformer) bool {
+	attr := body.GetAttribute(attrName)
+	if attr == nil {
+		return false
+	}
+
+	// Parse the map entries
+	mapEntries := parseMapAttribute(attr)
+	if len(mapEntries) == 0 {
+		return false
+	}
+
+	// Build array of objects using the transformer
+	var arrayTokens hclwrite.Tokens
+
+	// Opening bracket
+	arrayTokens = append(arrayTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenOBrack,
+		Bytes: []byte("["),
+	})
+
+	for i, entry := range mapEntries {
+		// Add comma and newline for all but first element
+		if i > 0 {
+			arrayTokens = append(arrayTokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenComma,
+				Bytes: []byte(","),
+			})
+		}
+
+		// Add newline before each object
+		arrayTokens = append(arrayTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenNewline,
+			Bytes: []byte("\n"),
+		})
+
+		// Transform the map entry into object fields
+		objectFields := transformer(entry.Key, entry.Value)
+
+		// Build object tokens from the transformed fields
+		arrayTokens = append(arrayTokens, buildObjectFromFields(objectFields)...)
+	}
+
+	// Closing newline and bracket
+	arrayTokens = append(arrayTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenNewline,
+		Bytes: []byte("\n"),
+	})
+	arrayTokens = append(arrayTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenCBrack,
+		Bytes: []byte("]"),
+	})
+
+	// Replace the map attribute with the array
+	body.SetAttributeRaw(attrName, arrayTokens)
+
+	return true
+}
+
+// MapEntry represents a single key-value pair from a map
+type MapEntry struct {
+	Key   hclwrite.Tokens
+	Value hclwrite.Tokens
+}
+
+// parseMapAttribute parses a map attribute and extracts its key-value pairs
+func parseMapAttribute(attr *hclwrite.Attribute) []MapEntry {
+	if attr == nil {
+		return nil
+	}
+
+	tokens := attr.Expr().BuildTokens(nil)
+	var entries []MapEntry
+
+	inMap := false
+	inQuotedString := false
+	templateDepth := 0
+	currentKey := hclwrite.Tokens{}
+	currentValue := hclwrite.Tokens{}
+	inValue := false
+
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+
+		// Find the opening brace
+		if token.Type == hclsyntax.TokenOBrace && !inMap {
+			inMap = true
+			continue
+		}
+
+		// Find the closing brace
+		if token.Type == hclsyntax.TokenCBrace && inMap && templateDepth == 0 && !inQuotedString {
+			// Save any pending entry
+			if len(currentKey) > 0 && len(currentValue) > 0 {
+				entries = append(entries, MapEntry{
+					Key:   currentKey,
+					Value: currentValue,
+				})
+			}
+			break
+		}
+
+		if !inMap {
+			continue
+		}
+
+		// Track quoted string boundaries
+		if token.Type == hclsyntax.TokenOQuote {
+			inQuotedString = true
+			if inValue {
+				currentValue = append(currentValue, token)
+			} else {
+				currentKey = append(currentKey, token)
+			}
+			continue
+		}
+		if token.Type == hclsyntax.TokenCQuote && templateDepth == 0 {
+			inQuotedString = false
+			if inValue {
+				currentValue = append(currentValue, token)
+			} else {
+				currentKey = append(currentKey, token)
+			}
+			continue
+		}
+
+		// Track template interpolation depth
+		if token.Type == hclsyntax.TokenTemplateInterp {
+			templateDepth++
+			if inValue {
+				currentValue = append(currentValue, token)
+			} else {
+				currentKey = append(currentKey, token)
+			}
+			continue
+		}
+		if token.Type == hclsyntax.TokenTemplateSeqEnd {
+			templateDepth--
+			if inValue {
+				currentValue = append(currentValue, token)
+			} else {
+				currentKey = append(currentKey, token)
+			}
+			continue
+		}
+
+		// Handle equals sign (key-value separator)
+		if token.Type == hclsyntax.TokenEqual && !inQuotedString && templateDepth == 0 {
+			inValue = true
+			continue
+		}
+
+		// Skip newlines between entries
+		if token.Type == hclsyntax.TokenNewline && !inQuotedString && templateDepth == 0 {
+			if inValue && len(currentValue) > 0 {
+				// End of current entry
+				entries = append(entries, MapEntry{
+					Key:   currentKey,
+					Value: currentValue,
+				})
+				currentKey = hclwrite.Tokens{}
+				currentValue = hclwrite.Tokens{}
+				inValue = false
+			}
+			continue
+		}
+
+		// Collect key or value tokens
+		if inValue {
+			currentValue = append(currentValue, token)
+		} else {
+			currentKey = append(currentKey, token)
+		}
+	}
+
+	return entries
+}
+
+// buildObjectFromFields builds HCL tokens for an object from a map of field names to tokens
+func buildObjectFromFields(fields map[string]hclwrite.Tokens) hclwrite.Tokens {
+	var tokens hclwrite.Tokens
+
+	// Opening brace
+	tokens = append(tokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenOBrace,
+		Bytes: []byte("{"),
+	})
+	tokens = append(tokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenNewline,
+		Bytes: []byte("\n"),
+	})
+
+	// Add fields in a consistent order (sorted by field name for deterministic output)
+	// First collect all field names
+	fieldNames := make([]string, 0, len(fields))
+	for fieldName := range fields {
+		fieldNames = append(fieldNames, fieldName)
+	}
+
+	// Sort field names for consistent output
+	// Note: In Go, map iteration order is random, so we need to sort
+	// We'll use a simple bubble sort since the number of fields is typically small
+	for i := 0; i < len(fieldNames); i++ {
+		for j := i + 1; j < len(fieldNames); j++ {
+			if fieldNames[i] > fieldNames[j] {
+				fieldNames[i], fieldNames[j] = fieldNames[j], fieldNames[i]
+			}
+		}
+	}
+
+	// Add each field
+	for _, fieldName := range fieldNames {
+		fieldTokens := fields[fieldName]
+
+		// Field name
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenIdent,
+			Bytes: []byte(fieldName),
+		})
+
+		// Equals sign
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenEqual,
+			Bytes: []byte("="),
+		})
+
+		// Field value
+		tokens = append(tokens, fieldTokens...)
+
+		// Newline after field
+		tokens = append(tokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenNewline,
+			Bytes: []byte("\n"),
+		})
+	}
+
+	// Closing brace
+	tokens = append(tokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenCBrace,
+		Bytes: []byte("}"),
+	})
+
+	return tokens
+}
+
+// ArrayElementTransformer is a function that transforms an array element into object attributes.
+// The function receives the element tokens and its index (0-based) and returns a map of field names to their token values.
+//
+// Example - Converting policy IDs to objects with precedence:
+//
+//	func(element hclwrite.Tokens, index int) map[string]hclwrite.Tokens {
+//	  return map[string]hclwrite.Tokens{
+//	    "id":         element,
+//	    "precedence": hclwrite.Tokens{&hclwrite.Token{Type: hclsyntax.TokenNumberLit, Bytes: []byte(strconv.Itoa(index + 1))}},
+//	  }
+//	}
+type ArrayElementTransformer func(element hclwrite.Tokens, index int) map[string]hclwrite.Tokens
+
+// ConvertArrayAttributeToObjectArray converts an array attribute to an array of objects.
+// Each array element is transformed using the provided transformer function.
+//
+// Parameters:
+//   - body: The HCL body containing the array attribute
+//   - attrName: Name of the array attribute to convert
+//   - transformer: Function that defines how to transform each array element (with its index) into object fields
+//
+// Returns true if the attribute was found and converted, false otherwise.
+//
+// Example - Converting policies array to object array:
+//
+// Before:
+//
+//	policies = ["policy-id-1", "policy-id-2"]
+//
+// After calling ConvertArrayAttributeToObjectArray(body, "policies", transformer):
+//
+//	policies = [
+//	  {
+//	    id         = "policy-id-1"
+//	    precedence = 1
+//	  },
+//	  {
+//	    id         = "policy-id-2"
+//	    precedence = 2
+//	  }
+//	]
+//
+// Where transformer is:
+//
+//	func(element hclwrite.Tokens, index int) map[string]hclwrite.Tokens {
+//	  return map[string]hclwrite.Tokens{
+//	    "id":         element,
+//	    "precedence": hclwrite.Tokens{&hclwrite.Token{Type: hclsyntax.TokenNumberLit, Bytes: []byte(strconv.Itoa(index + 1))}},
+//	  }
+//	}
+func ConvertArrayAttributeToObjectArray(body *hclwrite.Body, attrName string, transformer ArrayElementTransformer) bool {
+	attr := body.GetAttribute(attrName)
+	if attr == nil {
+		return false
+	}
+
+	// Parse the array elements
+	arrayElements := parseArrayAttribute(attr)
+	if len(arrayElements) == 0 {
+		return false
+	}
+
+	// Build array of objects using the transformer
+	var arrayTokens hclwrite.Tokens
+
+	// Opening bracket
+	arrayTokens = append(arrayTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenOBrack,
+		Bytes: []byte("["),
+	})
+
+	for i, element := range arrayElements {
+		// Add comma and newline for all but first element
+		if i > 0 {
+			arrayTokens = append(arrayTokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenComma,
+				Bytes: []byte(","),
+			})
+		}
+
+		// Add newline before each object
+		arrayTokens = append(arrayTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenNewline,
+			Bytes: []byte("\n"),
+		})
+
+		// Transform the array element into object fields
+		objectFields := transformer(element, i)
+
+		// Build object tokens from the transformed fields
+		arrayTokens = append(arrayTokens, buildObjectFromFields(objectFields)...)
+	}
+
+	// Closing newline and bracket
+	arrayTokens = append(arrayTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenNewline,
+		Bytes: []byte("\n"),
+	})
+	arrayTokens = append(arrayTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenCBrack,
+		Bytes: []byte("]"),
+	})
+
+	// Replace the array attribute with the transformed array
+	body.SetAttributeRaw(attrName, arrayTokens)
+
+	return true
+}
+
+// parseArrayAttribute parses an array attribute and extracts its elements
+func parseArrayAttribute(attr *hclwrite.Attribute) []hclwrite.Tokens {
+	if attr == nil {
+		return nil
+	}
+
+	tokens := attr.Expr().BuildTokens(nil)
+	var elements []hclwrite.Tokens
+
+	inArray := false
+	inQuotedString := false
+	templateDepth := 0
+	currentElement := hclwrite.Tokens{}
+
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+
+		// Find the opening bracket
+		if token.Type == hclsyntax.TokenOBrack && !inArray {
+			inArray = true
+			continue
+		}
+
+		// Find the closing bracket
+		if token.Type == hclsyntax.TokenCBrack && inArray && templateDepth == 0 && !inQuotedString {
+			// Save any pending element
+			if len(currentElement) > 0 {
+				elements = append(elements, currentElement)
+			}
+			break
+		}
+
+		if !inArray {
+			continue
+		}
+
+		// Track quoted string boundaries
+		if token.Type == hclsyntax.TokenOQuote {
+			inQuotedString = true
+			currentElement = append(currentElement, token)
+			continue
+		}
+		if token.Type == hclsyntax.TokenCQuote && templateDepth == 0 {
+			inQuotedString = false
+			currentElement = append(currentElement, token)
+			continue
+		}
+
+		// Track template interpolation depth
+		if token.Type == hclsyntax.TokenTemplateInterp {
+			templateDepth++
+			currentElement = append(currentElement, token)
+			continue
+		}
+		if token.Type == hclsyntax.TokenTemplateSeqEnd {
+			templateDepth--
+			currentElement = append(currentElement, token)
+			continue
+		}
+
+		// Handle comma (element separator)
+		if token.Type == hclsyntax.TokenComma && !inQuotedString && templateDepth == 0 {
+			if len(currentElement) > 0 {
+				elements = append(elements, currentElement)
+				currentElement = hclwrite.Tokens{}
+			}
+			continue
+		}
+
+		// Skip newlines between elements
+		if token.Type == hclsyntax.TokenNewline && !inQuotedString && templateDepth == 0 {
+			continue
+		}
+
+		// Collect element tokens
+		currentElement = append(currentElement, token)
+	}
+
+	return elements
+}
+
 // AttributeInfo holds an attribute name and its corresponding Attribute object
 type AttributeInfo struct {
 	Name      string

@@ -18,6 +18,7 @@ package e2e
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -128,20 +129,53 @@ func RunE2ETests(cfg *RunConfig) error {
 		printHeader("Setting up local provider")
 		printYellow("Using provider from: %s", cfg.ProviderPath)
 
-		// Verify provider binary exists
-		providerBinary := filepath.Join(cfg.ProviderPath, "terraform-provider-cloudflare")
-		if _, err := os.Stat(providerBinary); os.IsNotExist(err) {
-			printError("Provider binary not found: %s", providerBinary)
-			fmt.Println()
-			printYellow("Please build the provider first:")
-			printYellow("  cd %s", cfg.ProviderPath)
-			printYellow("  go build .")
-			return fmt.Errorf("provider binary not found")
+		// Determine if ProviderPath is a file or directory
+		var providerBinary string
+		var providerDir string
+
+		info, err := os.Stat(cfg.ProviderPath)
+		if err != nil {
+			// Path doesn't exist - assume it's a binary path and extract directory
+			if os.IsNotExist(err) {
+				providerBinary = cfg.ProviderPath
+				providerDir = filepath.Dir(cfg.ProviderPath)
+
+				// Verify the directory exists
+				if dirInfo, dirErr := os.Stat(providerDir); dirErr != nil || !dirInfo.IsDir() {
+					return fmt.Errorf("provider directory does not exist: %s", providerDir)
+				}
+			} else {
+				return fmt.Errorf("failed to check provider path: %w", err)
+			}
+		} else if info.IsDir() {
+			// ProviderPath is a directory, expect binary inside
+			providerDir = cfg.ProviderPath
+			providerBinary = filepath.Join(providerDir, "terraform-provider-cloudflare")
+		} else {
+			// ProviderPath is the binary file itself, extract directory
+			providerBinary = cfg.ProviderPath
+			providerDir = filepath.Dir(cfg.ProviderPath)
 		}
 
-		printSuccess("Provider binary found")
+		// Always rebuild the provider to ensure latest code is used
+		printYellow("Building provider...")
+		printYellow("  Building in: %s", providerDir)
+		printYellow("  Output: %s", providerBinary)
 
-		// Create dev overrides config
+		// Build the provider
+		buildCmd := exec.Command("go", "build", "-o", providerBinary, ".")
+		buildCmd.Dir = providerDir
+		buildCmd.Stdout = os.Stdout
+		buildCmd.Stderr = os.Stderr
+
+		if err := buildCmd.Run(); err != nil {
+			printError("Failed to build provider: %v", err)
+			return fmt.Errorf("failed to build provider: %w", err)
+		}
+
+		printSuccess("Provider built successfully: %s", providerBinary)
+
+		// Create dev overrides config - use directory, not binary path
 		tfConfigFile = filepath.Join(repoRoot, ".terraformrc-tf-migrate")
 		configContent := fmt.Sprintf(`provider_installation {
   dev_overrides {
@@ -151,7 +185,7 @@ func RunE2ETests(cfg *RunConfig) error {
   # For all other providers, install them directly as normal.
   direct {}
 }
-`, cfg.ProviderPath)
+`, providerDir)
 
 		if err := os.WriteFile(tfConfigFile, []byte(configContent), permFile); err != nil {
 			return fmt.Errorf("failed to create provider config at %s: %w", tfConfigFile, err)

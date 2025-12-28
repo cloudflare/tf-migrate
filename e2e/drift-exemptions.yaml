@@ -20,6 +20,39 @@ exemptions:
       - 'status.*->.*"active"'
     enabled: true
 
+  # Ignore empty nested objects being normalized to null in access policy condition elements
+  - name: "access_policy_empty_objects_to_null"
+    description: "Empty nested objects in condition elements normalized to null (terraform init behavior)"
+    resource_types:
+      - "cloudflare_zero_trust_access_policy"
+    patterns:
+      - '= \{\} -> null'
+    enabled: true
+
+  # Ignore nested object restructuring in access policy condition elements
+  - name: "access_policy_nested_object_restructuring"
+    description: "Nested objects in condition elements being restructured (empty object removal)"
+    resource_types:
+      - "cloudflare_zero_trust_access_policy"
+    patterns:
+      - '\+ email = \{'
+      - '- email\s+= \{'
+      - '\+ email_domain = \{'
+      - '- email_domain = \{'
+      - '\+ ip = \{'
+      - '- ip\s+= \{'
+      - '\+ geo = \{'
+      - '- geo\s+= \{'
+      - '- email = .* -> null'
+      - '\+ email = '
+      - '- domain = .* -> null'
+      - '\+ domain = '
+      - '- ip = .* -> null'
+      - '\+ ip = '
+      - '- country_code = .* -> null'
+      - '\+ country_code = '
+    enabled: true
+
   # Example: Ignore specific resource types
   # - name: "zone_dnssec_computed"
   #   description: "Ignore computed changes in zone DNSSEC resources"

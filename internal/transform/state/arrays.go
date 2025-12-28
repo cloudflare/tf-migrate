@@ -9,11 +9,12 @@ import (
 
 // ArrayToObjectOptions configures how to transform an array to an object
 type ArrayToObjectOptions struct {
-	SkipFields         []string                                  // Fields to skip when copying
-	FieldTransforms    map[string]func(gjson.Result) interface{} // Custom transformations per field
-	RenameFields       map[string]string                         // Old field name -> new field name
-	DefaultFields      map[string]interface{}                    // Fields to add if not present
-	EnsureObjectExists bool                                      // If true, create empty object even when field is missing/null/empty array
+	SkipFields           []string                                  // Fields to skip when copying
+	FieldTransforms      map[string]func(gjson.Result) interface{} // Custom transformations per field
+	RenameFields         map[string]string                         // Old field name -> new field name
+	DefaultFields        map[string]interface{}                    // Fields to add if not present
+	EnsureObjectExists   bool                                      // If true, create empty object even when field is missing/null/empty array
+	TransformEmptyToNull bool                                      // If true, empty arrays become null instead of being deleted
 }
 
 // TransformArrayToObject transforms the first element of an array to an object.
@@ -205,6 +206,9 @@ func TransformFieldArrayToObject(
 					obj[field] = defaultValue
 				}
 				stateJSON, _ = sjson.Set(stateJSON, path+"."+fieldName, obj)
+			} else if options.TransformEmptyToNull {
+				// Set field to null instead of deleting
+				stateJSON, _ = sjson.Set(stateJSON, path+"."+fieldName, nil)
 			} else {
 				// Remove the field
 				stateJSON, _ = sjson.Delete(stateJSON, path+"."+fieldName)
