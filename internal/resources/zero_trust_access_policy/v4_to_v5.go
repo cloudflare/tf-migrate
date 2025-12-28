@@ -83,6 +83,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// These require complex AST manipulation
 	m.transformConditionAttributes(body)
 
+	// 6. Remove empty exclude and require arrays (v5 provider normalizes them to null)
+	// Only remove exclude and require, keep include even if empty
+	m.removeEmptyConditionArrays(body)
+
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
@@ -98,6 +102,38 @@ func (m *V4ToV5Migrator) convertConditionBlocksToAttributes(body *hclwrite.Body)
 		// Use the helper to convert blocks to attributes
 		// This will convert: include { email = [...] } -> include = [{ email = [...] }]
 		tfhcl.ConvertBlocksToArrayAttribute(body, condName, false)
+	}
+}
+
+// removeEmptyConditionArrays removes empty exclude and require arrays
+// The v5 provider normalizes empty arrays to null, so we should omit them
+func (m *V4ToV5Migrator) removeEmptyConditionArrays(body *hclwrite.Body) {
+	// Only remove exclude and require, keep include even if empty
+	conditionsToCheck := []string{"exclude", "require"}
+
+	for _, attrName := range conditionsToCheck {
+		attr := body.GetAttribute(attrName)
+		if attr == nil {
+			continue
+		}
+
+		// Parse the attribute expression to check if it's an empty array
+		expr := attr.Expr()
+		src := hclwrite.Format(expr.BuildTokens(nil).Bytes())
+
+		// Parse as syntax expression
+		syntaxExpr, diags := hclsyntax.ParseExpression(src, attrName, hcl.InitialPos)
+		if diags.HasErrors() {
+			continue
+		}
+
+		// Check if it's an empty tuple (array)
+		if tup, ok := syntaxExpr.(*hclsyntax.TupleConsExpr); ok {
+			if len(tup.Exprs) == 0 {
+				// It's an empty array, remove the attribute
+				body.RemoveAttribute(attrName)
+			}
+		}
 	}
 }
 
@@ -714,6 +750,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	result, _ = sjson.Delete(result, "attributes.application_id")
 	result, _ = sjson.Delete(result, "attributes.precedence")
 	result, _ = sjson.Delete(result, "attributes.zone_id")
+	result, _ = sjson.Delete(result, "attributes.session_duration")
 
 	// 3. Type conversions in approval_groups
 	// Convert approvals_needed from int to float64
@@ -801,9 +838,9 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 
 	// 6. Clean up zero-value fields to prevent drift
 	// Remove empty arrays that the v5 provider normalizes to null
+	// Keep include even if empty, but remove empty exclude and require
 	emptyArrayFields := []string{
 		"attributes.approval_groups",
-		"attributes.include",
 		"attributes.exclude",
 		"attributes.require",
 	}
@@ -828,6 +865,11 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// 7. Final cleanup: Remove null nested object fields from condition elements in the JSON
 	// This must be done AFTER sjson.Set has written the arrays, because Terraform
 	// re-adds null fields when reading the state
+	validEmptyObjects := map[string]bool{
+		"everyone":                true,
+		"certificate":             true,
+		"any_valid_service_token": true,
+	}
 	conditionFields = []string{"include", "exclude", "require"}
 	for _, field := range conditionFields {
 		fieldPath := "attributes." + field
@@ -836,13 +878,18 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 			condArray.ForEach(func(_, elem gjson.Result) bool {
 				cleanedElem := make(map[string]interface{})
 				elem.ForEach(func(key, value gjson.Result) bool {
-					// Only include non-null, non-empty values
+					keyStr := key.String()
+					// Only include non-null values
 					if value.Exists() && value.Type != gjson.Null {
+						// Keep empty objects for boolean conditions
 						if value.IsObject() && len(value.Map()) == 0 {
-							// Skip empty objects
+							if validEmptyObjects[keyStr] {
+								cleanedElem[keyStr] = value.Value()
+							}
+							// Skip other empty objects
 							return true
 						}
-						cleanedElem[key.String()] = value.Value()
+						cleanedElem[keyStr] = value.Value()
 					}
 					return true
 				})
@@ -851,7 +898,11 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 				}
 				return true
 			})
-			if len(cleanedArray) > 0 {
+			// Always set the array, even if empty (to preserve empty arrays like [])
+			if len(cleanedArray) == 0 {
+				// Use SetRaw to ensure empty array is serialized as [] not null
+				result, _ = sjson.SetRaw(result, fieldPath, "[]")
+			} else {
 				result, _ = sjson.Set(result, fieldPath, cleanedArray)
 			}
 		}
@@ -1073,6 +1124,13 @@ func (m *V4ToV5Migrator) transformStateConditions(conditionsArray gjson.Result) 
 func (m *V4ToV5Migrator) cleanConditionElements(conditions []map[string]interface{}) []map[string]interface{} {
 	cleaned := make([]map[string]interface{}, 0, len(conditions))
 
+	// Boolean conditions that are valid as empty objects in v5
+	validEmptyObjects := map[string]bool{
+		"everyone":                true,
+		"certificate":             true,
+		"any_valid_service_token": true,
+	}
+
 	for _, elem := range conditions {
 		cleanedElem := make(map[string]interface{})
 
@@ -1083,8 +1141,13 @@ func (m *V4ToV5Migrator) cleanConditionElements(conditions []map[string]interfac
 				continue
 			}
 
-			// Skip empty maps (empty objects)
+			// Check if this is an empty map
 			if valueMap, ok := value.(map[string]interface{}); ok && len(valueMap) == 0 {
+				// Keep empty objects for boolean conditions (everyone, certificate, etc.)
+				if validEmptyObjects[key] {
+					cleanedElem[key] = value
+				}
+				// Skip other empty objects
 				continue
 			}
 
