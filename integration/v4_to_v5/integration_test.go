@@ -27,6 +27,7 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/workers_script"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_group"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_identity_provider"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_policy"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_policy"
