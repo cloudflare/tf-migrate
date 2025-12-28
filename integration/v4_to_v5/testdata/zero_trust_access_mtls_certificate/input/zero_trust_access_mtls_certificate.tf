@@ -12,6 +12,11 @@ variable "cloudflare_zone_id" {
   default = "0da42c8d2132a9ddaf714f9e7c920711"
 }
 
+variable "cloudflare_domain" {
+  type        = string
+  description = "Domain for testing (not used by this module but accepted for consistency)"
+}
+
 # Locals for naming consistency
 locals {
   name_prefix = "cftftest"
