@@ -112,20 +112,33 @@ func (r *TestRunner) runMigration(dir string) error {
 		return fmt.Errorf("building tf-migrate: %w\nOutput: %s", err, output)
 	}
 
-	// Run migration
-	migrateCmd := exec.Command(
-		filepath.Join(r.TfMigrateDir, "tf-migrate"),
-		"migrate",
-		"--config-dir", dir,
-		"--state-file", filepath.Join(dir, "terraform.tfstate"),
-		"--source-version", r.SourceVersion,
-		"--target-version", r.TargetVersion,
-		"--backup=false",
-	)
-
-	output, err := migrateCmd.CombinedOutput()
+	// Find all .tfstate files in the directory
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return fmt.Errorf("running migration: %w\nOutput: %s", err, output)
+		return fmt.Errorf("reading directory: %w", err)
+	}
+
+	// Run migration for each state file
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".tfstate") {
+			continue
+		}
+
+		stateFile := filepath.Join(dir, entry.Name())
+		migrateCmd := exec.Command(
+			filepath.Join(r.TfMigrateDir, "tf-migrate"),
+			"migrate",
+			"--config-dir", dir,
+			"--state-file", stateFile,
+			"--source-version", r.SourceVersion,
+			"--target-version", r.TargetVersion,
+			"--backup=false",
+		)
+
+		output, err := migrateCmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("running migration for %s: %w\nOutput: %s", entry.Name(), err, output)
+		}
 	}
 
 	return nil

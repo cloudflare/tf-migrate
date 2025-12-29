@@ -3,6 +3,7 @@
 package hcl
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -726,4 +727,175 @@ func ConvertBlocksToArrayAttribute(body *hclwrite.Body, blockType string, emptyI
 
 	// Remove all original blocks
 	RemoveBlocksByType(body, blockType)
+}
+
+// FindDynamicBlock finds a dynamic block with a specific label
+// Example: dynamic "origins" { ... } would be found with label "origins"
+func FindDynamicBlock(body *hclwrite.Body, label string) *hclwrite.Block {
+	for _, block := range body.Blocks() {
+		if block.Type() == "dynamic" {
+			labels := block.Labels()
+			if len(labels) > 0 && labels[0] == label {
+				return block
+			}
+		}
+	}
+	return nil
+}
+
+// ConvertDynamicBlockToForExpression converts a dynamic block to a for expression attribute
+// Example:
+// Before:
+//   dynamic "origins" {
+//     for_each = local.origin_configs
+//     content {
+//       name    = origins.value.name
+//       address = origins.value.address
+//     }
+//   }
+//
+// After:
+//   origins = [for origins in local.origin_configs : {
+//     name    = origins.value.name
+//     address = origins.value.address
+//   }]
+func ConvertDynamicBlockToForExpression(body *hclwrite.Body, dynamicBlock *hclwrite.Block, attrName string) error {
+	dynamicBody := dynamicBlock.Body()
+
+	// Get the for_each expression
+	forEachAttr := dynamicBody.GetAttribute("for_each")
+	if forEachAttr == nil {
+		return fmt.Errorf("dynamic block missing for_each attribute")
+	}
+
+	// Get the content block
+	contentBlock := FindBlockByType(dynamicBody, "content")
+	if contentBlock == nil {
+		return fmt.Errorf("dynamic block missing content block")
+	}
+
+	// Get the iterator name (default is the block label)
+	iteratorName := attrName
+	if iteratorAttr := dynamicBody.GetAttribute("iterator"); iteratorAttr != nil {
+		// If there's an explicit iterator, extract its name
+		iteratorTokens := iteratorAttr.Expr().BuildTokens(nil)
+		for _, token := range iteratorTokens {
+			if token.Type == hclsyntax.TokenIdent {
+				iteratorName = string(token.Bytes)
+				break
+			}
+		}
+	}
+
+	// Build the for expression
+	// Format: [for <iterator> in <for_each> : { <content> }]
+	var tokens hclwrite.Tokens
+
+	// Opening bracket with space
+	tokens = append(tokens, &hclwrite.Token{
+		Type:         hclsyntax.TokenOBrack,
+		Bytes:        []byte("["),
+		SpacesBefore: 0,
+	})
+
+	// "for" with space after opening bracket
+	tokens = append(tokens, &hclwrite.Token{
+		Type:         hclsyntax.TokenIdent,
+		Bytes:        []byte("for"),
+		SpacesBefore: 0,
+	})
+
+	// Iterator name with space
+	tokens = append(tokens, &hclwrite.Token{
+		Type:         hclsyntax.TokenIdent,
+		Bytes:        []byte(iteratorName),
+		SpacesBefore: 1,
+	})
+
+	// "in" with space
+	tokens = append(tokens, &hclwrite.Token{
+		Type:         hclsyntax.TokenIdent,
+		Bytes:        []byte("in"),
+		SpacesBefore: 1,
+	})
+
+	// for_each expression with space
+	forEachTokens := forEachAttr.Expr().BuildTokens(nil)
+	if len(forEachTokens) > 0 {
+		forEachTokens[0].SpacesBefore = 1
+	}
+	tokens = append(tokens, forEachTokens...)
+
+	// ":" with space
+	tokens = append(tokens, &hclwrite.Token{
+		Type:         hclsyntax.TokenColon,
+		Bytes:        []byte(":"),
+		SpacesBefore: 1,
+	})
+
+	// Content block as object with space
+	// We need to transform references from iterator.value.field to iterator.field
+	objTokens := BuildObjectFromBlock(contentBlock)
+	objTokens = transformDynamicIteratorReferences(objTokens, iteratorName)
+	if len(objTokens) > 0 {
+		objTokens[0].SpacesBefore = 1
+	}
+	tokens = append(tokens, objTokens...)
+
+	// Closing bracket
+	tokens = append(tokens, &hclwrite.Token{
+		Type:         hclsyntax.TokenCBrack,
+		Bytes:        []byte("]"),
+		SpacesBefore: 0,
+	})
+
+	// Set the attribute with the for expression
+	body.SetAttributeRaw(attrName, tokens)
+
+	// Remove the dynamic block
+	body.RemoveBlock(dynamicBlock)
+
+	return nil
+}
+
+// transformDynamicIteratorReferences transforms iterator references from dynamic block syntax to for expression syntax
+// In dynamic blocks: iterator.value.field or iterator.key
+// In for expressions: iterator.field (no .value) or just the iterator for indexing
+func transformDynamicIteratorReferences(tokens hclwrite.Tokens, iteratorName string) hclwrite.Tokens {
+	result := make(hclwrite.Tokens, 0, len(tokens))
+
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+
+		// Check if this is an identifier matching the iterator name
+		if token.Type == hclsyntax.TokenIdent && string(token.Bytes) == iteratorName {
+			// Look ahead to see if it's followed by .value or .key
+			if i+1 < len(tokens) && tokens[i+1].Type == hclsyntax.TokenDot {
+				if i+2 < len(tokens) && tokens[i+2].Type == hclsyntax.TokenIdent {
+					nextIdent := string(tokens[i+2].Bytes)
+					if nextIdent == "value" {
+						// Skip the .value part - just keep the iterator name
+						result = append(result, token) // Add iterator name
+						i += 2 // Skip dot and "value"
+
+						// Check if there's another dot after .value (like iterator.value.field)
+						if i+1 < len(tokens) && tokens[i+1].Type == hclsyntax.TokenDot {
+							// Keep the dot and continue (iterator.field pattern)
+							continue
+						}
+						continue
+					} else if nextIdent == "key" {
+						// For .key, we keep the iterator name as-is
+						result = append(result, token)
+						i += 2 // Skip dot and "key"
+						continue
+					}
+				}
+			}
+		}
+
+		result = append(result, token)
+	}
+
+	return result
 }

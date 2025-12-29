@@ -430,7 +430,7 @@ Plan: 0 to add, 1 to change, 0 to destroy.
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotComputed, gotExemptions, gotDriftLines := hasOnlyComputedChangesWithExemptions(tt.planOutput, config)
+			gotComputed, gotExemptions, gotDriftLines, _ := hasOnlyComputedChangesWithExemptions(tt.planOutput, config)
 
 			if gotComputed != tt.wantOnlyComputed {
 				t.Errorf("hasOnlyComputedChangesWithExemptions() computed = %v, want %v", gotComputed, tt.wantOnlyComputed)

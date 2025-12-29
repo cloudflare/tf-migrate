@@ -9,6 +9,7 @@ exemptions:
     description: "Ignore attributes that refresh to 'known after apply'"
     patterns:
       - "(known after apply)"
+      - '= \{\} -> null'
     enabled: true
 
   # Ignore status changes to "active" (common for DNSSEC resources)
@@ -18,15 +19,6 @@ exemptions:
       - "cloudflare_zone_dnssec"
     patterns:
       - 'status.*->.*"active"'
-    enabled: true
-
-  # Ignore empty nested objects being normalized to null in access policy condition elements
-  - name: "access_policy_empty_objects_to_null"
-    description: "Empty nested objects in condition elements normalized to null (terraform init behavior)"
-    resource_types:
-      - "cloudflare_zero_trust_access_policy"
-    patterns:
-      - '= \{\} -> null'
     enabled: true
 
   # Ignore nested object restructuring in access policy condition elements
