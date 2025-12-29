@@ -25,6 +25,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/spectrum_application"
 	"github.com/cloudflare/tf-migrate/internal/resources/tiered_cache"
 	"github.com/cloudflare/tf-migrate/internal/resources/url_normalization_settings"
+	"github.com/cloudflare/tf-migrate/internal/resources/worker_route"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_script"
@@ -78,6 +79,7 @@ func RegisterAllMigrations() {
 	tiered_cache.NewV4ToV5Migrator()
 	spectrum_application.NewV4ToV5Migrator()
 	url_normalization_settings.NewV4ToV5Migrator()
+	worker_route.NewV4ToV5Migrator()
 	workers_kv.NewV4ToV5Migrator()
 	workers_kv_namespace.NewV4ToV5Migrator()
 	workers_script.NewV4ToV5Migrator()
