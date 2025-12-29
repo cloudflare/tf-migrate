@@ -101,7 +101,13 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 		result, _ = sjson.Delete(result, "attributes.main_module")
 	}
 
-	// Step 3: Set schema_version = 0
+	// Step 3: Ensure files array is preserved
+	// In v4, files is stored as an array in state and remains as an array in v5
+	// We need to explicitly ensure it exists to prevent it from being nil
+	attrs = gjson.Get(result, "attributes")
+	result = state.EnsureField(result, "attributes", attrs, "files", []interface{}{})
+
+	// Step 4: Set schema_version = 0
 	result, _ = sjson.Set(result, "schema_version", 0)
 
 	return result, nil
