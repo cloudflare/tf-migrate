@@ -52,12 +52,14 @@ type testContext struct {
 	tfConfigFile string
 
 	// Drift tracking
-	hasChanges          bool
-	hasPostApplyChanges bool
-	v5InitialDrift      []string
-	v5PostApplyDrift    []string
-	v5InitialExempted   int
-	v5PostApplyExempted int
+	hasChanges               bool
+	hasPostApplyChanges      bool
+	v5InitialDrift           []string
+	v5PostApplyDrift         []string
+	v5InitialExempted        int
+	v5PostApplyExempted      int
+	v5InitialExemptedLines   []string
+	v5PostApplyExemptedLines []string
 
 	// Output tracking
 	v5PlanOutput     string
@@ -288,6 +290,7 @@ func RunE2ETests(cfg *RunConfig) error {
 	ctx.hasChanges = driftResult.hasDrift
 	ctx.v5InitialDrift = driftResult.driftLines
 	ctx.v5InitialExempted = driftResult.exemptedCount
+	ctx.v5InitialExemptedLines = driftResult.exemptedLines
 
 	// Apply v5
 	printYellow("Running terraform apply in v5/...")
@@ -348,10 +351,12 @@ func RunE2ETests(cfg *RunConfig) error {
 	ctx.hasPostApplyChanges = postDriftResult.hasDrift
 	ctx.v5PostApplyDrift = postDriftResult.driftLines
 	ctx.v5PostApplyExempted = postDriftResult.exemptedCount
+	ctx.v5PostApplyExemptedLines = postDriftResult.exemptedLines
 
-	// Display drift report FIRST if there were real changes
+	// Display drift report if there were real changes OR exempted changes
 	fmt.Println()
-	if ctx.hasChanges || ctx.hasPostApplyChanges {
+	hasExemptedChanges := len(ctx.v5InitialExemptedLines) > 0 || len(ctx.v5PostApplyExemptedLines) > 0
+	if ctx.hasChanges || ctx.hasPostApplyChanges || hasExemptedChanges {
 		printHeader("Drift Report")
 
 		if ctx.hasChanges && len(ctx.v5InitialDrift) > 0 {
@@ -370,6 +375,13 @@ func RunE2ETests(cfg *RunConfig) error {
 			}
 		}
 
+		if len(ctx.v5InitialExemptedLines) > 0 {
+			printSuccess("Exempted changes in v5 plan (before apply):")
+			printYellow("The following changes were detected but exempted by drift exemption rules:")
+			displayGroupedDrift(ctx.v5InitialExemptedLines)
+			fmt.Println()
+		}
+
 		if ctx.hasPostApplyChanges && len(ctx.v5PostApplyDrift) > 0 {
 			printYellow("Ongoing drift detected in v5 plan (after apply):")
 			displayGroupedDrift(ctx.v5PostApplyDrift)
@@ -384,6 +396,13 @@ func RunE2ETests(cfg *RunConfig) error {
 				}
 				fmt.Println()
 			}
+		}
+
+		if len(ctx.v5PostApplyExemptedLines) > 0 {
+			printSuccess("Exempted changes in v5 plan (after apply):")
+			printYellow("The following changes were detected but exempted by drift exemption rules:")
+			displayGroupedDrift(ctx.v5PostApplyExemptedLines)
+			fmt.Println()
 		}
 	}
 
@@ -480,6 +499,7 @@ type driftCheckResult struct {
 	hasDrift        bool
 	driftLines      []string
 	exemptedCount   int
+	exemptedLines   []string
 }
 
 // checkAndDisplayDrift checks for drift in plan output and displays results
@@ -506,6 +526,7 @@ func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string) drift
 			totalExempted += count
 		}
 		result.exemptedCount = totalExempted
+		result.exemptedLines = driftResult.ExemptedDriftLines
 
 		if driftResult.OnlyComputedChanges {
 			if stage == "initial" {
@@ -588,6 +609,19 @@ func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string) drift
 
 	// No exemptions - all drift is real
 	result.hasDrift = true
+
+	// Extract drift lines for the Drift Report
+	// When exemptions are disabled, we still need to populate drift lines for the report
+	planChangesText := extractPlanChanges(planOutput)
+	if planChangesText != "" {
+		// Split into lines and filter out empty lines
+		for _, line := range strings.Split(planChangesText, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" {
+				result.driftLines = append(result.driftLines, line)
+			}
+		}
+	}
 
 	if stage == "initial" {
 		printRed("⚠ Migration produced drift - v5 config wants to make changes")

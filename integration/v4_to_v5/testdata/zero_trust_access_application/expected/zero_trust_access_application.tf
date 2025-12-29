@@ -43,18 +43,20 @@ locals {
 
 # 1. Minimal resource - only required fields
 resource "cloudflare_zero_trust_access_application" "minimal" {
-  account_id = local.common_account_id
-  name       = "${local.name_prefix} Minimal App"
-  domain     = "minimal.${local.app_domain_suffix}"
-  type       = "self_hosted"
+  account_id                 = local.common_account_id
+  name                       = "${local.name_prefix} Minimal App"
+  domain                     = "minimal.${local.app_domain_suffix}"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }
 
 # 2. Minimal with type specification
 resource "cloudflare_zero_trust_access_application" "minimal_self_hosted" {
-  account_id = local.common_account_id
-  name       = "${local.name_prefix} Self Hosted"
-  domain     = "self-hosted.${local.app_domain_suffix}"
-  type       = "self_hosted"
+  account_id                 = local.common_account_id
+  name                       = "${local.name_prefix} Self Hosted"
+  domain                     = "self-hosted.${local.app_domain_suffix}"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }
 
 # 3. Maximal self-hosted app - all common fields
@@ -64,7 +66,6 @@ resource "cloudflare_zero_trust_access_application" "maximal_self_hosted" {
   domain                       = "maximal.${local.app_domain_suffix}"
   type                         = "self_hosted"
   session_duration             = "24h"
-  auto_redirect_to_identity    = false
   enable_binding_cookie        = true
   http_only_cookie_attribute   = true
   same_site_cookie_attribute   = "strict"
@@ -126,7 +127,7 @@ resource "cloudflare_zero_trust_access_application" "saas_oidc" {
     auth_type        = "oidc"
     app_launcher_url = "https://oidc.${local.app_domain_suffix}/launch"
     grant_types      = ["authorization_code"]
-    scopes           = ["openid", "email", "profile"]
+    scopes           = ["openid", "profile", "email"]
     redirect_uris    = ["https://oidc.${local.app_domain_suffix}/callback"]
     custom_claims = [
       {
@@ -181,18 +182,20 @@ resource "cloudflare_zero_trust_access_application" "saas_oidc" {
 
 # 9. SSH app (basic)
 resource "cloudflare_zero_trust_access_application" "ssh_basic" {
-  account_id = local.common_account_id
-  name       = "${local.name_prefix} SSH Basic"
-  type       = "ssh"
-  domain     = "ssh-basic.${local.app_domain_suffix}"
+  account_id                 = local.common_account_id
+  name                       = "${local.name_prefix} SSH Basic"
+  type                       = "ssh"
+  domain                     = "ssh-basic.${local.app_domain_suffix}"
+  http_only_cookie_attribute = "false"
 }
 
 # 10. SSH app (multi)
 resource "cloudflare_zero_trust_access_application" "ssh_multi_criteria" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix} SSH Multi"
-  type       = "ssh"
-  domain     = "ssh-multi.${local.app_domain_suffix}"
+  account_id                 = var.cloudflare_account_id
+  name                       = "${local.name_prefix} SSH Multi"
+  type                       = "ssh"
+  domain                     = "ssh-multi.${local.app_domain_suffix}"
+  http_only_cookie_attribute = "false"
 }
 
 # ============================================================================
@@ -290,10 +293,11 @@ resource "cloudflare_zero_trust_access_application" "ssh_multi_criteria" {
 
 # 15. App with self_hosted_domains (deprecated field)
 resource "cloudflare_zero_trust_access_application" "with_self_hosted_domains" {
-  account_id          = local.common_account_id
-  name                = "${local.name_prefix} Self Hosted Domains"
-  type                = "self_hosted"
-  self_hosted_domains = ["legacy1.${local.app_domain_suffix}", "legacy2.${local.app_domain_suffix}"]
+  account_id                 = local.common_account_id
+  name                       = "${local.name_prefix} Self Hosted Domains"
+  type                       = "self_hosted"
+  self_hosted_domains        = ["legacy1.${local.app_domain_suffix}", "legacy2.${local.app_domain_suffix}"]
+  http_only_cookie_attribute = "false"
 }
 
 # ============================================================================
@@ -303,10 +307,11 @@ resource "cloudflare_zero_trust_access_application" "with_self_hosted_domains" {
 # 16. App with domain_type field (to be removed in v5)
 # NOTE: v4 only supports domain_type = "public"
 resource "cloudflare_zero_trust_access_application" "with_domain_type" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix} Domain Type"
-  domain     = "domain-type.${local.app_domain_suffix}"
-  type       = "self_hosted"
+  account_id                 = var.cloudflare_account_id
+  name                       = "${local.name_prefix} Domain Type"
+  domain                     = "domain-type.${local.app_domain_suffix}"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }
 
 # ============================================================================
@@ -317,10 +322,11 @@ resource "cloudflare_zero_trust_access_application" "with_domain_type" {
 resource "cloudflare_zero_trust_access_application" "with_count" {
   count = 3
 
-  account_id = local.common_account_id
-  name       = "${local.name_prefix} Count ${count.index}"
-  domain     = "count-${count.index}.${local.app_domain_suffix}"
-  type       = "self_hosted"
+  account_id                 = local.common_account_id
+  name                       = "${local.name_prefix} Count ${count.index}"
+  domain                     = "count-${count.index}.${local.app_domain_suffix}"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }
 
 # ============================================================================
@@ -331,11 +337,12 @@ resource "cloudflare_zero_trust_access_application" "with_count" {
 resource "cloudflare_zero_trust_access_application" "with_for_each" {
   for_each = toset(["dev", "staging", "prod"])
 
-  account_id       = var.cloudflare_account_id
-  name             = "${local.name_prefix} ${each.key}"
-  domain           = "${each.key}.${local.app_domain_suffix}"
-  session_duration = each.key == "prod" ? "8h" : "24h"
-  type             = "self_hosted"
+  account_id                 = var.cloudflare_account_id
+  name                       = "${local.name_prefix} ${each.key}"
+  domain                     = "${each.key}.${local.app_domain_suffix}"
+  session_duration           = each.key == "prod" ? "8h" : "24h"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }
 
 # ============================================================================
@@ -344,13 +351,13 @@ resource "cloudflare_zero_trust_access_application" "with_for_each" {
 
 # 23. App with session_duration and cors_headers (compatible with type=self_hosted)
 resource "cloudflare_zero_trust_access_application" "complex_nested" {
-  account_id                = local.common_account_id
-  name                      = "${local.name_prefix} Complex"
-  domain                    = "complex.${local.app_domain_suffix}"
-  session_duration          = "12h"
-  auto_redirect_to_identity = false
+  account_id       = local.common_account_id
+  name             = "${local.name_prefix} Complex"
+  domain           = "complex.${local.app_domain_suffix}"
+  session_duration = "12h"
 
-  type = "self_hosted"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
   cors_headers = {
     allowed_methods   = ["GET", "POST"]
     allowed_origins   = ["*"]
@@ -361,10 +368,11 @@ resource "cloudflare_zero_trust_access_application" "complex_nested" {
 
 # 24. App with variable references
 resource "cloudflare_zero_trust_access_application" "with_var_refs" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix} Variable Refs"
-  domain     = "var-refs.${local.app_domain_suffix}"
-  type       = "self_hosted"
+  account_id                 = var.cloudflare_account_id
+  name                       = "${local.name_prefix} Variable Refs"
+  domain                     = "var-refs.${local.app_domain_suffix}"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }
 
 # ============================================================================
@@ -373,28 +381,31 @@ resource "cloudflare_zero_trust_access_application" "with_var_refs" {
 
 # 25. App with empty policies array
 resource "cloudflare_zero_trust_access_application" "empty_policies" {
-  account_id = local.common_account_id
-  name       = "${local.name_prefix} Empty Policies"
-  domain     = "empty-policies.${local.app_domain_suffix}"
-  type       = "self_hosted"
+  account_id                 = local.common_account_id
+  name                       = "${local.name_prefix} Empty Policies"
+  domain                     = "empty-policies.${local.app_domain_suffix}"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }
 
 # 26. App with only required fields and null optionals
 resource "cloudflare_zero_trust_access_application" "sparse" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix} Sparse"
-  domain     = "sparse.${local.app_domain_suffix}"
-  type       = "self_hosted"
+  account_id                 = var.cloudflare_account_id
+  name                       = "${local.name_prefix} Sparse"
+  domain                     = "sparse.${local.app_domain_suffix}"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }
 
 # 27. Conditional app
 resource "cloudflare_zero_trust_access_application" "conditional" {
   count = var.enable_saas_apps ? 1 : 0
 
-  account_id = local.common_account_id
-  name       = "${local.name_prefix} Conditional"
-  domain     = "conditional.${local.app_domain_suffix}"
-  type       = "self_hosted"
+  account_id                 = local.common_account_id
+  name                       = "${local.name_prefix} Conditional"
+  domain                     = "conditional.${local.app_domain_suffix}"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }
 
 # ============================================================================
@@ -403,9 +414,10 @@ resource "cloudflare_zero_trust_access_application" "conditional" {
 
 # 28. App with special characters (API restricts: ,.!:@?-)
 resource "cloudflare_zero_trust_access_application" "special_chars" {
-  account_id          = var.cloudflare_account_id
-  name                = "${local.name_prefix} Special \"Chars\" & 'Quotes'"
-  domain              = "special.${local.app_domain_suffix}"
-  custom_deny_message = "Access denied - contact support"
-  type                = "self_hosted"
+  account_id                 = var.cloudflare_account_id
+  name                       = "${local.name_prefix} Special \"Chars\" & 'Quotes'"
+  domain                     = "special.${local.app_domain_suffix}"
+  custom_deny_message        = "Access denied - contact support"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
 }

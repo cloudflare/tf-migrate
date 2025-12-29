@@ -108,6 +108,7 @@ type DriftCheckResult struct {
 	TriggeredExemptions   map[string]int // exemption name -> count of matches
 	ExemptionsEnabled     bool
 	RealDriftLines        []string       // actual drift detected (non-exempted changes)
+	ExemptedDriftLines    []string       // exempted changes (for display purposes)
 }
 
 // hasOnlyComputedChanges checks if a terraform plan only has "known after apply" changes
@@ -128,6 +129,7 @@ func checkDrift(planOutput string) DriftCheckResult {
 			TriggeredExemptions: make(map[string]int),
 			ExemptionsEnabled:   false,
 			RealDriftLines:      []string{},
+			ExemptedDriftLines:  []string{},
 		}
 	}
 
@@ -138,15 +140,17 @@ func checkDrift(planOutput string) DriftCheckResult {
 			TriggeredExemptions: make(map[string]int),
 			ExemptionsEnabled:   false,
 			RealDriftLines:      []string{},
+			ExemptedDriftLines:  []string{},
 		}
 	}
 
-	onlyComputed, triggeredExemptions, realDriftLines := hasOnlyComputedChangesWithExemptions(planOutput, config)
+	onlyComputed, triggeredExemptions, realDriftLines, exemptedDriftLines := hasOnlyComputedChangesWithExemptions(planOutput, config)
 	return DriftCheckResult{
 		OnlyComputedChanges: onlyComputed,
 		TriggeredExemptions: triggeredExemptions,
 		ExemptionsEnabled:   true,
 		RealDriftLines:      realDriftLines,
+		ExemptedDriftLines:  exemptedDriftLines,
 	}
 }
 
@@ -196,8 +200,8 @@ func hasOnlyComputedChangesDefault(planOutput string) bool {
 }
 
 // hasOnlyComputedChangesWithExemptions checks drift using exemption rules from config
-// Returns whether only computed changes exist, a map of triggered exemptions, and the real drift lines
-func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExemptionsConfig) (bool, map[string]int, []string) {
+// Returns whether only computed changes exist, a map of triggered exemptions, real drift lines, and exempted drift lines
+func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExemptionsConfig) (bool, map[string]int, []string, []string) {
 	scanner := bufio.NewScanner(strings.NewReader(planOutput))
 
 	// Patterns to detect
@@ -208,6 +212,7 @@ func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExempt
 	currentResourceName := ""
 	triggeredExemptions := make(map[string]int)
 	realDriftLines := []string{}
+	exemptedDriftLines := []string{}
 
 	// Helper function to check if a line is exempted
 	checkExemption := func(line string) (bool, string) {
@@ -274,6 +279,14 @@ func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExempt
 			if isExempted {
 				// Track this exemption
 				triggeredExemptions[matchedExemptionName]++
+				// Store exempted line for display
+				if arrowPattern.MatchString(line) {
+					if currentResourceName != "" {
+						exemptedDriftLines = append(exemptedDriftLines, "  "+currentResourceName+": "+strings.TrimSpace(line)+" [exempted: "+matchedExemptionName+"]")
+					} else {
+						exemptedDriftLines = append(exemptedDriftLines, "  "+strings.TrimSpace(line)+" [exempted: "+matchedExemptionName+"]")
+					}
+				}
 				continue
 			}
 
@@ -297,6 +310,12 @@ func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExempt
 			if isExempted {
 				// Track this exemption
 				triggeredExemptions[matchedExemptionName]++
+				// Store exempted line for display
+				if currentResourceName != "" {
+					exemptedDriftLines = append(exemptedDriftLines, "  "+currentResourceName+": "+strings.TrimSpace(line)+" [exempted: "+matchedExemptionName+"]")
+				} else {
+					exemptedDriftLines = append(exemptedDriftLines, "  "+strings.TrimSpace(line)+" [exempted: "+matchedExemptionName+"]")
+				}
 				continue
 			}
 
@@ -317,6 +336,12 @@ func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExempt
 			if isExempted {
 				// Track this exemption
 				triggeredExemptions[matchedExemptionName]++
+				// Store exempted line for display
+				if currentResourceName != "" {
+					exemptedDriftLines = append(exemptedDriftLines, "  "+currentResourceName+": "+strings.TrimSpace(line)+" [exempted: "+matchedExemptionName+"]")
+				} else {
+					exemptedDriftLines = append(exemptedDriftLines, "  "+strings.TrimSpace(line)+" [exempted: "+matchedExemptionName+"]")
+				}
 				continue
 			}
 
@@ -332,7 +357,7 @@ func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExempt
 
 	// Return true (only computed) if no real changes, additions, or deletions
 	onlyComputed := !hasRealChanges && !hasAdditions && !hasDeletions
-	return onlyComputed, triggeredExemptions, realDriftLines
+	return onlyComputed, triggeredExemptions, realDriftLines, exemptedDriftLines
 }
 
 // extractPlanChanges extracts and formats the changes section from terraform plan output

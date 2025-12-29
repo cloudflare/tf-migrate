@@ -12,7 +12,9 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
 	"github.com/cloudflare/tf-migrate/internal/resources/list"
 	"github.com/cloudflare/tf-migrate/internal/resources/list_item"
+	"github.com/cloudflare/tf-migrate/internal/resources/load_balancer"
 	"github.com/cloudflare/tf-migrate/internal/resources/load_balancer_monitor"
+	"github.com/cloudflare/tf-migrate/internal/resources/load_balancer_pool"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpush_job"
 	"github.com/cloudflare/tf-migrate/internal/resources/managed_transforms"
@@ -62,7 +64,9 @@ func RegisterAllMigrations() {
 	bot_management.NewV4ToV5Migrator()
 	dns_record.NewV4ToV5Migrator()
 	healthcheck.NewV4ToV5Migrator()
+	load_balancer.NewV4ToV5Migrator()
 	load_balancer_monitor.NewV4ToV5Migrator()
+	load_balancer_pool.NewV4ToV5Migrator()
 	list.NewV4ToV5Migrator()
 	list_item.NewV4ToV5Migrator()
 	zone.NewV4ToV5Migrator()

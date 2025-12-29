@@ -12,6 +12,8 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/custom_pages"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/load_balancer"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/load_balancer_pool"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/managed_transforms"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/page_rule"

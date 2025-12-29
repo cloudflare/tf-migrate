@@ -35,7 +35,7 @@ resource "cloudflare_zero_trust_access_policy" "example" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-example-policy"
   decision   = "allow"
-  session_duration = "24h"
+
 
   include = [{ everyone = {} }]
   approval_groups = [{
@@ -48,7 +48,6 @@ resource "cloudflare_zero_trust_access_policy" "complex" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-complex-policy"
   decision   = "allow"
-  session_duration = "24h"
 
   include = [{ email = { email = "user@example.com" } },
     { email = { email = "admin@example.com" } },
@@ -80,7 +79,6 @@ resource "cloudflare_zero_trust_access_policy" "map_example" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-map-${each.key}-policy"
   decision   = each.value.decision
-  session_duration = "24h"
 
   include = [{ email = { email = "@example.com" } }]
 }
@@ -92,7 +90,6 @@ resource "cloudflare_zero_trust_access_policy" "set_example" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-set-${each.key}"
   decision   = "allow"
-  session_duration = "24h"
 
   include = [{ email = { email = "@example.com" } }]
 }
@@ -104,7 +101,6 @@ resource "cloudflare_zero_trust_access_policy" "counted" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-counted-${count.index}"
   decision   = "allow"
-  session_duration = "24h"
 
   include = [{ ip = { ip = "10.0.${count.index}.0/24" } }]
 }
@@ -116,7 +112,6 @@ resource "cloudflare_zero_trust_access_policy" "conditional_enabled" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-conditional-enabled"
   decision   = "allow"
-  session_duration = "24h"
 
   include = [{ everyone = {} }]
 }
@@ -127,7 +122,6 @@ resource "cloudflare_zero_trust_access_policy" "conditional_disabled" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-conditional-disabled"
   decision   = "deny"
-  session_duration = "24h"
 
   include = [{ everyone = {} }]
 }
@@ -137,7 +131,6 @@ resource "cloudflare_zero_trust_access_policy" "with_functions" {
   account_id = var.cloudflare_account_id
   name       = join("-", [local.name_prefix, "functions", "test"])
   decision   = "allow"
-  session_duration = "24h"
 
   include = [{ email = { email = "function1@example.com" } },
   { email = { email = "function2@example.com" } }]
@@ -148,7 +141,6 @@ resource "cloudflare_zero_trust_access_policy" "with_lifecycle" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-lifecycle-test"
   decision   = "allow"
-  session_duration = "24h"
 
   lifecycle {
     create_before_destroy = true
@@ -162,7 +154,6 @@ resource "cloudflare_zero_trust_access_policy" "with_prevent_destroy" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-prevent-destroy"
   decision   = "allow"
-  session_duration = "24h"
 
   lifecycle {
     prevent_destroy = false
@@ -178,7 +169,6 @@ resource "cloudflare_zero_trust_access_policy" "minimal" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-minimal"
   decision   = "allow"
-  session_duration = "24h"
 
   include = [{ everyone = {} }]
 }
@@ -188,7 +178,7 @@ resource "cloudflare_zero_trust_access_policy" "maximal" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-maximal"
   decision   = "allow"
-  session_duration = "24h"
+
 
   include = [{ email = { email = "maximal1@example.com" } },
     { email = { email = "maximal2@example.com" } },
@@ -212,7 +202,6 @@ resource "cloudflare_zero_trust_access_policy" "with_common_name" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-common-name"
   decision   = "allow"
-  session_duration = "24h"
 
   include = [{ common_name = { common_name = "device1.example.com" } }]
 }
@@ -222,7 +211,6 @@ resource "cloudflare_zero_trust_access_policy" "with_auth_method" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-auth-method"
   decision   = "allow"
-  session_duration = "24h"
 
   include = [{ auth_method = { auth_method = "swk" } }]
 }
@@ -232,7 +220,6 @@ resource "cloudflare_zero_trust_access_policy" "with_login_method" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-login-method"
   decision   = "allow"
-  session_duration = "24h"
 
   include = [{ login_method = { id = "otp" } },
   { login_method = { id = "warp" } }]
@@ -243,7 +230,6 @@ resource "cloudflare_zero_trust_access_policy" "with_service_token" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-service-token"
   decision   = "allow"
-  session_duration = "24h"
 
   include = [{ any_valid_service_token = {} }]
 }
@@ -253,7 +239,6 @@ resource "cloudflare_zero_trust_access_policy" "deny_policy" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-deny"
   decision   = "deny"
-  session_duration = "24h"
 
   include = [{ ip = { ip = "198.51.100.0/24" } }]
 }
@@ -263,7 +248,6 @@ resource "cloudflare_zero_trust_access_policy" "bypass_policy" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-bypass"
   decision   = "bypass"
-  session_duration = "24h"
 
   include = [{ ip = { ip = "192.0.2.0/24" } }]
 }

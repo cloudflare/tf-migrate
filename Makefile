@@ -6,7 +6,7 @@ GO := go
 MAIN_PACKAGE := ./cmd/tf-migrate
 E2E_PACKAGE := ./cmd/e2e-runner
 
-.PHONY: all build build-e2e build-all test test-e2e lint-testdata clean
+.PHONY: all build build-e2e build-all test test-unit test-integration lint-testdata clean
 
 # Default target: build all binaries
 all: build-all
@@ -24,13 +24,16 @@ build-e2e:
 # Build both binaries
 build-all: build build-e2e
 
-# Run tests
-test:
+# Run all tests (unit + e2e + integration)
+test: test-unit test-integration
+
+# Run unit tests
+test-unit:
 	$(GO) test -v -race ./internal/...
 
-# Run e2e-runner tests only
-test-e2e:
-	$(GO) test -v -race ./internal/e2e-runner
+# Run integration tests
+test-integration:
+	$(GO) test -v -race ./integration/...
 
 # Lint testdata to ensure all resources have cftftest prefix
 lint-testdata:
