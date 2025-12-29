@@ -43,6 +43,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared_route"
 	"github.com/cloudflare/tf-migrate/internal/resources/zone"
 	"github.com/cloudflare/tf-migrate/internal/resources/zone_dnssec"
+	"github.com/cloudflare/tf-migrate/internal/resources/zone_setting"
 )
 
 // RegisterAllMigrations registers all resource migrations with the internal registry.
@@ -66,6 +67,7 @@ func RegisterAllMigrations() {
 	list_item.NewV4ToV5Migrator()
 	zone.NewV4ToV5Migrator()
 	zone_dnssec.NewV4ToV5Migrator()
+	zone_setting.NewV4ToV5Migrator()
 	logpull_retention.NewV4ToV5Migrator()
 	logpush_job.NewV4ToV5Migrator()
 	managed_transforms.NewV4ToV5Migrator()

@@ -44,6 +44,7 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 	modifiedState := stateJSON
 	transformedCount := 0
 	datasourceIndices := []int{} // Track datasource indices to remove them later
+	resourcesToDelete := []int{} // Track resources with no instances left to remove them later
 
 	resources.ForEach(func(key, resource gjson.Result) bool {
 		mode := resource.Get("mode").String()
@@ -101,6 +102,8 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 		}
 
 		resourceName := resource.Get("name").String()
+		instancesToDelete := []int{}
+
 		instances.ForEach(func(instKey, instance gjson.Result) bool {
 			resourcePath := fmt.Sprintf("resources.%d.instances.%d", key.Int(), instKey.Int())
 
@@ -133,10 +136,31 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 				}
 				modifiedState = newState
 				transformedCount++
+			} else {
+				// Empty string means delete this instance
+				instancesToDelete = append(instancesToDelete, int(instKey.Int()))
 			}
 
 			return true
 		})
+
+		// Delete instances in reverse order to avoid index shifting
+		for i := len(instancesToDelete) - 1; i >= 0; i-- {
+			instIdx := instancesToDelete[i]
+			instancePath := fmt.Sprintf("resources.%d.instances.%d", key.Int(), instIdx)
+			modifiedState, _ = sjson.Delete(modifiedState, instancePath)
+			h.log.Debug("Deleted instance from state", "resource", resourceType, "instance_index", instIdx)
+		}
+
+		// If all instances were deleted, mark this resource for removal
+		if len(instancesToDelete) > 0 {
+			// Check if there are any instances left
+			remainingInstances := gjson.Get(modifiedState, fmt.Sprintf("resources.%d.instances", key.Int()))
+			if !remainingInstances.Exists() || len(remainingInstances.Array()) == 0 {
+				resourcesToDelete = append(resourcesToDelete, int(key.Int()))
+				h.log.Debug("Marking resource for deletion (no instances left)", "resource", resourceType, "name", resourceName)
+			}
+		}
 
 		// Check if the migrator stored a dynamic resource type in StateTypeRenames
 		// This handles cases like cloudflare_argo which splits into different types based on instance attributes
@@ -166,7 +190,20 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 		h.log.Info("Removed datasources from state (will be refreshed by Terraform)", "count", len(datasourceIndices))
 	}
 
-	if transformedCount > 0 || len(datasourceIndices) > 0 {
+	// Remove resources with no instances (in reverse order to avoid index shifting)
+	// This handles one-to-many transformations where all instances are deleted
+	for i := len(resourcesToDelete) - 1; i >= 0; i-- {
+		idx := resourcesToDelete[i]
+		resourcePath := fmt.Sprintf("resources.%d", idx)
+		modifiedState, _ = sjson.Delete(modifiedState, resourcePath)
+		h.log.Debug("Removed resource with no instances from state", "index", idx)
+	}
+
+	if len(resourcesToDelete) > 0 {
+		h.log.Info("Removed resources with no instances from state", "count", len(resourcesToDelete))
+	}
+
+	if transformedCount > 0 || len(datasourceIndices) > 0 || len(resourcesToDelete) > 0 {
 		ctx.Content = []byte(modifiedState)
 		h.log.Debug("Transformed state resources", "count", transformedCount)
 	}
@@ -174,6 +211,7 @@ func (h *StateTransformHandler) Handle(ctx *transform.Context) (*transform.Conte
 	ctx.StateJSON = modifiedState
 	ctx.Metadata["state_transformations"] = transformedCount
 	ctx.Metadata["datasources_removed"] = len(datasourceIndices)
+	ctx.Metadata["resources_removed"] = len(resourcesToDelete)
 
 	return h.Next(ctx)
 }
