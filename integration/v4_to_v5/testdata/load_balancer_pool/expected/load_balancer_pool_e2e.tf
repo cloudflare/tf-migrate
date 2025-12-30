@@ -16,6 +16,28 @@ variable "cloudflare_domain" {
 
 locals {
   name_prefix = "cftftest"
+
+  # List of backend origins for dynamic configuration
+  backend_origins = [
+    {
+      name    = "backend-1"
+      address = "192.0.2.100"
+      host    = "api1.${var.cloudflare_domain}"
+      weight  = 1.0
+    },
+    {
+      name    = "backend-2"
+      address = "192.0.2.101"
+      host    = "api2.${var.cloudflare_domain}"
+      weight  = 1.0
+    },
+    {
+      name    = "backend-3"
+      address = "192.0.2.102"
+      host    = "api3.${var.cloudflare_domain}"
+      weight  = 0.5
+    }
+  ]
 }
 
 ##########################
@@ -81,6 +103,69 @@ resource "cloudflare_load_balancer_pool" "e2e_shedding" {
   }
 }
 
+# 4. Pool with dynamic origins and headers (v4 syntax - will be migrated to v5 for expression)
+resource "cloudflare_load_balancer_pool" "e2e_dynamic_with_headers" {
+  account_id      = var.cloudflare_account_id
+  name            = "${local.name_prefix}-e2e-dynamic-headers-pool"
+  minimum_origins = 1
+  enabled         = true
+  description     = "Pool with dynamic origins and headers"
+
+
+  origins = [for value in local.backend_origins : {
+    name    = value.name
+    address = value.address
+    enabled = true
+    weight  = value.weight
+    header  = { host = [value.host] }
+  }]
+  origin_steering = {
+    policy = "random"
+  }
+}
+
+# 5. Pool with dynamic origins without headers (v4 syntax - will be migrated to v5 for expression)
+resource "cloudflare_load_balancer_pool" "e2e_dynamic_simple" {
+  account_id      = var.cloudflare_account_id
+  name            = "${local.name_prefix}-e2e-dynamic-simple-pool"
+  minimum_origins = 1
+  enabled         = true
+
+  origins = [for value in local.backend_origins : {
+    name    = value.name
+    address = value.address
+    enabled = true
+  }]
+}
+
+# 6. Pool with static origins and headers (v4 syntax - will be migrated to v5 array)
+resource "cloudflare_load_balancer_pool" "e2e_static_with_headers" {
+  account_id      = var.cloudflare_account_id
+  name            = "${local.name_prefix}-e2e-static-headers-pool"
+  minimum_origins = 1
+  enabled         = true
+
+
+
+  origins = [{
+    name    = "static-origin-1"
+    address = "192.0.2.200"
+    enabled = true
+    header  = { host = ["static1.${var.cloudflare_domain}"] }
+    }, {
+    name    = "static-origin-2"
+    address = "192.0.2.201"
+    enabled = false
+    header  = { host = ["static2.${var.cloudflare_domain}", "static2-alt.${var.cloudflare_domain}"] }
+  }]
+  load_shedding = {
+    default_percent = 75
+    default_policy  = "random"
+    session_percent = 50
+    session_policy  = "hash"
+  }
+}
+
 # Output pool IDs for use by load balancers
 output "e2e_basic_pool_id" {
   value = cloudflare_load_balancer_pool.e2e_basic.id
@@ -92,4 +177,16 @@ output "e2e_multi_pool_id" {
 
 output "e2e_shedding_pool_id" {
   value = cloudflare_load_balancer_pool.e2e_shedding.id
+}
+
+output "e2e_dynamic_headers_pool_id" {
+  value = cloudflare_load_balancer_pool.e2e_dynamic_with_headers.id
+}
+
+output "e2e_dynamic_simple_pool_id" {
+  value = cloudflare_load_balancer_pool.e2e_dynamic_simple.id
+}
+
+output "e2e_static_headers_pool_id" {
+  value = cloudflare_load_balancer_pool.e2e_static_with_headers.id
 }

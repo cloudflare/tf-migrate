@@ -2,7 +2,9 @@ package load_balancer_pool
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -45,6 +47,32 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
 
+	// Pre-process origins blocks to transform nested header blocks
+	// v4: header { header = "Host" values = [...] }
+	// v5: header = { host = [...] }
+	originsBlocks := tfhcl.FindBlocksByType(body, "origins")
+	for _, originBlock := range originsBlocks {
+		transformHeaderBlock(originBlock.Body())
+	}
+
+	// Pre-process dynamic origins blocks to transform nested header blocks
+	dynamicBlocks := tfhcl.FindBlocksByType(body, "dynamic")
+	for _, dynamicBlock := range dynamicBlocks {
+		labels := dynamicBlock.Labels()
+		if len(labels) > 0 && labels[0] == "origins" {
+			// Find the content block within the dynamic block
+			contentBlock := tfhcl.FindBlockByType(dynamicBlock.Body(), "content")
+			if contentBlock != nil {
+				transformHeaderBlock(contentBlock.Body())
+			}
+		}
+	}
+
+	// Convert dynamic "origins" blocks to for expressions
+	// v4: dynamic "origins" { for_each = ... content { ... } }
+	// v5: origins = [for value in ... : { ... }]
+	tfhcl.ConvertDynamicBlocksToForExpression(body, "origins")
+
 	// Transform origins blocks to origins attribute array
 	// v4: origins { name = "origin1" address = "1.2.3.4" }
 	// v5: origins = [{ name = "origin1" address = "1.2.3.4" }]
@@ -64,6 +92,77 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
+}
+
+// transformHeaderBlock transforms a header block from v4 to v5 format
+// v4: header { header = "Host" values = [...] }
+// v5: header = { host = [...] }
+func transformHeaderBlock(body *hclwrite.Body) {
+	headerBlocks := tfhcl.FindBlocksByType(body, "header")
+	if len(headerBlocks) == 0 {
+		return
+	}
+
+	// For each header block, transform it to the v5 format
+	for _, headerBlock := range headerBlocks {
+		headerBody := headerBlock.Body()
+
+		// Get the header name (e.g., "Host")
+		headerAttr := headerBody.GetAttribute("header")
+		if headerAttr == nil {
+			continue
+		}
+
+		// Get the values
+		valuesAttr := headerBody.GetAttribute("values")
+		if valuesAttr == nil {
+			continue
+		}
+
+		// Extract header name from attribute
+		headerName := ""
+		headerTokens := headerAttr.Expr().BuildTokens(nil)
+		for _, token := range headerTokens {
+			if token.Type == hclsyntax.TokenQuotedLit {
+				headerName = string(token.Bytes)
+				break
+			}
+		}
+
+		if headerName == "" {
+			continue
+		}
+
+		// Convert header name to lowercase for the key
+		headerKey := strings.ToLower(headerName)
+
+		// Get the values tokens
+		valuesTokens := valuesAttr.Expr().BuildTokens(nil)
+
+		// Build the new header object: { host = [...] }
+		var headerObjTokens hclwrite.Tokens
+		headerObjTokens = append(headerObjTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenOBrace,
+			Bytes: []byte("{"),
+		})
+		headerObjTokens = append(headerObjTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenIdent,
+			Bytes: []byte(headerKey),
+		})
+		headerObjTokens = append(headerObjTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenEqual,
+			Bytes: []byte(" = "),
+		})
+		headerObjTokens = append(headerObjTokens, valuesTokens...)
+		headerObjTokens = append(headerObjTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenCBrace,
+			Bytes: []byte(" }"),
+		})
+
+		// Replace the header block with a header attribute
+		body.SetAttributeRaw("header", headerObjTokens)
+		body.RemoveBlock(headerBlock)
+	}
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
