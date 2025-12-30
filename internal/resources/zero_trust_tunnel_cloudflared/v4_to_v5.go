@@ -75,7 +75,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 	result = state.RemoveFields(result, "attributes", attrs, "cname", "tunnel_token")
 
 	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	// Update the type field if it exists (for unit tests that pass instance-level type)
 	if instance.Get("type").Exists() {

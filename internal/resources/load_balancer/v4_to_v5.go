@@ -10,6 +10,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
+	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of load balancer resources from v4 to v5
@@ -146,6 +147,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// v4: session_affinity_attributes as array → v5: as object
 
 	result := stateJSON.String()
+	attrs := stateJSON.Get("attributes")
 
 	// Use regex to rename attributes in JSON
 	// Replace "default_pool_ids" with "default_pools"
@@ -154,35 +156,14 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// Replace "fallback_pool_id" with "fallback_pool"
 	result = strings.Replace(result, `"fallback_pool_id"`, `"fallback_pool"`, -1)
 
-	// Transform session_affinity_attributes from array to object
-	// v4: "session_affinity_attributes": [{ ... }] or []
-	// v5: "session_affinity_attributes": { ... } or null
-	sessionAffinityAttrs := stateJSON.Get("attributes.session_affinity_attributes")
-	if sessionAffinityAttrs.Exists() && sessionAffinityAttrs.IsArray() {
-		if len(sessionAffinityAttrs.Array()) > 0 {
-			firstElement := sessionAffinityAttrs.Array()[0]
-			result, _ = sjson.Set(result, "attributes.session_affinity_attributes", firstElement.Value())
-		} else {
-			// Empty array -> null
-			result, _ = sjson.Set(result, "attributes.session_affinity_attributes", nil)
-		}
-	}
-
 	// Transform single-object fields from arrays to objects or null
 	// v4: field: [{ ... }] or []
 	// v5: field: { ... } or null
-	singleObjectFields := []string{"adaptive_routing", "location_strategy", "random_steering"}
+	singleObjectFields := []string{"session_affinity_attributes", "adaptive_routing", "location_strategy", "random_steering"}
 	for _, field := range singleObjectFields {
-		fieldData := stateJSON.Get("attributes." + field)
-		if fieldData.Exists() && fieldData.IsArray() {
-			if len(fieldData.Array()) > 0 {
-				firstElement := fieldData.Array()[0]
-				result, _ = sjson.Set(result, "attributes."+field, firstElement.Value())
-			} else {
-				// Empty array -> null
-				result, _ = sjson.Set(result, "attributes."+field, nil)
-			}
-		}
+		result = state.TransformFieldArrayToObject(result, "attributes", attrs, field, state.ArrayToObjectOptions{
+			TransformEmptyToNull: true,
+		})
 	}
 
 	// Transform empty arrays to null for map fields that v5 expects as null or maps
@@ -204,7 +185,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	}
 
 	// Reset schema_version to 0 for v5 (v4 uses schema_version 1)
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result, nil
 }

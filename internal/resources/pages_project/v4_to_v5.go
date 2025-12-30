@@ -11,6 +11,7 @@ import (
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
 
@@ -361,7 +362,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 	// Instead, we leave them in state as-is, matching the API's auto-generated values.
 
 	// ALWAYS set schema_version to 0
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result, nil
 }

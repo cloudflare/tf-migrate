@@ -104,7 +104,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// Get attributes
 	attrs := stateJSON.Get("attributes")
 	if !attrs.Exists() {
-		result, _ = sjson.Set(result, "schema_version", 0)
+		result = state.SetSchemaVersion(result, 0)
 		return result, nil
 	}
 
@@ -127,7 +127,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	}
 
 	// Always set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result, nil
 }
@@ -230,21 +230,22 @@ func (m *V4ToV5Migrator) transformRuleSettingsObject(settings gjson.Result) stri
 			// Remove deprecated v1-only disable_* attributes that were removed in v5
 			// These were replaced with new attributes (e.g., disable_printing → printing with values "enabled"/"disabled")
 			nestedResult := nestedObj.String()
-			nestedResult, _ = sjson.Delete(nestedResult, "disable_clipboard_redirection")
-			nestedResult, _ = sjson.Delete(nestedResult, "disable_printing")
-			nestedResult, _ = sjson.Delete(nestedResult, "disable_copy_paste")
-			nestedResult, _ = sjson.Delete(nestedResult, "disable_download")
-			nestedResult, _ = sjson.Delete(nestedResult, "disable_keyboard")
-			nestedResult, _ = sjson.Delete(nestedResult, "disable_upload")
-			// Remove deprecated dp and dd fields
-			nestedResult, _ = sjson.Delete(nestedResult, "dp")
-			nestedResult, _ = sjson.Delete(nestedResult, "dd")
+			nestedResult = state.RemoveFieldsIfExist(nestedResult, "", nestedObj,
+				"disable_clipboard_redirection",
+				"disable_printing",
+				"disable_copy_paste",
+				"disable_download",
+				"disable_keyboard",
+				"disable_upload",
+				"dp",  // Remove deprecated dp field
+				"dd",  // Remove deprecated dd field
+			)
 			result, _ = sjson.SetRaw(result, structName, nestedResult)
 		} else if structName == "check_session" {
 			// Normalize duration format (e.g., "24h0m0s" -> "24h")
 			nestedResult := nestedObj.String()
 			if duration := nestedObj.Get("duration"); duration.Exists() && duration.Type == gjson.String {
-				normalizedDuration := normalizeDuration(duration.String())
+				normalizedDuration := state.NormalizeDuration(duration.String())
 				nestedResult, _ = sjson.Set(nestedResult, "duration", normalizedDuration)
 			}
 			result, _ = sjson.SetRaw(result, structName, nestedResult)
@@ -283,20 +284,4 @@ func (m *V4ToV5Migrator) transformDnsResolvers(result string, dnsResolvers gjson
 
 	result, _ = sjson.SetRaw(result, "dns_resolvers", resolversResult)
 	return result
-}
-
-// normalizeDuration normalizes Go duration format strings
-// Converts "24h0m0s" -> "24h", "12h0m0s" -> "12h", etc.
-func normalizeDuration(duration string) string {
-	// Remove trailing "0m0s" or "0s" patterns
-	if len(duration) > 4 && duration[len(duration)-4:] == "0m0s" {
-		return duration[:len(duration)-4]
-	}
-	if len(duration) > 2 && duration[len(duration)-2:] == "0s" {
-		return duration[:len(duration)-2]
-	}
-	if len(duration) > 2 && duration[len(duration)-2:] == "0m" {
-		return duration[:len(duration)-2]
-	}
-	return duration
 }

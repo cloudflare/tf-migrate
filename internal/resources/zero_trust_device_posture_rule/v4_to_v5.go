@@ -1,9 +1,6 @@
 package zero_trust_device_posture_rule
 
 import (
-	"encoding/json"
-	"reflect"
-
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -94,16 +91,28 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 
 	attrs := stateJSON.Get("attributes")
 	if !attrs.Exists() {
-		result, _ = sjson.Set(result, "schema_version", 0)
+		result = state.SetSchemaVersion(result, 0)
 		return result, nil
 	}
 
 	inputField := attrs.Get("input")
 	if inputField.Exists() {
-		if m.inputFieldIsEmpty(attrs) {
+		if m.inputFieldIsEmpty(inputField) {
 			result, _ = sjson.Delete(result, "attributes.input")
 		} else {
-			result = m.transformInputArrayToObject(result, attrs)
+			// Transform input from array to object first
+			result = state.TransformFieldArrayToObject(result, "attributes", attrs, "input", state.ArrayToObjectOptions{})
+
+			// After transforming input, handle nested locations if it exists
+			// Re-parse to get the updated structure
+			updatedInput := gjson.Parse(result).Get("attributes.input")
+			if updatedInput.Exists() && updatedInput.IsObject() {
+				// Now transform nested locations from array to object
+				// Use TransformEmptyToNull so empty arrays become null instead of being deleted
+				result = state.TransformFieldArrayToObject(result, "attributes.input", updatedInput, "locations", state.ArrayToObjectOptions{
+					TransformEmptyToNull: true,
+				})
+			}
 		}
 	}
 
@@ -139,57 +148,15 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 		}
 	}
 
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result, nil
 }
 
-// stateHasEmptyInputAttribute checks if the state file's input attribute consists entirely of empty values
-func (m *V4ToV5Migrator) inputFieldIsEmpty(attrs gjson.Result) bool {
-	emptyInput := `
-{
-	"active_threats": 0,
-	"certificate_id": "",
-	"check_disks": null,
-	"check_private_key": false,
-	"cn": "",
-	"compliance_status": "",
-	"connection_id": "",
-	"count_operator": "",
-	"domain": "",
-	"eid_last_seen": "",
-	"enabled": false,
-	"exists": false,
-	"extended_key_usage": null,
-	"id": "",
-	"infected": false,
-	"is_active": false,
-	"issue_count": "",
-	"last_seen": "",
-	"locations": [],
-	"network_status": "",
-	"operational_state": "",
-	"operator": "",
-	"os": "",
-	"os_distro_name": "",
-	"os_distro_revision": "",
-	"os_version_extra": "",
-	"overall": "",
-	"path": "",
-	"require_all": false,
-	"risk_level": "",
-	"running": false,
-	"score": 0,
-	"sensor_config": "",
-	"sha256": "",
-	"state": "",
-	"thumbprint": "",
-	"total_score": 0,
-	"version": "",
-	"version_operator": ""
-}`
+// inputFieldIsEmpty checks if the state file's input attribute consists entirely of empty values
+func (m *V4ToV5Migrator) inputFieldIsEmpty(inputField gjson.Result) bool {
+	emptyInputTemplate := `{"active_threats":0,"certificate_id":"","check_disks":null,"check_private_key":false,"cn":"","compliance_status":"","connection_id":"","count_operator":"","domain":"","eid_last_seen":"","enabled":false,"exists":false,"extended_key_usage":null,"id":"","infected":false,"is_active":false,"issue_count":"","last_seen":"","locations":[],"network_status":"","operational_state":"","operator":"","os":"","os_distro_name":"","os_distro_revision":"","os_version_extra":"","overall":"","path":"","require_all":false,"risk_level":"","running":false,"score":0,"sensor_config":"","sha256":"","state":"","thumbprint":"","total_score":0,"version":"","version_operator":""}`
 
-	inputField := attrs.Get("input")
 	if !inputField.Exists() {
 		return false
 	}
@@ -199,43 +166,9 @@ func (m *V4ToV5Migrator) inputFieldIsEmpty(attrs gjson.Result) bool {
 	}
 
 	inputObj := inputField.Array()[0]
-
-	var actual, expected map[string]interface{}
-	json.Unmarshal([]byte(inputObj.Raw), &actual)
-	json.Unmarshal([]byte(emptyInput), &expected)
-
-	return reflect.DeepEqual(actual, expected)
+	return state.IsEmptyStructure(inputObj, emptyInputTemplate)
 }
 
-// transformInputArrayToObject converts input field from array to object
-func (m *V4ToV5Migrator) transformInputArrayToObject(stateJSON string, attrs gjson.Result) string {
-	inputField := attrs.Get("input")
-
-	if !inputField.Exists() {
-		return stateJSON
-	}
-
-	if inputField.IsArray() && len(inputField.Array()) > 0 {
-		inputObj := inputField.Array()[0]
-
-		// First, transform nested locations if it exists and is an array
-		if locationsField := inputObj.Get("locations"); locationsField.Exists() {
-			if locationsField.IsArray() && len(locationsField.Array()) > 0 {
-				locationsObj := locationsField.Array()[0]
-				inputObjMap := inputObj.Value().(map[string]interface{})
-				inputObjMap["locations"] = locationsObj.Value()
-				stateJSON, _ = sjson.Set(stateJSON, "attributes.input", inputObjMap)
-				return stateJSON
-			}
-		}
-
-		stateJSON, _ = sjson.Set(stateJSON, "attributes.input", inputObj.Value())
-	} else if inputField.IsArray() && len(inputField.Array()) == 0 {
-		stateJSON, _ = sjson.Delete(stateJSON, "attributes.input")
-	}
-
-	return stateJSON
-}
 
 // convertNumericFields converts TypeInt fields to Float64Attribute
 func (m *V4ToV5Migrator) convertNumericFields(stateJSON string, attrs gjson.Result) string {

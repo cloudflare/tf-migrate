@@ -6,6 +6,7 @@ import (
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
@@ -57,7 +58,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	// Extract meta-arguments (count, for_each, lifecycle, depends_on, etc.)
 	// These need to be copied to all generated resources
-	metaArgs := m.extractMetaArguments(block)
+	metaArgs := tfhcl.ExtractMetaArguments(block)
 
 	// Find the settings block
 	var settingsBlock *hclwrite.Block
@@ -268,7 +269,7 @@ func (m *V4ToV5Migrator) createImportBlock(resourceName, settingID string, zoneI
 	body := block.Body()
 
 	// Build the "to" value: cloudflare_zone_setting.resource_name
-	toTokens := buildResourceReference("cloudflare_zone_setting", resourceName)
+	toTokens := tfhcl.BuildResourceReference("cloudflare_zone_setting", resourceName)
 	body.SetAttributeRaw("to", toTokens)
 
 	// Build the "id" value: "${zone_id}/{setting_id}"
@@ -321,16 +322,6 @@ func mapSettingName(v4Name string) string {
 	return v4Name
 }
 
-// buildResourceReference creates tokens for a resource reference
-// e.g., cloudflare_zone_setting.resource_name
-func buildResourceReference(resourceType, resourceName string) hclwrite.Tokens {
-	return hclwrite.Tokens{
-		{Type: hclsyntax.TokenIdent, Bytes: []byte(resourceType)},
-		{Type: hclsyntax.TokenDot, Bytes: []byte(".")},
-		{Type: hclsyntax.TokenIdent, Bytes: []byte(resourceName)},
-	}
-}
-
 // buildTemplateStringTokens creates tokens for a template string
 // e.g., "${zone_id}/setting_id" for variables or "literal/setting_id" for literals
 func buildTemplateStringTokens(zoneIDTokens hclwrite.Tokens, suffix string) hclwrite.Tokens {
@@ -366,52 +357,11 @@ func buildTemplateStringTokens(zoneIDTokens hclwrite.Tokens, suffix string) hclw
 	return tokens
 }
 
-// metaArguments holds meta-arguments extracted from a resource block
-type metaArguments struct {
-	count      *hclwrite.Attribute
-	forEach    *hclwrite.Attribute
-	lifecycle  *hclwrite.Block
-	dependsOn  *hclwrite.Attribute
-	provider   *hclwrite.Attribute
-	timeouts   *hclwrite.Block
-}
-
-// extractMetaArguments extracts meta-arguments from the original resource block
-func (m *V4ToV5Migrator) extractMetaArguments(block *hclwrite.Block) *metaArguments {
-	body := block.Body()
-	meta := &metaArguments{}
-
-	// Extract count and for_each
-	if attr := body.GetAttribute("count"); attr != nil {
-		meta.count = attr
-	}
-	if attr := body.GetAttribute("for_each"); attr != nil {
-		meta.forEach = attr
-	}
-	if attr := body.GetAttribute("depends_on"); attr != nil {
-		meta.dependsOn = attr
-	}
-	if attr := body.GetAttribute("provider"); attr != nil {
-		meta.provider = attr
-	}
-
-	// Extract lifecycle and timeouts blocks
-	for _, b := range body.Blocks() {
-		switch b.Type() {
-		case "lifecycle":
-			meta.lifecycle = b
-		case "timeouts":
-			meta.timeouts = b
-		}
-	}
-
-	return meta
-}
 
 // copyMetaArguments copies meta-arguments to a new resource block
 // For zone_setting, we need special handling of lifecycle blocks because
 // ignore_changes paths need to be transformed from v4 to v5 structure
-func (m *V4ToV5Migrator) copyMetaArguments(newBlock *hclwrite.Block, meta *metaArguments) {
+func (m *V4ToV5Migrator) copyMetaArguments(newBlock *hclwrite.Block, meta *tfhcl.MetaArguments) {
 	if meta == nil {
 		return
 	}
@@ -419,26 +369,26 @@ func (m *V4ToV5Migrator) copyMetaArguments(newBlock *hclwrite.Block, meta *metaA
 	body := newBlock.Body()
 
 	// Copy count
-	if meta.count != nil {
-		tokens := meta.count.Expr().BuildTokens(nil)
+	if meta.Count != nil {
+		tokens := meta.Count.Expr().BuildTokens(nil)
 		body.SetAttributeRaw("count", tokens)
 	}
 
 	// Copy for_each
-	if meta.forEach != nil {
-		tokens := meta.forEach.Expr().BuildTokens(nil)
+	if meta.ForEach != nil {
+		tokens := meta.ForEach.Expr().BuildTokens(nil)
 		body.SetAttributeRaw("for_each", tokens)
 	}
 
 	// Copy depends_on
-	if meta.dependsOn != nil {
-		tokens := meta.dependsOn.Expr().BuildTokens(nil)
+	if meta.DependsOn != nil {
+		tokens := meta.DependsOn.Expr().BuildTokens(nil)
 		body.SetAttributeRaw("depends_on", tokens)
 	}
 
 	// Copy provider
-	if meta.provider != nil {
-		tokens := meta.provider.Expr().BuildTokens(nil)
+	if meta.Provider != nil {
+		tokens := meta.Provider.Expr().BuildTokens(nil)
 		body.SetAttributeRaw("provider", tokens)
 	}
 
@@ -446,9 +396,9 @@ func (m *V4ToV5Migrator) copyMetaArguments(newBlock *hclwrite.Block, meta *metaA
 	// Since v4 had settings[0].xxx and v5 just has 'value',
 	// we need to drop the lifecycle block entirely to avoid invalid references
 	// Users can re-add lifecycle blocks manually if needed after migration
-	if meta.lifecycle != nil {
+	if meta.Lifecycle != nil {
 		// Check if lifecycle has ignore_changes with settings references
-		ignoreChanges := meta.lifecycle.Body().GetAttribute("ignore_changes")
+		ignoreChanges := meta.Lifecycle.Body().GetAttribute("ignore_changes")
 		if ignoreChanges != nil {
 			// For zone_setting, ignore_changes referencing settings[0].xxx paths
 			// cannot be automatically migrated because the v5 structure is completely different
@@ -458,7 +408,7 @@ func (m *V4ToV5Migrator) copyMetaArguments(newBlock *hclwrite.Block, meta *metaA
 			// No ignore_changes or it's safe to copy - copy other lifecycle attributes
 			lifecycleBlock := body.AppendNewBlock("lifecycle", nil)
 			// Copy all attributes except ignore_changes
-			for name, attr := range meta.lifecycle.Body().Attributes() {
+			for name, attr := range meta.Lifecycle.Body().Attributes() {
 				if name != "ignore_changes" {
 					tokens := attr.Expr().BuildTokens(nil)
 					lifecycleBlock.Body().SetAttributeRaw(name, tokens)
@@ -468,30 +418,9 @@ func (m *V4ToV5Migrator) copyMetaArguments(newBlock *hclwrite.Block, meta *metaA
 	}
 
 	// Copy timeouts block
-	if meta.timeouts != nil {
+	if meta.Timeouts != nil {
 		timeoutsBlock := body.AppendNewBlock("timeouts", nil)
-		m.copyBlockContents(meta.timeouts.Body(), timeoutsBlock.Body())
-	}
-}
-
-// copyIterationMetaArguments copies count/for_each to import blocks
-func (m *V4ToV5Migrator) copyIterationMetaArguments(importBlock *hclwrite.Block, meta *metaArguments) {
-	if meta == nil {
-		return
-	}
-
-	body := importBlock.Body()
-
-	// Copy count
-	if meta.count != nil {
-		tokens := meta.count.Expr().BuildTokens(nil)
-		body.SetAttributeRaw("count", tokens)
-	}
-
-	// Copy for_each
-	if meta.forEach != nil {
-		tokens := meta.forEach.Expr().BuildTokens(nil)
-		body.SetAttributeRaw("for_each", tokens)
+		m.copyBlockContents(meta.Timeouts.Body(), timeoutsBlock.Body())
 	}
 }
 

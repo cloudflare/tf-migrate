@@ -11,6 +11,7 @@ import (
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
 
@@ -62,7 +63,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	result := stateJSON.String()
 
 	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	// Update the type field if it exists (for unit tests that pass instance-level type)
 	if stateJSON.Get("type").Exists() {

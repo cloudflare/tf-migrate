@@ -114,7 +114,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	attrs := stateJSON.Get("attributes")
 	if !attrs.Exists() {
 		// Even for invalid instances, set schema_version
-		result, _ = sjson.Set(result, "schema_version", 0)
+		result = state.SetSchemaVersion(result, 0)
 		return result, nil
 	}
 
@@ -134,7 +134,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	result = m.wrapOriginPortDynamic(result, attrs)
 
 	// 6. Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result, nil
 }

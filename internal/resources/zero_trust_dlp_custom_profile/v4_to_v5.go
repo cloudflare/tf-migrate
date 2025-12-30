@@ -324,7 +324,7 @@ func (m *V4ToV5Migrator) transformInstance(instance gjson.Result) gjson.Result {
 		}
 	}
 
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return gjson.Parse(result)
 }

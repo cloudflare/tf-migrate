@@ -3,10 +3,10 @@ package url_normalization_settings
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles the migration of cloudflare_url_normalization_settings from v4 to v5.
@@ -68,7 +68,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// Check if it's a valid instance
 	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
 		// Even for invalid instances, set schema_version for v5
-		result, _ = sjson.Set(result, "schema_version", 0)
+		result = state.SetSchemaVersion(result, 0)
 		return result, nil
 	}
 
@@ -80,7 +80,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// - scope (required in both)
 
 	// ONLY requirement: Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result, nil
 }

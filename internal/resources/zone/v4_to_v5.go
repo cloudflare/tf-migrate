@@ -8,6 +8,7 @@ import (
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
 
@@ -114,7 +115,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// Check if it's a valid zone instance
 	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
 		// Even for invalid instances, set schema_version for v5
-		result, _ = sjson.Set(result, "schema_version", 0)
+		result = state.SetSchemaVersion(result, 0)
 		return result, nil
 	}
 
@@ -134,18 +135,11 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 		result, _ = sjson.Delete(result, "attributes.account_id")
 	}
 
-	// 3. Remove jump_start
-	if attrs.Get("jump_start").Exists() {
-		result, _ = sjson.Delete(result, "attributes.jump_start")
-	}
-
-	// 4. Remove plan (v4 had it as optional string, v5 has it as computed-only nested object)
-	if attrs.Get("plan").Exists() {
-		result, _ = sjson.Delete(result, "attributes.plan")
-	}
+	// 3-4. Remove obsolete fields
+	result = state.RemoveFieldsIfExist(result, "attributes", attrs, "jump_start", "plan")
 
 	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result, nil
 }

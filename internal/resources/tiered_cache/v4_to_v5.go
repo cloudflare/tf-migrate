@@ -113,7 +113,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	cacheTypeField := attrs.Get("cache_type")
 	if !cacheTypeField.Exists() {
 		// Already migrated or no cache_type, just set schema version
-		result, _ = sjson.Set(result, "schema_version", 0)
+		result = state.SetSchemaVersion(result, 0)
 		return result, nil
 	}
 
@@ -145,7 +145,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	}
 
 	// Set schema version to 0
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	transform.SetStateTypeRename(ctx, resourceName, "cloudflare_tiered_cache", targetType)
 

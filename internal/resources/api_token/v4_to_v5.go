@@ -283,7 +283,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 
 	attributes = gjson.Get(result, attributesPath)
 	result = state.EnsureField(result, attributesPath, attributes, "last_used_on", nil)
-	result, _ = sjson.Set(result, "schema_version", 1)
+	result = state.SetSchemaVersion(result, 1)
 
 	return result, nil
 }

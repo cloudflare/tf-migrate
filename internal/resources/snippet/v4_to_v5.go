@@ -108,7 +108,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 	result = state.EnsureField(result, "attributes", attrs, "files", []interface{}{})
 
 	// Step 4: Set schema_version = 0
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result, nil
 }

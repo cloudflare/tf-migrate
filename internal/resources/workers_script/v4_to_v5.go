@@ -326,7 +326,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// Set schema_version to 1 to match provider schema version
 	// This prevents the provider from running state upgraders since tf-migrate
 	// already produces the final v5 format
-	result, _ = sjson.Set(result, "schema_version", 1)
+	result = state.SetSchemaVersion(result, 1)
 
 	return result, nil
 }

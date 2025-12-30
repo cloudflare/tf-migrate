@@ -115,7 +115,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 
 	if !attrs.Exists() {
 		// Set schema_version even for invalid instances
-		result, _ = sjson.Set(result, "schema_version", 0)
+		result = state.SetSchemaVersion(result, 0)
 		return result, nil
 	}
 
@@ -172,7 +172,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 	})
 
 	// Set schema_version
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result, nil
 }

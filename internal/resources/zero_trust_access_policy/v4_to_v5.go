@@ -735,22 +735,15 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	attrs := stateJSON.Get("attributes")
 	if !attrs.Exists() {
 		// Even for invalid instances, set schema_version
-		result, _ = sjson.Set(result, "schema_version", 0)
+		result = state.SetSchemaVersion(result, 0)
 		return result, nil
 	}
 
 	// 1. Field renames: approval_group → approval_groups
-	if attrs.Get("approval_group").Exists() {
-		approvalGroupValue := attrs.Get("approval_group").Value()
-		result, _ = sjson.Set(result, "attributes.approval_groups", approvalGroupValue)
-		result, _ = sjson.Delete(result, "attributes.approval_group")
-	}
+	result = state.RenameField(result, "attributes", attrs, "approval_group", "approval_groups")
 
 	// 2. Remove deprecated/invalid fields
-	result, _ = sjson.Delete(result, "attributes.application_id")
-	result, _ = sjson.Delete(result, "attributes.precedence")
-	result, _ = sjson.Delete(result, "attributes.zone_id")
-	result, _ = sjson.Delete(result, "attributes.session_duration")
+	result = state.RemoveFieldsIfExist(result, "attributes", attrs, "application_id", "precedence", "zone_id", "session_duration")
 
 	// 3. Type conversions in approval_groups
 	// Convert approvals_needed from int to float64
@@ -909,7 +902,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	}
 
 	// Always set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result, nil
 }

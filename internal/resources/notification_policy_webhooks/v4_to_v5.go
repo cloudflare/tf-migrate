@@ -3,9 +3,9 @@ package notification_policy_webhooks
 import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 type V4ToV5Migrator struct {
@@ -56,7 +56,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// Note: We assume all v4 states have the url field. While it was optional in v4,
 	// the Cloudflare API requires it, so all real resources should have it.
 	// If url is missing, the v5 provider will catch it during the next apply.
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result, nil
 }

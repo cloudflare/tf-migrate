@@ -191,7 +191,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 
 	if !attrs.Exists() {
 		// Set schema_version even for invalid instances
-		result, _ = sjson.Set(result, "schema_version", 0)
+		result = state.SetSchemaVersion(result, 0)
 		return result, nil
 	}
 
@@ -224,7 +224,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 	// We should NOT remove them, just leave them as-is for provider to handle
 
 	// Set schema_version
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result, nil
 }
@@ -263,15 +263,12 @@ func (m *V4ToV5Migrator) createHTTPConfig(stateJSON string, attrs gjson.Result) 
 		stateJSON, _ = sjson.Set(stateJSON, "attributes.http_config", httpConfig)
 
 		// Remove the root-level fields that moved into http_config
+		fieldNames := make([]string, 0, len(httpFields)+1)
 		for oldField := range httpFields {
-			if attrs.Get(oldField).Exists() {
-				stateJSON, _ = sjson.Delete(stateJSON, "attributes."+oldField)
-			}
+			fieldNames = append(fieldNames, oldField)
 		}
-		// Remove header from root if it exists
-		if attrs.Get("header").Exists() {
-			stateJSON, _ = sjson.Delete(stateJSON, "attributes.header")
-		}
+		fieldNames = append(fieldNames, "header")
+		stateJSON = state.RemoveFieldsIfExist(stateJSON, "attributes", attrs, fieldNames...)
 	}
 
 	return stateJSON
@@ -294,12 +291,7 @@ func (m *V4ToV5Migrator) createTCPConfig(stateJSON string, attrs gjson.Result) s
 		stateJSON, _ = sjson.Set(stateJSON, "attributes.tcp_config", tcpConfig)
 
 		// Remove the root-level fields that moved into tcp_config
-		if attrs.Get("method").Exists() {
-			stateJSON, _ = sjson.Delete(stateJSON, "attributes.method")
-		}
-		if attrs.Get("port").Exists() {
-			stateJSON, _ = sjson.Delete(stateJSON, "attributes.port")
-		}
+		stateJSON = state.RemoveFieldsIfExist(stateJSON, "attributes", attrs, "method", "port")
 	}
 
 	return stateJSON

@@ -530,7 +530,7 @@ func (m *V4ToV5Migrator) transformSingleInstance(result string, instance gjson.R
 	})
 
 	// Always set schema_version
-	result, _ = sjson.Set(result, "schema_version", 0)
+	result = state.SetSchemaVersion(result, 0)
 
 	return result
 }
