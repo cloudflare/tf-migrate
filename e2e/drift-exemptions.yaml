@@ -45,6 +45,54 @@ exemptions:
       - '\+ country_code = '
     enabled: true
 
+  # Zone setting migrations: one-to-many transformation
+  # The v4 cloudflare_zone_settings_override resource is deleted from state and splits
+  # into multiple v5 cloudflare_zone_setting resources. This causes expected initial
+  # drift where all v5 resources need to be created via terraform apply.
+  - name: "zone_setting_migration_drift"
+    description: "Allow zone_setting resources to be created after migration (one-to-many transformation)"
+    resource_types:
+      - "cloudflare_zone_setting"
+    patterns:
+      - "will be created"
+      - "\\+ resource"
+      - "cloudflare_zone_setting"
+      - "zone_setting"
+      - "\\+ editable"
+      - "\\+ enabled"
+      - "\\+ id"
+      - "\\+ modified_on"
+      - "\\+ setting_id"
+      - "\\+ time_remaining"
+      - "\\+ value"
+      - "\\+ zone_id"
+      - "known after apply"
+      - "~ value"
+      - "~ editable"
+      - "~ modified_on"
+      - "\\+ strict_transport_security"
+      - "\\+ include_subdomains"
+      - "\\+ max_age"
+      - "\\+ nosniff"
+      - "\\+ preload"
+    enabled: true
+
+  # Some zone settings may not be supported on all plans/zones (e.g., 0rtt on free plans)
+  # These settings will show ongoing drift as the API doesn't accept the value
+  - name: "zone_setting_unsupported_features"
+    description: "Ignore zone settings that aren't supported on this zone's plan or have API bugs"
+    resource_types:
+      - "cloudflare_zone_setting"
+    attributes:
+      - "value"
+    patterns:
+      - "0rtt"
+      - "with_name_mapping_zero_rtt"
+      - "tls_1_3"
+      - "with_interpolation_tls_1_3"
+      - 'zrt.*on'
+    enabled: true
+
   # Example: Ignore specific resource types
   # - name: "zone_dnssec_computed"
   #   description: "Ignore computed changes in zone DNSSEC resources"
