@@ -681,6 +681,162 @@ func copyMetaArguments(original, newBlock *hclwrite.Block, attributeRenames map[
 	}
 }
 
+// ConvertDynamicBlocksToForExpression converts dynamic blocks to for expressions
+// This handles the case where v4 used dynamic blocks and v5 uses array attributes with for expressions
+//
+// Example:
+//
+// Before:
+//   dynamic "origins" {
+//     for_each = local.origin_configs
+//     content {
+//       name    = origins.value.name
+//       address = origins.value.address
+//     }
+//   }
+//
+// After:
+//   origins = [for value in local.origin_configs : {
+//     name    = value.name
+//     address = value.address
+//   }]
+func ConvertDynamicBlocksToForExpression(body *hclwrite.Body, targetBlockType string) {
+	// Find all dynamic blocks
+	dynamicBlocks := FindBlocksByType(body, "dynamic")
+
+	for _, dynamicBlock := range dynamicBlocks {
+		// Check if this dynamic block's label matches our target
+		labels := dynamicBlock.Labels()
+		if len(labels) == 0 || labels[0] != targetBlockType {
+			continue
+		}
+
+		dynamicBody := dynamicBlock.Body()
+
+		// Get the for_each expression
+		forEachAttr := dynamicBody.GetAttribute("for_each")
+		if forEachAttr == nil {
+			continue
+		}
+		forEachTokens := forEachAttr.Expr().BuildTokens(nil)
+
+		// Get the iterator name (default is the block label)
+		iteratorName := targetBlockType
+		if iteratorAttr := dynamicBody.GetAttribute("iterator"); iteratorAttr != nil {
+			// Extract the iterator name from the attribute
+			iterTokens := iteratorAttr.Expr().BuildTokens(nil)
+			for _, token := range iterTokens {
+				if token.Type == hclsyntax.TokenIdent {
+					iteratorName = string(token.Bytes)
+					break
+				}
+			}
+		}
+
+		// Find the content block
+		contentBlock := FindBlockByType(dynamicBody, "content")
+		if contentBlock == nil {
+			continue
+		}
+
+		// Before building the object, convert any nested blocks to attributes
+		contentBody := contentBlock.Body()
+
+		// Convert nested blocks to attributes (e.g., header block -> header attribute)
+		for _, nestedBlock := range contentBody.Blocks() {
+			nestedBlockType := nestedBlock.Type()
+			objTokens := BuildObjectFromBlock(nestedBlock)
+			contentBody.SetAttributeRaw(nestedBlockType, objTokens)
+			contentBody.RemoveBlock(nestedBlock)
+		}
+
+		// Build the for expression
+		var forExprTokens hclwrite.Tokens
+
+		// Opening bracket
+		forExprTokens = append(forExprTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenOBrack,
+			Bytes: []byte("["),
+		})
+
+		// "for value in"
+		forExprTokens = append(forExprTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenIdent,
+			Bytes: []byte("for"),
+		})
+		forExprTokens = append(forExprTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenIdent,
+			Bytes: []byte("value"),
+		})
+		forExprTokens = append(forExprTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenIdent,
+			Bytes: []byte("in"),
+		})
+
+		// Add the for_each expression
+		forExprTokens = append(forExprTokens, forEachTokens...)
+
+		// Add colon
+		forExprTokens = append(forExprTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenColon,
+			Bytes: []byte(":"),
+		})
+
+		// Build the object from content block
+		objTokens := BuildObjectFromBlock(contentBlock)
+
+		// Replace iterator references (e.g., origins.value -> value)
+		objTokens = replaceIteratorReferences(objTokens, iteratorName)
+
+		forExprTokens = append(forExprTokens, objTokens...)
+
+		// Closing bracket
+		forExprTokens = append(forExprTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenCBrack,
+			Bytes: []byte("]"),
+		})
+
+		// Set the attribute with the for expression
+		body.SetAttributeRaw(targetBlockType, forExprTokens)
+
+		// Remove the dynamic block
+		body.RemoveBlock(dynamicBlock)
+	}
+}
+
+// replaceIteratorReferences replaces iterator references in tokens
+// For example, replaces "origins.value.name" with "value.name"
+func replaceIteratorReferences(tokens hclwrite.Tokens, iteratorName string) hclwrite.Tokens {
+	result := make(hclwrite.Tokens, 0, len(tokens))
+	i := 0
+
+	for i < len(tokens) {
+		token := tokens[i]
+
+		// Look for pattern: iteratorName DOT value DOT ...
+		// We want to remove the "iteratorName DOT" part
+		if token.Type == hclsyntax.TokenIdent && string(token.Bytes) == iteratorName {
+			// Check if next token is a dot
+			if i+1 < len(tokens) && tokens[i+1].Type == hclsyntax.TokenDot {
+				// Check if token after dot is "value"
+				if i+2 < len(tokens) && tokens[i+2].Type == hclsyntax.TokenIdent && string(tokens[i+2].Bytes) == "value" {
+					// Skip the iterator name and the first dot, keep "value"
+					// This converts "origins.value.name" to "value.name"
+					i++ // Skip iterator name
+					i++ // Skip first dot
+					// Continue with "value"
+					continue
+				}
+			}
+		}
+
+		result = append(result, token)
+		i++
+	}
+
+	return result
+}
+
 // ConvertBlocksToArrayAttribute converts multiple blocks to an array attribute
 // This is useful when migrating from v4 block syntax to v5 array attribute syntax
 //
@@ -703,6 +859,9 @@ func copyMetaArguments(original, newBlock *hclwrite.Block, attributeRenames map[
 //   ]
 //
 // If no blocks are found and emptyIfNone is true, sets an empty array [].
+//
+// NOTE: This function does NOT automatically convert dynamic blocks to for expressions.
+// If you need to convert dynamic blocks, call ConvertDynamicBlocksToForExpression separately before this function.
 func ConvertBlocksToArrayAttribute(body *hclwrite.Body, blockType string, emptyIfNone bool) {
 	blocks := FindBlocksByType(body, blockType)
 
