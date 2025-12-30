@@ -630,3 +630,209 @@ func TestConvertGjsonToJSON(t *testing.T) {
 		})
 	}
 }
+
+func TestGetResourceAttribute(t *testing.T) {
+	tests := []struct {
+		name          string
+		stateJSON     string
+		resourceType  string
+		resourceName  string
+		attributeName string
+		expected      string
+	}{
+		{
+			name: "Get string attribute from existing resource",
+			stateJSON: `{
+				"resources": [
+					{
+						"type": "cloudflare_tiered_cache",
+						"name": "example",
+						"instances": [
+							{
+								"attributes": {
+									"zone_id": "test-zone-id",
+									"cache_type": "smart",
+									"id": "test-id"
+								}
+							}
+						]
+					}
+				]
+			}`,
+			resourceType:  "cloudflare_tiered_cache",
+			resourceName:  "example",
+			attributeName: "cache_type",
+			expected:      "smart",
+		},
+		{
+			name: "Get attribute from resource with multiple instances",
+			stateJSON: `{
+				"resources": [
+					{
+						"type": "cloudflare_dns_record",
+						"name": "test",
+						"instances": [
+							{
+								"attributes": {
+									"zone_id": "zone1",
+									"name": "test",
+									"type": "A",
+									"content": "192.0.2.1"
+								}
+							},
+							{
+								"attributes": {
+									"zone_id": "zone2",
+									"name": "test2",
+									"type": "AAAA"
+								}
+							}
+						]
+					}
+				]
+			}`,
+			resourceType:  "cloudflare_dns_record",
+			resourceName:  "test",
+			attributeName: "type",
+			expected:      "A", // Should get first instance
+		},
+		{
+			name: "Resource does not exist",
+			stateJSON: `{
+				"resources": [
+					{
+						"type": "cloudflare_tiered_cache",
+						"name": "example",
+						"instances": [
+							{
+								"attributes": {
+									"zone_id": "test-zone-id",
+									"cache_type": "smart"
+								}
+							}
+						]
+					}
+				]
+			}`,
+			resourceType:  "cloudflare_tiered_cache",
+			resourceName:  "nonexistent",
+			attributeName: "cache_type",
+			expected:      "",
+		},
+		{
+			name: "Attribute does not exist",
+			stateJSON: `{
+				"resources": [
+					{
+						"type": "cloudflare_tiered_cache",
+						"name": "example",
+						"instances": [
+							{
+								"attributes": {
+									"zone_id": "test-zone-id",
+									"cache_type": "smart"
+								}
+							}
+						]
+					}
+				]
+			}`,
+			resourceType:  "cloudflare_tiered_cache",
+			resourceName:  "example",
+			attributeName: "nonexistent_attr",
+			expected:      "",
+		},
+		{
+			name: "Empty state JSON",
+			stateJSON: `{
+				"resources": []
+			}`,
+			resourceType:  "cloudflare_tiered_cache",
+			resourceName:  "example",
+			attributeName: "cache_type",
+			expected:      "",
+		},
+		{
+			name:          "Empty string as state",
+			stateJSON:     "",
+			resourceType:  "cloudflare_tiered_cache",
+			resourceName:  "example",
+			attributeName: "cache_type",
+			expected:      "",
+		},
+		{
+			name: "Multiple resources, find correct one",
+			stateJSON: `{
+				"resources": [
+					{
+						"type": "cloudflare_tiered_cache",
+						"name": "first",
+						"instances": [
+							{
+								"attributes": {
+									"cache_type": "off"
+								}
+							}
+						]
+					},
+					{
+						"type": "cloudflare_tiered_cache",
+						"name": "second",
+						"instances": [
+							{
+								"attributes": {
+									"cache_type": "smart"
+								}
+							}
+						]
+					},
+					{
+						"type": "cloudflare_tiered_cache",
+						"name": "third",
+						"instances": [
+							{
+								"attributes": {
+									"cache_type": "generic"
+								}
+							}
+						]
+					}
+				]
+			}`,
+			resourceType:  "cloudflare_tiered_cache",
+			resourceName:  "second",
+			attributeName: "cache_type",
+			expected:      "smart",
+		},
+		{
+			name: "Get nested attribute path",
+			stateJSON: `{
+				"resources": [
+					{
+						"type": "cloudflare_load_balancer",
+						"name": "example",
+						"instances": [
+							{
+								"attributes": {
+									"zone_id": "test-zone-id",
+									"id": "test-id"
+								}
+							}
+						]
+					}
+				]
+			}`,
+			resourceType:  "cloudflare_load_balancer",
+			resourceName:  "example",
+			attributeName: "zone_id",
+			expected:      "test-zone-id",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GetResourceAttribute(tt.stateJSON, tt.resourceType, tt.resourceName, tt.attributeName)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

@@ -22,24 +22,28 @@ resource "cloudflare_tiered_cache" "example" {
 resource "cloudflare_tiered_cache" "example" {
   zone_id = "test-zone-id"
   value   = "on"
-}`,
+}
+resource "cloudflare_argo_tiered_caching" "example" {
+  zone_id = "test-zone-id"
+  value   = "on"
+} `,
 		},
 		{
-			Name: "tiered_cache with cache_type=generic creates argo_tiered_caching and moved block",
+			Name: "tiered_cache with cache_type=generic",
 			Input: `
 resource "cloudflare_tiered_cache" "example" {
   zone_id    = "test-zone-id"
   cache_type = "generic"
 }`,
 			Expected: `
+resource "cloudflare_tiered_cache" "example" {
+  zone_id = "test-zone-id"
+  value   = "off"
+}
 resource "cloudflare_argo_tiered_caching" "example" {
   zone_id = "test-zone-id"
   value   = "on"
-}
-moved {
-  from = cloudflare_tiered_cache.example
-  to   = cloudflare_argo_tiered_caching.example
-}`,
+} `,
 		},
 		{
 			Name: "tiered_cache with cache_type=off",
@@ -52,19 +56,10 @@ resource "cloudflare_tiered_cache" "example" {
 resource "cloudflare_tiered_cache" "example" {
   zone_id = "test-zone-id"
   value   = "off"
-}`,
-		},
-		{
-			Name: "tiered_cache with variable cache_type",
-			Input: `
-resource "cloudflare_tiered_cache" "example" {
-  zone_id    = "test-zone-id"
-  cache_type = var.cache_type_value
-}`,
-			Expected: `
-resource "cloudflare_tiered_cache" "example" {
+}
+resource "cloudflare_argo_tiered_caching" "example" {
   zone_id = "test-zone-id"
-  value   = var.cache_type_value
+  value   = "off"
 }`,
 		},
 		{
@@ -87,31 +82,27 @@ resource "cloudflare_tiered_cache" "off" {
   zone_id = "zone1"
   value   = "off"
 }
+resource "cloudflare_argo_tiered_caching" "off" {
+  zone_id = "zone1"
+  value   = "off"
+}
 resource "cloudflare_tiered_cache" "smart" {
   zone_id = "zone2"
   value   = "on"
+}
+resource "cloudflare_argo_tiered_caching" "smart" {
+  zone_id = "zone2"
+  value   = "on"
+}
+resource "cloudflare_tiered_cache" "generic" {
+  zone_id = "zone3"
+  value   = "off"
 }
 resource "cloudflare_argo_tiered_caching" "generic" {
   zone_id = "zone3"
   value   = "on"
 }
-moved {
-  from = cloudflare_tiered_cache.generic
-  to   = cloudflare_argo_tiered_caching.generic
-}`,
-		},
-		{
-			Name: "tiered_cache with dynamic cache_type should not generate moved block",
-			Input: `
-resource "cloudflare_tiered_cache" "example" {
-  zone_id    = "test-zone-id"
-  cache_type = var.cache_type
-}`,
-			Expected: `
-resource "cloudflare_tiered_cache" "example" {
-  zone_id = "test-zone-id"
-  value   = var.cache_type
-}`,
+`,
 		},
 		{
 			Name: "tiered_cache with cache_type=generic and other attributes",
@@ -125,16 +116,19 @@ resource "cloudflare_tiered_cache" "example" {
   }
 }`,
 			Expected: `
+resource "cloudflare_tiered_cache" "example" {
+  zone_id = cloudflare_zone.example.id
+  value   = "off"
+  lifecycle {
+    create_before_destroy = true
+  }
+}
 resource "cloudflare_argo_tiered_caching" "example" {
   zone_id = cloudflare_zone.example.id
   value   = "on"
   lifecycle {
     create_before_destroy = true
   }
-}
-moved {
-  from = cloudflare_tiered_cache.example
-  to   = cloudflare_argo_tiered_caching.example
 }`,
 		},
 	}
@@ -161,7 +155,7 @@ func TestStateTransformation(t *testing.T) {
   "schema_version": 0,
   "attributes": {
     "zone_id": "test-zone-id",
-    "value": "on",
+    "value": "off",
     "id": "test-id"
   }
 }`,

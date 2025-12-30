@@ -443,3 +443,67 @@ func IsEmptyValue(value gjson.Result) bool {
 		return false
 	}
 }
+
+// GetResourceAttribute retrieves an attribute value from the state for a given resource.
+// This is useful when config transformation needs to resolve variable values by looking
+// up the actual value that was applied in the state.
+//
+// Example - Getting the actual cache_type value from state when config uses a variable:
+//
+// Config:
+//
+//	resource "cloudflare_tiered_cache" "example" {
+//	  zone_id    = "test-zone-id"
+//	  cache_type = var.cache_type_value  // Variable reference
+//	}
+//
+// State JSON:
+//
+//	{
+//	  "resources": [{
+//	    "type": "cloudflare_tiered_cache",
+//	    "name": "example",
+//	    "instances": [{
+//	      "attributes": {
+//	        "zone_id": "test-zone-id",
+//	        "cache_type": "smart"  // Actual resolved value
+//	      }
+//	    }]
+//	  }]
+//	}
+//
+// Usage:
+//
+//	value := GetResourceAttribute(stateJSON, "cloudflare_tiered_cache", "example", "cache_type")
+//	// Returns: "smart"
+//
+// If the resource or attribute doesn't exist, returns an empty string.
+func GetResourceAttribute(stateJSON, resourceType, resourceName, attributeName string) string {
+	if stateJSON == "" {
+		return ""
+	}
+
+	state := gjson.Parse(stateJSON)
+	resources := state.Get("resources")
+	if !resources.Exists() {
+		return ""
+	}
+
+	var result string
+	resources.ForEach(func(_, resource gjson.Result) bool {
+		if resource.Get("type").String() == resourceType &&
+			resource.Get("name").String() == resourceName {
+			instances := resource.Get("instances")
+			if instances.Exists() && len(instances.Array()) > 0 {
+				attrValue := instances.Get("0.attributes." + attributeName)
+				if attrValue.Exists() {
+					result = attrValue.String()
+					return false // Stop iteration
+				}
+			}
+		}
+		return true // Continue iteration
+	})
+
+	return result
+}

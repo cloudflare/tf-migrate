@@ -50,23 +50,40 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	body := block.Body()
 
 	blocks := make([]*hclwrite.Block, 0)
-	removeOriginal := false
 
-	// rename cache_type to value
+	// rename cache_type to value in the original block
 	tfhcl.RenameAttribute(body, "cache_type", "value")
 
 	resourceName := tfhcl.GetResourceName(block)
-	value := tfhcl.ExtractStringFromAttribute(body.GetAttribute("value"))
+	valueAttr := body.GetAttribute("value")
+
+	// Try to get the actual value
+	var value string
+	if tfhcl.IsExpressionAttribute(valueAttr) {
+		// It's a variable reference - look up the actual value in state
+		value = state.GetResourceAttribute(ctx.StateJSON, "cloudflare_tiered_cache", resourceName, "cache_type")
+	} else {
+		// It's a literal value
+		value = tfhcl.ExtractStringFromAttribute(valueAttr)
+	}
+
 	if value == "smart" {
-		// cache_type="smart" → value="on"
+		// cache_type="smart" → value="on" for both resources
+		// Create tiered_cache resource with value="on"
 		tfhcl.SetAttribute(body, "value", "on")
-		blocks = append(blocks, block)
-	} else if value == "off" {
-		// cache_type="off" → value="off"
-		tfhcl.SetAttribute(body, "value", "off")
-		blocks = append(blocks, block)
-	} else if value == "generic" {
-		newBlock := tfhcl.CreateDerivedBlock(
+		tieredCacheBlock := tfhcl.CreateDerivedBlock(
+			block,
+			"cloudflare_tiered_cache",
+			resourceName,
+			tfhcl.AttributeTransform{
+				Copy:              []string{"zone_id", "value"},
+				CopyMetaArguments: true,
+			},
+		)
+		blocks = append(blocks, tieredCacheBlock)
+
+		// Create argo_tiered_caching resource with value="on"
+		argoBlock := tfhcl.CreateDerivedBlock(
 			block,
 			"cloudflare_argo_tiered_caching",
 			resourceName,
@@ -76,21 +93,78 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 				CopyMetaArguments: true,
 			},
 		)
-
-		movedBlock := tfhcl.CreateMovedBlock(
-			"cloudflare_tiered_cache."+resourceName,
-			"cloudflare_argo_tiered_caching."+resourceName,
+		blocks = append(blocks, argoBlock)
+	} else if value == "off" {
+		// cache_type="off" → value="off" for both resources
+		// Create tiered_cache resource with value="off"
+		tfhcl.SetAttribute(body, "value", "off")
+		tieredCacheBlock := tfhcl.CreateDerivedBlock(
+			block,
+			"cloudflare_tiered_cache",
+			resourceName,
+			tfhcl.AttributeTransform{
+				Copy:              []string{"zone_id", "value"},
+				CopyMetaArguments: true,
+			},
 		)
+		blocks = append(blocks, tieredCacheBlock)
 
-		blocks = append(blocks, newBlock, movedBlock)
-		removeOriginal = true
+		// Create argo_tiered_caching resource with value="off"
+		argoBlock := tfhcl.CreateDerivedBlock(
+			block,
+			"cloudflare_argo_tiered_caching",
+			resourceName,
+			tfhcl.AttributeTransform{
+				Copy:              []string{"zone_id"},
+				Set:               map[string]interface{}{"value": "off"},
+				CopyMetaArguments: true,
+			},
+		)
+		blocks = append(blocks, argoBlock)
+	} else if value == "generic" {
+		// cache_type="generic" → tiered_cache value="off", argo_tiered_caching value="on"
+		// Create tiered_cache resource with value="off"
+		tfhcl.SetAttribute(body, "value", "off")
+		tieredCacheBlock := tfhcl.CreateDerivedBlock(
+			block,
+			"cloudflare_tiered_cache",
+			resourceName,
+			tfhcl.AttributeTransform{
+				Copy:              []string{"zone_id", "value"},
+				CopyMetaArguments: true,
+			},
+		)
+		blocks = append(blocks, tieredCacheBlock)
+
+		// Create argo_tiered_caching resource with value="on"
+		argoBlock := tfhcl.CreateDerivedBlock(
+			block,
+			"cloudflare_argo_tiered_caching",
+			resourceName,
+			tfhcl.AttributeTransform{
+				Copy:              []string{"zone_id"},
+				Set:               map[string]interface{}{"value": "on"},
+				CopyMetaArguments: true,
+			},
+		)
+		blocks = append(blocks, argoBlock)
 	} else {
-		blocks = append(blocks, block)
+		// For variables or other expressions, just rename the attribute and copy as-is
+		tieredCacheBlock := tfhcl.CreateDerivedBlock(
+			block,
+			"cloudflare_tiered_cache",
+			resourceName,
+			tfhcl.AttributeTransform{
+				Copy:              []string{"zone_id", "value"},
+				CopyMetaArguments: true,
+			},
+		)
+		blocks = append(blocks, tieredCacheBlock)
 	}
 
 	return &transform.TransformResult{
 		Blocks:         blocks,
-		RemoveOriginal: removeOriginal,
+		RemoveOriginal: true,
 	}, nil
 }
 
@@ -119,35 +193,28 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 
 	cacheTypeValue := cacheTypeField.String()
 
-	// Determine target resource type based on cache_type value
-	var targetType string
-
 	// Transform based on cache_type value
+	// All resources stay as cloudflare_tiered_cache in the state
+	// The argo_tiered_caching resources in the config are new and will be created on next apply
 	if cacheTypeValue == "generic" {
-		// Transform to argo_tiered_caching
-		targetType = "cloudflare_argo_tiered_caching"
+		// For generic, the tiered_cache resource gets value="off"
 		result, _ = sjson.Delete(result, "attributes.cache_type")
-		result, _ = sjson.Set(result, "attributes.value", "on")
+		result, _ = sjson.Set(result, "attributes.value", "off")
 	} else if cacheTypeValue == "smart" {
-		// Keep as tiered_cache, transform smart → on
-		targetType = "cloudflare_tiered_cache"
+		// For smart, the tiered_cache resource gets value="on"
 		result, _ = sjson.Delete(result, "attributes.cache_type")
 		result, _ = sjson.Set(result, "attributes.value", "on")
 	} else if cacheTypeValue == "off" {
-		// Keep as tiered_cache, cache_type → value (no value change)
-		targetType = "cloudflare_tiered_cache"
+		// For off, the tiered_cache resource gets value="off"
 		result, _ = sjson.Delete(result, "attributes.cache_type")
 		result, _ = sjson.Set(result, "attributes.value", "off")
 	} else {
 		// Unknown value (variables, expressions), just rename the field
-		targetType = "cloudflare_tiered_cache"
 		result = state.RenameField(result, "attributes", attrs, "cache_type", "value")
 	}
 
 	// Set schema version to 0
 	result, _ = sjson.Set(result, "schema_version", 0)
-
-	transform.SetStateTypeRename(ctx, resourceName, "cloudflare_tiered_cache", targetType)
 
 	return result, nil
 }
