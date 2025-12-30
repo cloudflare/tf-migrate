@@ -31,15 +31,8 @@ jobs:
           go mod download
           go mod tidy
 
-      - name: Run unit tests with coverage
-        run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./internal/...
-          go test -v -race ./cmd/...
-
-      - name: Generate coverage report
-        run: |
-          echo "Coverage Report:"
-          go tool cover -func=coverage.out
+      - name: Run unit tests
+        run: make test-unit
 
   lint-testdata:
     name: Lint Testdata Naming
@@ -82,12 +75,5 @@ jobs:
           go mod download
           go mod tidy
 
-      - name: Build tf-migrate
-        run: |
-          make build
-          ./bin/tf-migrate version
-
-      - name: Run integration tests for v4 to v5
-        run: |
-          cd integration/v4_to_v5
-          go test -v -race -timeout 10m
+      - name: Run integration tests
+        run: make test-integration
