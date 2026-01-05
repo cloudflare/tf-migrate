@@ -19,6 +19,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpush_job"
 	"github.com/cloudflare/tf-migrate/internal/resources/managed_transforms"
+	"github.com/cloudflare/tf-migrate/internal/resources/notification_policy"
 	"github.com/cloudflare/tf-migrate/internal/resources/notification_policy_webhooks"
 	"github.com/cloudflare/tf-migrate/internal/resources/page_rule"
 	"github.com/cloudflare/tf-migrate/internal/resources/pages_project"
@@ -78,6 +79,7 @@ func RegisterAllMigrations() {
 	logpull_retention.NewV4ToV5Migrator()
 	logpush_job.NewV4ToV5Migrator()
 	managed_transforms.NewV4ToV5Migrator()
+	notification_policy.NewV4ToV5Migrator()
 	notification_policy_webhooks.NewV4ToV5Migrator()
 	page_rule.NewV4ToV5Migrator()
 	pages_project.NewV4ToV5Migrator()
