@@ -16,8 +16,9 @@ type V4ToV5Migrator struct{}
 
 func NewV4ToV5Migrator() transform.ResourceTransformer {
 	migrator := &V4ToV5Migrator{}
-	// Register the OLD (v4) resource name
+	// Register BOTH v4 resource names (deprecated and preferred)
 	internal.RegisterMigrator("cloudflare_tunnel", "v4", "v5", migrator)
+	internal.RegisterMigrator("cloudflare_zero_trust_tunnel", "v4", "v5", migrator)
 	return migrator
 }
 
@@ -27,8 +28,8 @@ func (m *V4ToV5Migrator) GetResourceType() string {
 }
 
 func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
-	// Check for the OLD (v4) resource name
-	return resourceType == "cloudflare_tunnel"
+	// Handle both the deprecated name and the preferred v4 name
+	return resourceType == "cloudflare_tunnel" || resourceType == "cloudflare_zero_trust_tunnel"
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
@@ -43,8 +44,14 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-	// Rename resource type from cloudflare_tunnel to cloudflare_zero_trust_tunnel_cloudflared
-	tfhcl.RenameResourceType(block, "cloudflare_tunnel", "cloudflare_zero_trust_tunnel_cloudflared")
+	resourceType := tfhcl.GetResourceType(block)
+
+	// Rename resource type based on which v4 name is used
+	if resourceType == "cloudflare_tunnel" {
+		tfhcl.RenameResourceType(block, "cloudflare_tunnel", "cloudflare_zero_trust_tunnel_cloudflared")
+	} else if resourceType == "cloudflare_zero_trust_tunnel" {
+		tfhcl.RenameResourceType(block, "cloudflare_zero_trust_tunnel", "cloudflare_zero_trust_tunnel_cloudflared")
+	}
 
 	// Rename attribute: secret → tunnel_secret
 	body := block.Body()
@@ -55,7 +62,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: true,
+		RemoveOriginal: false,
 	}, nil
 }
 
