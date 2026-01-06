@@ -3,6 +3,7 @@
 package hcl
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -451,6 +452,139 @@ func RemoveEmptyBlocks(body *hclwrite.Body, blockType string) {
 	for _, block := range blocksToRemove {
 		body.RemoveBlock(block)
 	}
+}
+
+// ConvertBlockToAttributeWithNested converts a block to attribute format, handling nested blocks
+// MaxItems:1 blocks → single object
+// TypeList blocks (multiple with same name) → array of objects
+// This recursively processes all nested blocks
+func ConvertBlockToAttributeWithNested(body *hclwrite.Body, blockName string) {
+	ConvertBlockToAttributeWithNestedAndArrays(body, blockName, nil)
+}
+
+// ConvertBlockToAttributeWithNestedAndArrays converts blocks to attributes with explicit array field specification
+// alwaysArrayFields: map of block types that should always be arrays (even with 1 element)
+func ConvertBlockToAttributeWithNestedAndArrays(body *hclwrite.Body, blockName string, alwaysArrayFields map[string]bool) {
+	blocks := FindBlocksByType(body, blockName)
+	if len(blocks) == 0 {
+		return
+	}
+
+	// Check if this block type should always be an array (even with 1 element)
+	forceArray := alwaysArrayFields != nil && alwaysArrayFields[blockName]
+
+	// Group blocks by their type to identify TypeList vs MaxItems:1
+	// For ruleset, we know action_parameters is MaxItems:1, but nested blocks vary
+	if len(blocks) == 1 && !forceArray {
+		// MaxItems:1 - convert to single object
+		block := blocks[0]
+		tokens := buildObjectFromBlockRecursiveWithArrays(block.Body(), 0, alwaysArrayFields)
+		body.SetAttributeRaw(blockName, tokens)
+		body.RemoveBlock(block)
+	} else {
+		// TypeList - convert to array of objects
+		var arrayElements []hclwrite.Tokens
+		for _, block := range blocks {
+			objTokens := buildObjectFromBlockRecursiveWithArrays(block.Body(), 0, alwaysArrayFields)
+			arrayElements = append(arrayElements, objTokens)
+		}
+
+		// Build array tokens
+		tokens := hclwrite.Tokens{
+			{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")},
+			{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")},
+		}
+		for i, elem := range arrayElements {
+			// Add indentation
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("    ")})
+			tokens = append(tokens, elem...)
+			if i < len(arrayElements)-1 {
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenComma, Bytes: []byte(",")})
+			}
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
+		}
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
+
+		body.SetAttributeRaw(blockName, tokens)
+		for _, block := range blocks {
+			body.RemoveBlock(block)
+		}
+	}
+}
+
+// buildObjectFromBlockRecursive builds object tokens from a block body,
+// recursively converting nested blocks to either objects or arrays
+func buildObjectFromBlockRecursive(body *hclwrite.Body, indentLevel int) hclwrite.Tokens {
+	return buildObjectFromBlockRecursiveWithArrays(body, indentLevel, nil)
+}
+
+// buildObjectFromBlockRecursiveWithArrays builds object tokens with explicit array field specification
+func buildObjectFromBlockRecursiveWithArrays(body *hclwrite.Body, indentLevel int, alwaysArrayFields map[string]bool) hclwrite.Tokens {
+	indent := strings.Repeat("  ", indentLevel)
+	tokens := hclwrite.Tokens{
+		{Type: hclsyntax.TokenOBrace, Bytes: []byte("{")},
+		{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")},
+	}
+
+	// First, add all attributes
+	orderedAttrs := AttributesOrdered(body)
+	for _, attrInfo := range orderedAttrs {
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(indent + "  " + attrInfo.Name)})
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenEqual, Bytes: []byte(" = ")})
+		tokens = append(tokens, attrInfo.Attribute.Expr().BuildTokens(nil)...)
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
+	}
+
+	// Then, handle nested blocks - group by type
+	blocksByType := make(map[string][]*hclwrite.Block)
+	for _, block := range body.Blocks() {
+		blocksByType[block.Type()] = append(blocksByType[block.Type()], block)
+	}
+
+	// Sort block types for deterministic output
+	var blockTypes []string
+	for blockType := range blocksByType {
+		blockTypes = append(blockTypes, blockType)
+	}
+	sort.Strings(blockTypes)
+
+	// Process each block type in sorted order
+	for _, blockType := range blockTypes {
+		blocks := blocksByType[blockType]
+		// Check if this block type should always be an array (even with 1 element)
+		forceArray := alwaysArrayFields != nil && alwaysArrayFields[blockType]
+
+		if len(blocks) == 1 && !forceArray {
+			// MaxItems:1 - single nested object
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(indent + "  " + blockType)})
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenEqual, Bytes: []byte(" = ")})
+			nestedTokens := buildObjectFromBlockRecursiveWithArrays(blocks[0].Body(), indentLevel+1, alwaysArrayFields)
+			tokens = append(tokens, nestedTokens...)
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
+		} else {
+			// TypeList - array of objects (or forceArray is true)
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(indent + "  " + blockType)})
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenEqual, Bytes: []byte(" = ")})
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")})
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
+
+			for i, block := range blocks {
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(indent + "    ")})
+				nestedTokens := buildObjectFromBlockRecursiveWithArrays(block.Body(), indentLevel+1, alwaysArrayFields)
+				tokens = append(tokens, nestedTokens...)
+				if i < len(blocks)-1 {
+					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenComma, Bytes: []byte(",")})
+				}
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
+			}
+
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(indent + "  ]")})
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
+		}
+	}
+
+	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(indent + "}")})
+	return tokens
 }
 
 // AttributeTransform defines how to transform attributes from an original block to a new block
