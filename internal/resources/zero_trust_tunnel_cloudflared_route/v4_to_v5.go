@@ -19,8 +19,9 @@ type V4ToV5Migrator struct{}
 
 func NewV4ToV5Migrator() transform.ResourceTransformer {
 	migrator := &V4ToV5Migrator{}
-	// Register the OLD (v4) resource name
+	// Register BOTH v4 resource names (deprecated and preferred)
 	internal.RegisterMigrator("cloudflare_tunnel_route", "v4", "v5", migrator)
+	internal.RegisterMigrator("cloudflare_zero_trust_tunnel_route", "v4", "v5", migrator)
 	return migrator
 }
 
@@ -30,8 +31,8 @@ func (m *V4ToV5Migrator) GetResourceType() string {
 }
 
 func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
-	// Check for the OLD (v4) resource name
-	return resourceType == "cloudflare_tunnel_route"
+	// Handle both the deprecated name and the preferred v4 name
+	return resourceType == "cloudflare_tunnel_route" || resourceType == "cloudflare_zero_trust_tunnel_route"
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
@@ -46,15 +47,22 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-	// Rename resource type from cloudflare_tunnel_route to cloudflare_zero_trust_tunnel_cloudflared_route
-	tfhcl.RenameResourceType(block, "cloudflare_tunnel_route", "cloudflare_zero_trust_tunnel_cloudflared_route")
+	resourceType := tfhcl.GetResourceType(block)
+
+	// Only rename if it's the deprecated cloudflare_tunnel_route
+	// cloudflare_zero_trust_tunnel_route only needs the _cloudflared suffix added
+	if resourceType == "cloudflare_tunnel_route" {
+		tfhcl.RenameResourceType(block, "cloudflare_tunnel_route", "cloudflare_zero_trust_tunnel_cloudflared_route")
+	} else if resourceType == "cloudflare_zero_trust_tunnel_route" {
+		tfhcl.RenameResourceType(block, "cloudflare_zero_trust_tunnel_route", "cloudflare_zero_trust_tunnel_cloudflared_route")
+	}
 
 	// All fields remain the same - no field renames or transformations needed
 	// Fields: account_id, tunnel_id, network, comment, virtual_network_id
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: true,
+		RemoveOriginal: false,
 	}, nil
 }
 
