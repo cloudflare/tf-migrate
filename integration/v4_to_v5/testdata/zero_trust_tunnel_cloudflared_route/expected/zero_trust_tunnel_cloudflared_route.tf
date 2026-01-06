@@ -139,10 +139,44 @@ variable "is_production" {
 # Basic Resource Configurations
 # ========================================
 
+# Test Case 1: Minimal resource referencing minimal tunnel
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "minimal" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.minimal.id
+  network    = "10.0.0.0/16"
+}
 
+# Test Case 2: Full resource with all optional fields referencing local_config tunnel
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "full" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.local_config.id
+  network    = "172.16.0.0/12"
+  comment    = "Production tunnel route for internal services"
+}
 
+# Test Case 3: IPv6 network with comment referencing cloudflare_config tunnel
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "ipv6" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.cloudflare_config.id
+  network    = "2001:db8::/32"
+  comment    = "IPv6 tunnel route"
+}
 
+# Test Case 4: Empty comment referencing with_vars tunnel
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "empty_comment" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.with_vars.id
+  network    = "192.168.0.0/16"
+  comment    = ""
+}
 
+# Test Case 5: Special characters in comment referencing primary tunnel
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "special_chars" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.primary.id
+  network    = "10.1.0.0/16"
+  comment    = "Route with special chars: !@#$%^&*() and unicode: éçà"
+}
 
 # ========================================
 # Variable-Driven Configurations
@@ -187,6 +221,15 @@ locals {
 # Production-Like Patterns
 # ========================================
 
+# Pattern 1: for_each with map referencing applications tunnels
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "environment_routes" {
+  for_each = var.tunnel_networks
+
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.applications[each.key == "staging" ? "api" : "web"].id
+  network    = each.value.network
+  comment    = "${each.key}: ${each.value.comment}"
+}
 
 # Pattern 2: for_each with set conversion referencing environment tunnels
 variable "additional_networks" {
@@ -209,6 +252,14 @@ variable "additional_networks" {
   ]
 }
 
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "additional_routes" {
+  for_each = { for idx, net in var.additional_networks : net.network => net }
+
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.environments[each.value.env].id
+  network    = each.value.network
+  comment    = each.value.comment
+}
 
 # Pattern 3: Count-based resources referencing replicas
 variable "subnet_count" {
@@ -216,6 +267,14 @@ variable "subnet_count" {
   default = 3
 }
 
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "subnet_routes" {
+  count = var.subnet_count
+
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.replicas[count.index].id
+  network    = "10.${count.index + 50}.0.0/24"
+  comment    = "Subnet ${count.index + 1} route"
+}
 
 # Pattern 4: Conditional resources using locals and backup tunnel
 locals {
@@ -226,17 +285,74 @@ locals {
   ] : []
 }
 
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "backup_routes" {
+  for_each = toset(local.backup_networks)
+
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.backup[0].id
+  network    = each.value
+  comment    = "Backup route for ${each.value}"
+}
 
 # ========================================
 # Edge Cases and Complex Scenarios
 # ========================================
 
+# Test Case 6: Private IPv4 ranges referencing secondary tunnel
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "private_ranges" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.secondary.id
+  network    = "172.31.0.0/16"
+  comment    = "Private range 172.16.0.0/12"
+}
 
+# Test Case 7: Large CIDR (small subnet) referencing protected tunnel
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "small_subnet" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.protected.id
+  network    = "192.168.1.0/28"
+  comment    = "Small subnet /28"
+}
 
+# Test Case 8: IPv6 with virtual network referencing conditional_config tunnel
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "ipv6_with_vnet" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.conditional_config.id
+  network    = "fd00::/8"
+  comment    = "IPv6 private network"
+}
 
+# Test Case 9: Multiple character encodings in comment referencing encoded tunnel
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "unicode_comment" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.encoded.id
+  network    = "10.250.0.0/16"
+  comment    = "Multi-language: English, Español, 中文, Русский, العربية"
+}
 
+# Test Case 10: Comment at max length (100 chars) referencing interpolated tunnel
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "long_comment" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.interpolated.id
+  network    = "10.255.0.0/16"
+  comment    = "This comment is exactly one hundred characters long to test the maximum API length constraint limit"
+}
 
+# Test Case 11: Computed values with expressions referencing complex_config tunnel
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "computed_values" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.complex_config.id
+  network    = "10.60.0.0/16"
+  comment    = "Computed from locals"
+}
 
+# Test Case 12: Route with cross-reference to tunnel name
+resource "cloudflare_zero_trust_tunnel_cloudflared_route" "cross_reference" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.minimal.id
+  network    = "10.245.0.0/16"
+  comment    = "Route for tunnel: ${cloudflare_zero_trust_tunnel_cloudflared.minimal.name}"
+}
 # Basic tunnel with minimal configuration
 resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
   account_id    = var.cloudflare_account_id
@@ -347,120 +463,4 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "complex_config" {
   name          = "route-${var.is_production ? "prod" : "dev"}-complex-tunnel"
   config_src    = var.is_production ? "cloudflare" : "local"
   tunnel_secret = base64encode("complex-tunnel-secret-32-bytes-long")
-}
-# Test Case 1: Minimal resource referencing minimal tunnel
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "minimal" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.minimal.id
-  network    = "10.0.0.0/16"
-}
-# Test Case 2: Full resource with all optional fields referencing local_config tunnel
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "full" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.local_config.id
-  network    = "172.16.0.0/12"
-  comment    = "Production tunnel route for internal services"
-}
-# Test Case 3: IPv6 network with comment referencing cloudflare_config tunnel
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "ipv6" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.cloudflare_config.id
-  network    = "2001:db8::/32"
-  comment    = "IPv6 tunnel route"
-}
-# Test Case 4: Empty comment referencing with_vars tunnel
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "empty_comment" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.with_vars.id
-  network    = "192.168.0.0/16"
-  comment    = ""
-}
-# Test Case 5: Special characters in comment referencing primary tunnel
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "special_chars" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.primary.id
-  network    = "10.1.0.0/16"
-  comment    = "Route with special chars: !@#$%^&*() and unicode: éçà"
-}
-# Pattern 1: for_each with map referencing applications tunnels
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "environment_routes" {
-  for_each = var.tunnel_networks
-
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.applications[each.key == "staging" ? "api" : "web"].id
-  network    = each.value.network
-  comment    = "${each.key}: ${each.value.comment}"
-}
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "additional_routes" {
-  for_each = { for idx, net in var.additional_networks : net.network => net }
-
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.environments[each.value.env].id
-  network    = each.value.network
-  comment    = each.value.comment
-}
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "subnet_routes" {
-  count = var.subnet_count
-
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.replicas[count.index].id
-  network    = "10.${count.index + 50}.0.0/24"
-  comment    = "Subnet ${count.index + 1} route"
-}
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "backup_routes" {
-  for_each = toset(local.backup_networks)
-
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.backup[0].id
-  network    = each.value
-  comment    = "Backup route for ${each.value}"
-}
-# Test Case 6: Private IPv4 ranges referencing secondary tunnel
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "private_ranges" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.secondary.id
-  network    = "172.31.0.0/16"
-  comment    = "Private range 172.16.0.0/12"
-}
-# Test Case 7: Large CIDR (small subnet) referencing protected tunnel
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "small_subnet" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.protected.id
-  network    = "192.168.1.0/28"
-  comment    = "Small subnet /28"
-}
-# Test Case 8: IPv6 with virtual network referencing conditional_config tunnel
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "ipv6_with_vnet" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.conditional_config.id
-  network    = "fd00::/8"
-  comment    = "IPv6 private network"
-}
-# Test Case 9: Multiple character encodings in comment referencing encoded tunnel
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "unicode_comment" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.encoded.id
-  network    = "10.250.0.0/16"
-  comment    = "Multi-language: English, Español, 中文, Русский, العربية"
-}
-# Test Case 10: Comment at max length (100 chars) referencing interpolated tunnel
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "long_comment" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.interpolated.id
-  network    = "10.255.0.0/16"
-  comment    = "This comment is exactly one hundred characters long to test the maximum API length constraint limit"
-}
-# Test Case 11: Computed values with expressions referencing complex_config tunnel
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "computed_values" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.complex_config.id
-  network    = "10.60.0.0/16"
-  comment    = "Computed from locals"
-}
-# Test Case 12: Route with cross-reference to tunnel name
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "cross_reference" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.minimal.id
-  network    = "10.245.0.0/16"
-  comment    = "Route for tunnel: ${cloudflare_zero_trust_tunnel_cloudflared.minimal.name}"
 }

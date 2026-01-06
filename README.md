@@ -196,41 +196,117 @@ Each version migration has its own test suite with explicit migration registrati
 
 #### End-to-End Tests
 
-E2E tests validate the complete migration workflow with real Cloudflare resources. These tests:
-1. Apply v4 Terraform configs to create real infrastructure
-2. Run the migration tool to generate v5 configs
-3. Apply v5 configs and verify no changes are needed
-4. Compare v4 and v5 state to ensure equivalence
+E2E tests validate the complete migration workflow with real Cloudflare resources using a Go-based CLI test runner.
 
-**Requirements:**
-- Cloudflare API credentials for "Terraform Test" account (set as `CLOUDFLARE_API_KEY` and `CLOUDFLARE_EMAIL`)
-- Terraform installed
+**What E2E Tests Do:**
+1. **Init**: Sync test resources from integration testdata to `e2e/tf/v4/`
+2. **V4 Apply**: Create real infrastructure using v4 provider
+3. **Migrate**: Run tf-migrate to convert v4 → v5 configurations and state
+4. **V5 Apply**: Apply v5 configs to verify compatibility with existing infrastructure
+5. **Drift Check**: Verify v5 plan shows "No changes" (validates successful migration)
 
-```bash
-# Run all E2E tests
-./scripts/run-e2e-tests
+**Key Features:**
+- ✅ **Credential sanitization** - Prevents API keys/secrets from leaking in logs
+- ✅ **Drift detection** - Configurable exemptions via `e2e/drift-exemptions.yaml`
+- ✅ **Colored output** - Clear success/failure indicators
+- ✅ **Resource filtering** - Test specific resources: `--resources custom_pages,load_balancer_monitor`
+- ✅ **88 unit tests** - Comprehensive coverage of the e2e-runner itself
 
-# Run E2E tests for specific resources only
-./scripts/run-e2e-tests --resources dns_record,api_token --apply-exemptions
-```
+**Prerequisites:**
 
-**Output:**
-- Test logs saved to `e2e/tmp/*.log`
-- State snapshots saved to `e2e/tmp/*-state.json`
-
-**Cleaning State:**
-
-If you need to remove specific modules from the remote Terraform state (useful for re-running failed tests or cleaning up partial deployments):
+Set required environment variables:
 
 ```bash
-# Remove specific modules from remote state
-./scripts/clean-state-modules.sh dns,healthcheck,zone
+export CLOUDFLARE_ACCOUNT_ID="your-account-id"
+export CLOUDFLARE_ZONE_ID="your-zone-id"
+export CLOUDFLARE_DOMAIN="your-test-domain.com"
 
-# The script will:
-# 1. Build the latest e2e-runner binary
-# 2. Pull state from R2
-# 3. Filter out specified modules
-# 4. Push cleaned state back to R2
+# Authentication (choose one)
+export CLOUDFLARE_API_TOKEN="your-api-token"  # Recommended
+# OR
+export CLOUDFLARE_EMAIL="your-email@example.com"
+export CLOUDFLARE_API_KEY="your-api-key"
 ```
 
-**Note:** This directly modifies the remote Terraform state. Use with caution and only in test environments.
+**Quick Start:**
+
+```bash
+# Build binaries and run full E2E test suite
+./scripts/run-e2e-tests.sh --apply-exemptions
+
+# Or build and run manually
+make build-all
+./bin/e2e-runner run --apply-exemptions
+```
+
+**CLI Commands:**
+
+```bash
+# Run full e2e test suite
+./bin/e2e-runner run
+
+# Test specific resources only
+./bin/e2e-runner run --resources custom_pages,load_balancer_monitor
+
+# Run with drift exemptions applied
+./bin/e2e-runner run --apply-exemptions
+
+# Initialize test resources from integration testdata
+./bin/e2e-runner init
+./bin/e2e-runner init --resources dns_record
+
+# Run migration only
+./bin/e2e-runner migrate
+./bin/e2e-runner migrate --resources zero_trust_tunnel_cloudflared_route
+
+# Bootstrap: Migrate local state to R2 remote backend (one-time setup)
+./bin/e2e-runner bootstrap
+
+# Clean up: Remove modules from remote state
+./bin/e2e-runner clean --modules module.dns_record,module.load_balancer
+```
+
+**Testing the E2E Runner:**
+
+```bash
+# Run e2e-runner's own unit tests (88 tests)
+make test-e2e
+
+# Run all tests (tf-migrate + e2e-runner)
+make test
+```
+
+**Drift Exemptions:**
+
+Configure acceptable drift in `e2e/drift-exemptions.yaml`:
+
+```yaml
+dns_record:
+  - "created_on"      # API-computed timestamp
+  - "modified_on"     # API-computed timestamp
+  - "metadata"        # Provider-managed field
+```
+
+Use `--apply-exemptions` to ignore these known drifts during testing.
+
+**Project Structure:**
+
+```
+cmd/
+├── tf-migrate/       # Main migration binary
+└── e2e-runner/       # E2E test runner binary
+internal/
+├── resources/        # Migration implementations
+└── e2e-runner/       # E2E runner implementation (88 unit tests)
+e2e/
+├── drift-exemptions.yaml
+├── tf/v4/           # Test fixtures
+└── migrated-v4_to_v5/  # Migration output
+bin/                 # Built binaries
+```
+
+**CI/CD:**
+
+E2E tests run automatically in GitHub Actions on push to `main` or manual workflow dispatch. See `.github/workflows/e2e-tests.yml`.
+
+**⚠️ Important:** E2E tests create and destroy real Cloudflare resources. Always use a dedicated test account, never production infrastructure.
