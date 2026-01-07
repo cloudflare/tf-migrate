@@ -35,6 +35,7 @@ import (
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_policy"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
+	_ "github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared_config"
 	_ "github.com/cloudflare/tf-migrate/internal/resources/zone_setting"
 )
 
