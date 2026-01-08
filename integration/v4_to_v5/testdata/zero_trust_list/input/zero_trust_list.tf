@@ -16,7 +16,7 @@ variable "cloudflare_domain" {
 # Resource-specific variables with defaults
 variable "list_prefix" {
   type    = string
-  default = "test"
+  default = "cftftest"
 }
 
 variable "enable_security_lists" {

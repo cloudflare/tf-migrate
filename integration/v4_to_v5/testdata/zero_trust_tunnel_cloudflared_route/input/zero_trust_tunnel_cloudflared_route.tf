@@ -70,7 +70,7 @@ locals {
 # Tunnel using variables and locals
 resource "cloudflare_tunnel" "with_vars" {
   account_id = local.common_account_id
-  name       = "route-${local.full_tunnel_name}"
+  name       = "${local.name_prefix}-route-${local.full_tunnel_name}"
   secret     = base64encode(local.tunnel_secret_base)
   config_src = var.config_source
 }
@@ -101,7 +101,7 @@ resource "cloudflare_tunnel" "applications" {
   for_each = var.application_tunnels
 
   account_id = var.cloudflare_account_id
-  name       = "route-${each.key}-tunnel"
+  name       = "${local.name_prefix}-route-${each.key}-tunnel"
   secret     = base64encode(each.value.secret)
   config_src = each.value.config_src
 }
@@ -136,7 +136,7 @@ resource "cloudflare_tunnel" "environments" {
   for_each = { for idx, tunnel in var.environment_tunnels : tunnel.name => tunnel }
 
   account_id = var.cloudflare_account_id
-  name       = "route-${each.value.name}-env-tunnel"
+  name       = "${local.name_prefix}-route-${each.value.name}-env-tunnel"
   secret     = base64encode(each.value.secret)
   config_src = each.value.config_src
 }
@@ -151,7 +151,7 @@ resource "cloudflare_tunnel" "replicas" {
   count = var.replica_count
 
   account_id = var.cloudflare_account_id
-  name       = "route-replica-tunnel-${count.index + 1}"
+  name       = "${local.name_prefix}-route-replica-tunnel-${count.index + 1}"
   secret     = base64encode("replica-${count.index}-secret-32-bytes-long")
   config_src = "local"
 }
@@ -181,7 +181,7 @@ resource "cloudflare_tunnel" "primary" {
 
 resource "cloudflare_tunnel" "secondary" {
   account_id = var.cloudflare_account_id
-  name       = "${cloudflare_tunnel.primary.name}-secondary"
+  name       = "${local.name_prefix}-${cloudflare_tunnel.primary.name}-secondary"
   secret     = base64encode("secondary-tunnel-secret-32-bytes-ok")
   config_src = "cloudflare"
 }
@@ -223,7 +223,7 @@ resource "cloudflare_tunnel" "encoded" {
 # Tunnel using string interpolation
 resource "cloudflare_tunnel" "interpolated" {
   account_id = var.cloudflare_account_id
-  name       = "route-${var.tunnel_prefix}-interpolated-${local.tunnel_suffix}"
+  name       = "${local.name_prefix}-route-${var.tunnel_prefix}-interpolated-${local.tunnel_suffix}"
   secret     = base64encode("interpolated-secret-32-bytes-or-more")
   config_src = "local"
 }
@@ -236,7 +236,7 @@ variable "is_production" {
 
 resource "cloudflare_tunnel" "complex_config" {
   account_id = var.cloudflare_account_id
-  name       = "route-${var.is_production ? "prod" : "dev"}-complex-tunnel"
+  name       = "${local.name_prefix}-route-${var.is_production ? "prod" : "dev"}-complex-tunnel"
   secret     = base64encode("complex-tunnel-secret-32-bytes-long")
   config_src = var.is_production ? "cloudflare" : "local"
 }

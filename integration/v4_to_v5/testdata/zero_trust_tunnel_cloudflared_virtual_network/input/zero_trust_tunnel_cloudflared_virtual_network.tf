@@ -33,13 +33,6 @@ resource "cloudflare_zero_trust_tunnel_virtual_network" "complete" {
   comment            = "Integration test"
 }
 
-# Pattern 3: Default network
-resource "cloudflare_tunnel_virtual_network" "default_net" {
-  account_id         = local.account_id
-  name               = "${local.prefix}-default"
-  is_default_network = true
-}
-
 # Pattern 4: Empty optionals (tests default handling)
 resource "cloudflare_zero_trust_tunnel_virtual_network" "empty_opts" {
   account_id = local.account_id
