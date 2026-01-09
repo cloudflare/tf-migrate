@@ -24,6 +24,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/notification_policy_webhooks"
 	"github.com/cloudflare/tf-migrate/internal/resources/page_rule"
 	"github.com/cloudflare/tf-migrate/internal/resources/pages_project"
+	"github.com/cloudflare/tf-migrate/internal/resources/queue"
 	"github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
 	"github.com/cloudflare/tf-migrate/internal/resources/regional_hostname"
 	"github.com/cloudflare/tf-migrate/internal/resources/ruleset"
@@ -90,6 +91,7 @@ func RegisterAllMigrations() {
 	notification_policy_webhooks.NewV4ToV5Migrator()
 	page_rule.NewV4ToV5Migrator()
 	pages_project.NewV4ToV5Migrator()
+	queue.NewV4ToV5Migrator()
 	r2_bucket.NewV4ToV5Migrator()
 	regional_hostname.NewV4ToV5Migrator()
 	ruleset.NewV4ToV5Migrator()
