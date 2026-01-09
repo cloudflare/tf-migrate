@@ -7,11 +7,7 @@ import (
 	"github.com/cloudflare/tf-migrate/integration"
 )
 
-// TestMain explicitly registers migrations for this version path
 func TestMain(m *testing.M) {
-	// Explicitly register the migrations for v4 to v5
-
-	// Run the tests
 	code := m.Run()
 	os.Exit(code)
 }
