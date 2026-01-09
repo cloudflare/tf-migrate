@@ -57,7 +57,7 @@ resource "cloudflare_workers_kv_namespace" "test_kv_multiple" {
 
 resource "cloudflare_r2_bucket" "test_r2" {
   account_id = var.cloudflare_account_id
-  name       = "cftftest-r2-bucket"
+  name       = "cftftest-workers-script-r2-bucket"
 }
 
 # ========================================

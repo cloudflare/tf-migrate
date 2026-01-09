@@ -221,7 +221,7 @@ resource "cloudflare_zero_trust_access_service_token" "without_deprecated" {
 # Resource with very large client_secret_version
 resource "cloudflare_zero_trust_access_service_token" "large_version" {
   account_id                        = var.cloudflare_account_id
-  name                              = "large-version-token"
+  name                              = "${local.name_prefix}-large-version-token"
   duration                          = "8760h"
   min_days_for_renewal              = 30
   client_secret_version             = 999
@@ -231,7 +231,7 @@ resource "cloudflare_zero_trust_access_service_token" "large_version" {
 # Resource with special characters in name
 resource "cloudflare_zero_trust_access_service_token" "special_chars" {
   account_id           = var.cloudflare_account_id
-  name                 = "token-with-special_chars-123"
+  name                 = "${local.name_prefix}-token-with-special_chars-123"
   duration             = "8760h"
   min_days_for_renewal = 30
 }
@@ -239,7 +239,7 @@ resource "cloudflare_zero_trust_access_service_token" "special_chars" {
 # Resource with minimum duration
 resource "cloudflare_zero_trust_access_service_token" "min_duration" {
   account_id           = var.cloudflare_account_id
-  name                 = "min-duration-token"
+  name                 = "${local.name_prefix}-min-duration-token"
   duration             = "8760h"  # Changed from 30m to valid minimum value
   min_days_for_renewal = 1
 }
@@ -247,7 +247,7 @@ resource "cloudflare_zero_trust_access_service_token" "min_duration" {
 # Resource with maximum duration
 resource "cloudflare_zero_trust_access_service_token" "max_duration" {
   account_id           = var.cloudflare_account_id
-  name                 = "max-duration-token"
+  name                 = "${local.name_prefix}-max-duration-token"
   duration             = "87600h"  # 10 years
   min_days_for_renewal = 365
 }

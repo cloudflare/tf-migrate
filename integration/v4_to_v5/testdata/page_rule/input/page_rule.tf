@@ -18,7 +18,7 @@ variable "cloudflare_domain" {
 
 resource "cloudflare_page_rule" "minimal" {
   zone_id = var.cloudflare_zone_id
-  target  = "cf-tf-test.com/minimal"
+  target  = "cftftest.com/minimal"
   priority = 1
   status = "active"
 
@@ -29,7 +29,7 @@ resource "cloudflare_page_rule" "minimal" {
 
 resource "cloudflare_page_rule" "with_cache_ttl" {
   zone_id = var.cloudflare_zone_id
-  target  = "cf-tf-test.com/cached/*"
+  target  = "cftftest.com/cached/*"
   priority = 2
 
   actions {
@@ -47,12 +47,12 @@ resource "cloudflare_page_rule" "with_cache_ttl" {
 
 resource "cloudflare_page_rule" "with_forwarding" {
   zone_id = var.cloudflare_zone_id
-  target  = "cf-tf-test.com/old/*"
+  target  = "cftftest.com/old/*"
   priority = 3
 
   actions {
     forwarding_url {
-      url         = "https://cf-tf-test.com/new/$1"
+      url         = "https://cftftest.com/new/$1"
       status_code = 301
     }
   }
@@ -60,7 +60,7 @@ resource "cloudflare_page_rule" "with_forwarding" {
 
 resource "cloudflare_page_rule" "with_cache_key_fields" {
   zone_id = var.cloudflare_zone_id
-  target  = "cf-tf-test.com/api/*"
+  target  = "cftftest.com/api/*"
   priority = 4
 
   actions {
@@ -85,7 +85,7 @@ resource "cloudflare_page_rule" "with_cache_key_fields" {
 
 resource "cloudflare_page_rule" "with_deprecated_fields" {
   zone_id = var.cloudflare_zone_id
-  target  = "cf-tf-test.com/legacy/*"
+  target  = "cftftest.com/legacy/*"
   priority = 5
 
   actions {

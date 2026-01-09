@@ -12,10 +12,14 @@ variable "cloudflare_domain" {
   type        = string
 }
 
+locals {
+  name_prefix           = "cftftest"
+}
+
 # Pattern 1: Simple email selector
 resource "cloudflare_access_group" "simple_email" {
   account_id = var.cloudflare_account_id
-  name       = "Simple Email Group"
+  name       = "${local.name_prefix} Simple Email Group"
 
   include {
     email = ["user1@example.com"]
@@ -25,7 +29,7 @@ resource "cloudflare_access_group" "simple_email" {
 # Pattern 2: Multiple selector types
 resource "cloudflare_access_group" "multiple_selectors" {
   account_id = var.cloudflare_account_id
-  name       = "Multiple Selectors Group"
+  name       = "${local.name_prefix} Multiple Selectors Group"
 
   include {
     email = ["admin@example.com", "manager@example.com"]
@@ -42,7 +46,7 @@ resource "cloudflare_access_group" "foreach_map" {
   }
 
   account_id = var.cloudflare_account_id
-  name       = each.value
+  name       = format("%s %s", local.name_prefix, each.value)
 
   include {
     email_domain = ["example.com"]
@@ -54,7 +58,7 @@ resource "cloudflare_access_group" "foreach_set" {
   for_each = toset(["contractors", "vendors", "partners"])
 
   account_id = var.cloudflare_account_id
-  name       = "${each.value}-group"
+  name       = "${local.name_prefix}-${each.value}-group"
 
   include {
     ip = ["192.0.2.1/32"]
@@ -66,7 +70,7 @@ resource "cloudflare_access_group" "count_based" {
   count = 3
 
   account_id = var.cloudflare_account_id
-  name       = "Count Group ${count.index}"
+  name       = "${local.name_prefix} Count Group ${count.index}"
 
   include {
     ip = ["10.${count.index}.0.0/16"]
@@ -78,7 +82,7 @@ resource "cloudflare_access_group" "conditional" {
   count = var.cloudflare_account_id != "" ? 1 : 0
 
   account_id = var.cloudflare_account_id
-  name       = "Conditional Group"
+  name       = "${local.name_prefix} Conditional Group"
 
   include {
     everyone = true
@@ -88,7 +92,7 @@ resource "cloudflare_access_group" "conditional" {
 # Pattern 7: Boolean selectors
 resource "cloudflare_access_group" "booleans" {
   account_id = var.cloudflare_account_id
-  name       = "Boolean Selectors Group"
+  name       = "${local.name_prefix} Boolean Selectors Group"
 
   include {
     everyone = true
@@ -102,7 +106,7 @@ resource "cloudflare_access_group" "booleans" {
 # Pattern 8: Email domain selector
 resource "cloudflare_access_group" "email_domains" {
   account_id = var.cloudflare_account_id
-  name       = "Email Domain Group"
+  name       = "${local.name_prefix} Email Domain Group"
 
   include {
     email_domain = ["company.com", "partner.com", "vendor.com"]
@@ -112,7 +116,7 @@ resource "cloudflare_access_group" "email_domains" {
 # Pattern 9: Geo selector
 resource "cloudflare_access_group" "geo" {
   account_id = var.cloudflare_account_id
-  name       = "Geo Group"
+  name       = "${local.name_prefix} Geo Group"
 
   include {
     geo = ["US", "CA", "GB"]
@@ -122,7 +126,7 @@ resource "cloudflare_access_group" "geo" {
 # Pattern 10: All three rule types
 resource "cloudflare_access_group" "all_rules" {
   account_id = var.cloudflare_account_id
-  name       = "All Rules Group"
+  name       = "${local.name_prefix} All Rules Group"
 
   include {
     email = ["user@example.com"]
@@ -140,7 +144,7 @@ resource "cloudflare_access_group" "all_rules" {
 # Pattern 11: Multiple selectors in each rule
 resource "cloudflare_access_group" "complex" {
   account_id = var.cloudflare_account_id
-  name       = "Complex Group"
+  name       = "${local.name_prefix} Complex Group"
 
   include {
     email        = ["admin@example.com", "manager@example.com"]
@@ -157,7 +161,7 @@ resource "cloudflare_access_group" "complex" {
 # Pattern 12: Service token selector
 resource "cloudflare_access_group" "service_tokens" {
   account_id = var.cloudflare_account_id
-  name       = "Service Token Group"
+  name       = "${local.name_prefix} Service Token Group"
 
   include {
     any_valid_service_token = true
@@ -167,7 +171,7 @@ resource "cloudflare_access_group" "service_tokens" {
 # Pattern 13: Group and email list selectors
 resource "cloudflare_access_group" "lists" {
   account_id = var.cloudflare_account_id
-  name       = "Lists Group"
+  name       = "${local.name_prefix} Lists Group"
 
   include {
     ip         = ["192.0.2.10/32", "192.0.2.11/32", "198.51.100.1/32"]
@@ -179,7 +183,7 @@ resource "cloudflare_access_group" "lists" {
 # Pattern 14: Login method and device posture
 resource "cloudflare_access_group" "auth_methods" {
   account_id = var.cloudflare_account_id
-  name       = "Auth Methods Group"
+  name       = "${local.name_prefix} Auth Methods Group"
 
   include {
     login_method   = ["method-id-1", "method-id-2"]
@@ -190,7 +194,7 @@ resource "cloudflare_access_group" "auth_methods" {
 # Pattern 15: Common name selector
 resource "cloudflare_access_group" "common_name" {
   account_id = var.cloudflare_account_id
-  name       = "Common Name Group"
+  name       = "${local.name_prefix} Common Name Group"
 
   include {
     common_name = "client.example.com"
@@ -200,7 +204,7 @@ resource "cloudflare_access_group" "common_name" {
 # Pattern 16: Auth method selector
 resource "cloudflare_access_group" "auth_method_selector" {
   account_id = var.cloudflare_account_id
-  name       = "Auth Method Selector Group"
+  name       = "${local.name_prefix} Auth Method Selector Group"
 
   include {
     auth_method = "email"
@@ -210,7 +214,7 @@ resource "cloudflare_access_group" "auth_method_selector" {
 # Pattern 17: Lifecycle meta-arguments
 resource "cloudflare_access_group" "lifecycle_test" {
   account_id = var.cloudflare_account_id
-  name       = "Lifecycle Test Group"
+  name       = "${local.name_prefix} Lifecycle Test Group"
 
   include {
     email = ["lifecycle@example.com"]
@@ -224,7 +228,7 @@ resource "cloudflare_access_group" "lifecycle_test" {
 # Pattern 18: Terraform functions
 resource "cloudflare_access_group" "functions" {
   account_id = var.cloudflare_account_id
-  name       = join("-", ["Function", "Test", "Group"])
+  name       = join("-", [local.name_prefix, "Function", "Test", "Group"])
 
   include {
     email = [for i in range(2) : "user${i}@example.com"]
@@ -234,7 +238,7 @@ resource "cloudflare_access_group" "functions" {
 # Pattern 20: Cross-resource references
 resource "cloudflare_access_group" "parent" {
   account_id = var.cloudflare_account_id
-  name       = "Parent Group"
+  name       = "${local.name_prefix} Parent Group"
 
   include {
     email = ["parent@example.com"]
@@ -243,7 +247,7 @@ resource "cloudflare_access_group" "parent" {
 
 resource "cloudflare_access_group" "child" {
   account_id = var.cloudflare_account_id
-  name       = "Child Group - References ${cloudflare_access_group.parent.name}"
+  name       = "${local.name_prefix} Child Group - References ${cloudflare_access_group.parent.name}"
 
   include {
     email = ["child@example.com"]
