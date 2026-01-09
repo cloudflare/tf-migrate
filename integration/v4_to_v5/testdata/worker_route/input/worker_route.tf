@@ -26,13 +26,13 @@ locals {
 
   # Test data for routes
   api_routes = {
-    api     = "api.cf-tf-test.com/*"
-    graphql = "graphql.cf-tf-test.com/*"
+    api     = "cftftest-api.cf-tf-test.com/*"
+    graphql = "cftftest-graphql.cf-tf-test.com/*"
   }
 
   admin_patterns = [
-    "admin.cf-tf-test.com/*",
-    "manage.cf-tf-test.com/*",
+    "cftftest-admin.cf-tf-test.com/*",
+    "cftftest-manage.cf-tf-test.com/*",
   ]
 }
 
