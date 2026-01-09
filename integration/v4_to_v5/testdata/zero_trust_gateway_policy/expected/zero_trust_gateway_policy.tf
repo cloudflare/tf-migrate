@@ -53,7 +53,7 @@ variable "policy_configs" {
 locals {
   name_prefix               = "cftftest"
   common_account_id         = var.cloudflare_account_id
-  policy_name_prefix        = "${var.policy_prefix}-policy"
+  policy_name_prefix        = "${local.name_prefix}-${var.policy_prefix}-policy"
   dns_filter                = ["dns"]
   http_filter               = ["http"]
   l4_filter                 = ["l4"]
@@ -289,9 +289,9 @@ resource "cloudflare_zero_trust_gateway_policy" "with_join" {
 # 20. Policy using string interpolation
 resource "cloudflare_zero_trust_gateway_policy" "with_interpolation" {
   account_id  = var.cloudflare_account_id
-  name        = "Policy for account ${var.cloudflare_account_id}"
+  name        = "${local.name_prefix} Policy for account ${var.cloudflare_account_id}"
   description = "Description with ${local.policy_name_prefix} interpolation"
-  precedence  = 1100
+  precedence  = 1200
   action      = "allow"
   enabled     = true
   filters     = ["http"]

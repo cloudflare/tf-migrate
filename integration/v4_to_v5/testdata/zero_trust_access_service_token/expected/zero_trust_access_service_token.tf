@@ -209,7 +209,7 @@ resource "cloudflare_zero_trust_access_service_token" "without_deprecated" {
 # Resource with very large client_secret_version
 resource "cloudflare_zero_trust_access_service_token" "large_version" {
   account_id                        = var.cloudflare_account_id
-  name                              = "large-version-token"
+  name                              = "${local.name_prefix}-large-version-token"
   duration                          = "8760h"
   client_secret_version             = 999
   previous_client_secret_expires_at = "2025-12-31T23:59:59Z"
@@ -218,20 +218,20 @@ resource "cloudflare_zero_trust_access_service_token" "large_version" {
 # Resource with special characters in name
 resource "cloudflare_zero_trust_access_service_token" "special_chars" {
   account_id = var.cloudflare_account_id
-  name       = "token-with-special_chars-123"
+  name       = "${local.name_prefix}-token-with-special_chars-123"
   duration   = "8760h"
 }
 
 # Resource with minimum duration
 resource "cloudflare_zero_trust_access_service_token" "min_duration" {
   account_id = var.cloudflare_account_id
-  name       = "min-duration-token"
+  name       = "${local.name_prefix}-min-duration-token"
   duration   = "8760h" # Changed from 30m to valid minimum value
 }
 
 # Resource with maximum duration
 resource "cloudflare_zero_trust_access_service_token" "max_duration" {
   account_id = var.cloudflare_account_id
-  name       = "max-duration-token"
+  name       = "${local.name_prefix}-max-duration-token"
   duration   = "87600h" # 10 years
 }

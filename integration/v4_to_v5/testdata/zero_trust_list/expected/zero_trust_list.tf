@@ -287,7 +287,7 @@ resource "cloudflare_zero_trust_list" "with_join" {
 # 20. Resource using string interpolation
 resource "cloudflare_zero_trust_list" "with_interpolation" {
   account_id  = var.cloudflare_account_id
-  name        = "List for account ${var.cloudflare_account_id}"
+  name        = "${local.list_name_prefix} List for account ${var.cloudflare_account_id}"
   type        = "URL"
   description = "Description with ${local.list_name_prefix} interpolation"
   items = [

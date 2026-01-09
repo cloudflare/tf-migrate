@@ -24,25 +24,25 @@ variable "enable_conditional_provider" {
 locals {
   base_scopes      = ["openid", "profile", "email"]
   extended_scopes  = concat(local.base_scopes, ["groups"])
-  provider_prefix  = "test"
+  name_prefix      = "cftftest"
   encoded_value    = base64encode("test-value")
 
   # Map for for_each with maps pattern
   google_providers = {
     "prod" = {
-      name      = "Google OAuth Production"
+      name      = "${local.name_prefix} Google OAuth Production"
       client_id = "google-prod-client-id"
     }
     "staging" = {
-      name      = "Google OAuth Staging"
+      name      = "${local.name_prefix} Google OAuth Staging"
       client_id = "google-staging-client-id"
     }
     "dev" = {
-      name      = "Google OAuth Development"
+      name      = "${local.name_prefix} Google OAuth Development"
       client_id = "google-dev-client-id"
     }
     "qa" = {
-      name      = "Google OAuth QA"
+      name      = "${local.name_prefix} Google OAuth QA"
       client_id = "google-qa-client-id"
     }
   }
@@ -54,14 +54,14 @@ locals {
 # Test 1: onetimepin (no config block in v4, but will be required in v5)
 resource "cloudflare_access_identity_provider" "otp" {
   account_id = var.cloudflare_account_id
-  name       = "One-Time PIN"
+  name       = "${local.name_prefix} One-Time PIN"
   type       = "onetimepin"
 }
 
 # Test 2: GitHub OAuth (basic config)
 resource "cloudflare_access_identity_provider" "github" {
   account_id = var.cloudflare_account_id
-  name       = "GitHub OAuth"
+  name       = "${local.name_prefix} GitHub OAuth"
   type       = "github"
 
   config {
@@ -73,7 +73,7 @@ resource "cloudflare_access_identity_provider" "github" {
 # Test 3: Azure AD with SCIM (complex config)
 resource "cloudflare_access_identity_provider" "azure" {
   account_id = var.cloudflare_account_id
-  name       = "Azure AD SSO"
+  name       = "${local.name_prefix} Azure AD SSO"
   type       = "azureAD"
 
   config {
@@ -95,7 +95,7 @@ resource "cloudflare_access_identity_provider" "azure" {
 # Test 4: SAML with idp_public_cert (single string in v4, array in v5)
 resource "cloudflare_access_identity_provider" "saml" {
   account_id = var.cloudflare_account_id
-  name       = "SAML Provider"
+  name       = "${local.name_prefix} SAML Provider"
   type       = "saml"
 
   config {
@@ -109,7 +109,7 @@ resource "cloudflare_access_identity_provider" "saml" {
 # Test 5: OIDC with PKCE
 resource "cloudflare_access_identity_provider" "oidc" {
   account_id = var.cloudflare_account_id
-  name       = "Generic OIDC"
+  name       = "${local.name_prefix} Generic OIDC"
   type       = "oidc"
 
   config {
@@ -142,7 +142,7 @@ resource "cloudflare_access_identity_provider" "github_set" {
   for_each = local.github_environments
 
   account_id = var.cloudflare_account_id
-  name       = format("GitHub %s", title(each.key))
+  name       = format("%s GitHub %s", local.name_prefix, title(each.key))
   type       = "github"
 
   config {
@@ -156,7 +156,7 @@ resource "cloudflare_access_identity_provider" "github_enterprise" {
   count = 3
 
   account_id = var.cloudflare_account_id
-  name       = format("GitHub Enterprise %d", count.index + 1)
+  name       = format("%s GitHub Enterprise %d", local.name_prefix, count.index + 1)
   type       = "github"
 
   config {
@@ -170,7 +170,7 @@ resource "cloudflare_access_identity_provider" "conditional" {
   count = var.enable_conditional_provider ? 1 : 0
 
   account_id = var.cloudflare_account_id
-  name       = "Conditional Provider"
+  name       = "${local.name_prefix} Conditional Provider"
   type       = "github"
 
   config {
@@ -182,14 +182,14 @@ resource "cloudflare_access_identity_provider" "conditional" {
 # Test 17: cross-resource reference (references the otp provider)
 resource "cloudflare_access_identity_provider" "with_reference" {
   account_id = var.cloudflare_account_id
-  name       = format("Referenced Provider - %s", cloudflare_access_identity_provider.otp.id)
+  name       = format("%s Referenced Provider - %s", local.name_prefix, cloudflare_access_identity_provider.otp.id)
   type       = "onetimepin"
 }
 
 # Test 18: using Terraform functions (base64encode, concat)
 resource "cloudflare_access_identity_provider" "with_functions" {
   account_id = var.cloudflare_account_id
-  name       = format("%s Provider with Functions", local.provider_prefix)
+  name       = format("%s Provider with Functions", local.name_prefix)
   type       = "oidc"
 
   config {
@@ -205,7 +205,7 @@ resource "cloudflare_access_identity_provider" "with_functions" {
 # Test 19: with lifecycle meta-arguments
 resource "cloudflare_access_identity_provider" "with_lifecycle" {
   account_id = var.cloudflare_account_id
-  name       = "Provider with Lifecycle"
+  name       = "${local.name_prefix} Provider with Lifecycle"
   type       = "github"
 
   config {
@@ -222,7 +222,7 @@ resource "cloudflare_access_identity_provider" "with_lifecycle" {
 # Test 20: Azure AD with all optional fields
 resource "cloudflare_access_identity_provider" "azure_full" {
   account_id = var.cloudflare_account_id
-  name       = "Azure AD Full Configuration"
+  name       = "${local.name_prefix} Azure AD Full Configuration"
   type       = "azureAD"
 
   config {

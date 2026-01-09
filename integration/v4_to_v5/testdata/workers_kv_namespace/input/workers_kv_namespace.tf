@@ -162,7 +162,7 @@ resource "cloudflare_workers_kv_namespace" "from_locals" {
 # Variable-driven configuration
 resource "cloudflare_workers_kv_namespace" "variable_driven" {
   account_id = var.cloudflare_account_id
-  title      = "namespace-${var.cloudflare_zone_id}"
+  title      = "${local.name_prefix}-namespace-${var.cloudflare_zone_id}"
 }
 
 # Total instances: 23
