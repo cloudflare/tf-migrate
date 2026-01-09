@@ -115,8 +115,8 @@ resource "cloudflare_api_token" "advanced_condition_token" {
 # Test Case 5: API token with TTL fields
 resource "cloudflare_api_token" "time_limited_token" {
   name       = "${local.name_prefix} Time Limited Token"
-  expires_on = "2025-12-31T23:59:59Z"
-  not_before = "2024-01-01T00:00:00Z"
+  expires_on = "2135-12-31T23:59:59Z"
+  not_before = "2126-01-01T00:00:00Z"
 
   policies = [{
     effect = "allow"
@@ -147,8 +147,8 @@ resource "cloudflare_api_token" "empty_perms_token" {
 # Test Case 7: Full example with all features
 resource "cloudflare_api_token" "full_example" {
   name       = "${local.name_prefix} Full Example Token"
-  expires_on = "2035-12-31T23:59:59Z"
-  not_before = "2024-01-01T00:00:00Z"
+  expires_on = "2135-12-31T23:59:59Z"
+  not_before = "2126-01-01T00:00:00Z"
 
 
 
@@ -191,8 +191,8 @@ resource "cloudflare_api_token" "api_token_create" {
   name = "${local.name_prefix} api_token_create"
 
 
-  not_before = "2024-01-01T00:00:00Z"
-  expires_on = "2035-12-31T23:59:59Z"
+  not_before = "2126-01-01T00:00:00Z"
+  expires_on = "2135-12-31T23:59:59Z"
 
   policies = [{
     resources = jsonencode({
