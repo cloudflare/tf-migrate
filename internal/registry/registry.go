@@ -29,6 +29,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/regional_hostname"
 	"github.com/cloudflare/tf-migrate/internal/resources/ruleset"
 	"github.com/cloudflare/tf-migrate/internal/resources/snippet"
+	"github.com/cloudflare/tf-migrate/internal/resources/snippet_rules"
 	"github.com/cloudflare/tf-migrate/internal/resources/spectrum_application"
 	"github.com/cloudflare/tf-migrate/internal/resources/tiered_cache"
 	"github.com/cloudflare/tf-migrate/internal/resources/url_normalization_settings"
@@ -97,6 +98,7 @@ func RegisterAllMigrations() {
 	regional_hostname.NewV4ToV5Migrator()
 	ruleset.NewV4ToV5Migrator()
 	snippet.NewV4ToV5Migrator()
+	snippet_rules.NewV4ToV5Migrator()
 	tiered_cache.NewV4ToV5Migrator()
 	spectrum_application.NewV4ToV5Migrator()
 	url_normalization_settings.NewV4ToV5Migrator()
