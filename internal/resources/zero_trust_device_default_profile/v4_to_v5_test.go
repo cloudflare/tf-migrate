@@ -7,9 +7,8 @@ import (
 )
 
 func TestV4ToV5Transformation(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
-
 	t.Run("ConfigTransformation", func(t *testing.T) {
+		migrator := NewV4ToV5Migrator()
 		tests := []testhelpers.ConfigTestCase{
 			{
 				Name: "basic default profile with minimal fields",
@@ -23,7 +22,6 @@ resource "cloudflare_zero_trust_device_profiles" "example" {
 				Expected: `
 resource "cloudflare_zero_trust_device_default_profile" "example" {
   account_id                     = "f037e56e89293a057740de681ac9abbe"
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }`,
@@ -46,7 +44,6 @@ resource "cloudflare_zero_trust_device_default_profile" "example" {
     mode = "warp"
     port = 8080
   }
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }`,
@@ -89,7 +86,6 @@ resource "cloudflare_zero_trust_device_default_profile" "example" {
     mode = "warp"
     port = 8080
   }
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }`,
@@ -100,6 +96,7 @@ resource "cloudflare_zero_trust_device_default_profile" "example" {
 	})
 
 	t.Run("ConfigTransformation_EdgeCases", func(t *testing.T) {
+		migrator := NewV4ToV5Migrator()
 		tests := []testhelpers.ConfigTestCase{
 			{
 				Name: "old resource name - cloudflare_device_settings_policy",
@@ -113,7 +110,6 @@ resource "cloudflare_device_settings_policy" "example" {
 				Expected: `
 resource "cloudflare_zero_trust_device_default_profile" "example" {
   account_id                     = "f037e56e89293a057740de681ac9abbe"
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }`,
@@ -129,7 +125,6 @@ resource "cloudflare_zero_trust_device_profiles" "example" {
 				Expected: `
 resource "cloudflare_zero_trust_device_default_profile" "example" {
   account_id                     = "f037e56e89293a057740de681ac9abbe"
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }`,
@@ -148,7 +143,6 @@ resource "cloudflare_zero_trust_device_default_profile" "example" {
   service_mode_v2 = {
     port = 8080
   }
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }`,
@@ -171,14 +165,12 @@ resource "cloudflare_zero_trust_device_profiles" "second" {
 				Expected: `
 resource "cloudflare_zero_trust_device_default_profile" "first" {
   account_id                     = "f037e56e89293a057740de681ac9abbe"
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
 
 resource "cloudflare_zero_trust_device_default_profile" "second" {
   account_id                     = "d138e56e89293a057740de681ac9abbf"
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }`,
@@ -194,7 +186,6 @@ resource "cloudflare_zero_trust_device_profiles" "example" {
 				Expected: `
 resource "cloudflare_zero_trust_device_default_profile" "example" {
   account_id                     = var.cloudflare_account_id
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }`,
@@ -214,7 +205,6 @@ resource "cloudflare_zero_trust_device_profiles" "example" {
 				Expected: `
 resource "cloudflare_zero_trust_device_default_profile" "example" {
   account_id                     = "f037e56e89293a057740de681ac9abbe"
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }`,
@@ -224,7 +214,325 @@ resource "cloudflare_zero_trust_device_default_profile" "example" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
+	t.Run("ConfigTransformation_CustomProfile", func(t *testing.T) {
+		migrator := NewV4ToV5Migrator()
+		tests := []testhelpers.ConfigTestCase{
+			{
+				Name: "custom profile with match and precedence (no default field)",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Custom Profile"
+  description = "Custom device settings"
+  match       = "identity.email == \"user@example.com\""
+  precedence  = 100
+  enabled     = true
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_custom_profile" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Custom Profile"
+  description = "Custom device settings"
+  match       = "identity.email == \"user@example.com\""
+  precedence  = 1000
+}`,
+			},
+			{
+				Name: "custom profile with default=false",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Custom Profile"
+  description = "Custom device settings"
+  default     = false
+  match       = "identity.email == \"user@example.com\""
+  precedence  = 100
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_custom_profile" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Custom Profile"
+  description = "Custom device settings"
+  match       = "identity.email == \"user@example.com\""
+  precedence  = 1000
+}`,
+			},
+			{
+				Name: "custom profile with service_mode_v2",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id           = "f037e56e89293a057740de681ac9abbe"
+  name                 = "Custom Profile"
+  match                = "identity.email == \"user@example.com\""
+  precedence           = 200
+  service_mode_v2_mode = "proxy"
+  service_mode_v2_port = 8080
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_custom_profile" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Custom Profile"
+  match      = "identity.email == \"user@example.com\""
+  precedence = 1100
+  service_mode_v2 = {
+    mode = "proxy"
+    port = 8080
+  }
+}`,
+			},
+		}
+
+		testhelpers.RunConfigTransformTests(t, tests, migrator)
+	})
+
+	t.Run("ConfigTransformation_RoutingLogic", func(t *testing.T) {
+		migrator := NewV4ToV5Migrator()
+		tests := []testhelpers.ConfigTestCase{
+			// Test all permutations of default, match, and precedence
+			// Priority: default field > presence of match+precedence
+
+			// --- default=true cases (always routes to default profile) ---
+			{
+				Name: "default=true, no match, no precedence → default profile",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  default     = true
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id                     = "f037e56e89293a057740de681ac9abbe"
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "default=true, has match, no precedence → default profile (invalid config but default wins)",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  default     = true
+  match       = "identity.email == \"user@example.com\""
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id                     = "f037e56e89293a057740de681ac9abbe"
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "default=true, no match, has precedence → default profile (invalid config but default wins)",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  default     = true
+  precedence  = 100
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id                     = "f037e56e89293a057740de681ac9abbe"
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "default=true, has match, has precedence → default profile (default takes priority)",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  default     = true
+  match       = "identity.email == \"user@example.com\""
+  precedence  = 100
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id                     = "f037e56e89293a057740de681ac9abbe"
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+
+			// --- default=false cases ---
+			{
+				Name: "default=false, no match, no precedence → default profile",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  default     = false
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id                     = "f037e56e89293a057740de681ac9abbe"
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "default=false, has match, no precedence → default profile (missing precedence)",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  default     = false
+  match       = "identity.email == \"user@example.com\""
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id                     = "f037e56e89293a057740de681ac9abbe"
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "default=false, no match, has precedence → default profile (missing match)",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  default     = false
+  precedence  = 100
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id                     = "f037e56e89293a057740de681ac9abbe"
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "default=false, has match, has precedence → custom profile",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Custom Profile"
+  description = "Custom settings"
+  default     = false
+  match       = "identity.email == \"user@example.com\""
+  precedence  = 100
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_custom_profile" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Custom Profile"
+  description = "Custom settings"
+  match       = "identity.email == \"user@example.com\""
+  precedence  = 1000
+}`,
+			},
+
+			// --- no default field cases ---
+			{
+				Name: "no default, no match, no precedence → default profile",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id                     = "f037e56e89293a057740de681ac9abbe"
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "no default, has match, no precedence → default profile (missing precedence)",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  match       = "identity.email == \"user@example.com\""
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id                     = "f037e56e89293a057740de681ac9abbe"
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "no default, no match, has precedence → default profile (missing match)",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  precedence  = 100
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id                     = "f037e56e89293a057740de681ac9abbe"
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "no default, has match, has precedence → custom profile",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Custom Profile"
+  description = "Custom settings"
+  match       = "identity.email == \"user@example.com\""
+  precedence  = 150
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_custom_profile" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Custom Profile"
+  description = "Custom settings"
+  match       = "identity.email == \"user@example.com\""
+  precedence  = 1050
+}`,
+			},
+
+			// --- Edge cases with different precedence values ---
+			{
+				Name: "custom profile with precedence=1 → becomes 901",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  match       = "identity.email == \"test@example.com\""
+  precedence  = 1
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_custom_profile" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  match       = "identity.email == \"test@example.com\""
+  precedence  = 901
+}`,
+			},
+			{
+				Name: "custom profile with precedence=999 → becomes 1899",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  match       = "identity.email == \"test@example.com\""
+  precedence  = 999
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_custom_profile" "example" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "Profile"
+  match       = "identity.email == \"test@example.com\""
+  precedence  = 1899
+}`,
+			},
+		}
+
+		testhelpers.RunConfigTransformTests(t, tests, migrator)
+	})
+
 	t.Run("StateTransformation", func(t *testing.T) {
+		migrator := NewV4ToV5Migrator()
 		tests := []testhelpers.StateTestCase{
 			{
 				Name: "basic default profile state",
@@ -375,7 +683,13 @@ resource "cloudflare_zero_trust_device_default_profile" "example" {
 		testhelpers.RunStateTransformTests(t, tests, migrator)
 	})
 
+	// Note: No StateTransformation_CustomProfile tests
+	// State transformation tests for conditional routing (custom vs default) are not feasible
+	// because GetResourceType() is called before TransformState() has access to instance data.
+	// The config transformation tests above already validate the routing logic.
+
 	t.Run("StateTransformation_EdgeCases", func(t *testing.T) {
+		migrator := NewV4ToV5Migrator()
 		tests := []testhelpers.StateTestCase{
 			{
 				Name: "old resource name - cloudflare_device_settings_policy",
@@ -709,6 +1023,65 @@ resource "cloudflare_zero_trust_device_default_profile" "example" {
         {
           "schema_version": 0,
           "attributes": {}
+        }
+      ]
+    }
+  ]
+}`,
+			},
+			{
+				Name: "state with fallback_domains and empty exclude array - both should be removed",
+				Input: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "cloudflare_zero_trust_device_profiles",
+      "name": "example",
+      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f174e90a-fafe-4643-bbbc-4a0ed4fc8415",
+            "default": true,
+            "fallback_domains": [
+              {
+                "suffix": "corp.example.com",
+                "description": "Corporate network",
+                "dns_server": ["10.0.0.1", "10.0.0.2"]
+              },
+              {
+                "suffix": "internal.example.com",
+                "description": "Internal services",
+                "dns_server": ["10.1.0.1"]
+              }
+            ],
+            "exclude": [],
+            "tunnel_protocol": "wireguard"
+          }
+        }
+      ]
+    }
+  ]
+}`,
+				Expected: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "type": "cloudflare_zero_trust_device_default_profile",
+      "name": "example",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f174e90a-fafe-4643-bbbc-4a0ed4fc8415",
+            "tunnel_protocol": "wireguard"
+          }
         }
       ]
     }

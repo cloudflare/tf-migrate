@@ -1,6 +1,9 @@
 package zero_trust_local_fallback_domain
 
 import (
+	"strings"
+
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -47,7 +50,87 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
-	return content
+	// Update resource references for migrated device profiles
+	// Device profiles migrate to either:
+	// - cloudflare_zero_trust_device_custom_profile (if they have match AND precedence)
+	// - cloudflare_zero_trust_device_default_profile (otherwise)
+	//
+	// We need to update policy_id references like:
+	//   policy_id = cloudflare_zero_trust_device_profiles.example.id
+	// to:
+	//   policy_id = cloudflare_zero_trust_device_custom_profile.example.id
+	//
+	// Strategy: Parse HCL to find device profile resources, determine their type, and replace references
+
+	// Parse HCL to find device profile resources
+	file, diags := hclwrite.ParseConfig([]byte(content), "", hcl.InitialPos)
+	if diags.HasErrors() {
+		// If parsing fails, return content unchanged
+		return content
+	}
+
+	// Build a map of resource reference → new resource type
+	resourceTypeMap := make(map[string]string)
+
+	for _, block := range file.Body().Blocks() {
+		if block.Type() != "resource" {
+			continue
+		}
+
+		labels := block.Labels()
+		if len(labels) != 2 {
+			continue
+		}
+
+		oldResourceType := labels[0]
+		resourceName := labels[1]
+
+		// Only process device profile resources
+		if oldResourceType != "cloudflare_zero_trust_device_profiles" && oldResourceType != "cloudflare_device_settings_policy" {
+			continue
+		}
+
+		body := block.Body()
+
+		// Determine if this is a custom profile (has match AND precedence)
+		matchAttr := body.GetAttribute("match")
+		precedenceAttr := body.GetAttribute("precedence")
+		defaultAttr := body.GetAttribute("default")
+
+		hasMatch := matchAttr != nil
+		hasPrecedence := precedenceAttr != nil
+
+		// Check if default is explicitly set to true
+		isExplicitDefault := false
+		if defaultAttr != nil {
+			exprTokens := defaultAttr.Expr().BuildTokens(nil)
+			if len(exprTokens) == 1 && string(exprTokens[0].Bytes) == "true" {
+				isExplicitDefault = true
+			}
+		}
+
+		// If default=true explicitly, it's a default profile (even if match/precedence present)
+		// Otherwise, if it has match AND precedence, it's a custom profile
+		isCustomProfile := !isExplicitDefault && hasMatch && hasPrecedence
+
+		var newResourceType string
+		if isCustomProfile {
+			newResourceType = "cloudflare_zero_trust_device_custom_profile"
+		} else {
+			newResourceType = "cloudflare_zero_trust_device_default_profile"
+		}
+
+		// Store mapping for both old resource type names
+		resourceTypeMap[oldResourceType+"."+resourceName] = newResourceType + "." + resourceName
+	}
+
+	// Replace all references in the content
+	result := content
+	for oldRef, newRef := range resourceTypeMap {
+		result = strings.ReplaceAll(result, oldRef, newRef)
+	}
+
+	return result
 }
 
 // GetResourceRename implements the ResourceRenamer interface
@@ -124,6 +207,20 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// Remove policy_id from state if it's null (default profile doesn't have policy_id)
 	if !hasPolicyID && policyID.Exists() {
 		result, _ = sjson.Delete(result, "attributes.policy_id")
+	}
+
+	// Transform ID format for custom profile
+	// v4 ID format: account_id/policy_id
+	// v5 ID format: policy_id (just the policy_id portion)
+	if hasPolicyID {
+		if id := attrs.Get("id"); id.Exists() {
+			idStr := id.String()
+			// Split on "/" to get the policy_id portion
+			if slashIdx := strings.Index(idStr, "/"); slashIdx != -1 && slashIdx < len(idStr)-1 {
+				newID := idStr[slashIdx+1:]
+				result, _ = sjson.Set(result, "attributes.id", newID)
+			}
+		}
 	}
 
 	// Transform domains (TypeSet → ListNestedAttribute/SetNestedAttribute)

@@ -65,7 +65,6 @@ resource "cloudflare_zero_trust_device_default_profile" "map_example" {
   allow_mode_switch              = each.value.allow_mode_switch
   auto_connect                   = each.value.auto_connect
   captive_portal                 = each.value.captive_portal
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
@@ -83,7 +82,6 @@ resource "cloudflare_zero_trust_device_default_profile" "set_example" {
   allow_mode_switch              = true
   auto_connect                   = 0
   captive_portal                 = 180
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
@@ -101,7 +99,6 @@ resource "cloudflare_zero_trust_device_default_profile" "counted" {
   allow_mode_switch              = count.index % 2 == 0
   auto_connect                   = count.index * 15
   captive_portal                 = (count.index + 1) * 100
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
@@ -119,7 +116,6 @@ resource "cloudflare_zero_trust_device_default_profile" "conditional" {
   allow_mode_switch              = true
   auto_connect                   = 0
   captive_portal                 = 300
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
@@ -146,7 +142,6 @@ resource "cloudflare_zero_trust_device_default_profile" "with_lifecycle" {
     create_before_destroy = true
     ignore_changes        = [captive_portal]
   }
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
@@ -167,7 +162,6 @@ resource "cloudflare_zero_trust_device_default_profile" "with_functions" {
   support_url                    = format("https://support.%s.cf-tf-test.com", local.name_prefix)
   tunnel_protocol                = "wireguard"
   disable_auto_fallback          = true
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
@@ -179,7 +173,6 @@ resource "cloudflare_zero_trust_device_default_profile" "with_functions" {
 # Edge Case 1: Minimal config (only required fields + default)
 resource "cloudflare_zero_trust_device_default_profile" "minimal" {
   account_id                     = var.cloudflare_account_id
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
@@ -204,7 +197,6 @@ resource "cloudflare_zero_trust_device_default_profile" "maximal" {
     mode = "proxy"
     port = 8080
   }
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
@@ -217,7 +209,6 @@ resource "cloudflare_zero_trust_device_default_profile" "service_mode_both" {
     mode = "proxy"
     port = 443
   }
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
@@ -228,7 +219,6 @@ resource "cloudflare_zero_trust_device_default_profile" "zero_values" {
 
   auto_connect                   = 0
   captive_portal                 = 0
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
@@ -240,7 +230,6 @@ resource "cloudflare_zero_trust_device_default_profile" "with_variables" {
   allow_mode_switch              = true
   auto_connect                   = 15
   captive_portal                 = 180
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
@@ -253,7 +242,6 @@ resource "cloudflare_zero_trust_device_default_profile" "old_name" {
   allow_mode_switch              = false
   auto_connect                   = 0
   captive_portal                 = 600
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
@@ -265,7 +253,6 @@ resource "cloudflare_zero_trust_device_default_profile" "interpolation" {
   support_url                    = "https://${local.name_prefix}-support.cf-tf-test.com"
   auto_connect                   = 0
   captive_portal                 = 180
-  exclude                        = []
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 }
