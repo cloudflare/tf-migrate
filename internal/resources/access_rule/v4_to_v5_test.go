@@ -457,6 +457,165 @@ func testStateTransformations(t *testing.T, migrator transform.ResourceTransform
   "schema_version": 0
 }`,
 		},
+		{
+			Name: "Account-level rule with empty zone_id (mutual exclusivity)",
+			Input: `{
+  "type": "cloudflare_access_rule",
+  "name": "account_with_empty_zone",
+  "attributes": {
+    "account_id": "f037e56e89293a057740de681ac9abbe",
+    "zone_id": "",
+    "mode": "block",
+    "configuration": [
+      {
+        "target": "ip",
+        "value": "198.51.100.50"
+      }
+    ],
+    "notes": "Account-level block"
+  }
+}`,
+			Expected: `{
+  "type": "cloudflare_access_rule",
+  "name": "account_with_empty_zone",
+  "attributes": {
+    "account_id": "f037e56e89293a057740de681ac9abbe",
+    "mode": "block",
+    "configuration": {
+      "target": "ip",
+      "value": "198.51.100.50"
+    },
+    "notes": "Account-level block"
+  },
+  "schema_version": 0
+}`,
+		},
+		{
+			Name: "Zone-level rule with empty account_id (mutual exclusivity)",
+			Input: `{
+  "type": "cloudflare_access_rule",
+  "name": "zone_with_empty_account",
+  "attributes": {
+    "account_id": "",
+    "zone_id": "0da42c8d2132a9ddaf714f9e7c920711",
+    "mode": "challenge",
+    "configuration": [
+      {
+        "target": "country",
+        "value": "TV"
+      }
+    ],
+    "notes": "Zone-level challenge"
+  }
+}`,
+			Expected: `{
+  "type": "cloudflare_access_rule",
+  "name": "zone_with_empty_account",
+  "attributes": {
+    "zone_id": "0da42c8d2132a9ddaf714f9e7c920711",
+    "mode": "challenge",
+    "configuration": {
+      "target": "country",
+      "value": "TV"
+    },
+    "notes": "Zone-level challenge"
+  },
+  "schema_version": 0
+}`,
+		},
+		{
+			Name: "Account-level rule with both fields populated (mutual exclusivity)",
+			Input: `{
+  "type": "cloudflare_access_rule",
+  "name": "both_fields_account",
+  "attributes": {
+    "account_id": "f037e56e89293a057740de681ac9abbe",
+    "zone_id": "0da42c8d2132a9ddaf714f9e7c920711",
+    "mode": "whitelist",
+    "configuration": [
+      {
+        "target": "ip_range",
+        "value": "198.51.100.0/24"
+      }
+    ]
+  }
+}`,
+			Expected: `{
+  "type": "cloudflare_access_rule",
+  "name": "both_fields_account",
+  "attributes": {
+    "account_id": "f037e56e89293a057740de681ac9abbe",
+    "mode": "whitelist",
+    "configuration": {
+      "target": "ip_range",
+      "value": "198.51.100.0/24"
+    }
+  },
+  "schema_version": 0
+}`,
+		},
+		{
+			Name: "Zone-level rule with only zone_id populated (mutual exclusivity)",
+			Input: `{
+  "type": "cloudflare_access_rule",
+  "name": "zone_only",
+  "attributes": {
+    "zone_id": "0da42c8d2132a9ddaf714f9e7c920711",
+    "mode": "js_challenge",
+    "configuration": [
+      {
+        "target": "asn",
+        "value": "AS13335"
+      }
+    ],
+    "notes": "Challenge ASN"
+  }
+}`,
+			Expected: `{
+  "type": "cloudflare_access_rule",
+  "name": "zone_only",
+  "attributes": {
+    "zone_id": "0da42c8d2132a9ddaf714f9e7c920711",
+    "mode": "js_challenge",
+    "configuration": {
+      "target": "asn",
+      "value": "AS13335"
+    },
+    "notes": "Challenge ASN"
+  },
+  "schema_version": 0
+}`,
+		},
+		{
+			Name: "Account-level rule with only account_id populated (mutual exclusivity)",
+			Input: `{
+  "type": "cloudflare_access_rule",
+  "name": "account_only",
+  "attributes": {
+    "account_id": "f037e56e89293a057740de681ac9abbe",
+    "mode": "managed_challenge",
+    "configuration": [
+      {
+        "target": "ip",
+        "value": "203.0.113.1"
+      }
+    ]
+  }
+}`,
+			Expected: `{
+  "type": "cloudflare_access_rule",
+  "name": "account_only",
+  "attributes": {
+    "account_id": "f037e56e89293a057740de681ac9abbe",
+    "mode": "managed_challenge",
+    "configuration": {
+      "target": "ip",
+      "value": "203.0.113.1"
+    }
+  },
+  "schema_version": 0
+}`,
+		},
 	}
 
 	testhelpers.RunStateTransformTests(t, tests, migrator)

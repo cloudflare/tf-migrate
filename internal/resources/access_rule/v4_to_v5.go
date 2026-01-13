@@ -69,6 +69,19 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 		return result, nil
 	}
 
+	// Ensure mutual exclusivity of account_id and zone_id
+	// v5 requires that only one is set, the other must be null
+	accountID := attrs.Get("account_id")
+	zoneID := attrs.Get("zone_id")
+
+	if accountID.Exists() && accountID.String() != "" {
+		// This is an account-level rule, ensure zone_id is null
+		result, _ = sjson.Delete(result, "attributes.zone_id")
+	} else if zoneID.Exists() && zoneID.String() != "" {
+		// This is a zone-level rule, ensure account_id is null
+		result, _ = sjson.Delete(result, "attributes.account_id")
+	}
+
 	// Convert configuration array to object (MaxItems:1 → SingleNestedAttribute)
 	// v4 state: "configuration": [{"target": "ip", "value": "1.2.3.4"}]
 	// v5 state: "configuration": {"target": "ip", "value": "1.2.3.4"}
