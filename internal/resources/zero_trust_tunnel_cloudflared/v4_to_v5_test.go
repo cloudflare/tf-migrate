@@ -22,39 +22,8 @@ resource "cloudflare_tunnel" "minimal" {
 				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
   account_id    = "f037e56e89293a057740de681ac9abbe"
   name          = "minimal-tunnel"
-  tunnel_secret = base64encode("my-secret-that-is-at-least-32-bytes-long")
-}`,
-			},
-			{
-				Name: "tunnel_with_config_src",
-				Input: `
-resource "cloudflare_tunnel" "with_config" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
-  name       = "config-tunnel"
-  secret     = base64encode("another-secret-32-bytes-or-longer-here")
-  config_src = "local"
-}`,
-				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared" "with_config" {
-  account_id    = "f037e56e89293a057740de681ac9abbe"
-  name          = "config-tunnel"
   config_src    = "local"
-  tunnel_secret = base64encode("another-secret-32-bytes-or-longer-here")
-}`,
-			},
-			{
-				Name: "tunnel_with_cloudflare_config",
-				Input: `
-resource "cloudflare_tunnel" "remote_config" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
-  name       = "remote-tunnel"
-  secret     = base64encode("remote-tunnel-secret-32-bytes-minimum")
-  config_src = "cloudflare"
-}`,
-				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared" "remote_config" {
-  account_id    = "f037e56e89293a057740de681ac9abbe"
-  name          = "remote-tunnel"
-  config_src    = "cloudflare"
-  tunnel_secret = base64encode("remote-tunnel-secret-32-bytes-minimum")
+  tunnel_secret = base64encode("my-secret-that-is-at-least-32-bytes-long")
 }`,
 			},
 			{
@@ -70,19 +39,19 @@ resource "cloudflare_tunnel" "tunnel2" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "tunnel-two"
   secret     = base64encode("second-tunnel-secret-32-bytes-long")
-  config_src = "cloudflare"
 }`,
 				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared" "tunnel1" {
   account_id    = "f037e56e89293a057740de681ac9abbe"
   name          = "tunnel-one"
   tunnel_secret = base64encode("first-tunnel-secret-32-bytes-long")
+  config_src = "local"
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "tunnel2" {
   account_id    = "f037e56e89293a057740de681ac9abbe"
   name          = "tunnel-two"
-  config_src    = "cloudflare"
   tunnel_secret = base64encode("second-tunnel-secret-32-bytes-long")
+  config_src = "local"
 }`,
 			},
 			{
@@ -97,6 +66,7 @@ resource "cloudflare_zero_trust_tunnel" "alt_minimal" {
   account_id    = "f037e56e89293a057740de681ac9abbe"
   name          = "alt-minimal-tunnel"
   tunnel_secret = base64encode("alternative-name-secret-32-bytes-long")
+  config_src    = "local"
 }`,
 			},
 			{
@@ -106,12 +76,11 @@ resource "cloudflare_zero_trust_tunnel" "alt_config" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "alt-config-tunnel"
   secret     = base64encode("alternative-config-secret-32-bytes-ok")
-  config_src = "cloudflare"
 }`,
 				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared" "alt_config" {
   account_id    = "f037e56e89293a057740de681ac9abbe"
   name          = "alt-config-tunnel"
-  config_src    = "cloudflare"
+  config_src    = "local"
   tunnel_secret = base64encode("alternative-config-secret-32-bytes-ok")
 }`,
 			},
@@ -145,34 +114,6 @@ resource "cloudflare_zero_trust_tunnel" "alt_config" {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "name": "minimal-tunnel",
     "tunnel_secret": "dGVzdC1zZWNyZXQtdGhhdC1pcy1hdC1sZWFzdC0zMi1ieXRlcw==",
-    "config_src": "local"
-  }
-}`,
-			},
-			{
-				Name: "with_config_src",
-				Input: `{
-  "type": "cloudflare_tunnel",
-  "name": "with_config",
-  "attributes": {
-    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "name": "config-tunnel",
-    "secret": "YW5vdGhlci1sb25nLXNlY3JldC10aGF0LW1lZXRzLXRoZS1yZXF1aXJlbWVudHM=",
-    "config_src": "local",
-    "cname": "a1b2c3d4-e5f6-7890-abcd-ef1234567890.cfargotunnel.com",
-    "tunnel_token": "eyJhIjoiZjAzN2U1NmU4OTI5M2EwNTc3NDBkZTY4MWFjOWFiYmUiLCJ0IjoiYTFiMmMzZDQtZTVmNi03ODkwLWFiY2QtZWYxMjM0NTY3ODkwIiwicyI6IllXNW4ifQ=="
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_tunnel_cloudflared",
-  "name": "with_config",
-  "schema_version": 0,
-  "attributes": {
-    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "name": "config-tunnel",
-    "tunnel_secret": "YW5vdGhlci1sb25nLXNlY3JldC10aGF0LW1lZXRzLXRoZS1yZXF1aXJlbWVudHM=",
     "config_src": "local"
   }
 }`,
@@ -239,7 +180,6 @@ resource "cloudflare_zero_trust_tunnel" "alt_config" {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "name": "alt-config-tunnel",
     "secret": "YWx0ZXJuYXRpdmUtY29uZmlnLXNlY3JldC0zMi1ieXRlcy1vaw==",
-    "config_src": "cloudflare",
     "cname": "d4e5f6a7-b8c9-0123-def0-234567890123.cfargotunnel.com",
     "tunnel_token": "eyJhIjoiZjAzN2U1NmU4OTI5M2EwNTc3NDBkZTY4MWFjOWFiYmUiLCJ0IjoiZDRlNWY2YTctYjhjOS0wMTIzLWRlZjAtMjM0NTY3ODkwMTIzIiwicyI6IllXNW4ifQ=="
   }
@@ -253,7 +193,7 @@ resource "cloudflare_zero_trust_tunnel" "alt_config" {
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "name": "alt-config-tunnel",
     "tunnel_secret": "YWx0ZXJuYXRpdmUtY29uZmlnLXNlY3JldC0zMi1ieXRlcy1vaw==",
-    "config_src": "cloudflare"
+    "config_src": "local"
   }
 }`,
 			},

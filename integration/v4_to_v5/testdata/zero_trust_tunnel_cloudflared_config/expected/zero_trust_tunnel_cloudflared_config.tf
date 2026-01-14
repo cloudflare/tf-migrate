@@ -22,23 +22,26 @@ locals {
 
 # Tunnel for minimal config test
 resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-minimal-tunnel"
-  secret     = base64encode("test-secret-that-is-at-least-32-bytes-long")
+  account_id    = var.cloudflare_account_id
+  name          = "${local.name_prefix}-minimal-tunnel"
+  config_src    = "cloudflare"
+  tunnel_secret = base64encode("test-secret-that-is-at-least-32-bytes-long")
 }
 
 # Tunnel for comprehensive config test
 resource "cloudflare_zero_trust_tunnel_cloudflared" "comprehensive" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-comprehensive-tunnel"
-  secret     = base64encode("another-secret-32-bytes-or-longer-here")
+  account_id    = var.cloudflare_account_id
+  name          = "${local.name_prefix}-comprehensive-tunnel"
+  config_src    = "cloudflare"
+  tunnel_secret = base64encode("another-secret-32-bytes-or-longer-here")
 }
 
 # Tunnel for testing deprecated resource name
 resource "cloudflare_zero_trust_tunnel_cloudflared" "deprecated_name" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-deprecated-tunnel"
-  secret     = base64encode("deprecated-tunnel-secret-32-bytes-minimum")
+  account_id    = var.cloudflare_account_id
+  name          = "${local.name_prefix}-deprecated-tunnel"
+  config_src    = "cloudflare"
+  tunnel_secret = base64encode("deprecated-tunnel-secret-32-bytes-minimum")
 }
 
 # ========================================
@@ -50,9 +53,22 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "minimal" {
   account_id = var.cloudflare_account_id
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.minimal.id
 
-  config {
-    ingress_rule {
-      service = "http_status:404"
+  config = {
+    ingress = [
+      {
+        service = "http_status:404"
+      }
+    ]
+    origin_request = {
+      ca_pool                  = ""
+      connect_timeout          = 30
+      disable_chunked_encoding = false
+      keep_alive_timeout       = 90
+      no_tls_verify            = false
+      origin_server_name       = ""
+      proxy_type               = ""
+      tcp_keep_alive           = 30
+      tls_timeout              = 10
     }
   }
 }
@@ -62,13 +78,26 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "deprecated_name" {
   account_id = var.cloudflare_account_id
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.deprecated_name.id
 
-  config {
-    ingress_rule {
-      hostname = "app.example.com"
-      service  = "http://localhost:8080"
-    }
-    ingress_rule {
-      service = "http_status:404"
+  config = {
+    ingress = [
+      {
+        hostname = "app.example.com"
+        service  = "http://localhost:8080"
+      },
+      {
+        service = "http_status:404"
+      }
+    ]
+    origin_request = {
+      ca_pool                  = ""
+      connect_timeout          = 30
+      disable_chunked_encoding = false
+      keep_alive_timeout       = 90
+      no_tls_verify            = false
+      origin_server_name       = ""
+      proxy_type               = ""
+      tcp_keep_alive           = 30
+      tls_timeout              = 10
     }
   }
 }
@@ -78,57 +107,52 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "comprehensive" {
   account_id = var.cloudflare_account_id
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.comprehensive.id
 
-  config {
-
-    # Config-level origin_request
-    origin_request {
-      connect_timeout          = "30s"
-      tls_timeout              = "10s"
-      tcp_keep_alive           = "1m30s"
-      keep_alive_timeout       = "1m30s"
+  config = {
+    ingress = [
+      {
+        hostname = "app.example.com"
+        service  = "http://localhost:8080"
+        path     = "/api"
+        origin_request = {
+          connect_timeout          = 15
+          tls_timeout              = 5
+          ca_pool                  = ""
+          disable_chunked_encoding = false
+          keep_alive_timeout       = 90
+          no_tls_verify            = false
+          origin_server_name       = ""
+          proxy_type               = ""
+          tcp_keep_alive           = 30
+          access = {
+            required = false
+          }
+        }
+      },
+      {
+        hostname = "api.example.com"
+        service  = "http://localhost:3000"
+      },
+      {
+        service = "http_status:404"
+      }
+    ]
+    origin_request = {
+      connect_timeout          = 30
+      tls_timeout              = 10
+      tcp_keep_alive           = 90
+      keep_alive_timeout       = 90
       keep_alive_connections   = 100
       http_host_header         = "example.com"
       origin_server_name       = "origin.example.com"
       ca_pool                  = "/path/to/ca.pem"
       no_tls_verify            = false
       disable_chunked_encoding = false
-      # Deprecated fields to be removed
-      bastion_mode  = true
-      proxy_address = "127.0.0.1"
-      proxy_port    = 8080
-      proxy_type    = ""
-
-      # access block (MaxItems:1 array -> object)
-      access {
+      proxy_type               = ""
+      access = {
         required  = true
         team_name = "my-team"
         aud_tag   = ["abc123"]
       }
-    }
-
-    ingress_rule {
-      hostname = "app.example.com"
-      service  = "http://localhost:8080"
-      path     = "/api"
-
-      # Ingress-level origin_request
-      origin_request {
-        connect_timeout = "15s"
-        tls_timeout     = "5s"
-        # access block
-        access {
-          required = false
-        }
-      }
-    }
-
-    ingress_rule {
-      hostname = "api.example.com"
-      service  = "http://localhost:3000"
-    }
-
-    ingress_rule {
-      service = "http_status:404"
     }
   }
 }

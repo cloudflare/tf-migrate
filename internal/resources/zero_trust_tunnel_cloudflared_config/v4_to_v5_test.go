@@ -25,9 +25,22 @@ func TestV4ToV5Transformation(t *testing.T) {
 				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared_config" "example" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   tunnel_id  = "f70ff02e-f290-4d76-8c21-c00e98a7fbde"
-  config {
-    ingress_rule {
-      service = "http_status:404"
+  config = {
+    ingress = [
+      {
+        service = "http_status:404"
+      }
+    ]
+    origin_request = {
+      ca_pool                  = ""
+      connect_timeout          = 30
+      disable_chunked_encoding = false
+      keep_alive_timeout       = 90
+      no_tls_verify            = false
+      origin_server_name       = ""
+      proxy_type               = ""
+      tcp_keep_alive           = 30
+      tls_timeout              = 10
     }
   }
 }`,
@@ -46,9 +59,22 @@ func TestV4ToV5Transformation(t *testing.T) {
 				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared_config" "example" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   tunnel_id  = "f70ff02e-f290-4d76-8c21-c00e98a7fbde"
-  config {
-    ingress_rule {
-      service = "http_status:404"
+  config = {
+    ingress = [
+      {
+        service = "http_status:404"
+      }
+    ]
+    origin_request = {
+      ca_pool                  = ""
+      connect_timeout          = 30
+      disable_chunked_encoding = false
+      keep_alive_timeout       = 90
+      no_tls_verify            = false
+      origin_server_name       = ""
+      proxy_type               = ""
+      tcp_keep_alive           = 30
+      tls_timeout              = 10
     }
   }
 }`,
@@ -70,9 +96,22 @@ func TestV4ToV5Transformation(t *testing.T) {
 				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared_config" "example" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   tunnel_id  = "f70ff02e-f290-4d76-8c21-c00e98a7fbde"
-  config {
-    ingress_rule {
-      service = "http_status:404"
+  config = {
+    ingress = [
+      {
+        service = "http_status:404"
+      }
+    ]
+    origin_request = {
+      ca_pool                  = ""
+      connect_timeout          = 30
+      disable_chunked_encoding = false
+      keep_alive_timeout       = 90
+      no_tls_verify            = false
+      origin_server_name       = ""
+      proxy_type               = ""
+      tcp_keep_alive           = 30
+      tls_timeout              = 10
     }
   }
 }`,
@@ -99,12 +138,22 @@ func TestV4ToV5Transformation(t *testing.T) {
 				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared_config" "example" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   tunnel_id  = "f70ff02e-f290-4d76-8c21-c00e98a7fbde"
-  config {
-    origin_request {
-      connect_timeout = "30s"
-    }
-    ingress_rule {
-      service = "http_status:404"
+  config = {
+    ingress = [
+      {
+        service = "http_status:404"
+      }
+    ]
+    origin_request = {
+      ca_pool                  = ""
+      connect_timeout          = 30
+      disable_chunked_encoding = false
+      keep_alive_timeout       = 90
+      no_tls_verify            = false
+      origin_server_name       = ""
+      proxy_type               = ""
+      tcp_keep_alive           = 30
+      tls_timeout              = 10
     }
   }
 }`,
@@ -134,16 +183,37 @@ func TestV4ToV5Transformation(t *testing.T) {
 				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared_config" "example" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   tunnel_id  = "f70ff02e-f290-4d76-8c21-c00e98a7fbde"
-  config {
-    ingress_rule {
-      hostname = "app.example.com"
-      service  = "http://localhost:8080"
-      origin_request {
-        connect_timeout = "10s"
+  config = {
+    ingress = [
+      {
+        hostname = "app.example.com"
+        service  = "http://localhost:8080"
+        origin_request = {
+          ca_pool                  = ""
+          connect_timeout          = 10
+          disable_chunked_encoding = false
+          keep_alive_timeout       = 90
+          no_tls_verify            = false
+          origin_server_name       = ""
+          proxy_type               = ""
+          tcp_keep_alive           = 30
+          tls_timeout              = 10
+        }
+      },
+      {
+        service = "http_status:404"
       }
-    }
-    ingress_rule {
-      service = "http_status:404"
+    ]
+    origin_request = {
+      ca_pool                  = ""
+      connect_timeout          = 30
+      disable_chunked_encoding = false
+      keep_alive_timeout       = 90
+      no_tls_verify            = false
+      origin_server_name       = ""
+      proxy_type               = ""
+      tcp_keep_alive           = 30
+      tls_timeout              = 10
     }
   }
 }`,
@@ -184,19 +254,37 @@ func TestV4ToV5Transformation(t *testing.T) {
 				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared_config" "example" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   tunnel_id  = "f70ff02e-f290-4d76-8c21-c00e98a7fbde"
-  config {
-    origin_request {
-      connect_timeout = "30s"
-    }
-    ingress_rule {
-      hostname = "app.example.com"
-      service  = "http://localhost:8080"
-      origin_request {
-        tls_timeout = "10s"
+  config = {
+    ingress = [
+      {
+        hostname = "app.example.com"
+        service  = "http://localhost:8080"
+        origin_request = {
+          ca_pool                  = ""
+          connect_timeout          = 30
+          disable_chunked_encoding = false
+          keep_alive_timeout       = 90
+          no_tls_verify            = false
+          origin_server_name       = ""
+          proxy_type               = ""
+          tcp_keep_alive           = 30
+          tls_timeout              = 10
+        }
+      },
+      {
+        service = "http_status:404"
       }
-    }
-    ingress_rule {
-      service = "http_status:404"
+    ]
+    origin_request = {
+      ca_pool                  = ""
+      connect_timeout          = 30
+      disable_chunked_encoding = false
+      keep_alive_timeout       = 90
+      no_tls_verify            = false
+      origin_server_name       = ""
+      proxy_type               = ""
+      tcp_keep_alive           = 30
+      tls_timeout              = 10
     }
   }
 }`,
@@ -361,10 +449,10 @@ func TestV4ToV5Transformation(t *testing.T) {
     "tunnel_id": "f70ff02e-f290-4d76-8c21-c00e98a7fbde",
     "config": {
       "origin_request": {
-        "connect_timeout": 30000000000,
-        "tls_timeout": 10000000000,
-        "tcp_keep_alive": 90000000000,
-        "keep_alive_timeout": 90000000000,
+        "connect_timeout": 30,
+        "tls_timeout": 10,
+        "tcp_keep_alive": 90,
+        "keep_alive_timeout": 90,
         "keep_alive_connections": 100,
         "access": {
           "required": true,
@@ -377,7 +465,7 @@ func TestV4ToV5Transformation(t *testing.T) {
           "hostname": "app.example.com",
           "service": "http://localhost:8080",
           "origin_request": {
-            "connect_timeout": 15000000000,
+            "connect_timeout": 15,
             "access": {
               "required": false
             }

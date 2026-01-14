@@ -2,7 +2,7 @@ package zero_trust_tunnel_cloudflared_config
 
 import (
 	"fmt"
-	"time"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
@@ -46,6 +46,81 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 	return "cloudflare_tunnel_config", "cloudflare_zero_trust_tunnel_cloudflared_config"
 }
 
+// addOriginRequestDefaults adds v4 default values to origin_request block for fields not already specified
+// This preserves v4 behavior where the API applied defaults that v5 does not apply
+// Also converts any existing string duration values to integer seconds
+func addOriginRequestDefaults(originReqBody *hclwrite.Body) {
+	// Use a slice to ensure deterministic ordering of defaults
+	type defaultPair struct {
+		field      string
+		value      interface{}
+		isDuration bool
+	}
+
+	// v4 API defaults that need to be explicitly specified in v5
+	// Duration fields are in seconds (Int64)
+	// Ordered alphabetically for consistency
+	v4Defaults := []defaultPair{
+		{"ca_pool", "", false},
+		{"connect_timeout", int64(30), true},        // 30 seconds
+		{"disable_chunked_encoding", false, false},
+		{"keep_alive_timeout", int64(90), true},     // 90 seconds (1m30s)
+		{"no_tls_verify", false, false},
+		{"origin_server_name", "", false},
+		{"proxy_type", "", false},
+		{"tcp_keep_alive", int64(30), true},         // 30 seconds
+		{"tls_timeout", int64(10), true},            // 10 seconds
+	}
+
+	for _, pair := range v4Defaults {
+		existingAttr := originReqBody.GetAttribute(pair.field)
+		if existingAttr == nil {
+			// Field not specified, add default
+			tfhcl.SetAttributeValue(originReqBody, pair.field, pair.value)
+		} else if pair.isDuration {
+			// Duration field exists - try to convert string duration to integer seconds
+			if seconds, ok := tryConvertDurationAttribute(existingAttr); ok {
+				tfhcl.SetAttributeValue(originReqBody, pair.field, seconds)
+			}
+			// If conversion fails, leave as-is (may already be an integer)
+		}
+	}
+}
+
+// tryConvertDurationAttribute attempts to parse a duration string attribute and convert it to integer seconds
+// Returns (seconds, true) if successful, (0, false) if the attribute is not a string duration or parsing fails
+func tryConvertDurationAttribute(attr *hclwrite.Attribute) (int64, bool) {
+	// Get all tokens for the expression
+	tokens := attr.Expr().BuildTokens(nil)
+	if len(tokens) == 0 {
+		return 0, false
+	}
+
+	// Concatenate all token bytes to get the full expression string
+	var fullExpr strings.Builder
+	for _, tok := range tokens {
+		fullExpr.Write(tok.Bytes)
+	}
+	exprStr := fullExpr.String()
+
+	// Check if it's a quoted string literal
+	exprStr = strings.TrimSpace(exprStr)
+	if len(exprStr) < 3 || exprStr[0] != '"' || exprStr[len(exprStr)-1] != '"' {
+		return 0, false // Not a string literal
+	}
+
+	// Extract the string content (remove quotes)
+	durationStr := exprStr[1 : len(exprStr)-1]
+
+	// Try to parse as a duration string
+	seconds, err := state.ParseDurationStringToSeconds(durationStr)
+	if err != nil {
+		return 0, false
+	}
+
+	return seconds, true
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	resourceType := tfhcl.GetResourceType(block)
 
@@ -56,7 +131,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	body := block.Body()
 
-	// Process config block if it exists
+	// First, process config block to remove deprecated fields before converting to attribute
 	configBlocks := tfhcl.FindBlocksByType(body, "config")
 	for _, configBlock := range configBlocks {
 		configBody := configBlock.Body()
@@ -64,11 +139,18 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		// Remove deprecated blocks that were removed in v5
 		tfhcl.RemoveBlocksByType(configBody, "warp_routing")
 
-		// Remove ip_rules from all origin_request blocks
-		// (at config level)
+		// Remove ip_rules from all origin_request blocks (at config level)
 		originReqBlocks := tfhcl.FindBlocksByType(configBody, "origin_request")
 		for _, originReqBlock := range originReqBlocks {
-			tfhcl.RemoveBlocksByType(originReqBlock.Body(), "ip_rules")
+			originReqBody := originReqBlock.Body()
+			tfhcl.RemoveBlocksByType(originReqBody, "ip_rules")
+
+			// Remove deprecated attributes
+			tfhcl.RemoveAttributes(originReqBody, "bastion_mode", "proxy_address", "proxy_port")
+
+			// Add v4 defaults for fields not specified to preserve v4 behavior
+			// v4 API applied these defaults, v5 does not, so we must specify them explicitly
+			addOriginRequestDefaults(originReqBody)
 		}
 
 		// Remove ip_rules from nested origin_request blocks within ingress_rule
@@ -76,16 +158,61 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		for _, ingressBlock := range ingressBlocks {
 			nestedOriginReqBlocks := tfhcl.FindBlocksByType(ingressBlock.Body(), "origin_request")
 			for _, nestedOriginReqBlock := range nestedOriginReqBlocks {
-				tfhcl.RemoveBlocksByType(nestedOriginReqBlock.Body(), "ip_rules")
+				nestedOriginReqBody := nestedOriginReqBlock.Body()
+				tfhcl.RemoveBlocksByType(nestedOriginReqBody, "ip_rules")
+
+				// Remove deprecated attributes
+				tfhcl.RemoveAttributes(nestedOriginReqBody, "bastion_mode", "proxy_address", "proxy_port")
+
+				// Add v4 defaults for nested origin_request too
+				addOriginRequestDefaults(nestedOriginReqBody)
 			}
+		}
+
+		// Add empty origin_request block if it doesn't exist
+		// This preserves v4 behavior where origin_request always exists in state with nil fields
+		// even when not specified in config
+		if len(originReqBlocks) == 0 {
+			emptyOriginRequest := hclwrite.NewBlock("origin_request", nil)
+			configBody.AppendBlock(emptyOriginRequest)
+			// Add defaults to the newly created empty block
+			addOriginRequestDefaults(emptyOriginRequest.Body())
 		}
 	}
 
-	// Note: Additional v4→v5 schema changes (MaxItems:1 block→attribute conversions,
-	// ingress_rule→ingress rename) are handled in the state transformation.
-	// HCL config transformation focuses on removing deprecated fields to ensure
-	// configs remain valid. Users can update block→attribute syntax using
-	// terraform fmt or the v5 provider will handle it.
+	// Now convert config block syntax to attribute syntax
+	// v4: config { } → v5: config = { }
+	// This needs to handle nested structures recursively
+	if len(configBlocks) > 0 {
+		// Define which blocks should always be arrays (ingress, even with 1 element)
+		alwaysArrayFields := map[string]bool{
+			"ingress":      true, // ingress is always an array in v5
+			"ingress_rule": true, // ingress_rule gets renamed to ingress (array)
+		}
+
+		// First, rename ingress_rule blocks to ingress before conversion
+		for _, configBlock := range configBlocks {
+			configBody := configBlock.Body()
+			ingressRuleBlocks := tfhcl.FindBlocksByType(configBody, "ingress_rule")
+			for _, ingressBlock := range ingressRuleBlocks {
+				// Change the block type by creating a new block with the correct type
+				newIngressBlock := hclwrite.NewBlock("ingress", nil)
+				// Copy all attributes and nested blocks
+				for name, attr := range ingressBlock.Body().Attributes() {
+					newIngressBlock.Body().SetAttributeRaw(name, attr.Expr().BuildTokens(nil))
+				}
+				for _, nestedBlock := range ingressBlock.Body().Blocks() {
+					newIngressBlock.Body().AppendBlock(nestedBlock)
+				}
+				configBody.AppendBlock(newIngressBlock)
+			}
+			// Remove the old ingress_rule blocks
+			tfhcl.RemoveBlocksByType(configBody, "ingress_rule")
+		}
+
+		// Now convert config block to attribute with all nested blocks
+		tfhcl.ConvertBlockToAttributeWithNestedAndArrays(body, "config", alwaysArrayFields)
+	}
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
@@ -124,9 +251,17 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 		// Refresh config after changes
 		configObj = gjson.Parse(result).Get(configPath)
 
-		// 4. Transform config-level origin_request array → object
+		// 4. Transform config-level origin_request array → object (preserving nil fields)
 		originReqPath := configPath + ".origin_request"
-		result = transformOriginRequest(result, originReqPath, configObj.Get("origin_request"))
+		result = state.TransformFieldArrayToObject(result, configPath, configObj, "origin_request", state.ArrayToObjectOptions{
+			// Keep empty objects with nil fields as-is, don't convert to null
+		})
+		// Post-process: remove deprecated fields, convert durations, transform nested access
+		configObj = gjson.Parse(result).Get(configPath)
+		originReqField := configObj.Get("origin_request")
+		if originReqField.Exists() && !originReqField.IsArray() {
+			result = transformOriginRequestPostProcess(result, originReqPath, originReqField)
+		}
 
 		// 5. Transform ingress array elements' origin_request
 		ingressArray := gjson.Parse(result).Get(configPath + ".ingress")
@@ -134,11 +269,24 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 			for i, ingressItem := range ingressArray.Array() {
 				originReq := ingressItem.Get("origin_request")
 				if originReq.Exists() {
-					ingressOriginReqPath := fmt.Sprintf("%s.ingress.%d.origin_request", configPath, i)
-					result = transformOriginRequest(result, ingressOriginReqPath, originReq)
+					ingressItemPath := fmt.Sprintf("%s.ingress.%d", configPath, i)
+					ingressOriginReqPath := ingressItemPath + ".origin_request"
+
+					// Transform array to object (preserving nil fields)
+					result = state.TransformFieldArrayToObject(result, ingressItemPath, ingressItem, "origin_request", state.ArrayToObjectOptions{
+						// Keep empty objects with nil fields as-is, don't convert to null
+					})
+
+					// Post-process
+					ingressItem = gjson.Parse(result).Get(ingressItemPath)
+					originReqField := ingressItem.Get("origin_request")
+					if originReqField.Exists() && !originReqField.IsArray() {
+						result = transformOriginRequestPostProcess(result, ingressOriginReqPath, originReqField)
+					}
 				}
 			}
 		}
+
 	}
 
 	// Set schema_version to 0 for v5
@@ -152,27 +300,10 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 	return result, nil
 }
 
-// transformOriginRequest transforms an origin_request field from array to object and handles nested transformations
-func transformOriginRequest(stateJSON string, path string, originReq gjson.Result) string {
-	if !originReq.Exists() {
-		return stateJSON
-	}
-
-	// If it's an array, convert to object first
-	if originReq.IsArray() {
-		array := originReq.Array()
-		if len(array) > 0 {
-			stateJSON, _ = sjson.Set(stateJSON, path, array[0].Value())
-		} else {
-			// Empty array - delete it
-			stateJSON, _ = sjson.Delete(stateJSON, path)
-			return stateJSON
-		}
-		// Refresh origin_request after conversion
-		originReq = gjson.Parse(stateJSON).Get(path)
-	}
-
-	if !originReq.IsObject() {
+// transformOriginRequestPostProcess performs post-processing on origin_request after array-to-object conversion
+// This handles: removing deprecated fields, converting duration strings to nanoseconds, transforming nested access
+func transformOriginRequestPostProcess(stateJSON string, path string, originReq gjson.Result) string {
+	if !originReq.Exists() || !originReq.IsObject() {
 		return stateJSON
 	}
 
@@ -182,13 +313,15 @@ func transformOriginRequest(stateJSON string, path string, originReq gjson.Resul
 	// Refresh after removals
 	originReq = gjson.Parse(stateJSON).Get(path)
 
-	// Convert duration fields from strings to int64 nanoseconds
+	// Convert duration fields from strings to int64 seconds
+	// v4 stored these as strings (e.g., "30s", "1m30s"), v5 expects integers (seconds)
 	durationFields := []string{"connect_timeout", "tls_timeout", "tcp_keep_alive", "keep_alive_timeout"}
 	for _, field := range durationFields {
 		fieldValue := originReq.Get(field)
-		if fieldValue.Exists() && fieldValue.Type == gjson.String {
-			if nanos, err := parseDurationToNanoseconds(fieldValue.String()); err == nil {
-				stateJSON, _ = sjson.Set(stateJSON, path+"."+field, nanos)
+		if fieldValue.Exists() {
+			// Use the general converter which handles both strings and numbers
+			if converted := state.ConvertDurationToSeconds(fieldValue); converted != nil {
+				stateJSON, _ = sjson.Set(stateJSON, path+"."+field, converted)
 			}
 		}
 	}
@@ -205,17 +338,13 @@ func transformOriginRequest(stateJSON string, path string, originReq gjson.Resul
 	// Transform nested access array → object
 	accessField := originReq.Get("access")
 	if accessField.Exists() {
-		stateJSON = state.TransformFieldArrayToObject(stateJSON, path, originReq, "access", state.ArrayToObjectOptions{})
+		stateJSON = state.TransformFieldArrayToObject(stateJSON, path, originReq, "access", state.ArrayToObjectOptions{
+			// Keep empty objects with nil fields as-is
+		})
 	}
+
+	// Note: We do NOT delete empty origin_request objects with all nil fields
+	// v5 expects to keep them as-is to match v4 state behavior
 
 	return stateJSON
-}
-
-// parseDurationToNanoseconds converts a Go duration string (e.g., "30s", "1m30s") to int64 nanoseconds
-func parseDurationToNanoseconds(durationStr string) (int64, error) {
-	duration, err := time.ParseDuration(durationStr)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse duration %q: %w", durationStr, err)
-	}
-	return duration.Nanoseconds(), nil
 }
