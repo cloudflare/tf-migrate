@@ -3,7 +3,13 @@ package zero_trust_device_posture_rule
 import (
 	"testing"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestConfigTransformation(t *testing.T) {
@@ -45,7 +51,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "test" {
 `,
 		},
 		{
-			Name: "minimal resource - no name",
+			Name: "minimal resource - no name - auto-generated from resource name",
 			Input: `
 resource "cloudflare_zero_trust_device_posture_rule" "test" {
   account_id = "f037e56e89293a057740de681ac9abbe"
@@ -56,6 +62,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "test" {
 resource "cloudflare_zero_trust_device_posture_rule" "test" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   type       = "serial_number"
+  name       = "test"
 }
 `,
 		},
@@ -1486,4 +1493,148 @@ func TestStateTransformation(t *testing.T) {
 	}
 
 	testhelpers.RunStateTransformTests(t, tests, migrator)
+}
+
+// TestConfigTransformationWithState tests the state-aware config transformation
+// This verifies that missing 'name' field in config can be populated from state
+func TestConfigTransformationWithState(t *testing.T) {
+	migrator := NewV4ToV5Migrator().(*V4ToV5Migrator)
+
+	t.Run("name field populated from state when missing in config", func(t *testing.T) {
+		// Config without name field
+		input := `
+resource "cloudflare_device_posture_rule" "test" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  type       = "serial_number"
+}
+`
+
+		// State with name field
+		stateJSON := `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [{
+    "type": "cloudflare_device_posture_rule",
+    "name": "test",
+    "instances": [{
+      "attributes": {
+        "id": "test-rule-id",
+        "account_id": "f037e56e89293a057740de681ac9abbe",
+        "name": "my_posture_rule_from_state",
+        "type": "serial_number"
+      }
+    }]
+  }]
+}`
+
+		// Parse config
+		file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+		require.False(t, diags.HasErrors(), "Failed to parse input HCL")
+
+		// Create context with state
+		ctx := &transform.Context{
+			Content:   []byte(input),
+			Filename:  "test.tf",
+			CFGFile:   file,
+			StateJSON: stateJSON,
+		}
+
+		// Transform config (migrator will parse state from ctx.StateJSON)
+		body := file.Body()
+		block := body.Blocks()[0]
+		result, err := migrator.TransformConfig(ctx, block)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		// Get output
+		output := string(hclwrite.Format(file.Bytes()))
+
+		// Verify name field was added from state
+		assert.Contains(t, output, `name       = "my_posture_rule_from_state"`)
+		assert.Contains(t, output, "cloudflare_zero_trust_device_posture_rule")
+		assert.Contains(t, output, "account_id")
+		assert.Contains(t, output, "type")
+	})
+
+	t.Run("name field not added when already present in config", func(t *testing.T) {
+		// Config WITH name field
+		input := `
+resource "cloudflare_device_posture_rule" "test" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "my_config_name"
+  type       = "serial_number"
+}
+`
+
+		// State with DIFFERENT name field
+		stateJSON := `{
+  "version": 4,
+  "resources": [{
+    "type": "cloudflare_device_posture_rule",
+    "name": "test",
+    "instances": [{
+      "attributes": {
+        "name": "different_state_name",
+        "type": "serial_number"
+      }
+    }]
+  }]
+}`
+
+		// Parse config
+		file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+		require.False(t, diags.HasErrors())
+
+		ctx := &transform.Context{
+			Content:   []byte(input),
+			Filename:  "test.tf",
+			CFGFile:   file,
+			StateJSON: stateJSON,
+		}
+
+
+		// Transform
+		body := file.Body()
+		block := body.Blocks()[0]
+		result, err := migrator.TransformConfig(ctx, block)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		output := string(hclwrite.Format(file.Bytes()))
+
+		// Verify config name is preserved (not replaced with state name)
+		assert.Contains(t, output, `name       = "my_config_name"`)
+		assert.NotContains(t, output, "different_state_name")
+	})
+
+	t.Run("gracefully handles nil state - uses resource name as fallback", func(t *testing.T) {
+		input := `
+resource "cloudflare_device_posture_rule" "test" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  type       = "serial_number"
+}
+`
+
+		file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+		require.False(t, diags.HasErrors())
+
+		ctx := &transform.Context{
+			Content:  []byte(input),
+			Filename: "test.tf",
+			CFGFile:  file,
+		}
+
+		// Transform with nil state
+		body := file.Body()
+		block := body.Blocks()[0]
+		result, err := migrator.TransformConfig(ctx, block)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		output := string(hclwrite.Format(file.Bytes()))
+
+		// Should transform resource type and add name using Terraform resource name as fallback
+		assert.Contains(t, output, "cloudflare_zero_trust_device_posture_rule")
+		assert.Contains(t, output, `name       = "test"`)
+	})
 }

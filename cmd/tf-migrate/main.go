@@ -203,10 +203,16 @@ func runMigration(log hclog.Logger, cfg config) error {
 	if cfg.stateFile != "" {
 		content, err := os.ReadFile(cfg.stateFile)
 		if err != nil {
-			log.Debug("failed to read state file: %w", err)
+			log.Warn("Failed to read state file", "file", cfg.stateFile, "error", err)
+			fmt.Printf("⚠  Failed to read state file: %s (error: %v)\n", cfg.stateFile, err)
+		} else {
+			stateJSON = string(content)
+			log.Info("Loaded state file for cross-referencing", "file", cfg.stateFile, "size", len(stateJSON))
+			fmt.Printf("✓ Loaded state file for config cross-referencing: %s\n", cfg.stateFile)
 		}
-		stateJSON = string(content)
-		log.Debug("Loaded state file for cross-referencing", "file", cfg.stateFile)
+	} else {
+		log.Info("No state file specified")
+		fmt.Println("ℹ No state file specified - config transformations will proceed without state")
 	}
 
 	// Initialize API client if credentials are available

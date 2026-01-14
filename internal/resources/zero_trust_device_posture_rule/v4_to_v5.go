@@ -48,7 +48,15 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 	return "cloudflare_device_posture_rule", "cloudflare_zero_trust_device_posture_rule"
 }
 
+// TransformConfig handles config transformation
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	// Get the Terraform resource name before renaming (for fallback name generation)
+	labels := block.Labels()
+	terraformResourceName := ""
+	if len(labels) >= 2 {
+		terraformResourceName = labels[1]
+	}
+
 	tfhcl.RenameResourceType(block, "cloudflare_device_posture_rule", "cloudflare_zero_trust_device_posture_rule")
 
 	body := block.Body()
@@ -66,20 +74,48 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.MergeAttributeAndBlocksToObjectArray(body, "", "match", "match", "platform", []string{}, true)
 	}
 
-	// IF there is no name attribute, check in state for a name value and if so, use it
+	// If there is no name attribute in config, populate it from state or use fallback
+	// This handles the case where name was optional in v4 but required in v5
 	if !tfhcl.HasAttribute(body, "name") {
-		if ctx.StateJSON != "" {
-			labels := block.Labels()
-			resourceName := labels[1]
-			gjson.Parse(ctx.StateJSON).Get("resources").ForEach(func(key, resource gjson.Result) bool {
-				if m.CanHandle(resource.Get("type").String()) && resource.Get("name").String() == resourceName {
-					if resource.Get("instances.0.attributes.name").Exists() {
-						body.SetAttributeValue("name", cty.StringVal(resource.Get("instances.0.attributes.name").String()))
+		var nameToUse string
+
+		// Try to get name from state (using ctx.StateJSON directly)
+		if ctx.StateJSON != "" && len(labels) >= 2 {
+			// Parse state JSON to find this resource's state
+			stateResult := gjson.Parse(ctx.StateJSON)
+			resources := stateResult.Get("resources")
+
+			// Look for matching resource by type and name
+			resources.ForEach(func(_, resource gjson.Result) bool {
+				stateType := resource.Get("type").String()
+				stateName := resource.Get("name").String()
+
+				// Match old v4 type name
+				if stateType == labels[0] && stateName == terraformResourceName {
+					instances := resource.Get("instances")
+					if instances.Exists() && len(instances.Array()) > 0 {
+						attrs := instances.Array()[0].Get("attributes")
+
+						// Try to get name from state
+						if nameValue := attrs.Get("name"); nameValue.Exists() && nameValue.String() != "" {
+							nameToUse = nameValue.String()
+						}
 					}
-					return false
+					return false // Stop iteration
 				}
 				return true
 			})
+		}
+
+		// Final fallback: If we still don't have a name, use the Terraform resource name
+		// This ensures we always generate a valid config even when v4 didn't store the name anywhere
+		if nameToUse == "" && terraformResourceName != "" {
+			nameToUse = terraformResourceName
+		}
+
+		// Set the name if we found one
+		if nameToUse != "" {
+			body.SetAttributeValue("name", cty.StringVal(nameToUse))
 		}
 	}
 
@@ -96,6 +132,17 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	if !attrs.Exists() {
 		result, _ = sjson.Set(result, "schema_version", 0)
 		return result, nil
+	}
+
+	// If name is empty in state, use the Terraform resource name as fallback
+	// This keeps state and config in sync after migration
+	nameField := attrs.Get("name")
+	if !nameField.Exists() || nameField.String() == "" {
+		if resourceName != "" {
+			result, _ = sjson.Set(result, "attributes.name", resourceName)
+			// Re-parse attrs after setting name
+			attrs = gjson.Parse(result).Get("attributes")
+		}
 	}
 
 	inputField := attrs.Get("input")
