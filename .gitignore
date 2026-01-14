@@ -28,5 +28,5 @@ e2e/tf/v5/terraform.tfstate*
 e2e/tf/v4/backend.configured.hcl
 
 # Backup files
-e2e/*.backup
+*.backup
 e2e/*.tfstate.backup

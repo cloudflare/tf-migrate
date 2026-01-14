@@ -244,6 +244,34 @@ module "%s" {
 	printGreen("  - Files synced: %d", fileCount)
 	fmt.Println()
 
+	// Validate that we found resources to test
+	if len(moduleNames) == 0 && fileCount == 0 {
+		fmt.Println()
+		printError("No resources found to test!")
+		fmt.Println()
+		if len(targetResources) > 0 {
+			printYellow("The specified resources were not found in testdata:")
+			for _, r := range targetResources {
+				printRed("  - %s", r)
+			}
+			fmt.Println()
+			printYellow("Available resources in testdata:")
+			allDirs, _ := findInputDirs(testdataRoot)
+			if len(allDirs) > 0 {
+				for _, dir := range allDirs {
+					resourceType := filepath.Base(filepath.Dir(dir))
+					printBlue("  - %s", resourceType)
+				}
+			} else {
+				printRed("  No resources found in testdata")
+			}
+		} else {
+			printYellow("No testdata found in %s", testdataRoot)
+		}
+		fmt.Println()
+		return fmt.Errorf("cannot run e2e tests with 0 modules and 0 files")
+	}
+
 	// Configure remote backend
 	printYellow("Configuring remote backend...")
 

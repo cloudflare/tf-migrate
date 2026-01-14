@@ -19,41 +19,45 @@ variable "cloudflare_domain" {
 }
 
 # Default profile - multiple domains with all fields
-resource "cloudflare_zero_trust_local_fallback_domain" "default_multi" {
+resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "default_multi" {
   account_id = var.cloudflare_account_id
 
-  domains {
-    suffix      = "corp.${var.cloudflare_domain}"
-    description = "Corporate network"
-    dns_server  = ["10.0.0.1", "10.0.0.2"]
-  }
-  domains {
-    suffix      = "internal.${var.cloudflare_domain}"
-    description = "Internal services"
-    dns_server  = ["10.1.0.1"]
-  }
-  domains {
-    suffix = "local.${var.cloudflare_domain}"
-  }
+  domains = [
+    {
+      suffix      = "corp.${var.cloudflare_domain}"
+      description = "Corporate network"
+      dns_server  = ["10.0.0.1", "10.0.0.2"]
+    },
+    {
+      suffix      = "internal.${var.cloudflare_domain}"
+      description = "Internal services"
+      dns_server  = ["10.1.0.1"]
+    },
+    {
+      suffix = "local.${var.cloudflare_domain}"
+    }
+  ]
 }
 
 # Custom device profile for e2e testing
-resource "cloudflare_zero_trust_device_profiles" "custom_e2e" {
+resource "cloudflare_zero_trust_device_custom_profile" "custom_e2e" {
   account_id  = var.cloudflare_account_id
   name        = "E2E Custom Profile"
   description = "Custom profile for e2e testing"
   match       = "identity.email == \"e2e@example.com\""
-  precedence  = 100
+  precedence  = 1000
 }
 
 # Custom profile - fallback domain with policy_id
-resource "cloudflare_zero_trust_local_fallback_domain" "custom_e2e" {
+resource "cloudflare_zero_trust_device_custom_profile_local_domain_fallback" "custom_e2e" {
   account_id = var.cloudflare_account_id
-  policy_id  = cloudflare_zero_trust_device_profiles.custom_e2e.id
+  policy_id  = cloudflare_zero_trust_device_custom_profile.custom_e2e.id
 
-  domains {
-    suffix      = "custom-e2e.${var.cloudflare_domain}"
-    description = "Custom profile e2e fallback"
-    dns_server  = ["192.168.1.1"]
-  }
+  domains = [
+    {
+      suffix      = "custom-e2e.${var.cloudflare_domain}"
+      description = "Custom profile e2e fallback"
+      dns_server  = ["192.168.1.1"]
+    }
+  ]
 }
