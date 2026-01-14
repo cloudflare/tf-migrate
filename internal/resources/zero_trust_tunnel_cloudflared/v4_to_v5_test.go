@@ -144,7 +144,8 @@ resource "cloudflare_zero_trust_tunnel" "alt_config" {
     "id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "name": "minimal-tunnel",
-    "tunnel_secret": "dGVzdC1zZWNyZXQtdGhhdC1pcy1hdC1sZWFzdC0zMi1ieXRlcw=="
+    "tunnel_secret": "dGVzdC1zZWNyZXQtdGhhdC1pcy1hdC1sZWFzdC0zMi1ieXRlcw==",
+    "config_src": "local"
   }
 }`,
 			},
@@ -196,7 +197,8 @@ resource "cloudflare_zero_trust_tunnel" "alt_config" {
     "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "name": "no-computed-tunnel",
-    "tunnel_secret": "dGVzdC1zZWNyZXQtd2l0aG91dC1jb21wdXRlZC1maWVsZHMtMzItYnl0ZXM="
+    "tunnel_secret": "dGVzdC1zZWNyZXQtd2l0aG91dC1jb21wdXRlZC1maWVsZHMtMzItYnl0ZXM=",
+    "config_src": "local"
   }
 }`,
 			},
@@ -222,7 +224,8 @@ resource "cloudflare_zero_trust_tunnel" "alt_config" {
     "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
     "account_id": "f037e56e89293a057740de681ac9abbe",
     "name": "alt-minimal-tunnel",
-    "tunnel_secret": "YWx0ZXJuYXRpdmUtbmFtZS1zZWNyZXQtMzItYnl0ZXMtbG9uZw=="
+    "tunnel_secret": "YWx0ZXJuYXRpdmUtbmFtZS1zZWNyZXQtMzItYnl0ZXMtbG9uZw==",
+    "config_src": "local"
   }
 }`,
 			},
