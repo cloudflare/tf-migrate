@@ -99,10 +99,18 @@ func TransformEmptyValuesToNull(opts TransformEmptyValuesToNullOptions) string {
 								emptyValueDefinedInHCL = true
 							}
 						} else {
-							// Nested field - check in the specified attribute
+							// Nested field - check in the specified attribute or block
+							// First try to find it as an attribute (for v5-style attributes)
 							if attr := resourceBlock.Body().GetAttribute(opts.HCLAttributePath); attr != nil {
 								if tfhcl.AttributeValueContainsKey(attr, fieldName) {
 									emptyValueDefinedInHCL = true
+								}
+							} else {
+								// Try to find it as a block (for v4-style blocks)
+								if block := tfhcl.FindBlockByType(resourceBlock.Body(), opts.HCLAttributePath); block != nil {
+									if block.Body().GetAttribute(fieldName) != nil {
+										emptyValueDefinedInHCL = true
+									}
 								}
 							}
 						}

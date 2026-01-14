@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/cloudflare/cloudflare-go/v6"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -17,6 +19,7 @@ type StateTestCase struct {
 	Name      string
 	Input     string
 	Expected  string
+	Config    string             // Optional: HCL configuration for testing transformations that need HCL context
 	APIClient *cloudflare.Client // Optional: mock API client for testing migrations that need API access
 }
 
@@ -28,10 +31,21 @@ func runStateTransformTest(t *testing.T, tt StateTestCase, migrator transform.Re
 	inputResult := gjson.Parse(tt.Input)
 	expectedResult := gjson.Parse(tt.Expected)
 
-	// Create context with optional API client
+	// Create context with optional API client and HCL config
 	ctx := &transform.Context{
 		StateJSON: tt.Input,
 		APIClient: tt.APIClient,
+	}
+
+	// Parse HCL config if provided
+	if tt.Config != "" {
+		file, diag := hclwrite.ParseConfig([]byte(tt.Config), "test.tf", hcl.InitialPos)
+		if diag.HasErrors() {
+			t.Fatalf("Failed to parse HCL config: %v", diag)
+		}
+		ctx.CFGFiles = map[string]*hclwrite.File{
+			"test.tf": file,
+		}
 	}
 
 	// Get the output state structure ready
