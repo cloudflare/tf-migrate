@@ -23,7 +23,7 @@ locals {
 # Tunnel for minimal config test
 resource "cloudflare_tunnel" "minimal" {
   account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-minimal-tunnel"
+  name       = "${local.name_prefix}-minimal-tunnel-config"
   secret     = base64encode("test-secret-that-is-at-least-32-bytes-long")
   config_src = "cloudflare"
 }
@@ -31,7 +31,7 @@ resource "cloudflare_tunnel" "minimal" {
 # Tunnel for comprehensive config test
 resource "cloudflare_tunnel" "comprehensive" {
   account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-comprehensive-tunnel"
+  name       = "${local.name_prefix}-comprehensive-tunnel-config"
   secret     = base64encode("another-secret-32-bytes-or-longer-here")
   config_src = "cloudflare"
 }
@@ -39,7 +39,7 @@ resource "cloudflare_tunnel" "comprehensive" {
 # Tunnel for testing deprecated resource name
 resource "cloudflare_tunnel" "deprecated_name" {
   account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-deprecated-tunnel"
+  name       = "${local.name_prefix}-deprecated-tunnel-config"
   secret     = base64encode("deprecated-tunnel-secret-32-bytes-minimum")
   config_src = "cloudflare"
 }

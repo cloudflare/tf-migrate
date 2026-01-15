@@ -31,17 +31,6 @@ func TestV4ToV5Transformation(t *testing.T) {
         service = "http_status:404"
       }
     ]
-    origin_request = {
-      ca_pool                  = ""
-      connect_timeout          = 30
-      disable_chunked_encoding = false
-      keep_alive_timeout       = 90
-      no_tls_verify            = false
-      origin_server_name       = ""
-      proxy_type               = ""
-      tcp_keep_alive           = 30
-      tls_timeout              = 10
-    }
   }
 }`,
 			},
@@ -65,17 +54,6 @@ func TestV4ToV5Transformation(t *testing.T) {
         service = "http_status:404"
       }
     ]
-    origin_request = {
-      ca_pool                  = ""
-      connect_timeout          = 30
-      disable_chunked_encoding = false
-      keep_alive_timeout       = 90
-      no_tls_verify            = false
-      origin_server_name       = ""
-      proxy_type               = ""
-      tcp_keep_alive           = 30
-      tls_timeout              = 10
-    }
   }
 }`,
 			},
@@ -102,17 +80,6 @@ func TestV4ToV5Transformation(t *testing.T) {
         service = "http_status:404"
       }
     ]
-    origin_request = {
-      ca_pool                  = ""
-      connect_timeout          = 30
-      disable_chunked_encoding = false
-      keep_alive_timeout       = 90
-      no_tls_verify            = false
-      origin_server_name       = ""
-      proxy_type               = ""
-      tcp_keep_alive           = 30
-      tls_timeout              = 10
-    }
   }
 }`,
 			},
@@ -189,8 +156,8 @@ func TestV4ToV5Transformation(t *testing.T) {
         hostname = "app.example.com"
         service  = "http://localhost:8080"
         origin_request = {
-          ca_pool                  = ""
           connect_timeout          = 10
+          ca_pool                  = ""
           disable_chunked_encoding = false
           keep_alive_timeout       = 90
           no_tls_verify            = false
@@ -204,17 +171,6 @@ func TestV4ToV5Transformation(t *testing.T) {
         service = "http_status:404"
       }
     ]
-    origin_request = {
-      ca_pool                  = ""
-      connect_timeout          = 30
-      disable_chunked_encoding = false
-      keep_alive_timeout       = 90
-      no_tls_verify            = false
-      origin_server_name       = ""
-      proxy_type               = ""
-      tcp_keep_alive           = 30
-      tls_timeout              = 10
-    }
   }
 }`,
 			},
@@ -465,10 +421,7 @@ func TestV4ToV5Transformation(t *testing.T) {
           "hostname": "app.example.com",
           "service": "http://localhost:8080",
           "origin_request": {
-            "connect_timeout": 15,
-            "access": {
-              "required": false
-            }
+            "connect_timeout": 15
           }
         },
         {

@@ -2,6 +2,7 @@ package zero_trust_tunnel_cloudflared_config
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -62,14 +63,14 @@ func addOriginRequestDefaults(originReqBody *hclwrite.Body) {
 	// Ordered alphabetically for consistency
 	v4Defaults := []defaultPair{
 		{"ca_pool", "", false},
-		{"connect_timeout", int64(30), true},        // 30 seconds
+		{"connect_timeout", int64(30), true}, // 30 seconds
 		{"disable_chunked_encoding", false, false},
-		{"keep_alive_timeout", int64(90), true},     // 90 seconds (1m30s)
+		{"keep_alive_timeout", int64(90), true}, // 90 seconds (1m30s)
 		{"no_tls_verify", false, false},
 		{"origin_server_name", "", false},
 		{"proxy_type", "", false},
-		{"tcp_keep_alive", int64(30), true},         // 30 seconds
-		{"tls_timeout", int64(10), true},            // 10 seconds
+		{"tcp_keep_alive", int64(30), true}, // 30 seconds
+		{"tls_timeout", int64(10), true},    // 10 seconds
 	}
 
 	for _, pair := range v4Defaults {
@@ -121,6 +122,23 @@ func tryConvertDurationAttribute(attr *hclwrite.Attribute) (int64, bool) {
 	return seconds, true
 }
 
+// removeIncompleteAccessBlocks removes access blocks that don't have both aud_tag and team_name
+// In v4, access could have just "required", but v5 requires aud_tag and team_name when access block exists
+func removeIncompleteAccessBlocks(originReqBody *hclwrite.Body) {
+	accessBlocks := tfhcl.FindBlocksByType(originReqBody, "access")
+	for _, accessBlock := range accessBlocks {
+		accessBody := accessBlock.Body()
+		hasAudTag := accessBody.GetAttribute("aud_tag") != nil
+		hasTeamName := accessBody.GetAttribute("team_name") != nil
+
+		// If either aud_tag or team_name is missing, remove the entire access block
+		if !hasAudTag || !hasTeamName {
+			tfhcl.RemoveBlocksByType(originReqBody, "access")
+			break // Only one access block allowed (MaxItems:1)
+		}
+	}
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	resourceType := tfhcl.GetResourceType(block)
 
@@ -148,6 +166,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			// Remove deprecated attributes
 			tfhcl.RemoveAttributes(originReqBody, "bastion_mode", "proxy_address", "proxy_port")
 
+			// Remove access blocks that don't have required fields (aud_tag and team_name)
+			// In v4, access could have just "required=false", but v5 requires all fields
+			removeIncompleteAccessBlocks(originReqBody)
+
 			// Add v4 defaults for fields not specified to preserve v4 behavior
 			// v4 API applied these defaults, v5 does not, so we must specify them explicitly
 			addOriginRequestDefaults(originReqBody)
@@ -164,19 +186,12 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 				// Remove deprecated attributes
 				tfhcl.RemoveAttributes(nestedOriginReqBody, "bastion_mode", "proxy_address", "proxy_port")
 
+				// Remove incomplete access blocks here too
+				removeIncompleteAccessBlocks(nestedOriginReqBody)
+
 				// Add v4 defaults for nested origin_request too
 				addOriginRequestDefaults(nestedOriginReqBody)
 			}
-		}
-
-		// Add empty origin_request block if it doesn't exist
-		// This preserves v4 behavior where origin_request always exists in state with nil fields
-		// even when not specified in config
-		if len(originReqBlocks) == 0 {
-			emptyOriginRequest := hclwrite.NewBlock("origin_request", nil)
-			configBody.AppendBlock(emptyOriginRequest)
-			// Add defaults to the newly created empty block
-			addOriginRequestDefaults(emptyOriginRequest.Body())
 		}
 	}
 
@@ -197,10 +212,18 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			for _, ingressBlock := range ingressRuleBlocks {
 				// Change the block type by creating a new block with the correct type
 				newIngressBlock := hclwrite.NewBlock("ingress", nil)
-				// Copy all attributes and nested blocks
-				for name, attr := range ingressBlock.Body().Attributes() {
-					newIngressBlock.Body().SetAttributeRaw(name, attr.Expr().BuildTokens(nil))
+				// Copy all attributes in alphabetical order for deterministic output
+				attrNames := make([]string, 0, len(ingressBlock.Body().Attributes()))
+				attrs := ingressBlock.Body().Attributes()
+				for name := range attrs {
+					attrNames = append(attrNames, name)
 				}
+				// Sort to ensure deterministic ordering
+				sort.Strings(attrNames)
+				for _, name := range attrNames {
+					newIngressBlock.Body().SetAttributeRaw(name, attrs[name].Expr().BuildTokens(nil))
+				}
+				// Copy nested blocks
 				for _, nestedBlock := range ingressBlock.Body().Blocks() {
 					newIngressBlock.Body().AppendBlock(nestedBlock)
 				}
@@ -341,6 +364,20 @@ func transformOriginRequestPostProcess(stateJSON string, path string, originReq 
 		stateJSON = state.TransformFieldArrayToObject(stateJSON, path, originReq, "access", state.ArrayToObjectOptions{
 			// Keep empty objects with nil fields as-is
 		})
+
+		// After transforming, check if access has required fields. If not, remove it.
+		// Refresh after transformation
+		originReq = gjson.Parse(stateJSON).Get(path)
+		accessObj := originReq.Get("access")
+		if accessObj.Exists() && accessObj.IsObject() {
+			hasAudTag := accessObj.Get("aud_tag").Exists()
+			hasTeamName := accessObj.Get("team_name").Exists()
+
+			// If either required field is missing, remove the entire access block
+			if !hasAudTag || !hasTeamName {
+				stateJSON = state.RemoveFields(stateJSON, path, originReq, "access")
+			}
+		}
 	}
 
 	// Note: We do NOT delete empty origin_request objects with all nil fields

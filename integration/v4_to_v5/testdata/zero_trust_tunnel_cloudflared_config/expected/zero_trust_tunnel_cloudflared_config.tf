@@ -23,7 +23,7 @@ locals {
 # Tunnel for minimal config test
 resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
   account_id    = var.cloudflare_account_id
-  name          = "${local.name_prefix}-minimal-tunnel"
+  name          = "${local.name_prefix}-minimal-tunnel-config"
   config_src    = "cloudflare"
   tunnel_secret = base64encode("test-secret-that-is-at-least-32-bytes-long")
 }
@@ -31,7 +31,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
 # Tunnel for comprehensive config test
 resource "cloudflare_zero_trust_tunnel_cloudflared" "comprehensive" {
   account_id    = var.cloudflare_account_id
-  name          = "${local.name_prefix}-comprehensive-tunnel"
+  name          = "${local.name_prefix}-comprehensive-tunnel-config"
   config_src    = "cloudflare"
   tunnel_secret = base64encode("another-secret-32-bytes-or-longer-here")
 }
@@ -39,7 +39,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "comprehensive" {
 # Tunnel for testing deprecated resource name
 resource "cloudflare_zero_trust_tunnel_cloudflared" "deprecated_name" {
   account_id    = var.cloudflare_account_id
-  name          = "${local.name_prefix}-deprecated-tunnel"
+  name          = "${local.name_prefix}-deprecated-tunnel-config"
   config_src    = "cloudflare"
   tunnel_secret = base64encode("deprecated-tunnel-secret-32-bytes-minimum")
 }
@@ -59,17 +59,6 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "minimal" {
         service = "http_status:404"
       }
     ]
-    origin_request = {
-      ca_pool                  = ""
-      connect_timeout          = 30
-      disable_chunked_encoding = false
-      keep_alive_timeout       = 90
-      no_tls_verify            = false
-      origin_server_name       = ""
-      proxy_type               = ""
-      tcp_keep_alive           = 30
-      tls_timeout              = 10
-    }
   }
 }
 
@@ -88,17 +77,6 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "deprecated_name" {
         service = "http_status:404"
       }
     ]
-    origin_request = {
-      ca_pool                  = ""
-      connect_timeout          = 30
-      disable_chunked_encoding = false
-      keep_alive_timeout       = 90
-      no_tls_verify            = false
-      origin_server_name       = ""
-      proxy_type               = ""
-      tcp_keep_alive           = 30
-      tls_timeout              = 10
-    }
   }
 }
 
@@ -111,8 +89,8 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "comprehensive" {
     ingress = [
       {
         hostname = "app.example.com"
-        service  = "http://localhost:8080"
         path     = "/api"
+        service  = "http://localhost:8080"
         origin_request = {
           connect_timeout          = 15
           tls_timeout              = 5
@@ -123,9 +101,6 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "comprehensive" {
           origin_server_name       = ""
           proxy_type               = ""
           tcp_keep_alive           = 30
-          access = {
-            required = false
-          }
         }
       },
       {
