@@ -3,6 +3,7 @@ package registry
 import (
 	zonedata "github.com/cloudflare/tf-migrate/internal/datasources/zone"
 	zonesdata "github.com/cloudflare/tf-migrate/internal/datasources/zones"
+	"github.com/cloudflare/tf-migrate/internal/resources/access_rule"
 	"github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_shield"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_token"
@@ -69,6 +70,7 @@ func RegisterAllMigrations() {
 	zonesdata.NewV4ToV5Migrator()
 
 	// Resources
+	access_rule.NewV4ToV5Migrator()
 	account_member.NewV4ToV5Migrator()
 	api_shield.NewV4ToV5Migrator()
 	api_token.NewV4ToV5Migrator()
