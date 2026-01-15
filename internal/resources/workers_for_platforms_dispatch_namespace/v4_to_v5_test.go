@@ -97,6 +97,49 @@ resource "cloudflare_workers_for_platforms_dispatch_namespace" "test" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
+	t.Run("ConfigTransformation_DeprecatedName", func(t *testing.T) {
+		tests := []testhelpers.ConfigTestCase{
+			{
+				Name: "deprecated resource name gets renamed",
+				Input: `
+resource "cloudflare_workers_for_platforms_namespace" "test" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "test-namespace"
+}`,
+				Expected: `
+resource "cloudflare_workers_for_platforms_dispatch_namespace" "test" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "test-namespace"
+}`,
+			},
+			{
+				Name: "multiple deprecated resources get renamed",
+				Input: `
+resource "cloudflare_workers_for_platforms_namespace" "test1" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "namespace-1"
+}
+
+resource "cloudflare_workers_for_platforms_namespace" "test2" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "namespace-2"
+}`,
+				Expected: `
+resource "cloudflare_workers_for_platforms_dispatch_namespace" "test1" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "namespace-1"
+}
+
+resource "cloudflare_workers_for_platforms_dispatch_namespace" "test2" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "namespace-2"
+}`,
+			},
+		}
+
+		testhelpers.RunConfigTransformTests(t, tests, migrator)
+	})
+
 	t.Run("StateTransformation", func(t *testing.T) {
 		tests := []testhelpers.StateTestCase{
 			{
@@ -166,6 +209,51 @@ resource "cloudflare_workers_for_platforms_dispatch_namespace" "test" {
 						"id": "test-namespace",
 						"name": "test-namespace-2024",
 						"namespace_name": "test-namespace"
+					}
+				}`,
+			},
+		}
+
+		testhelpers.RunStateTransformTests(t, tests, migrator)
+	})
+
+	t.Run("StateTransformation_DeprecatedName", func(t *testing.T) {
+		tests := []testhelpers.StateTestCase{
+			{
+				Name: "deprecated resource name gets renamed in state",
+				Input: `{
+					"type": "cloudflare_workers_for_platforms_namespace",
+					"attributes": {
+						"account_id": "f037e56e89293a057740de681ac9abbe",
+						"id": "my-namespace",
+						"name": "test-namespace"
+					}
+				}`,
+				Expected: `{
+					"type": "cloudflare_workers_for_platforms_dispatch_namespace",
+					"attributes": {
+						"account_id": "f037e56e89293a057740de681ac9abbe",
+						"id": "my-namespace",
+						"name": "test-namespace",
+						"namespace_name": "my-namespace"
+					}
+				}`,
+			},
+			{
+				Name: "deprecated resource without name field",
+				Input: `{
+					"type": "cloudflare_workers_for_platforms_namespace",
+					"attributes": {
+						"account_id": "f037e56e89293a057740de681ac9abbe",
+						"id": "auto-generated-id"
+					}
+				}`,
+				Expected: `{
+					"type": "cloudflare_workers_for_platforms_dispatch_namespace",
+					"attributes": {
+						"account_id": "f037e56e89293a057740de681ac9abbe",
+						"id": "auto-generated-id",
+						"namespace_name": "auto-generated-id"
 					}
 				}`,
 			},

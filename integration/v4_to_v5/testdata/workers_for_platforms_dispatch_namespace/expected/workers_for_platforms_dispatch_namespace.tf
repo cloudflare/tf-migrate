@@ -236,7 +236,50 @@ resource "cloudflare_workers_for_platforms_dispatch_namespace" "depends_derived"
 }
 
 # ==============================================================================
-# Summary: 34 total resource instances
+# Pattern 10: Deprecated Resource Name (cloudflare_workers_for_platforms_namespace)
+# These resources use the deprecated v4 name and should be renamed during migration
+# ==============================================================================
+
+# Test 35: Basic deprecated resource name
+resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_basic" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-deprecated-basic"
+}
+
+# Test 36-38: Deprecated resource with for_each (3 instances)
+locals {
+  deprecated_map = {
+    alpha = "${local.name_prefix}-deprecated-alpha"
+    beta  = "${local.name_prefix}-deprecated-beta"
+    gamma = "${local.name_prefix}-deprecated-gamma"
+  }
+}
+
+resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_for_each" {
+  for_each   = local.deprecated_map
+  account_id = var.cloudflare_account_id
+  name       = each.value
+}
+
+# Test 39-41: Deprecated resource with count (3 instances)
+resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_count" {
+  count      = 3
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-deprecated-count-${count.index}"
+}
+
+# Test 42: Deprecated resource with lifecycle
+resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_lifecycle" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-deprecated-lifecycle"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# ==============================================================================
+# Summary: 42 total resource instances
 # ==============================================================================
 # - Pattern 1 (Basic): 4 instances
 # - Pattern 2 (for_each map): 5 instances
@@ -248,4 +291,5 @@ resource "cloudflare_workers_for_platforms_dispatch_namespace" "depends_derived"
 # - Pattern 8 (functions): 4 instances
 # - Pattern 9 (interpolation): 1 instance
 # - Edge cases: 4 instances
-# Total: 34 instances (exceeds 15-30 target)
+# - Pattern 10 (deprecated name): 8 instances
+# Total: 42 instances (exceeds 15-30 target)
