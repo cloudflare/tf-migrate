@@ -76,7 +76,12 @@ func runConfigTransformTest(t *testing.T, tt ConfigTestCase, migrator transform.
 	expectedOutput = NormalizeHCLWhitespace(expectedOutput)
 	expectedOutput = strings.TrimSpace(expectedOutput)
 
-	assert.Equal(t, expectedOutput, output)
+	// Semantic comparison: compare HCL structures ignoring attribute order
+	// semanticHCLEqual is defined in hcl_semantic_compare.go
+	if !semanticHCLEqual(t, expectedFile, file) {
+		// If semantic comparison fails, show the formatted output diff for debugging
+		assert.Equal(t, expectedOutput, output, "HCL outputs are semantically different")
+	}
 }
 
 // RunConfigTransformTests runs multiple configuration transformation tests

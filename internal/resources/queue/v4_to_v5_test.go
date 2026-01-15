@@ -84,6 +84,7 @@ resource "cloudflare_queue" "queue2" {
       "schema_version": 0,
       "attributes": {
         "account_id": "f037e56e89293a057740de681ac9abbe",
+        "id": "queue-id-12345",
         "name": "my-queue"
       }
     }]
@@ -99,6 +100,8 @@ resource "cloudflare_queue" "queue2" {
       "schema_version": 0,
       "attributes": {
         "account_id": "f037e56e89293a057740de681ac9abbe",
+        "id": "queue-id-12345",
+        "queue_id": "queue-id-12345",
         "queue_name": "my-queue"
       }
     }]
@@ -117,6 +120,7 @@ resource "cloudflare_queue" "queue2" {
       "schema_version": 0,
       "attributes": {
         "account_id": "f037e56e89293a057740de681ac9abbe",
+        "id": "queue-id-67890",
         "name": "my-queue-test_123"
       }
     }]
@@ -132,6 +136,8 @@ resource "cloudflare_queue" "queue2" {
       "schema_version": 0,
       "attributes": {
         "account_id": "f037e56e89293a057740de681ac9abbe",
+        "id": "queue-id-67890",
+        "queue_id": "queue-id-67890",
         "queue_name": "my-queue-test_123"
       }
     }]

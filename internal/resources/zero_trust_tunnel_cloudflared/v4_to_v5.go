@@ -57,6 +57,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	body := block.Body()
 	tfhcl.RenameAttribute(body, "secret", "tunnel_secret")
 
+	// Add config_src = "local" if not present
+	// In v4, this field didn't exist. In v5, it's Optional with no default, but the API default is "local"
+	// We add it to config to prevent drift after migration
+	if body.GetAttribute("config_src") == nil {
+		tfhcl.SetAttributeValue(body, "config_src", "local")
+	}
+
 	// All other fields remain the same
 	// Fields: account_id, name, tunnel_secret (renamed from secret), config_src
 
@@ -80,6 +87,13 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 	// Remove computed fields that don't exist in v5 or are deprecated
 	// cname and tunnel_token were computed in v4 but don't exist in v5
 	result = state.RemoveFields(result, "attributes", attrs, "cname", "tunnel_token")
+
+	// Add config_src if not present (v5 Computed+Optional field defaults to "local")
+	// This prevents plan drift when migrating from v4 where this field didn't exist
+	refreshedAttrs := gjson.Parse(result).Get("attributes")
+	if !refreshedAttrs.Get("config_src").Exists() {
+		result, _ = sjson.Set(result, "attributes.config_src", "local")
+	}
 
 	// Set schema_version to 0 for v5
 	result, _ = sjson.Set(result, "schema_version", 0)
