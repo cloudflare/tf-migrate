@@ -3,7 +3,14 @@ package zero_trust_gateway_certificate
 import (
 	"testing"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
+
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestConfigTransformation(t *testing.T) {
@@ -134,7 +141,6 @@ func TestStateTransformation(t *testing.T) {
 			Expected: `{
 				"attributes": {
 					"account_id": "f037e56e89293a057740de681ac9abbe",
-					"validity_period_days": 1.0,
 					"activate": true,
 					"id": "test-id-123"
 				}
@@ -172,7 +178,6 @@ func TestStateTransformation(t *testing.T) {
 			Expected: `{
 				"attributes": {
 					"account_id": "f037e56e89293a057740de681ac9abbe",
-					"validity_period_days": 1826.0,
 					"activate": true,
 					"id": "test-id-789"
 				}
@@ -210,7 +215,6 @@ func TestStateTransformation(t *testing.T) {
 			Expected: `{
 				"attributes": {
 					"account_id": "f037e56e89293a057740de681ac9abbe",
-					"validity_period_days": 1826.0,
 					"activate": true,
 					"id": "test-id-qs"
 				}
@@ -233,7 +237,6 @@ func TestStateTransformation(t *testing.T) {
 				"attributes": {
 					"account_id": "f037e56e89293a057740de681ac9abbe",
 					"id": "test-cert-uuid-789",
-					"validity_period_days": 1826.0,
 					"activate": true
 				}
 			}`,
@@ -258,7 +261,6 @@ func TestStateTransformation(t *testing.T) {
 				"attributes": {
 					"account_id": "f037e56e89293a057740de681ac9abbe",
 					"id": "test-cert-uuid-computed",
-					"validity_period_days": 1826.0,
 					"activate": true,
 					"in_use": true,
 					"binding_status": "active",
@@ -310,5 +312,241 @@ func TestGetResourceType(t *testing.T) {
 
 	if result != expected {
 		t.Errorf("GetResourceType() = %q, want %q", result, expected)
+	}
+}
+
+// TestValidityPeriodDaysDefaultHandling tests the combined config+state transformation
+// for handling the v4 default value of validity_period_days
+func TestValidityPeriodDaysDefaultHandling(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	tests := []struct {
+		name          string
+		config        string
+		state         string
+		expectedState string
+		description   string
+	}{
+		{
+			name: "explicit validity_period_days in config - keeps in state",
+			config: `
+resource "cloudflare_zero_trust_gateway_certificate" "test" {
+  account_id           = "f037e56e89293a057740de681ac9abbe"
+  gateway_managed      = true
+  validity_period_days = 3650
+  activate             = true
+}`,
+			state: `{
+				"resources": [{
+					"type": "cloudflare_zero_trust_gateway_certificate",
+					"name": "test",
+					"instances": [{
+						"attributes": {
+							"account_id": "f037e56e89293a057740de681ac9abbe",
+							"gateway_managed": true,
+							"validity_period_days": 3650,
+							"activate": true,
+							"id": "cert-123"
+						}
+					}]
+				}]
+			}`,
+			expectedState: `{
+				"resources": [{
+					"type": "cloudflare_zero_trust_gateway_certificate",
+					"name": "test",
+					"instances": [{
+						"attributes": {
+							"account_id": "f037e56e89293a057740de681ac9abbe",
+							"validity_period_days": 3650.0,
+							"activate": true,
+							"id": "cert-123"
+						}
+					}]
+				}]
+			}`,
+			description: "When validity_period_days is explicitly set in config, it should be kept in state (converted to float64)",
+		},
+		{
+			name: "no validity_period_days in config - removes from state",
+			config: `
+resource "cloudflare_zero_trust_gateway_certificate" "test" {
+  account_id      = "f037e56e89293a057740de681ac9abbe"
+  gateway_managed = true
+  activate        = true
+}`,
+			state: `{
+				"resources": [{
+					"type": "cloudflare_zero_trust_gateway_certificate",
+					"name": "test",
+					"instances": [{
+						"attributes": {
+							"account_id": "f037e56e89293a057740de681ac9abbe",
+							"gateway_managed": true,
+							"validity_period_days": 1826,
+							"activate": true,
+							"id": "cert-456"
+						}
+					}]
+				}]
+			}`,
+			expectedState: `{
+				"resources": [{
+					"type": "cloudflare_zero_trust_gateway_certificate",
+					"name": "test",
+					"instances": [{
+						"attributes": {
+							"account_id": "f037e56e89293a057740de681ac9abbe",
+							"activate": true,
+							"id": "cert-456"
+						}
+					}]
+				}]
+			}`,
+			description: "When validity_period_days is NOT in config (v4 default), it should be removed from state",
+		},
+		{
+			name: "default value 1826 explicitly set - keeps in state",
+			config: `
+resource "cloudflare_zero_trust_gateway_certificate" "test" {
+  account_id           = "f037e56e89293a057740de681ac9abbe"
+  gateway_managed      = true
+  validity_period_days = 1826
+}`,
+			state: `{
+				"resources": [{
+					"type": "cloudflare_zero_trust_gateway_certificate",
+					"name": "test",
+					"instances": [{
+						"attributes": {
+							"account_id": "f037e56e89293a057740de681ac9abbe",
+							"gateway_managed": true,
+							"validity_period_days": 1826,
+							"id": "cert-789"
+						}
+					}]
+				}]
+			}`,
+			expectedState: `{
+				"resources": [{
+					"type": "cloudflare_zero_trust_gateway_certificate",
+					"name": "test",
+					"instances": [{
+						"attributes": {
+							"account_id": "f037e56e89293a057740de681ac9abbe",
+							"validity_period_days": 1826.0,
+							"id": "cert-789"
+						}
+					}]
+				}]
+			}`,
+			description: "Even if the value is 1826 (v4 default), keep it if explicitly set in config",
+		},
+		{
+			name: "multiple resources with mixed explicit/implicit",
+			config: `
+resource "cloudflare_zero_trust_gateway_certificate" "explicit" {
+  account_id           = "f037e56e89293a057740de681ac9abbe"
+  gateway_managed      = true
+  validity_period_days = 7300
+}
+
+resource "cloudflare_zero_trust_gateway_certificate" "implicit" {
+  account_id      = "f037e56e89293a057740de681ac9abbe"
+  gateway_managed = true
+}`,
+			state: `{
+				"resources": [
+					{
+						"type": "cloudflare_zero_trust_gateway_certificate",
+						"name": "explicit",
+						"instances": [{
+							"attributes": {
+								"account_id": "f037e56e89293a057740de681ac9abbe",
+								"gateway_managed": true,
+								"validity_period_days": 7300,
+								"id": "cert-explicit"
+							}
+						}]
+					},
+					{
+						"type": "cloudflare_zero_trust_gateway_certificate",
+						"name": "implicit",
+						"instances": [{
+							"attributes": {
+								"account_id": "f037e56e89293a057740de681ac9abbe",
+								"gateway_managed": true,
+								"validity_period_days": 1826,
+								"id": "cert-implicit"
+							}
+						}]
+					}
+				]
+			}`,
+			expectedState: `{
+				"resources": [
+					{
+						"type": "cloudflare_zero_trust_gateway_certificate",
+						"name": "explicit",
+						"instances": [{
+							"attributes": {
+								"account_id": "f037e56e89293a057740de681ac9abbe",
+								"validity_period_days": 7300.0,
+								"id": "cert-explicit"
+							}
+						}]
+					},
+					{
+						"type": "cloudflare_zero_trust_gateway_certificate",
+						"name": "implicit",
+						"instances": [{
+							"attributes": {
+								"account_id": "f037e56e89293a057740de681ac9abbe",
+								"id": "cert-implicit"
+							}
+						}]
+					}
+				]
+			}`,
+			description: "Multiple resources: explicit validity_period_days kept, implicit removed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Step 1: Parse config file and transform to populate metadata
+			configFile, diags := hclwrite.ParseConfig([]byte(tt.config), "test.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), "Failed to parse config: %v", diags)
+
+			// Create context and transform config to populate metadata
+			ctx := &transform.Context{
+				StateJSON: tt.state,
+				CFGFiles: map[string]*hclwrite.File{
+					"test.tf": configFile,
+				},
+			}
+
+			// Transform config blocks to populate metadata
+			body := configFile.Body()
+			for _, block := range body.Blocks() {
+				if block.Type() == "resource" && len(block.Labels()) >= 2 {
+					resourceType := block.Labels()[0]
+					if migrator.CanHandle(resourceType) {
+						_, err := migrator.TransformConfig(ctx, block)
+						require.NoError(t, err, "Failed to transform config")
+					}
+				}
+			}
+
+			// Step 2: Parse state
+			inputResult := gjson.Parse(tt.state)
+
+			// Step 3: Run state transformation using the context with metadata
+			transformedState, err := migrator.TransformState(ctx, inputResult, "", "")
+			require.NoError(t, err, "TransformState failed")
+
+			// Step 4: Compare results
+			assert.JSONEq(t, tt.expectedState, transformedState, tt.description)
+		})
 	}
 }
