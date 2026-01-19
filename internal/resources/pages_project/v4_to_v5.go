@@ -155,6 +155,19 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			}
 			// Convert placement block to attribute
 			tfhcl.ConvertSingleBlockToAttribute(previewBody, "placement", "placement")
+
+			// Transform bindings from v4 string format to v5 object format
+			// v4: kv_namespaces = { MY_KV = "id" }
+			// v5: kv_namespaces = { MY_KV = { namespace_id = "id" } }
+			tfhcl.WrapMapValuesInObjects(previewBody, "kv_namespaces", "namespace_id")
+			tfhcl.WrapMapValuesInObjects(previewBody, "d1_databases", "id")
+			tfhcl.WrapMapValuesInObjects(previewBody, "r2_buckets", "name")
+			tfhcl.WrapMapValuesInObjects(previewBody, "durable_object_namespaces", "namespace_id")
+
+			// Transform service_binding blocks to services map
+			// v4: service_binding { name = "MY_SERVICE" service = "worker-1" }
+			// v5: services = { MY_SERVICE = { service = "worker-1" } }
+			tfhcl.ConvertServiceBindingBlocksToServicesMap(previewBody)
 		}
 
 		// Process production deployment config (deepest first)
@@ -172,6 +185,17 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			}
 			// Convert placement block to attribute
 			tfhcl.ConvertSingleBlockToAttribute(productionBody, "placement", "placement")
+
+			// Transform bindings from v4 string format to v5 object format
+			tfhcl.WrapMapValuesInObjects(productionBody, "kv_namespaces", "namespace_id")
+			tfhcl.WrapMapValuesInObjects(productionBody, "d1_databases", "id")
+			tfhcl.WrapMapValuesInObjects(productionBody, "r2_buckets", "name")
+			tfhcl.WrapMapValuesInObjects(productionBody, "durable_object_namespaces", "namespace_id")
+
+			// Transform service_binding blocks to services map
+			// v4: service_binding { name = "MY_SERVICE" service = "worker-1" }
+			// v5: services = { MY_SERVICE = { service = "worker-1" } }
+			tfhcl.ConvertServiceBindingBlocksToServicesMap(productionBody)
 		}
 
 		// Convert preview and production blocks to attributes
@@ -184,15 +208,14 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	tfhcl.ConvertSingleBlockToAttribute(body, "source", "source")
 	tfhcl.ConvertSingleBlockToAttribute(body, "deployment_configs", "deployment_configs")
 
-	// Note: Complex transformations that can't be easily done in HCL are left as-is
+	// Note: Some complex transformations that require API data are left as-is
 	// and will be handled in state transformation:
 	// 1. Merging environment_variables + secrets → env_vars (with type/value structure)
-	// 2. Converting service_binding blocks → services map (extract name as key)
-	// 3. Converting TypeMap → MapNestedAttribute (wrap string values in objects)
+	//    - This requires API data to determine which vars are secrets vs plain text
 	//
-	// The HCL will still have the v4 structure for these fields, but the state
-	// transformation will produce the correct v5 state. The provider will reconcile
-	// the differences on the next apply.
+	// All other transformations are now handled in the config transformation above:
+	// - service_binding blocks → services map (extract name as key)
+	// - TypeMap bindings → MapNestedAttribute (kv_namespaces, d1_databases, r2_buckets, durable_object_namespaces)
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
@@ -454,10 +477,13 @@ func (m *V4ToV5Migrator) processDeploymentConfigState(result string, basePath st
 			if name != "" {
 				hasServices = true
 				service := map[string]interface{}{
-					"service":     v.Get("service").String(),
-					"environment": v.Get("environment").String(),
+					"service": v.Get("service").String(),
 				}
-				// Add entrypoint if exists
+				// Add environment if exists and not empty
+				if environment := v.Get("environment"); environment.Exists() && environment.String() != "" {
+					service["environment"] = environment.String()
+				}
+				// Add entrypoint if exists and not empty
 				if entrypoint := v.Get("entrypoint"); entrypoint.Exists() && entrypoint.String() != "" {
 					service["entrypoint"] = entrypoint.String()
 				}

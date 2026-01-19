@@ -1117,3 +1117,282 @@ func MoveAttributesToNestedObject(body *hclwrite.Body, nestedAttrName string, fi
 
 	return len(fields)
 }
+
+// WrapMapValuesInObjects transforms a map attribute by wrapping each string value in an object.
+// Example: { key = "value" } → { key = { fieldName = "value" } }
+// This is useful for migrating from v4 TypeMap (string values) to v5 MapNestedAttribute (object values).
+//
+// Parameters:
+//   - body: The HCL body containing the attribute
+//   - attrName: The name of the map attribute to transform
+//   - wrapFieldName: The field name to use when wrapping values (e.g., "namespace_id", "id", "name")
+//
+// Returns true if the transformation was successful, false if the attribute doesn't exist or isn't a map.
+func WrapMapValuesInObjects(body *hclwrite.Body, attrName string, wrapFieldName string) bool {
+	attr := body.GetAttribute(attrName)
+	if attr == nil {
+		return false
+	}
+
+	// Parse the map entries
+	mapEntries := parseMapAttribute(attr)
+	if len(mapEntries) == 0 {
+		return false
+	}
+
+	// Build new map with wrapped values
+	var mapTokens hclwrite.Tokens
+
+	// Opening brace
+	mapTokens = append(mapTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenOBrace,
+		Bytes: []byte("{"),
+	})
+	mapTokens = append(mapTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenNewline,
+		Bytes: []byte("\n"),
+	})
+
+	for i, entry := range mapEntries {
+		// Add the key
+		mapTokens = append(mapTokens, entry.Key...)
+
+		// Add equals sign
+		mapTokens = append(mapTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenEqual,
+			Bytes: []byte("="),
+		})
+
+		// Build wrapped object: { wrapFieldName = "value" }
+		mapTokens = append(mapTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenOBrace,
+			Bytes: []byte("{"),
+		})
+
+		// Add the wrap field name
+		mapTokens = append(mapTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenIdent,
+			Bytes: []byte(wrapFieldName),
+		})
+
+		// Add equals sign
+		mapTokens = append(mapTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenEqual,
+			Bytes: []byte("="),
+		})
+
+		// Add the original value
+		mapTokens = append(mapTokens, entry.Value...)
+
+		// Close the object
+		mapTokens = append(mapTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenCBrace,
+			Bytes: []byte("}"),
+		})
+
+		// Add newline after each entry (except last)
+		if i < len(mapEntries)-1 {
+			mapTokens = append(mapTokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenNewline,
+				Bytes: []byte("\n"),
+			})
+		}
+	}
+
+	// Closing newline and brace
+	mapTokens = append(mapTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenNewline,
+		Bytes: []byte("\n"),
+	})
+	mapTokens = append(mapTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenCBrace,
+		Bytes: []byte("}"),
+	})
+
+	// Replace the attribute with the transformed map
+	body.SetAttributeRaw(attrName, mapTokens)
+
+	return true
+}
+
+// ConvertServiceBindingBlocksToServicesMap converts service_binding blocks to a services map attribute.
+// Example:
+//   service_binding { name = "MY_SERVICE" service = "worker-1" environment = "production" }
+//   →
+//   services = { MY_SERVICE = { service = "worker-1" environment = "production" } }
+func ConvertServiceBindingBlocksToServicesMap(body *hclwrite.Body) bool {
+	// Find all service_binding blocks
+	serviceBindingBlocks := []*hclwrite.Block{}
+	for _, block := range body.Blocks() {
+		if block.Type() == "service_binding" {
+			serviceBindingBlocks = append(serviceBindingBlocks, block)
+		}
+	}
+
+	if len(serviceBindingBlocks) == 0 {
+		return false
+	}
+
+	// Build services map from service_binding blocks
+	servicesMap := make(map[string]map[string]string)
+	for _, block := range serviceBindingBlocks {
+		blockBody := block.Body()
+
+		// Extract name attribute (required)
+		nameAttr := blockBody.GetAttribute("name")
+		if nameAttr == nil {
+			continue
+		}
+		name := extractStringValue(nameAttr)
+		if name == "" {
+			continue
+		}
+
+		// Build service entry
+		serviceEntry := make(map[string]string)
+
+		// Extract service attribute (required)
+		if serviceAttr := blockBody.GetAttribute("service"); serviceAttr != nil {
+			serviceEntry["service"] = extractStringValue(serviceAttr)
+		}
+
+		// Extract environment attribute (optional) - skip if empty
+		if envAttr := blockBody.GetAttribute("environment"); envAttr != nil {
+			if envValue := extractStringValue(envAttr); envValue != "" {
+				serviceEntry["environment"] = envValue
+			}
+		}
+
+		// Extract entrypoint attribute (optional) - skip if empty
+		if entrypointAttr := blockBody.GetAttribute("entrypoint"); entrypointAttr != nil {
+			if entrypointValue := extractStringValue(entrypointAttr); entrypointValue != "" {
+				serviceEntry["entrypoint"] = entrypointValue
+			}
+		}
+
+		servicesMap[name] = serviceEntry
+	}
+
+	if len(servicesMap) == 0 {
+		return false
+	}
+
+	// Build HCL tokens for services attribute
+	var servicesTokens hclwrite.Tokens
+
+	// Opening brace
+	servicesTokens = append(servicesTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenOBrace,
+		Bytes: []byte("{"),
+	})
+	servicesTokens = append(servicesTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenNewline,
+		Bytes: []byte("\n"),
+	})
+
+	// Add each service entry
+	first := true
+	for name, serviceEntry := range servicesMap {
+		if !first {
+			servicesTokens = append(servicesTokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenNewline,
+				Bytes: []byte("\n"),
+			})
+		}
+		first = false
+
+		// Add service name as key
+		servicesTokens = append(servicesTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenIdent,
+			Bytes: []byte(name),
+		})
+		servicesTokens = append(servicesTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenEqual,
+			Bytes: []byte(" = "),
+		})
+
+		// Opening brace for service object
+		servicesTokens = append(servicesTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenOBrace,
+			Bytes: []byte("{"),
+		})
+		servicesTokens = append(servicesTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenNewline,
+			Bytes: []byte("\n"),
+		})
+
+		// Add service fields
+		firstField := true
+		for key, value := range serviceEntry {
+			if !firstField {
+				servicesTokens = append(servicesTokens, &hclwrite.Token{
+					Type:  hclsyntax.TokenNewline,
+					Bytes: []byte("\n"),
+				})
+			}
+			firstField = false
+
+			servicesTokens = append(servicesTokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenIdent,
+				Bytes: []byte(key),
+			})
+			servicesTokens = append(servicesTokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenEqual,
+				Bytes: []byte(" = "),
+			})
+			servicesTokens = append(servicesTokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenOQuote,
+				Bytes: []byte("\""),
+			})
+			servicesTokens = append(servicesTokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenQuotedLit,
+				Bytes: []byte(value),
+			})
+			servicesTokens = append(servicesTokens, &hclwrite.Token{
+				Type:  hclsyntax.TokenCQuote,
+				Bytes: []byte("\""),
+			})
+		}
+
+		// Closing brace for service object
+		servicesTokens = append(servicesTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenNewline,
+			Bytes: []byte("\n"),
+		})
+		servicesTokens = append(servicesTokens, &hclwrite.Token{
+			Type:  hclsyntax.TokenCBrace,
+			Bytes: []byte("}"),
+		})
+	}
+
+	// Closing brace for services map
+	servicesTokens = append(servicesTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenNewline,
+		Bytes: []byte("\n"),
+	})
+	servicesTokens = append(servicesTokens, &hclwrite.Token{
+		Type:  hclsyntax.TokenCBrace,
+		Bytes: []byte("}"),
+	})
+
+	// Set the services attribute
+	body.SetAttributeRaw("services", servicesTokens)
+
+	// Remove service_binding blocks
+	for _, block := range serviceBindingBlocks{
+		body.RemoveBlock(block)
+	}
+
+	return true
+}
+
+// extractStringValue extracts a string value from an attribute, handling both quoted and unquoted strings
+func extractStringValue(attr *hclwrite.Attribute) string {
+	tokens := attr.Expr().BuildTokens(nil)
+	for _, token := range tokens {
+		if token.Type == hclsyntax.TokenQuotedLit || token.Type == hclsyntax.TokenIdent {
+			return string(token.Bytes)
+		}
+	}
+	return ""
+}
