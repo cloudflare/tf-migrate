@@ -21,24 +21,27 @@ locals {
 # ========================================
 
 # Tunnel for minimal config test
-resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
+resource "cloudflare_tunnel" "minimal" {
   account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-minimal-tunnel"
+  name       = "${local.name_prefix}-minimal-tunnel-config"
   secret     = base64encode("test-secret-that-is-at-least-32-bytes-long")
+  config_src = "cloudflare"
 }
 
 # Tunnel for comprehensive config test
-resource "cloudflare_zero_trust_tunnel_cloudflared" "comprehensive" {
+resource "cloudflare_tunnel" "comprehensive" {
   account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-comprehensive-tunnel"
+  name       = "${local.name_prefix}-comprehensive-tunnel-config"
   secret     = base64encode("another-secret-32-bytes-or-longer-here")
+  config_src = "cloudflare"
 }
 
 # Tunnel for testing deprecated resource name
-resource "cloudflare_zero_trust_tunnel_cloudflared" "deprecated_name" {
+resource "cloudflare_tunnel" "deprecated_name" {
   account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-deprecated-tunnel"
+  name       = "${local.name_prefix}-deprecated-tunnel-config"
   secret     = base64encode("deprecated-tunnel-secret-32-bytes-minimum")
+  config_src = "cloudflare"
 }
 
 # ========================================
@@ -48,7 +51,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "deprecated_name" {
 # Test 1: Minimal configuration using preferred resource name
 resource "cloudflare_zero_trust_tunnel_cloudflared_config" "minimal" {
   account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.minimal.id
+  tunnel_id  = cloudflare_tunnel.minimal.id
 
   config {
     ingress_rule {
@@ -60,7 +63,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "minimal" {
 # Test 2: Deprecated resource name (cloudflare_tunnel_config)
 resource "cloudflare_tunnel_config" "deprecated_name" {
   account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.deprecated_name.id
+  tunnel_id  = cloudflare_tunnel.deprecated_name.id
 
   config {
     ingress_rule {
@@ -76,7 +79,7 @@ resource "cloudflare_tunnel_config" "deprecated_name" {
 # Test 3: Comprehensive configuration with all transformations
 resource "cloudflare_tunnel_config" "comprehensive" {
   account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.comprehensive.id
+  tunnel_id  = cloudflare_tunnel.comprehensive.id
 
   config {
     # warp_routing will be removed in v5

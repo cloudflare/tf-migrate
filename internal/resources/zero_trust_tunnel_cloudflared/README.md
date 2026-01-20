@@ -9,6 +9,7 @@ This guide explains how `cloudflare_tunnel` / `cloudflare_zero_trust_tunnel` res
 | Resource name | `cloudflare_tunnel` | `cloudflare_zero_trust_tunnel_cloudflared` | Renamed (adds `_cloudflared`) |
 | Alt resource name | `cloudflare_zero_trust_tunnel` | `cloudflare_zero_trust_tunnel_cloudflared` | Renamed (adds `_cloudflared`) |
 | Field | `secret` | `tunnel_secret` | Renamed |
+| Field | `` | `config_src` ("local" or "cloudflare") | Added, defaults to "local" |
 | Removed fields | `cname`, `tunnel_token` | - | Computed fields removed |
 
 
@@ -50,7 +51,6 @@ resource "cloudflare_zero_trust_tunnel" "app_tunnel" {
   account_id  = "f037e56e89293a057740de681ac9abbe"
   name        = "app-tunnel"
   secret      = var.tunnel_secret
-  config_src  = "cloudflare"
 }
 ```
 

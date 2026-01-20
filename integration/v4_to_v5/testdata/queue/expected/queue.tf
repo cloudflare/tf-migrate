@@ -136,7 +136,7 @@ resource "cloudflare_queue" "main" {
 # Another queue that could reference the first (simulated dependency)
 resource "cloudflare_queue" "dependent" {
   account_id = cloudflare_queue.main.account_id
-  queue_name = "${local.name_prefix}-dependent-on-${cloudflare_queue.main.name}"
+  queue_name = "${local.name_prefix}-dependent-queue"
 }
 
 # ============================================================================
