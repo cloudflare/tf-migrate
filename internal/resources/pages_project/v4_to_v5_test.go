@@ -22,7 +22,6 @@ func TestV4ToV5Transformation(t *testing.T) {
   account_id        = "test123"
   name              = "test-project"
   production_branch = "main"
-  build_config      = {}
   deployment_configs = {
     preview = {
       usage_model         = "bundled"
@@ -62,7 +61,6 @@ func TestV4ToV5Transformation(t *testing.T) {
       fail_open           = true
     }
   }
-  build_config = {}
 }`,
 			},
 			{
@@ -121,7 +119,6 @@ func TestV4ToV5Transformation(t *testing.T) {
   name              = "test-project"
   production_branch = "main"
 
-  build_config = {}
   source = {
     type = "github"
     config = {
@@ -173,7 +170,6 @@ func TestV4ToV5Transformation(t *testing.T) {
   name              = "test-project"
   production_branch = "main"
 
-  build_config = {}
   deployment_configs = {
     preview = {
       compatibility_date  = "2024-01-01"
@@ -350,17 +346,18 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "source": {
       "type": "github",
       "config": {
         "owner": "cloudflare",
         "repo_name": "test-repo",
-        "production_deployments_enabled": true
-      }
-    },
-    "build_config": {},
-    "canonical_deployment": null,
-    "framework": "",
+      "production_deployments_enabled": true
+    }
+  },
+
+"canonical_deployment": null,
+  "framework": "",
     "framework_version": "",
     "latest_deployment": null,
     "uses_functions": null
@@ -377,6 +374,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": [{
       "preview": [{
         "environment_variables": {
@@ -398,6 +396,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": {
       "preview": {
         "always_use_latest_compatibility_date": false,
@@ -441,9 +440,8 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {},
-    "canonical_deployment": null,
-    "framework": "",
+"canonical_deployment": null,
+  "framework": "",
     "framework_version": "",
     "latest_deployment": null,
     "source": null,
@@ -461,6 +459,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": [{
       "preview": [{
         "kv_namespaces": {
@@ -480,6 +479,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": {
       "preview": {
         "always_use_latest_compatibility_date": false,
@@ -514,9 +514,8 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {},
-    "canonical_deployment": null,
-    "framework": "",
+"canonical_deployment": null,
+  "framework": "",
     "framework_version": "",
     "latest_deployment": null,
     "source": null,
@@ -534,6 +533,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": [{
       "preview": [{
         "service_binding": [
@@ -559,6 +559,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": {
       "preview": {
         "always_use_latest_compatibility_date": false,
@@ -594,9 +595,8 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {},
-    "canonical_deployment": null,
-    "framework": "",
+"canonical_deployment": null,
+  "framework": "",
     "framework_version": "",
     "latest_deployment": null,
     "source": null,
@@ -770,6 +770,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": [{
       "production": [{
         "compatibility_date": "2024-01-01"
@@ -784,6 +785,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": {
       "production": {
         "always_use_latest_compatibility_date": false,
@@ -810,9 +812,8 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {},
-    "canonical_deployment": null,
-    "framework": "",
+"canonical_deployment": null,
+  "framework": "",
     "framework_version": "",
     "latest_deployment": null,
     "source": null,
@@ -830,6 +831,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": [{
       "preview": [{
         "compatibility_date": "2024-01-01",
@@ -845,6 +847,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": {
       "preview": {
         "always_use_latest_compatibility_date": false,
@@ -871,9 +874,8 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {},
-    "canonical_deployment": null,
-    "framework": "",
+"canonical_deployment": null,
+  "framework": "",
     "framework_version": "",
     "latest_deployment": null,
     "source": null,
@@ -891,6 +893,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": [{
       "production": [{
         "compatibility_date": "2024-01-01",
@@ -906,6 +909,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": {
       "production": {
         "always_use_latest_compatibility_date": false,
@@ -932,9 +936,8 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {},
-    "canonical_deployment": null,
-    "framework": "",
+"canonical_deployment": null,
+  "framework": "",
     "framework_version": "",
     "latest_deployment": null,
     "source": null,
@@ -952,6 +955,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": [{
       "production": [{
         "compatibility_date": "2024-01-01",
@@ -967,6 +971,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": {
       "production": {
         "always_use_latest_compatibility_date": false,
@@ -993,9 +998,8 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {},
-    "canonical_deployment": null,
-    "framework": "",
+"canonical_deployment": null,
+  "framework": "",
     "framework_version": "",
     "latest_deployment": null,
     "source": null,
@@ -1013,6 +1017,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": [{
       "preview": [{
         "compatibility_date": "2024-01-01"
@@ -1030,6 +1035,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": {
       "preview": {
         "always_use_latest_compatibility_date": false,
@@ -1080,9 +1086,8 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {},
-    "canonical_deployment": null,
-    "framework": "",
+"canonical_deployment": null,
+  "framework": "",
     "framework_version": "",
     "latest_deployment": null,
     "source": null,
@@ -1100,6 +1105,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": [{
       "preview": [{
         "compatibility_date": "2024-01-01",
@@ -1123,6 +1129,7 @@ func TestV4ToV5Transformation(t *testing.T) {
     "account_id": "test123",
     "name": "test-project",
     "production_branch": "main",
+    "build_config": {},
     "deployment_configs": {
       "preview": {
         "always_use_latest_compatibility_date": false,
@@ -1173,9 +1180,8 @@ func TestV4ToV5Transformation(t *testing.T) {
         "wrangler_config_hash": null
       }
     },
-    "build_config": {},
-    "canonical_deployment": null,
-    "framework": "",
+"canonical_deployment": null,
+  "framework": "",
     "framework_version": "",
     "latest_deployment": null,
     "source": null,
