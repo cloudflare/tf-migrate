@@ -82,15 +82,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}
 
 	// Handle build_config - preserve existing fields and ensure web_analytics fields exist
-	// Only process if build_config is a block (not already an attribute)
+	// Note: build_config is Computed+Optional in v5, so the provider can populate it from the API
+	// even when not present in config. We only need to migrate it if it exists in v4 config.
 	buildConfigBlock := tfhcl.FindBlockByType(body, "build_config")
-	if buildConfigBlock == nil && body.GetAttribute("build_config") == nil {
-		// Add build_config block if missing entirely (neither block nor attribute)
-		buildConfigBlock = body.AppendNewBlock("build_config", nil)
-		buildConfigBody := buildConfigBlock.Body()
-		tfhcl.SetAttribute(buildConfigBody, "web_analytics_tag", nil)
-		tfhcl.SetAttribute(buildConfigBody, "web_analytics_token", nil)
-	} else if buildConfigBlock != nil {
+	if buildConfigBlock != nil {
 		// build_config exists as a block - ensure web_analytics fields are present
 		buildConfigBody := buildConfigBlock.Body()
 		if buildConfigBody.GetAttribute("web_analytics_tag") == nil {
@@ -100,7 +95,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			tfhcl.SetAttribute(buildConfigBody, "web_analytics_token", nil)
 		}
 	}
-	// If build_config exists as an attribute, leave it as-is (v5 format already)
+	// If build_config exists as an attribute or is missing entirely, leave it as-is
 
 	// Handle deployment_configs
 	deploymentConfigsBlock := tfhcl.FindBlockByType(body, "deployment_configs")
@@ -276,7 +271,18 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 
 
 	// Step 1: Convert TypeList MaxItems:1 arrays to objects (deepest first)
-	result = m.convertListToObject(result, "attributes.build_config", attrs.Get("build_config"))
+	// Special handling for build_config: keep empty array as empty object for later processing
+	buildConfigInState := attrs.Get("build_config")
+	if buildConfigInState.Exists() && buildConfigInState.IsArray() {
+		arr := buildConfigInState.Array()
+		if len(arr) == 0 {
+			// Empty array - convert to empty object (will be kept/removed later based on config)
+			result, _ = sjson.Set(result, "attributes.build_config", map[string]interface{}{})
+		} else if len(arr) == 1 {
+			// Single item array - convert to object
+			result, _ = sjson.Set(result, "attributes.build_config", arr[0].Value())
+		}
+	}
 	result = m.convertListToObject(result, "attributes.source", attrs.Get("source"))
 	result = m.convertListToObject(result, "attributes.deployment_configs", attrs.Get("deployment_configs"))
 
@@ -303,9 +309,12 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 		result, _ = sjson.Delete(result, "attributes.domains")
 	}
 
-	if buildConfigObj := attrs.Get("build_config"); buildConfigObj.Exists() && buildConfigObj.IsObject() {
-		// Check if build_config has any truthy values (not null, not false, not empty string)
-		hasValues := false
+	// Check if build_config exists in the state (as array or object)
+	buildConfigObj := attrs.Get("build_config")
+
+	// Check if build_config has actual data in the state
+	hasBuildConfigData := false
+	if buildConfigObj.Exists() && buildConfigObj.IsObject() {
 		buildConfigObj.ForEach(func(key, value gjson.Result) bool {
 			if value.Exists() && value.Type != gjson.Null {
 				// Check for truthy values: not false, not empty string
@@ -316,20 +325,22 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 					return true // continue - empty string is falsy
 				}
 				// Has a truthy value
-				hasValues = true
+				hasBuildConfigData = true
 				return false // early exit
 			}
 			return true
 		})
+	}
 
-		if hasValues {
-			result = m.populateBuildConfigV5Fields(result, "attributes.build_config", buildConfigObj, buildConfigFieldsInConfig)
-		} else {
-			// All fields are null/empty/false - set to empty object to match v5 provider behavior
-			result, _ = sjson.Set(result, "attributes.build_config", map[string]interface{}{})
-		}
+	// Decide what to do with build_config based on config and state
+	// Since build_config is Computed+Optional in v5, we always add it to state (even if empty)
+	// to prevent drift when the provider populates it from the API
+	if buildConfigObj.Exists() && buildConfigObj.IsObject() && hasBuildConfigData {
+		// build_config has actual data - preserve and populate v5 fields
+		result = m.populateBuildConfigV5Fields(result, "attributes.build_config", buildConfigObj, buildConfigFieldsInConfig)
 	} else {
-		// No build_config - set to empty object to match v5 provider behavior
+		// build_config is empty or missing - always set to empty object
+		// This matches what the v5 provider will do and prevents drift
 		result, _ = sjson.Set(result, "attributes.build_config", map[string]interface{}{})
 	}
 

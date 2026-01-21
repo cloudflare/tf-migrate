@@ -25,7 +25,6 @@ resource "cloudflare_pages_project" "minimal" {
   account_id        = var.cloudflare_account_id
   name              = "${local.name_prefix}-minimal-project"
   production_branch = "main"
-  build_config      = {}
   deployment_configs = {
     preview = {
       usage_model = "bundled"
@@ -84,7 +83,6 @@ resource "cloudflare_pages_project" "with_source" {
   #      preview_branch_excludes       = ["temp"]
   #    }
   #  }
-  build_config = {}
   deployment_configs = {
     preview = {
       usage_model = "bundled"
@@ -103,7 +101,6 @@ resource "cloudflare_pages_project" "with_deployment_configs" {
   name              = "${local.name_prefix}-project-with-deployments"
   production_branch = "main"
 
-  build_config = {}
   deployment_configs = {
     preview = {
       compatibility_date  = "2024-01-01"
@@ -176,7 +173,6 @@ resource "cloudflare_pages_project" "deployment_only" {
   name              = "${local.name_prefix}-deployment-only"
   production_branch = "main"
 
-  build_config = {}
   deployment_configs = {
     preview = {
       compatibility_date = "2024-01-15"
