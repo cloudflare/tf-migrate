@@ -9,11 +9,11 @@ import (
 
 func TestParseImportAnnotations(t *testing.T) {
 	tests := []struct {
-		name           string
-		fileContent    string
-		moduleName     string
-		expectedSpecs  int
-		expectedFirst  *ImportSpec
+		name          string
+		fileContent   string
+		moduleName    string
+		expectedSpecs int
+		expectedFirst *ImportSpec
 	}{
 		{
 			name: "single import annotation",
