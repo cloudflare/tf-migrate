@@ -739,6 +739,21 @@ func runV4Tests(ctx *testContext) error {
 	}
 	printSuccess("Terraform init successful (remote state loaded from R2)")
 
+	// Check for resources that need to be imported
+	fmt.Println()
+	importSpecs, err := findImportSpecs(ctx.v4Dir)
+	if err != nil {
+		printError("Failed to scan for import annotations")
+		return fmt.Errorf("failed to find import specs: %w", err)
+	}
+
+	// Execute imports if needed
+	if len(importSpecs) > 0 {
+		if err := executeImports(ctx, importSpecs); err != nil {
+			return err
+		}
+	}
+
 	// Run terraform plan
 	printYellow("Running terraform plan in v4/...")
 	planArgs := append([]string{"plan", "-no-color", "-out=" + filepath.Join(ctx.tmpDir, "v4.tfplan"), "-input=false"}, ctx.targetArgs...)

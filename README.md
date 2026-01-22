@@ -289,6 +289,45 @@ dns_record:
 
 Use `--apply-exemptions` to ignore these known drifts during testing.
 
+**Import Annotations (Import-Only Resources):**
+
+Some Cloudflare resources cannot be created via Terraform and must be imported from existing infrastructure (e.g., `zero_trust_organization`). The E2E runner supports automatic imports via annotations in `_e2e.tf` files:
+
+```hcl
+# tf-migrate:import-address=${var.cloudflare_account_id}
+resource "cloudflare_access_organization" "test" {
+  account_id  = var.cloudflare_account_id
+  name        = "Test Organization"
+  auth_domain = "test.cloudflareaccess.com"
+}
+```
+
+**How It Works:**
+1. E2E runner scans for `# tf-migrate:import-address=<address>` annotations
+2. Substitutes variables: `${var.cloudflare_account_id}` → actual account ID (e.g., `abc123`)
+3. Executes: `terraform import module.<module_name>.<resource> abc123`
+4. Continues with normal E2E workflow (apply, migrate, verify)
+
+**Supported Variables:**
+- `${var.cloudflare_account_id}` - Account ID from environment
+- `${var.cloudflare_zone_id}` - Zone ID from environment
+- `${var.cloudflare_domain}` - Domain from environment
+
+**Multiple Imports:**
+Multiple resources can be annotated in a single file - all will be imported automatically before v4 apply.
+
+**Example Import Addresses:**
+```hcl
+# Account-scoped resource (just the account ID)
+# tf-migrate:import-address=${var.cloudflare_account_id}
+
+# Zone-scoped resource with path
+# tf-migrate:import-address=zones/${var.cloudflare_zone_id}/settings/waf
+
+# Complex path (for resources that need multiple identifiers)
+# tf-migrate:import-address=${var.cloudflare_account_id}/item/${var.item_id}
+```
+
 **Project Structure:**
 
 ```
