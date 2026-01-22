@@ -290,7 +290,7 @@ Use `--apply-exemptions` to apply exemptions during testing. See **[CLAUDE.md](.
 
 **Import Annotations (Import-Only Resources):**
 
-Some Cloudflare resources cannot be created via Terraform and must be imported from existing infrastructure (e.g., `zero_trust_organization`). The E2E runner supports automatic import block generation via annotations in `_e2e.tf` files:
+Some Cloudflare resources cannot be created via Terraform and must be imported from existing infrastructure (e.g., `zero_trust_organization`). The E2E runner supports automatic imports via annotations in `_e2e.tf` files:
 
 ```hcl
 # tf-migrate:import-address=${var.cloudflare_account_id}
@@ -302,22 +302,10 @@ resource "cloudflare_access_organization" "test" {
 ```
 
 **How It Works:**
-1. E2E runner scans module files for `# tf-migrate:import-address=<address>` annotations during init
-2. Converts variable syntax: `${var.cloudflare_account_id}` → `var.cloudflare_account_id`
-3. Generates native Terraform import blocks in root `main.tf`:
-   ```hcl
-   import {
-     to = module.zero_trust_organization.cloudflare_access_organization.test
-     id = var.cloudflare_account_id
-   }
-   ```
-4. Terraform resolves variables at runtime from `terraform.tfvars` and imports resources during `terraform apply`
-
-**Why This Approach:**
-- ✅ Uses native Terraform import blocks (Terraform 1.5+)
-- ✅ Import blocks in root module (where they're allowed)
-- ✅ Resource definitions in child modules (organized structure)
-- ✅ Automatic generation from annotations (no manual import block maintenance)
+1. E2E runner scans for `# tf-migrate:import-address=<address>` annotations
+2. Substitutes variables: `${var.cloudflare_account_id}` → actual account ID (e.g., `abc123`)
+3. Executes: `terraform import module.<module_name>.<resource> abc123`
+4. Continues with normal E2E workflow (apply, migrate, verify)
 
 **Supported Variables:**
 - `${var.cloudflare_account_id}` - Account ID from environment
@@ -325,7 +313,19 @@ resource "cloudflare_access_organization" "test" {
 - `${var.cloudflare_domain}` - Domain from environment
 
 **Multiple Imports:**
-Multiple resources can be annotated in different modules - all will have import blocks generated in root main.tf.
+Multiple resources can be annotated in a single file - all will be imported automatically before v4 apply.
+
+**Example Import Addresses:**
+```hcl
+# Account-scoped resource (just the account ID)
+# tf-migrate:import-address=${var.cloudflare_account_id}
+
+# Zone-scoped resource with path
+# tf-migrate:import-address=zones/${var.cloudflare_zone_id}/settings/waf
+
+# Complex path (for resources that need multiple identifiers)
+# tf-migrate:import-address=${var.cloudflare_account_id}/item/${var.item_id}
+```
 
 **Project Structure:**
 
