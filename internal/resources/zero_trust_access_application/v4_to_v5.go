@@ -10,7 +10,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
-	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -97,7 +96,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	tfhcl.RemoveFunctionWrapper(body, "self_hosted_domains", "toset")
 
 	// Sort self_hosted_domains to match provider ordering and avoid drift
-	sortStringArrayAttribute(body, "self_hosted_domains")
+	tfhcl.SortStringArrayAttribute(body, "self_hosted_domains")
 
 	m.transformSaasAppBlock(body)
 	m.transformScimConfigBlock(body)
@@ -147,97 +146,39 @@ func removeDefaultValueAttributes(body *hclwrite.Body) {
 // sortStringArrayAttribute sorts a string array attribute alphabetically.
 // This is needed when the provider returns arrays in a consistent (sorted) order
 // different from the user-specified order, causing drift.
-func sortStringArrayAttribute(body *hclwrite.Body, attrName string) {
-	attr := body.GetAttribute(attrName)
-	if attr == nil {
-		return
+// sortOIDCScopes sorts OIDC scopes according to the OIDC spec ordering.
+// The provider orders scopes: openid, profile, email, address, phone,
+// offline_access, then others alphabetically.
+func sortOIDCScopes(strings []string) {
+	// Define canonical OIDC scope order
+	scopeOrder := map[string]int{
+		"openid":         1,
+		"profile":        2,
+		"email":          3,
+		"address":        4,
+		"phone":          5,
+		"offline_access": 6,
 	}
 
-	// Parse the expression to extract string values
-	expr := attr.Expr()
+	sort.SliceStable(strings, func(i, j int) bool {
+		orderI, hasI := scopeOrder[strings[i]]
+		orderJ, hasJ := scopeOrder[strings[j]]
 
-	// Try to parse as tuple (array)
-	tokens := expr.BuildTokens(nil)
-	tokenBytes := tokens.Bytes()
-
-	// Parse the HCL expression
-	parsed, diags := hclsyntax.ParseExpression(tokenBytes, "", hcl.Pos{Line: 1, Column: 1})
-	if diags.HasErrors() {
-		return
-	}
-
-	// Check if it's a tuple (array)
-	tuple, ok := parsed.(*hclsyntax.TupleConsExpr)
-	if !ok {
-		return
-	}
-
-	// Extract string values
-	var strings []string
-	for _, elem := range tuple.Exprs {
-		if template, ok := elem.(*hclsyntax.TemplateExpr); ok {
-			// Handle string literals
-			if len(template.Parts) == 1 {
-				if lit, ok := template.Parts[0].(*hclsyntax.LiteralValueExpr); ok {
-					if lit.Val.Type() == cty.String {
-						strings = append(strings, lit.Val.AsString())
-					}
-				}
-			}
+		// Both have defined order - use it
+		if hasI && hasJ {
+			return orderI < orderJ
 		}
-	}
-
-	// If we couldn't extract all strings, don't modify
-	if len(strings) != len(tuple.Exprs) {
-		return
-	}
-
-	// Sort the strings
-	// Special handling for OIDC scopes: use canonical OIDC scope ordering
-	// The provider orders scopes according to the OIDC spec: openid, profile, email, then others alphabetically
-	if attrName == "scopes" && len(strings) > 0 {
-		// Define canonical OIDC scope order
-		scopeOrder := map[string]int{
-			"openid":         1,
-			"profile":        2,
-			"email":          3,
-			"address":        4,
-			"phone":          5,
-			"offline_access": 6,
+		// Only i has order - it comes first
+		if hasI {
+			return true
 		}
-
-		sort.SliceStable(strings, func(i, j int) bool {
-			orderI, hasI := scopeOrder[strings[i]]
-			orderJ, hasJ := scopeOrder[strings[j]]
-
-			// Both have defined order - use it
-			if hasI && hasJ {
-				return orderI < orderJ
-			}
-			// Only i has order - it comes first
-			if hasI {
-				return true
-			}
-			// Only j has order - it comes first
-			if hasJ {
-				return false
-			}
-			// Neither has order - sort alphabetically
-			return strings[i] < strings[j]
-		})
-	} else {
-		// Not scopes, sort normally
-		sort.Strings(strings)
-	}
-
-	// Build new array tokens with sorted values
-	var sortedTokens []hclwrite.Tokens
-	for _, s := range strings {
-		sortedTokens = append(sortedTokens, hclwrite.TokensForValue(cty.StringVal(s)))
-	}
-
-	// Set the attribute with sorted values
-	body.SetAttributeRaw(attrName, hclwrite.TokensForTuple(sortedTokens))
+		// Only j has order - it comes first
+		if hasJ {
+			return false
+		}
+		// Neither has order - sort alphabetically
+		return strings[i] < strings[j]
+	})
 }
 
 func (m *V4ToV5Migrator) transformSaasAppBlock(body *hclwrite.Body) {
@@ -287,7 +228,7 @@ func (m *V4ToV5Migrator) transformSaasAppBlock(body *hclwrite.Body) {
 		tfhcl.ConvertSingleBlockToAttribute(saasAppBody, "refresh_token_options", "refresh_token_options")
 
 		// Sort scopes array to match provider ordering and avoid drift
-		sortStringArrayAttribute(saasAppBody, "scopes")
+		tfhcl.SortStringArrayAttribute(saasAppBody, "scopes", sortOIDCScopes)
 	}
 
 	tfhcl.ConvertSingleBlockToAttribute(body, "saas_app", "saas_app")

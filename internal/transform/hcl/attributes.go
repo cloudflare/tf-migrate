@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
@@ -1395,4 +1396,107 @@ func extractStringValue(attr *hclwrite.Attribute) string {
 		}
 	}
 	return ""
+}
+
+// SortStringArrayAttribute sorts a string array attribute alphabetically.
+// This is useful when the API returns values in a specific order (e.g., alphabetically)
+// and the v5 provider uses ListAttribute (ordered) instead of SetAttribute (unordered).
+// Without sorting, this causes perpetual drift on every terraform plan/apply.
+//
+// Only sorts if all elements are string literals. If any element is a variable reference
+// or expression, the attribute is left unchanged to preserve the original logic.
+//
+// Supports custom sorting via optional customSort parameter. If not provided, uses
+// alphabetical sorting with sort.Strings().
+//
+// Example - Sorting domains alphabetically:
+//
+//	Before:
+//	  resource "cloudflare_turnstile_widget" "example" {
+//	    domains = ["zebra.com", "apple.com", "banana.com"]
+//	  }
+//
+//	After calling SortStringArrayAttribute(body, "domains"):
+//	  resource "cloudflare_turnstile_widget" "example" {
+//	    domains = ["apple.com", "banana.com", "zebra.com"]
+//	  }
+//
+// Example - Custom sorting (OIDC scopes):
+//
+//	customSort := func(strings []string) {
+//	  scopeOrder := map[string]int{"openid": 1, "profile": 2, "email": 3}
+//	  sort.SliceStable(strings, func(i, j int) bool {
+//	    orderI, hasI := scopeOrder[strings[i]]
+//	    orderJ, hasJ := scopeOrder[strings[j]]
+//	    if hasI && hasJ { return orderI < orderJ }
+//	    if hasI { return true }
+//	    if hasJ { return false }
+//	    return strings[i] < strings[j]
+//	  })
+//	}
+//	SortStringArrayAttribute(body, "scopes", customSort)
+//
+// Used by migrations:
+// - turnstile_widget: Sort domains to match API alphabetical ordering
+// - zero_trust_access_application: Sort self_hosted_domains and scopes
+func SortStringArrayAttribute(body *hclwrite.Body, attrName string, customSort ...func([]string)) {
+	attr := body.GetAttribute(attrName)
+	if attr == nil {
+		return
+	}
+
+	// Parse the expression to extract string values
+	expr := attr.Expr()
+
+	// Try to parse as tuple (array)
+	tokens := expr.BuildTokens(nil)
+	tokenBytes := tokens.Bytes()
+
+	// Parse the HCL expression
+	parsed, diags := hclsyntax.ParseExpression(tokenBytes, "", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		return
+	}
+
+	// Check if it's a tuple (array)
+	tuple, ok := parsed.(*hclsyntax.TupleConsExpr)
+	if !ok {
+		return
+	}
+
+	// Extract string values
+	var strings []string
+	for _, elem := range tuple.Exprs {
+		if template, ok := elem.(*hclsyntax.TemplateExpr); ok {
+			// Handle string literals
+			if len(template.Parts) == 1 {
+				if lit, ok := template.Parts[0].(*hclsyntax.LiteralValueExpr); ok {
+					if lit.Val.Type() == cty.String {
+						strings = append(strings, lit.Val.AsString())
+					}
+				}
+			}
+		}
+	}
+
+	// If we couldn't extract all strings, don't modify (preserves variables/expressions)
+	if len(strings) != len(tuple.Exprs) {
+		return
+	}
+
+	// Sort the strings using custom function or default alphabetical sort
+	if len(customSort) > 0 {
+		customSort[0](strings)
+	} else {
+		sort.Strings(strings)
+	}
+
+	// Build new array tokens with sorted values
+	var sortedTokens []hclwrite.Tokens
+	for _, s := range strings {
+		sortedTokens = append(sortedTokens, hclwrite.TokensForValue(cty.StringVal(s)))
+	}
+
+	// Set the attribute with sorted values
+	body.SetAttributeRaw(attrName, hclwrite.TokensForTuple(sortedTokens))
 }
