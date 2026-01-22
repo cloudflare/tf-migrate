@@ -7,8 +7,8 @@ import (
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
+	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 type V4ToV5Migrator struct {
