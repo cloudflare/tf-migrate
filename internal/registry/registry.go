@@ -28,6 +28,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/queue"
 	"github.com/cloudflare/tf-migrate/internal/resources/r2_bucket"
 	"github.com/cloudflare/tf-migrate/internal/resources/regional_hostname"
+	"github.com/cloudflare/tf-migrate/internal/resources/regional_tiered_cache"
 	"github.com/cloudflare/tf-migrate/internal/resources/ruleset"
 	"github.com/cloudflare/tf-migrate/internal/resources/snippet"
 	"github.com/cloudflare/tf-migrate/internal/resources/spectrum_application"
@@ -99,6 +100,7 @@ func RegisterAllMigrations() {
 	queue.NewV4ToV5Migrator()
 	r2_bucket.NewV4ToV5Migrator()
 	regional_hostname.NewV4ToV5Migrator()
+	regional_tiered_cache.NewV4ToV5Migrator()
 	ruleset.NewV4ToV5Migrator()
 	snippet.NewV4ToV5Migrator()
 	tiered_cache.NewV4ToV5Migrator()
