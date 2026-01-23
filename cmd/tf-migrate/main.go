@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/cloudflare/cloudflare-go/v6"
@@ -337,119 +336,120 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 	return parsedConfigs, nil
 }
 
-// applyGlobalPostprocessing applies cross-file reference updates for resource and attribute renames
+// TODO:: needs work, not sure whats happening. Messing with moved blocks
 func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []string) error {
-	// Collect resource renames and attribute renames from all migrators
-	providers := getProviders(cfg.resourcesToMigrate...)
-	migrators := providers.GetAllMigrators(cfg.sourceVersion, cfg.targetVersion, cfg.resourcesToMigrate...)
-
-	// Map to store old type -> new type mappings
-	renames := make(map[string]string)
-	// Slice to store attribute renames
-	var attributeRenames []transform.AttributeRename
-
-	for _, migrator := range migrators {
-		// Check if this migrator implements ResourceRenamer interface
-		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
-			oldType, newType := renamer.GetResourceRename()
-			if oldType != "" && newType != "" {
-				// Only add to renames map if the types are different (actual rename)
-				if oldType != newType {
-					renames[oldType] = newType
-					log.Debug("Collected resource rename", "old", oldType, "new", newType)
-				} else {
-					log.Debug("Resource type unchanged", "type", oldType)
-				}
-			} else {
-				// Warn if migrator implements interface but returns empty values
-				log.Warn("Migrator implements ResourceRenamer but returned empty type names",
-					"old", oldType, "new", newType)
-			}
-		} else {
-			// Warn if migrator doesn't implement ResourceRenamer interface
-			log.Warn("Migrator does not implement ResourceRenamer interface - cross-file references may not be updated",
-				"migrator", fmt.Sprintf("%T", migrator))
-		}
-
-		// Check if this migrator implements AttributeRenamer interface
-		if attrRenamer, ok := migrator.(transform.AttributeRenamer); ok {
-			renames := attrRenamer.GetAttributeRenames()
-			if len(renames) > 0 {
-				attributeRenames = append(attributeRenames, renames...)
-				for _, r := range renames {
-					log.Debug("Collected attribute rename",
-						"resource_type", r.ResourceType,
-						"old_attr", r.OldAttribute,
-						"new_attr", r.NewAttribute)
-				}
-			}
-		}
-	}
-
-	// If no renames found, skip global postprocessing
-	if len(renames) == 0 && len(attributeRenames) == 0 {
-		log.Debug("No renames found, skipping global postprocessing")
-		return nil
-	}
-
-	totalUpdates := len(renames) + len(attributeRenames)
-	fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
-
-	// Apply renames to all files
-	for _, outputPath := range outputPaths {
-		content, err := os.ReadFile(outputPath)
-		if err != nil {
-			log.Warn("Failed to read file for global postprocessing", "file", outputPath, "error", err)
-			continue
-		}
-
-		contentStr := string(content)
-		modified := false
-
-		// Apply all resource type renames
-		for oldType, newType := range renames {
-			newContent := strings.ReplaceAll(contentStr, oldType+".", newType+".")
-			if newContent != contentStr {
-				modified = true
-				contentStr = newContent
-				log.Debug("Updated references", "file", filepath.Base(outputPath), "old", oldType, "new", newType)
-			}
-		}
-
-		// Apply all attribute renames
-		// Pattern: data.cloudflare_zones.<instance_name>.zones → data.cloudflare_zones.<instance_name>.result
-		// We need to match: <ResourceType>.<instance_name>.<OldAttribute>
-		for _, rename := range attributeRenames {
-			// Build regex pattern: data\.cloudflare_zones\.([a-zA-Z0-9_-]+)\.zones
-			// The instance name can contain letters, numbers, underscores, and hyphens
-			pattern := regexp.QuoteMeta(rename.ResourceType) + `\.([a-zA-Z0-9_-]+)\.` + regexp.QuoteMeta(rename.OldAttribute)
-			re := regexp.MustCompile(pattern)
-
-			// Replace with: data.cloudflare_zones.$1.result (preserving instance name)
-			replacement := rename.ResourceType + ".$1." + rename.NewAttribute
-			newContent := re.ReplaceAllString(contentStr, replacement)
-
-			if newContent != contentStr {
-				modified = true
-				contentStr = newContent
-				log.Debug("Updated attribute references",
-					"file", filepath.Base(outputPath),
-					"resource_type", rename.ResourceType,
-					"old_attr", rename.OldAttribute,
-					"new_attr", rename.NewAttribute)
-			}
-		}
-
-		// Write back if modified
-		if modified {
-			if err := os.WriteFile(outputPath, []byte(contentStr), 0644); err != nil {
-				return fmt.Errorf("failed to write updated file %s: %w", outputPath, err)
-			}
-		}
-	}
-
-	fmt.Printf("✓ Updated cross-file references (%d updates applied)\n", totalUpdates)
 	return nil
+	//// Collect resource renames and attribute renames from all migrators
+	//providers := getProviders(cfg.resourcesToMigrate...)
+	//migrators := providers.GetAllMigrators(cfg.sourceVersion, cfg.targetVersion, cfg.resourcesToMigrate...)
+	//
+	//// Map to store old type -> new type mappings
+	//renames := make(map[string]string)
+	//// Slice to store attribute renames
+	//var attributeRenames []transform.AttributeRename
+	//
+	//for _, migrator := range migrators {
+	//	// Check if this migrator implements ResourceRenamer interface
+	//	if renamer, ok := migrator.(transform.ResourceRenamer); ok {
+	//		oldType, newType := renamer.GetResourceRename()
+	//		if oldType != "" && newType != "" {
+	//			// Only add to renames map if the types are different (actual rename)
+	//			if oldType != newType {
+	//				renames[oldType] = newType
+	//				log.Debug("Collected resource rename", "old", oldType, "new", newType)
+	//			} else {
+	//				log.Debug("Resource type unchanged", "type", oldType)
+	//			}
+	//		} else {
+	//			// Warn if migrator implements interface but returns empty values
+	//			log.Warn("Migrator implements ResourceRenamer but returned empty type names",
+	//				"old", oldType, "new", newType)
+	//		}
+	//	} else {
+	//		// Warn if migrator doesn't implement ResourceRenamer interface
+	//		log.Warn("Migrator does not implement ResourceRenamer interface - cross-file references may not be updated",
+	//			"migrator", fmt.Sprintf("%T", migrator))
+	//	}
+	//
+	//	// Check if this migrator implements AttributeRenamer interface
+	//	if attrRenamer, ok := migrator.(transform.AttributeRenamer); ok {
+	//		renames := attrRenamer.GetAttributeRenames()
+	//		if len(renames) > 0 {
+	//			attributeRenames = append(attributeRenames, renames...)
+	//			for _, r := range renames {
+	//				log.Debug("Collected attribute rename",
+	//					"resource_type", r.ResourceType,
+	//					"old_attr", r.OldAttribute,
+	//					"new_attr", r.NewAttribute)
+	//			}
+	//		}
+	//	}
+	//}
+	//
+	//// If no renames found, skip global postprocessing
+	//if len(renames) == 0 && len(attributeRenames) == 0 {
+	//	log.Debug("No renames found, skipping global postprocessing")
+	//	return nil
+	//}
+	//
+	//totalUpdates := len(renames) + len(attributeRenames)
+	//fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
+	//
+	//// Apply renames to all files
+	//for _, outputPath := range outputPaths {
+	//	content, err := os.ReadFile(outputPath)
+	//	if err != nil {
+	//		log.Warn("Failed to read file for global postprocessing", "file", outputPath, "error", err)
+	//		continue
+	//	}
+	//
+	//	contentStr := string(content)
+	//	modified := false
+	//
+	//	// Apply all resource type renames
+	//	for oldType, newType := range renames {
+	//		newContent := strings.ReplaceAll(contentStr, oldType+".", newType+".")
+	//		if newContent != contentStr {
+	//			modified = true
+	//			contentStr = newContent
+	//			log.Debug("Updated references", "file", filepath.Base(outputPath), "old", oldType, "new", newType)
+	//		}
+	//	}
+	//
+	//	// Apply all attribute renames
+	//	// Pattern: data.cloudflare_zones.<instance_name>.zones → data.cloudflare_zones.<instance_name>.result
+	//	// We need to match: <ResourceType>.<instance_name>.<OldAttribute>
+	//	for _, rename := range attributeRenames {
+	//		// Build regex pattern: data\.cloudflare_zones\.([a-zA-Z0-9_-]+)\.zones
+	//		// The instance name can contain letters, numbers, underscores, and hyphens
+	//		pattern := regexp.QuoteMeta(rename.ResourceType) + `\.([a-zA-Z0-9_-]+)\.` + regexp.QuoteMeta(rename.OldAttribute)
+	//		re := regexp.MustCompile(pattern)
+	//
+	//		// Replace with: data.cloudflare_zones.$1.result (preserving instance name)
+	//		replacement := rename.ResourceType + ".$1." + rename.NewAttribute
+	//		newContent := re.ReplaceAllString(contentStr, replacement)
+	//
+	//		if newContent != contentStr {
+	//			modified = true
+	//			contentStr = newContent
+	//			log.Debug("Updated attribute references",
+	//				"file", filepath.Base(outputPath),
+	//				"resource_type", rename.ResourceType,
+	//				"old_attr", rename.OldAttribute,
+	//				"new_attr", rename.NewAttribute)
+	//		}
+	//	}
+	//
+	//	// Write back if modified
+	//	if modified {
+	//		if err := os.WriteFile(outputPath, []byte(contentStr), 0644); err != nil {
+	//			return fmt.Errorf("failed to write updated file %s: %w", outputPath, err)
+	//		}
+	//	}
+	//}
+	//
+	//fmt.Printf("✓ Updated cross-file references (%d updates applied)\n", totalUpdates)
+	//return nil
 }
 
 func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config, apiClient *cloudflare.Client, parsedConfigs map[string]*hclwrite.File) error {

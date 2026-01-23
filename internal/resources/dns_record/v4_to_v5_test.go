@@ -6,9 +6,9 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
 )
 
-func TestV4ToV5Transformation(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
+var migrator = NewV4ToV5Migrator()
 
+func TestV4ToV5Transformation(t *testing.T) {
 	// Test configuration transformations (automatically handles preprocessing when needed)
 	t.Run("ConfigTransformation", func(t *testing.T) {
 		tests := []testhelpers.ConfigTestCase{
@@ -38,6 +38,11 @@ resource "cloudflare_record" "caa_test" {
     tag   = "issue"
     value = "letsencrypt.org"
   }
+}
+
+moved {
+  from = cloudflare_record.caa_test
+  to   = cloudflare_dns_record.caa_test
 }`,
 			},
 			{
@@ -64,6 +69,11 @@ resource "cloudflare_record" "caa_test" {
     tag   = "issue"
     value = "letsencrypt.org"
   }
+}
+
+moved {
+  from = cloudflare_record.caa_test
+  to   = cloudflare_dns_record.caa_test
 }`,
 			},
 			{
@@ -89,6 +99,11 @@ resource "cloudflare_record" "caa" {
     value = "ca.example.com"
   }
   ttl = 1
+}
+
+moved {
+  from = cloudflare_record.caa
+  to   = cloudflare_dns_record.caa
 }`,
 			},
 			{
@@ -114,6 +129,11 @@ resource "cloudflare_record" "caa" {
     flags = "critical"
   }
   ttl = 1
+}
+
+moved {
+  from = cloudflare_record.caa
+  to   = cloudflare_dns_record.caa
 }`,
 			},
 			{
@@ -132,6 +152,11 @@ resource "cloudflare_record" "a_test" {
   type    = "A"
   ttl     = 3600
   content = "192.168.1.1"
+}
+
+moved {
+  from = cloudflare_record.a_test
+  to   = cloudflare_dns_record.a_test
 }`,
 			},
 			{
@@ -160,6 +185,11 @@ resource "cloudflare_record" "caa_legacy" {
     tag   = "issuewild"
     value = "pki.goog"
   }
+}
+
+moved {
+  from = cloudflare_record.caa_legacy
+  to   = cloudflare_dns_record.caa_legacy
 }`,
 			},
 			{
@@ -179,6 +209,11 @@ resource "cloudflare_record" "mx_test" {
   content  = "mx.sendgrid.net"
   priority = 10
   ttl      = 1
+}
+
+moved {
+  from = cloudflare_record.mx_test
+  to   = cloudflare_dns_record.mx_test
 }`,
 			},
 			{
@@ -197,6 +232,11 @@ resource "cloudflare_record" "a_test_ttl" {
   type    = "A"
   ttl     = 3600
   content = "192.168.1.1"
+}
+
+moved {
+  from = cloudflare_record.a_test_ttl
+  to   = cloudflare_dns_record.a_test_ttl
 }`,
 			},
 			{
@@ -235,6 +275,11 @@ resource "cloudflare_record" "caa_test2" {
   }
 }
 
+moved {
+  from = cloudflare_record.caa_test1
+  to   = cloudflare_dns_record.caa_test1
+}
+
 resource "cloudflare_dns_record" "caa_test2" {
   zone_id = "0da42c8d2132a9ddaf714f9e7c920711"
   name    = "test2.example.com"
@@ -245,6 +290,11 @@ resource "cloudflare_dns_record" "caa_test2" {
     tag   = "issuewild"
     value = "pki.goog"
   }
+}
+
+moved {
+  from = cloudflare_record.caa_test2
+  to   = cloudflare_dns_record.caa_test2
 }`,
 			},
 			{
@@ -262,6 +312,11 @@ resource "cloudflare_record" "a_test" {
   type    = "A"
   ttl     = 1
   content = "192.168.1.1"
+}
+
+moved {
+  from = cloudflare_record.a_test
+  to   = cloudflare_dns_record.a_test
 }`,
 			},
 			// Additional test cases for better coverage
@@ -272,7 +327,7 @@ resource "cloudflare_record" "mx" {
   zone_id = "abc123"
   name    = "@"
   type    = "MX"
-  
+
   data {
     priority = 10
     target   = "mail.example.com"
@@ -288,6 +343,11 @@ resource "cloudflare_record" "mx" {
   data = {
     target = "mail.example.com"
   }
+}
+
+moved {
+  from = cloudflare_record.mx
+  to   = cloudflare_dns_record.mx
 }`,
 			},
 			{
@@ -297,7 +357,7 @@ resource "cloudflare_record" "uri" {
   zone_id = "abc123"
   name    = "_http._tcp"
   type    = "URI"
-  
+
   data {
     priority = 10
     weight   = 1
@@ -315,6 +375,11 @@ resource "cloudflare_record" "uri" {
     weight = 1
     target = "http://example.com"
   }
+}
+
+moved {
+  from = cloudflare_record.uri
+  to   = cloudflare_dns_record.uri
 }`,
 			},
 			{
@@ -330,6 +395,11 @@ resource "cloudflare_record" "no_type" {
   name    = "test"
   ttl     = 1
   content = "192.0.2.1"
+}
+
+moved {
+  from = cloudflare_record.no_type
+  to   = cloudflare_dns_record.no_type
 }`,
 			},
 			{
@@ -347,6 +417,11 @@ resource "cloudflare_record" "pgp" {
   type    = "OPENPGPKEY"
   ttl     = 1
   content = "base64encodedkey"
+}
+
+moved {
+  from = cloudflare_record.pgp
+  to   = cloudflare_dns_record.pgp
 }`,
 			},
 			{
@@ -364,6 +439,11 @@ resource "cloudflare_record" "ipv6" {
   type    = "AAAA"
   ttl     = 1
   content = "2001:db8::1"
+}
+
+moved {
+  from = cloudflare_record.ipv6
+  to   = cloudflare_dns_record.ipv6
 }`,
 			},
 			{
@@ -381,6 +461,11 @@ resource "cloudflare_record" "ipv6_full" {
   type    = "AAAA"
   ttl     = 1
   content = "2001:0db8:85a3:0000:0000:8a2e:0370:7334"
+}
+
+moved {
+  from = cloudflare_record.ipv6_full
+  to   = cloudflare_dns_record.ipv6_full
 }`,
 			},
 			{
@@ -399,13 +484,20 @@ resource "cloudflare_record" "ipv6_content" {
   type    = "AAAA"
   content = "2001:db8::1"
   ttl     = 3600
+}
+
+moved {
+  from = cloudflare_record.ipv6_content
+  to   = cloudflare_dns_record.ipv6_content
 }`,
 			},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
+}
 
+func TestV4ToV5TransformationState(t *testing.T) {
 	// Test state transformations
 	t.Run("StateTransformation", func(t *testing.T) {
 		tests := []testhelpers.StateTestCase{
@@ -452,14 +544,14 @@ resource "cloudflare_record" "ipv6_content" {
 							"modified_on": "2024-01-01T00:00:00Z",
 							"data": {
 								"flags": {
-									"type": "string",
-									"value": "0"
+									"type": "number",
+									"value": 0
 								},
 								"tag": "issue",
 								"value": "letsencrypt.org"
 							}
 						},
-						"schema_version": 0
+						"schema_version": 4
 					}]
 				}]
 			}`,
@@ -500,7 +592,7 @@ resource "cloudflare_record" "ipv6_content" {
 							"created_on": "2024-01-01T00:00:00Z",
 							"modified_on": "2024-01-01T00:00:00Z"
 						},
-						"schema_version": 0
+						"schema_version": 4
 					}]
 				}]
 			}`,
@@ -545,7 +637,7 @@ resource "cloudflare_record" "ipv6_content" {
 							"created_on": "2024-01-01T00:00:00Z",
 							"modified_on": "2024-01-01T00:00:00Z"
 						},
-						"schema_version": 0
+						"schema_version": 4
 					}]
 				}]
 			}`,
@@ -591,14 +683,14 @@ resource "cloudflare_record" "ipv6_content" {
 							"modified_on": "2024-01-01T00:00:00Z",
 							"data": {
 								"flags": {
-									"type": "string",
-									"value": "0"
+									"type": "number",
+									"value": 0
 								},
 								"tag": "issue",
 								"value": "letsencrypt.org"
 							}
 						},
-						"schema_version": 0
+						"schema_version": 4
 					}]
 				}]
 			}`,
@@ -640,7 +732,7 @@ resource "cloudflare_record" "ipv6_content" {
 							"created_on": "2024-01-01T00:00:00Z",
 							"modified_on": "2024-01-01T00:00:00Z"
 						},
-						"schema_version": 0
+						"schema_version": 4
 					}]
 				}]
 			}`,
@@ -691,7 +783,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"target": "sipserver.example.com"
 							}
 						},
-						"schema_version": 0
+						"schema_version": 4
 					}]
 				}]
 			}`,
@@ -714,7 +806,7 @@ resource "cloudflare_record" "ipv6_content" {
 						"name": "invalid",
 						"instances": [{
 							"attributes": {},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -775,7 +867,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
 							},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -821,7 +913,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
 							},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -860,8 +952,8 @@ resource "cloudflare_record" "ipv6_content" {
 								"content": "128 issue letsencrypt.org",
 								"data": {
 									"flags": {
-										"type": "string",
-										"value": "128"
+										"type": "number",
+										"value": 128
 									},
 									"tag": "issue",
 									"value": "letsencrypt.org"
@@ -870,7 +962,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
 							},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -916,7 +1008,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
 							},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -965,7 +1057,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
 							},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -1011,7 +1103,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
 							},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -1056,7 +1148,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"created_on": "2023-01-01T00:00:00Z",
 								"modified_on": "2023-01-01T00:00:00Z"
 							},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -1092,7 +1184,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
 							},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -1129,7 +1221,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
 							},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -1175,7 +1267,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
 							},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -1220,7 +1312,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
 							},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -1257,7 +1349,7 @@ resource "cloudflare_record" "ipv6_content" {
 								"created_on": "2024-01-01T00:00:00Z",
 								"modified_on": "2024-01-01T00:00:00Z"
 							},
-							"schema_version": 0
+							"schema_version": 4
 						}]
 					}]
 				}`,
@@ -1266,5 +1358,4 @@ resource "cloudflare_record" "ipv6_content" {
 
 		testhelpers.RunStateTransformTests(t, tests, migrator)
 	})
-
 }
