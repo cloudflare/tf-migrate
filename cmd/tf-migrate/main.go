@@ -71,6 +71,7 @@ This tool provides automated transformations for:
 
 var validVersionPath = map[string]struct{}{
 	"v4-v5": {},
+	"v5-v5": {}, // Allow same-version "migrations" (bypass mode - generates moved blocks only)
 }
 
 func main() {
@@ -196,6 +197,14 @@ func runMigration(log hclog.Logger, cfg config) error {
 	err := validateVersions(cfg)
 	if err != nil {
 		return err
+	}
+
+	// Check for same-version migration (bypass mode)
+	if cfg.sourceVersion == cfg.targetVersion {
+		fmt.Printf("\n⚠ Same-version migration detected (%s → %s)\n", cfg.sourceVersion, cfg.targetVersion)
+		fmt.Println("Running in bypass mode: Config will be processed but transformations will be minimal")
+		fmt.Println("This triggers provider StateUpgraders via moved blocks for testing purposes")
+		fmt.Println()
 	}
 
 	// Load state file first if present (needed for cross-referencing in config transformations)
@@ -337,7 +346,6 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 	return parsedConfigs, nil
 }
 
-// applyGlobalPostprocessing applies cross-file reference updates for resource and attribute renames
 func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []string) error {
 	// Collect resource renames and attribute renames from all migrators
 	providers := getProviders(cfg.resourcesToMigrate...)
@@ -406,9 +414,9 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		contentStr := string(content)
 		modified := false
 
-		// Apply all resource type renames
+		// Apply all resource type renames, but skip content within moved blocks
 		for oldType, newType := range renames {
-			newContent := strings.ReplaceAll(contentStr, oldType+".", newType+".")
+			newContent := replaceSkippingMovedBlocks(contentStr, oldType+".", newType+".")
 			if newContent != contentStr {
 				modified = true
 				contentStr = newContent
@@ -416,18 +424,15 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 			}
 		}
 
-		// Apply all attribute renames
+		// Apply all attribute renames, but skip content within moved blocks
 		// Pattern: data.cloudflare_zones.<instance_name>.zones → data.cloudflare_zones.<instance_name>.result
 		// We need to match: <ResourceType>.<instance_name>.<OldAttribute>
 		for _, rename := range attributeRenames {
 			// Build regex pattern: data\.cloudflare_zones\.([a-zA-Z0-9_-]+)\.zones
 			// The instance name can contain letters, numbers, underscores, and hyphens
-			pattern := regexp.QuoteMeta(rename.ResourceType) + `\.([a-zA-Z0-9_-]+)\.` + regexp.QuoteMeta(rename.OldAttribute)
-			re := regexp.MustCompile(pattern)
-
-			// Replace with: data.cloudflare_zones.$1.result (preserving instance name)
+			pattern := rename.ResourceType + `\.([a-zA-Z0-9_-]+)\.` + rename.OldAttribute
 			replacement := rename.ResourceType + ".$1." + rename.NewAttribute
-			newContent := re.ReplaceAllString(contentStr, replacement)
+			newContent := regexReplaceSkippingMovedBlocks(contentStr, pattern, replacement)
 
 			if newContent != contentStr {
 				modified = true
@@ -450,6 +455,79 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 
 	fmt.Printf("✓ Updated cross-file references (%d updates applied)\n", totalUpdates)
 	return nil
+}
+
+// replaceSkippingMovedBlocks replaces old with new in content, but skips any content within moved blocks
+func replaceSkippingMovedBlocks(content, old, new string) string {
+	// Regex to match moved blocks: moved { ... }
+	// This matches multiline moved blocks with any content inside
+	movedBlockPattern := regexp.MustCompile(`(?s)moved\s*\{[^}]*\}`)
+
+	// Find all moved block positions
+	matches := movedBlockPattern.FindAllStringIndex(content, -1)
+	if len(matches) == 0 {
+		// No moved blocks, do simple replacement
+		return strings.ReplaceAll(content, old, new)
+	}
+
+	// Build result by processing content in segments
+	var result strings.Builder
+	lastEnd := 0
+
+	for _, match := range matches {
+		start, end := match[0], match[1]
+
+		// Process content before this moved block
+		before := content[lastEnd:start]
+		result.WriteString(strings.ReplaceAll(before, old, new))
+
+		// Copy the moved block as-is
+		result.WriteString(content[start:end])
+
+		lastEnd = end
+	}
+
+	// Process remaining content after last moved block
+	result.WriteString(strings.ReplaceAll(content[lastEnd:], old, new))
+
+	return result.String()
+}
+
+// regexReplaceSkippingMovedBlocks replaces regex matches in content, but skips any content within moved blocks
+func regexReplaceSkippingMovedBlocks(content, pattern, replacement string) string {
+	// Regex to match moved blocks
+	movedBlockPattern := regexp.MustCompile(`(?s)moved\s*\{[^}]*\}`)
+
+	// Find all moved block positions
+	matches := movedBlockPattern.FindAllStringIndex(content, -1)
+	if len(matches) == 0 {
+		// No moved blocks, do simple replacement
+		re := regexp.MustCompile(pattern)
+		return re.ReplaceAllString(content, replacement)
+	}
+
+	// Build result by processing content in segments
+	var result strings.Builder
+	lastEnd := 0
+	re := regexp.MustCompile(pattern)
+
+	for _, match := range matches {
+		start, end := match[0], match[1]
+
+		// Process content before this moved block
+		before := content[lastEnd:start]
+		result.WriteString(re.ReplaceAllString(before, replacement))
+
+		// Copy the moved block as-is
+		result.WriteString(content[start:end])
+
+		lastEnd = end
+	}
+
+	// Process remaining content after last moved block
+	result.WriteString(re.ReplaceAllString(content[lastEnd:], replacement))
+
+	return result.String()
 }
 
 func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config, apiClient *cloudflare.Client, parsedConfigs map[string]*hclwrite.File) error {

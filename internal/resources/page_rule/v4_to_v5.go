@@ -6,13 +6,11 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of Page Rule resources from v4 to v5
@@ -81,6 +79,18 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		if cacheKeyBlock := tfhcl.FindBlockByType(actionsBody, "cache_key_fields"); cacheKeyBlock != nil {
 			cacheKeyBody := cacheKeyBlock.Body()
 
+			// Step 1d.1: Ensure user block has all required fields
+			// v5 schema has device_type, geo, lang (all default false)
+			// v4 configs may only have device_type and geo
+			// Cloudflare API returns all three, so add lang = false to prevent drift
+			if userBlock := tfhcl.FindBlockByType(cacheKeyBody, "user"); userBlock != nil {
+				userBody := userBlock.Body()
+				if userBody.GetAttribute("lang") == nil {
+					// Add lang = false if not present
+					userBody.SetAttributeValue("lang", cty.BoolVal(false))
+				}
+			}
+
 			// Convert deepest nested blocks first (TypeList MaxItems:1 → SingleNestedAttribute)
 			tfhcl.ConvertSingleBlockToAttribute(cacheKeyBody, "cookie", "cookie")
 			tfhcl.ConvertSingleBlockToAttribute(cacheKeyBody, "header", "header")
@@ -104,80 +114,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
-	attrs := stateJSON.Get("attributes")
-
-	if !attrs.Exists() {
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// 1. Convert priority from int to float64
-	if priority := attrs.Get("priority"); priority.Exists() {
-		floatVal := state.ConvertToFloat64(priority)
-		result, _ = sjson.Set(result, "attributes.priority", floatVal)
-	}
-
-	// 2. Handle status default change (v4: "active", v5: "disabled")
-	// Preserve v4 behavior by explicitly setting "active" if missing
-	statusField := attrs.Get("status")
-	if !statusField.Exists() || statusField.String() == "" {
-		result, _ = sjson.Set(result, "attributes.status", "active")
-	}
-
-	// 3. Transform actions array [{}] → object {}
-	if actionsField := attrs.Get("actions"); actionsField.Exists() && actionsField.IsArray() {
-		actions := actionsField.Array()
-		if len(actions) > 0 {
-			actionsObj := actions[0] // Take first element (MaxItems:1)
-			result, _ = sjson.Set(result, "attributes.actions", actionsObj.Value())
-
-			// Re-parse to get updated structure
-			attrs = gjson.Parse(result).Get("attributes")
-
-			// 3a. Remove deprecated fields
-			result, _ = sjson.Delete(result, "attributes.actions.minify")
-			result, _ = sjson.Delete(result, "attributes.actions.disable_railgun")
-
-			// 3b. Transform nested MaxItems:1 arrays to objects
-			result = m.transformActionsNestedArrays(result, attrs.Get("actions"))
-
-			// 3c. Transform cache_ttl_by_status array → map
-			result = m.transformCacheTTLByStatusState(result, attrs.Get("actions"))
-
-			// 3d. Convert edge_cache_ttl from int to float64
-			if edgeCacheTTL := attrs.Get("actions.edge_cache_ttl"); edgeCacheTTL.Exists() {
-				floatVal := state.ConvertToFloat64(edgeCacheTTL)
-				result, _ = sjson.Set(result, "attributes.actions.edge_cache_ttl", floatVal)
-			}
-
-			// 3e. Convert browser_cache_ttl from string to int64
-			// v4 stores it as string, v5 expects int64
-			if browserCacheTTL := attrs.Get("actions.browser_cache_ttl"); browserCacheTTL.Exists() {
-				intVal := state.ConvertToInt64(browserCacheTTL)
-				result, _ = sjson.Set(result, "attributes.actions.browser_cache_ttl", intVal)
-			}
-
-			// Re-parse attrs after all transformations to get final structure
-			updatedAttrs := gjson.Parse(result).Get("attributes")
-
-			// 3f. Transform empty values to null for action fields not explicitly set in config
-			result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
-				Ctx:              ctx,
-				Result:           result,
-				FieldPath:        "attributes.actions",
-				FieldResult:      updatedAttrs.Get("actions"),
-				ResourceName:     resourceName,
-				HCLAttributePath: "actions",
-				CanHandle:        m.CanHandle,
-			})
-		}
-	}
-
-	// 4. Always set schema_version
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+	// State transformation is handled by the provider's StateUpgraders (UpgradeState)
+	// TransformConfig handles config-level transformations (block → attribute conversions)
+	// This function is a no-op for page_rule migration
+	return stateJSON.String(), nil
 }
 
 // transformCacheTTLByStatus transforms cache_ttl_by_status blocks to map syntax
@@ -267,130 +207,3 @@ func (m *V4ToV5Migrator) transformCacheTTLByStatus(body *hclwrite.Body) {
 	}
 }
 
-// transformActionsNestedArrays transforms nested MaxItems:1 arrays to objects
-// Handles: forwarding_url, cache_key_fields and its nested fields
-// Empty arrays are left as [] so TransformEmptyValuesToNull can convert them to null
-func (m *V4ToV5Migrator) transformActionsNestedArrays(result string, actionsField gjson.Result) string {
-	// Transform forwarding_url [{}] → {}
-	if forwardingURL := actionsField.Get("forwarding_url"); forwardingURL.Exists() && forwardingURL.IsArray() {
-		arr := forwardingURL.Array()
-		if len(arr) > 0 {
-			result, _ = sjson.Set(result, "attributes.actions.forwarding_url", arr[0].Value())
-		}
-		// Keep empty arrays as [] - TransformEmptyValuesToNull will convert to null
-	}
-
-	// Transform cache_key_fields [{}] → {} and its nested fields
-	if cacheKeyFields := actionsField.Get("cache_key_fields"); cacheKeyFields.Exists() && cacheKeyFields.IsArray() {
-		arr := cacheKeyFields.Array()
-		if len(arr) > 0 {
-			result, _ = sjson.Set(result, "attributes.actions.cache_key_fields", arr[0].Value())
-
-			// Re-parse to get updated structure
-			updatedActions := gjson.Parse(result).Get("attributes.actions")
-			cacheKeyObj := updatedActions.Get("cache_key_fields")
-
-			// Transform nested arrays within cache_key_fields
-			for _, field := range []string{"cookie", "header", "host", "query_string", "user"} {
-				if fieldVal := cacheKeyObj.Get(field); fieldVal.Exists() && fieldVal.IsArray() {
-					fieldArr := fieldVal.Array()
-					if len(fieldArr) > 0 {
-						result, _ = sjson.Set(result, "attributes.actions.cache_key_fields."+field, fieldArr[0].Value())
-					} else {
-						// Convert empty arrays to null immediately
-						result, _ = sjson.Set(result, "attributes.actions.cache_key_fields."+field, nil)
-					}
-				}
-			}
-
-			// Re-parse to get updated cache_key_fields structure
-			updatedActions = gjson.Parse(result).Get("attributes.actions")
-			cacheKeyObj = updatedActions.Get("cache_key_fields")
-
-			// Clean up empty arrays within the nested objects (cookie, query_string, etc.)
-			result = m.cleanupCacheKeyFieldsNestedArrays(result, cacheKeyObj)
-		} else {
-			// Convert empty cache_key_fields array to null
-			result, _ = sjson.Set(result, "attributes.actions.cache_key_fields", nil)
-		}
-	}
-
-	return result
-}
-
-// cleanupCacheKeyFieldsNestedArrays converts empty arrays within cache_key_fields nested objects to null
-// This handles fields like cookie.include, query_string.exclude, etc.
-func (m *V4ToV5Migrator) cleanupCacheKeyFieldsNestedArrays(result string, cacheKeyFieldsObj gjson.Result) string {
-	if !cacheKeyFieldsObj.Exists() || !cacheKeyFieldsObj.IsObject() {
-		return result
-	}
-
-	// Fields that should be checked within each cache_key_fields sub-object
-	nestedFieldsToCheck := map[string][]string{
-		"cookie":       {"check_presence", "include"},
-		"header":       {"check_presence", "exclude", "include"},
-		"query_string": {"exclude", "include"},
-	}
-
-	for parentField, childFields := range nestedFieldsToCheck {
-		parentObj := cacheKeyFieldsObj.Get(parentField)
-		if !parentObj.Exists() || !parentObj.IsObject() {
-			continue
-		}
-
-		for _, childField := range childFields {
-			childValue := parentObj.Get(childField)
-			if childValue.Exists() && childValue.IsArray() && len(childValue.Array()) == 0 {
-				// Convert empty array to null
-				result, _ = sjson.Set(result, "attributes.actions.cache_key_fields."+parentField+"."+childField, nil)
-			}
-		}
-	}
-
-	return result
-}
-
-// transformCacheTTLByStatusState transforms cache_ttl_by_status from array to map
-// v4 state: [{"codes": "200", "ttl": 3600}, {"codes": "404", "ttl": 300}]
-// v5 state: {"200": "3600", "404": "300"}
-func (m *V4ToV5Migrator) transformCacheTTLByStatusState(result string, actionsField gjson.Result) string {
-	cacheTTLField := actionsField.Get("cache_ttl_by_status")
-
-	// Check if cache_ttl_by_status exists and is an array
-	if !cacheTTLField.Exists() || !cacheTTLField.IsArray() {
-		return result
-	}
-
-	// Convert array to map: [{"codes": "200", "ttl": 3600}] → {"200": "3600"}
-	cacheTTLMap := make(map[string]string)
-
-	for _, item := range cacheTTLField.Array() {
-		codes := item.Get("codes").String()
-		ttl := item.Get("ttl")
-
-		// Convert TTL to string (v5 uses MapAttribute with string values)
-		var ttlStr string
-		switch ttl.Type {
-		case gjson.Number:
-			ttlStr = ttl.String()
-		case gjson.String:
-			ttlStr = ttl.String()
-		default:
-			// Skip invalid entries
-			continue
-		}
-
-		if codes != "" && ttlStr != "" {
-			cacheTTLMap[codes] = ttlStr
-		}
-	}
-
-	// Set the map (or delete if empty)
-	if len(cacheTTLMap) > 0 {
-		result, _ = sjson.Set(result, "attributes.actions.cache_ttl_by_status", cacheTTLMap)
-	} else {
-		result, _ = sjson.Delete(result, "attributes.actions.cache_ttl_by_status")
-	}
-
-	return result
-}

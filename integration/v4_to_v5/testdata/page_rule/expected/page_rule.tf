@@ -77,6 +77,7 @@ resource "cloudflare_page_rule" "with_cache_key_fields" {
       user = {
         device_type = true
         geo         = false
+        lang        = false
       }
     }
   }

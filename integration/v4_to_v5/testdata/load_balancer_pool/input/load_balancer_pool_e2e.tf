@@ -150,6 +150,9 @@ resource "cloudflare_load_balancer_pool" "e2e_dynamic_simple" {
 }
 
 # 6. Pool with static origins and headers (v4 syntax - will be migrated to v5 array)
+# Note: The second origin (static-origin-2) is disabled and intentionally has no header
+# configuration because the Cloudflare API does not return header values for disabled
+# origins, which would cause persistent drift.
 resource "cloudflare_load_balancer_pool" "e2e_static_with_headers" {
   account_id      = var.cloudflare_account_id
   name            = "${local.name_prefix}-e2e-static-headers-pool"
@@ -171,11 +174,6 @@ resource "cloudflare_load_balancer_pool" "e2e_static_with_headers" {
     name    = "static-origin-2"
     address = "192.0.2.201"
     enabled = false
-
-    header {
-      header = "Host"
-      values = ["static2.${var.cloudflare_domain}", "static2-alt.${var.cloudflare_domain}"]
-    }
   }
 
   load_shedding {
