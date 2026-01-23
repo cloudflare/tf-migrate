@@ -3,7 +3,6 @@ package turnstile_widget
 import (
 	"sort"
 
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -75,68 +74,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// The Cloudflare API returns domains in alphabetical order, and since v5 uses
 	// ListAttribute (ordered) instead of SetAttribute (unordered), we must sort
 	// domains in both config and state to prevent drift
-	if attr := body.GetAttribute("domains"); attr != nil {
-		elements := tfhcl.ParseArrayAttribute(attr)
-		// Only sort if we have string literals (not variables/expressions)
-		if len(elements) > 0 && elements[0].Type == "string" {
-			// Extract string values
-			var domains []string
-			for _, elem := range elements {
-				// Extract the string value from TokenQuotedLit token
-				for _, token := range elem.Tokens {
-					if token.Type == hclsyntax.TokenQuotedLit {
-						domains = append(domains, string(token.Bytes))
-						break
-					}
-				}
-			}
-
-			// Sort alphabetically
-			sort.Strings(domains)
-
-			// Build sorted array tokens
-			var sortedTokens hclwrite.Tokens
-			sortedTokens = append(sortedTokens, &hclwrite.Token{
-				Type:  hclsyntax.TokenOBrack,
-				Bytes: []byte("["),
-			})
-			for i, domain := range domains {
-				if i > 0 {
-					sortedTokens = append(sortedTokens, &hclwrite.Token{
-						Type:  hclsyntax.TokenComma,
-						Bytes: []byte(","),
-					})
-					sortedTokens = append(sortedTokens, &hclwrite.Token{
-						Type:  hclsyntax.TokenIdent,
-						Bytes: []byte(" "),
-					})
-				}
-				sortedTokens = append(sortedTokens, &hclwrite.Token{
-					Type:  hclsyntax.TokenOQuote,
-					Bytes: []byte(`"`),
-				})
-				sortedTokens = append(sortedTokens, &hclwrite.Token{
-					Type:  hclsyntax.TokenQuotedLit,
-					Bytes: []byte(domain),
-				})
-				sortedTokens = append(sortedTokens, &hclwrite.Token{
-					Type:  hclsyntax.TokenCQuote,
-					Bytes: []byte(`"`),
-				})
-			}
-			sortedTokens = append(sortedTokens, &hclwrite.Token{
-				Type:  hclsyntax.TokenCBrack,
-				Bytes: []byte("]"),
-			})
-			sortedTokens = append(sortedTokens, &hclwrite.Token{
-				Type:  hclsyntax.TokenNewline,
-				Bytes: []byte("\n"),
-			})
-
-			// Set the sorted array back
-			body.SetAttributeRaw("domains", sortedTokens)
-		}
-	}
+	tfhcl.SortStringArrayAttribute(body, "domains")
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},

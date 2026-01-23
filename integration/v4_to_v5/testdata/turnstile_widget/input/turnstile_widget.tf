@@ -4,15 +4,15 @@
 
 # Standard variables (auto-provided by E2E infrastructure)
 variable "cloudflare_account_id" {
-  type        = string
+  type = string
 }
 
 variable "cloudflare_zone_id" {
-  type        = string
+  type = string
 }
 
 variable "cloudflare_domain" {
-  type        = string
+  type = string
 }
 
 # Locals for DRY testing
@@ -39,15 +39,17 @@ locals {
 resource "cloudflare_turnstile_widget" "minimal" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-minimal"
-  domains    = toset(["minimal.cf-tf-test.com"])
-  mode       = "managed"
+  domains    = ["minimal.cf-tf-test.com"]
+
+  mode = "managed"
 }
 
 # Test Case 2: Maximal configuration (all optional fields)
 resource "cloudflare_turnstile_widget" "maximal" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-maximal"
-  domains        = toset(["maximal.cf-tf-test.com", "max2.cf-tf-test.com"])
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-maximal"
+  domains    = ["max2.cf-tf-test.com", "maximal.cf-tf-test.com"]
+
   mode           = "invisible"
   region         = "world"
   bot_fight_mode = false
@@ -56,9 +58,10 @@ resource "cloudflare_turnstile_widget" "maximal" {
 
 # Test Case 3: With explicit defaults
 resource "cloudflare_turnstile_widget" "with_defaults" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-defaults"
-  domains        = toset(["defaults.cf-tf-test.com"])
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-defaults"
+  domains    = ["defaults.cf-tf-test.com"]
+
   mode           = "non-interactive"
   region         = "world"
   bot_fight_mode = false
@@ -88,7 +91,7 @@ resource "cloudflare_turnstile_widget" "foreach_map" {
 
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-map-${each.key}"
-  domains    = toset([each.value.domain])
+  domains    = [each.value.domain]
   mode       = each.value.mode
 }
 
@@ -107,7 +110,7 @@ resource "cloudflare_turnstile_widget" "foreach_set" {
 
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-set-${each.value}"
-  domains    = toset(["${each.value}.cf-tf-test.com"])
+  domains    = ["${each.value}.cf-tf-test.com"]
   mode       = "managed"
 }
 
@@ -119,10 +122,10 @@ resource "cloudflare_turnstile_widget" "foreach_set" {
 resource "cloudflare_turnstile_widget" "counted" {
   count = 3
 
-  account_id  = var.cloudflare_account_id
-  name        = "${local.name_prefix}-count-${count.index}"
-  domains     = toset(["count${count.index}.cf-tf-test.com"])
-  mode        = local.widget_modes[count.index]
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-count-${count.index}"
+  domains    = ["count${count.index}.cf-tf-test.com"]
+  mode       = local.widget_modes[count.index]
 }
 
 # ==================================================
@@ -140,8 +143,9 @@ resource "cloudflare_turnstile_widget" "conditional_enabled" {
 
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-conditional-enabled"
-  domains    = toset(["enabled.cf-tf-test.com"])
-  mode       = "managed"
+  domains    = ["enabled.cf-tf-test.com"]
+
+  mode = "managed"
 }
 
 # Test Case 15: Conditional disabled (will NOT be created - no instance in state)
@@ -150,8 +154,9 @@ resource "cloudflare_turnstile_widget" "conditional_disabled" {
 
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-conditional-disabled"
-  domains    = toset(["disabled.cf-tf-test.com"])
-  mode       = "invisible"
+  domains    = ["disabled.cf-tf-test.com"]
+
+  mode = "invisible"
 }
 
 # ==================================================
@@ -160,18 +165,20 @@ resource "cloudflare_turnstile_widget" "conditional_disabled" {
 
 # Test Case 16: Using join() function
 resource "cloudflare_turnstile_widget" "with_join" {
-  account_id  = var.cloudflare_account_id
-  name        = join("-", [local.name_prefix, "join", "test"])
-  domains     = toset(["join.cf-tf-test.com"])
-  mode        = "managed"
+  account_id = var.cloudflare_account_id
+  name       = join("-", [local.name_prefix, "join", "test"])
+  domains    = ["join.cf-tf-test.com"]
+
+  mode = "managed"
 }
 
 # Test Case 17: String interpolation
 resource "cloudflare_turnstile_widget" "with_interpolation" {
-  account_id  = var.cloudflare_account_id
-  name        = "${local.name_prefix}-interp"
-  domains     = toset(["interp.cf-tf-test.com"])
-  mode        = "invisible"
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-interp"
+  domains    = ["interp.cf-tf-test.com"]
+
+  mode = "invisible"
 }
 
 # ==================================================
@@ -182,8 +189,9 @@ resource "cloudflare_turnstile_widget" "with_interpolation" {
 resource "cloudflare_turnstile_widget" "with_lifecycle_cbd" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-lifecycle-cbd"
-  domains    = toset(["lifecycle-cbd.cf-tf-test.com"])
-  mode       = "managed"
+  domains    = ["lifecycle-cbd.cf-tf-test.com"]
+
+  mode = "managed"
 
   lifecycle {
     create_before_destroy = true
@@ -192,10 +200,11 @@ resource "cloudflare_turnstile_widget" "with_lifecycle_cbd" {
 
 # Test Case 19: Lifecycle with ignore_changes
 resource "cloudflare_turnstile_widget" "with_lifecycle_ignore" {
-  account_id  = var.cloudflare_account_id
-  name        = "${local.name_prefix}-lifecycle-ignore"
-  domains     = toset(["lifecycle-ignore.cf-tf-test.com"])
-  mode        = "invisible"
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-lifecycle-ignore"
+  domains    = ["lifecycle-ignore.cf-tf-test.com"]
+
+  mode = "invisible"
 
   lifecycle {
     ignore_changes = [name]
@@ -206,11 +215,12 @@ resource "cloudflare_turnstile_widget" "with_lifecycle_ignore" {
 resource "cloudflare_turnstile_widget" "with_lifecycle_prevent" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-lifecycle-prevent"
-  domains    = toset(["lifecycle-prevent.cf-tf-test.com"])
-  mode       = "non-interactive"
+  domains    = ["lifecycle-prevent.cf-tf-test.com"]
+
+  mode = "non-interactive"
 
   lifecycle {
-    prevent_destroy = false  # Set to false for testing purposes
+    prevent_destroy = false # Set to false for testing purposes
   }
 }
 
@@ -222,21 +232,17 @@ resource "cloudflare_turnstile_widget" "with_lifecycle_prevent" {
 resource "cloudflare_turnstile_widget" "multi_domain_2" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-multi-2"
-  domains    = toset(["multi1.cf-tf-test.com", "multi2.cf-tf-test.com"])
-  mode       = "managed"
+  domains    = ["multi1.cf-tf-test.com", "multi2.cf-tf-test.com"]
+
+  mode = "managed"
 }
 
 # Test Case 22: Multiple domains (5)
 resource "cloudflare_turnstile_widget" "multi_domain_5" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-multi-5"
-  domains = toset([
-    "md1.cf-tf-test.com",
-    "md2.cf-tf-test.com",
-    "md3.cf-tf-test.com",
-    "md4.cf-tf-test.com",
-    "md5.cf-tf-test.com"
-  ])
+  domains    = ["md1.cf-tf-test.com", "md2.cf-tf-test.com", "md3.cf-tf-test.com", "md4.cf-tf-test.com", "md5.cf-tf-test.com"]
+
   mode = "invisible"
 }
 
@@ -248,7 +254,7 @@ resource "cloudflare_turnstile_widget" "multi_domain_5" {
 resource "cloudflare_turnstile_widget" "with_var_domains" {
   account_id = local.account_id
   name       = "${local.name_prefix}-var-domains"
-  domains    = toset([local.test_domains.prod])
+  domains    = [local.test_domains.prod]
   mode       = "managed"
 }
 
@@ -260,24 +266,27 @@ resource "cloudflare_turnstile_widget" "with_var_domains" {
 resource "cloudflare_turnstile_widget" "mode_managed" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-mode-managed"
-  domains    = toset(["managed.cf-tf-test.com"])
-  mode       = "managed"
+  domains    = ["managed.cf-tf-test.com"]
+
+  mode = "managed"
 }
 
 # Test Case 25: invisible mode
 resource "cloudflare_turnstile_widget" "mode_invisible" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-mode-invisible"
-  domains    = toset(["invisible.cf-tf-test.com"])
-  mode       = "invisible"
+  domains    = ["invisible.cf-tf-test.com"]
+
+  mode = "invisible"
 }
 
 # Test Case 26: non-interactive mode
 resource "cloudflare_turnstile_widget" "mode_noninteractive" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-mode-noninteractive"
-  domains    = toset(["noninteractive.cf-tf-test.com"])
-  mode       = "non-interactive"
+  domains    = ["noninteractive.cf-tf-test.com"]
+
+  mode = "non-interactive"
 }
 
 # ==================================================
