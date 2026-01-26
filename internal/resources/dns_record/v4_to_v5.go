@@ -9,7 +9,6 @@ import (
 
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	statelib "github.com/cloudflare/tf-migrate/pkg/state"
 )
 
 // V4ToV5Migrator handles migration of DNS record resources from v4 to v5
@@ -167,5 +166,8 @@ func (m *V4ToV5Migrator) processDataAttribute(block *hclwrite.Block, recordType 
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	return statelib.TransformDNSRecordState(stateJSON)
+	// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState)
+	// The moved block generated in TransformConfig triggers the provider's migration logic
+	// This function is a no-op for dns_record migration
+	return stateJSON.String(), nil
 }

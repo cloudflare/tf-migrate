@@ -43,31 +43,37 @@ locals {
 
 
 
+
 resource "cloudflare_zone_setting" "minimal_always_online" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "always_online"
   value      = "on"
 }
+
 resource "cloudflare_zone_setting" "minimal_brotli" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "brotli"
   value      = "on"
 }
+
 resource "cloudflare_zone_setting" "with_integers_browser_cache_ttl" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "browser_cache_ttl"
   value      = 14400
 }
+
 resource "cloudflare_zone_setting" "with_integers_challenge_ttl" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "challenge_ttl"
   value      = 1800
 }
+
 resource "cloudflare_zone_setting" "with_security_header_ssl" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "ssl"
   value      = "flexible"
 }
+
 resource "cloudflare_zone_setting" "with_security_header_security_header" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "security_header"
@@ -81,44 +87,52 @@ resource "cloudflare_zone_setting" "with_security_header_security_header" {
     }
   }
 }
+
 resource "cloudflare_zone_setting" "conditional_enabled_rocket_loader" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "rocket_loader"
   value      = "on"
   count      = local.enable_advanced_settings ? 1 : 0
 }
+
 resource "cloudflare_zone_setting" "conditional_enabled_websockets" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "websockets"
   value      = "on"
   count      = local.enable_advanced_settings ? 1 : 0
 }
+
 resource "cloudflare_zone_setting" "conditional_disabled_browser_check" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "browser_check"
   value      = "on"
   count      = local.enable_test_settings ? 1 : 0
 }
+
 resource "cloudflare_zone_setting" "with_functions_browser_cache_ttl" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "browser_cache_ttl"
   value      = lookup({ "default" = 14400, "custom" = 28800 }, "default")
 }
+
 resource "cloudflare_zone_setting" "with_functions_cache_level" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "cache_level"
   value      = "aggressive"
 }
+
 resource "cloudflare_zone_setting" "with_interpolation_automatic_https_rewrites" {
   zone_id    = local.primary_zone_id
   setting_id = "automatic_https_rewrites"
   value      = "on"
 }
+
 resource "cloudflare_zone_setting" "with_interpolation_min_tls_version" {
   zone_id    = local.primary_zone_id
   setting_id = "min_tls_version"
   value      = "1.2"
 }
+
 resource "cloudflare_zone_setting" "with_lifecycle_always_online" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "always_online"
@@ -127,6 +141,7 @@ resource "cloudflare_zone_setting" "with_lifecycle_always_online" {
     create_before_destroy = true
   }
 }
+
 resource "cloudflare_zone_setting" "with_lifecycle_ipv6" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "ipv6"
@@ -135,31 +150,37 @@ resource "cloudflare_zone_setting" "with_lifecycle_ipv6" {
     create_before_destroy = true
   }
 }
+
 resource "cloudflare_zone_setting" "with_ignore_changes_email_obfuscation" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "email_obfuscation"
   value      = "on"
 }
+
 resource "cloudflare_zone_setting" "with_ignore_changes_server_side_exclude" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "server_side_exclude"
   value      = "on"
 }
+
 resource "cloudflare_zone_setting" "with_name_mapping_http2" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "http2"
   value      = "on"
 }
+
 resource "cloudflare_zone_setting" "with_name_mapping_http3" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "http3"
   value      = "on"
 }
+
 resource "cloudflare_zone_setting" "with_deprecated_always_online" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "always_online"
   value      = "on"
 }
+
 resource "cloudflare_zone_setting" "with_deprecated_brotli" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "brotli"

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/cloudflare/cloudflare-go/v6"
@@ -336,120 +337,188 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 	return parsedConfigs, nil
 }
 
-// TODO:: needs work, not sure whats happening. Messing with moved blocks
 func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []string) error {
+	// Collect resource renames and attribute renames from all migrators
+	providers := getProviders(cfg.resourcesToMigrate...)
+	migrators := providers.GetAllMigrators(cfg.sourceVersion, cfg.targetVersion, cfg.resourcesToMigrate...)
+
+	// Map to store old type -> new type mappings
+	renames := make(map[string]string)
+	// Slice to store attribute renames
+	var attributeRenames []transform.AttributeRename
+
+	for _, migrator := range migrators {
+		// Check if this migrator implements ResourceRenamer interface
+		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
+			oldType, newType := renamer.GetResourceRename()
+			if oldType != "" && newType != "" {
+				// Only add to renames map if the types are different (actual rename)
+				if oldType != newType {
+					renames[oldType] = newType
+					log.Debug("Collected resource rename", "old", oldType, "new", newType)
+				} else {
+					log.Debug("Resource type unchanged", "type", oldType)
+				}
+			} else {
+				// Warn if migrator implements interface but returns empty values
+				log.Warn("Migrator implements ResourceRenamer but returned empty type names",
+					"old", oldType, "new", newType)
+			}
+		} else {
+			// Warn if migrator doesn't implement ResourceRenamer interface
+			log.Warn("Migrator does not implement ResourceRenamer interface - cross-file references may not be updated",
+				"migrator", fmt.Sprintf("%T", migrator))
+		}
+
+		// Check if this migrator implements AttributeRenamer interface
+		if attrRenamer, ok := migrator.(transform.AttributeRenamer); ok {
+			renames := attrRenamer.GetAttributeRenames()
+			if len(renames) > 0 {
+				attributeRenames = append(attributeRenames, renames...)
+				for _, r := range renames {
+					log.Debug("Collected attribute rename",
+						"resource_type", r.ResourceType,
+						"old_attr", r.OldAttribute,
+						"new_attr", r.NewAttribute)
+				}
+			}
+		}
+	}
+
+	// If no renames found, skip global postprocessing
+	if len(renames) == 0 && len(attributeRenames) == 0 {
+		log.Debug("No renames found, skipping global postprocessing")
+		return nil
+	}
+
+	totalUpdates := len(renames) + len(attributeRenames)
+	fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
+
+	// Apply renames to all files
+	for _, outputPath := range outputPaths {
+		content, err := os.ReadFile(outputPath)
+		if err != nil {
+			log.Warn("Failed to read file for global postprocessing", "file", outputPath, "error", err)
+			continue
+		}
+
+		contentStr := string(content)
+		modified := false
+
+		// Apply all resource type renames, but skip content within moved blocks
+		for oldType, newType := range renames {
+			newContent := replaceSkippingMovedBlocks(contentStr, oldType+".", newType+".")
+			if newContent != contentStr {
+				modified = true
+				contentStr = newContent
+				log.Debug("Updated references", "file", filepath.Base(outputPath), "old", oldType, "new", newType)
+			}
+		}
+
+		// Apply all attribute renames, but skip content within moved blocks
+		// Pattern: data.cloudflare_zones.<instance_name>.zones → data.cloudflare_zones.<instance_name>.result
+		// We need to match: <ResourceType>.<instance_name>.<OldAttribute>
+		for _, rename := range attributeRenames {
+			// Build regex pattern: data\.cloudflare_zones\.([a-zA-Z0-9_-]+)\.zones
+			// The instance name can contain letters, numbers, underscores, and hyphens
+			pattern := rename.ResourceType + `\.([a-zA-Z0-9_-]+)\.` + rename.OldAttribute
+			replacement := rename.ResourceType + ".$1." + rename.NewAttribute
+			newContent := regexReplaceSkippingMovedBlocks(contentStr, pattern, replacement)
+
+			if newContent != contentStr {
+				modified = true
+				contentStr = newContent
+				log.Debug("Updated attribute references",
+					"file", filepath.Base(outputPath),
+					"resource_type", rename.ResourceType,
+					"old_attr", rename.OldAttribute,
+					"new_attr", rename.NewAttribute)
+			}
+		}
+
+		// Write back if modified
+		if modified {
+			if err := os.WriteFile(outputPath, []byte(contentStr), 0644); err != nil {
+				return fmt.Errorf("failed to write updated file %s: %w", outputPath, err)
+			}
+		}
+	}
+
+	fmt.Printf("✓ Updated cross-file references (%d updates applied)\n", totalUpdates)
 	return nil
-	//// Collect resource renames and attribute renames from all migrators
-	//providers := getProviders(cfg.resourcesToMigrate...)
-	//migrators := providers.GetAllMigrators(cfg.sourceVersion, cfg.targetVersion, cfg.resourcesToMigrate...)
-	//
-	//// Map to store old type -> new type mappings
-	//renames := make(map[string]string)
-	//// Slice to store attribute renames
-	//var attributeRenames []transform.AttributeRename
-	//
-	//for _, migrator := range migrators {
-	//	// Check if this migrator implements ResourceRenamer interface
-	//	if renamer, ok := migrator.(transform.ResourceRenamer); ok {
-	//		oldType, newType := renamer.GetResourceRename()
-	//		if oldType != "" && newType != "" {
-	//			// Only add to renames map if the types are different (actual rename)
-	//			if oldType != newType {
-	//				renames[oldType] = newType
-	//				log.Debug("Collected resource rename", "old", oldType, "new", newType)
-	//			} else {
-	//				log.Debug("Resource type unchanged", "type", oldType)
-	//			}
-	//		} else {
-	//			// Warn if migrator implements interface but returns empty values
-	//			log.Warn("Migrator implements ResourceRenamer but returned empty type names",
-	//				"old", oldType, "new", newType)
-	//		}
-	//	} else {
-	//		// Warn if migrator doesn't implement ResourceRenamer interface
-	//		log.Warn("Migrator does not implement ResourceRenamer interface - cross-file references may not be updated",
-	//			"migrator", fmt.Sprintf("%T", migrator))
-	//	}
-	//
-	//	// Check if this migrator implements AttributeRenamer interface
-	//	if attrRenamer, ok := migrator.(transform.AttributeRenamer); ok {
-	//		renames := attrRenamer.GetAttributeRenames()
-	//		if len(renames) > 0 {
-	//			attributeRenames = append(attributeRenames, renames...)
-	//			for _, r := range renames {
-	//				log.Debug("Collected attribute rename",
-	//					"resource_type", r.ResourceType,
-	//					"old_attr", r.OldAttribute,
-	//					"new_attr", r.NewAttribute)
-	//			}
-	//		}
-	//	}
-	//}
-	//
-	//// If no renames found, skip global postprocessing
-	//if len(renames) == 0 && len(attributeRenames) == 0 {
-	//	log.Debug("No renames found, skipping global postprocessing")
-	//	return nil
-	//}
-	//
-	//totalUpdates := len(renames) + len(attributeRenames)
-	//fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
-	//
-	//// Apply renames to all files
-	//for _, outputPath := range outputPaths {
-	//	content, err := os.ReadFile(outputPath)
-	//	if err != nil {
-	//		log.Warn("Failed to read file for global postprocessing", "file", outputPath, "error", err)
-	//		continue
-	//	}
-	//
-	//	contentStr := string(content)
-	//	modified := false
-	//
-	//	// Apply all resource type renames
-	//	for oldType, newType := range renames {
-	//		newContent := strings.ReplaceAll(contentStr, oldType+".", newType+".")
-	//		if newContent != contentStr {
-	//			modified = true
-	//			contentStr = newContent
-	//			log.Debug("Updated references", "file", filepath.Base(outputPath), "old", oldType, "new", newType)
-	//		}
-	//	}
-	//
-	//	// Apply all attribute renames
-	//	// Pattern: data.cloudflare_zones.<instance_name>.zones → data.cloudflare_zones.<instance_name>.result
-	//	// We need to match: <ResourceType>.<instance_name>.<OldAttribute>
-	//	for _, rename := range attributeRenames {
-	//		// Build regex pattern: data\.cloudflare_zones\.([a-zA-Z0-9_-]+)\.zones
-	//		// The instance name can contain letters, numbers, underscores, and hyphens
-	//		pattern := regexp.QuoteMeta(rename.ResourceType) + `\.([a-zA-Z0-9_-]+)\.` + regexp.QuoteMeta(rename.OldAttribute)
-	//		re := regexp.MustCompile(pattern)
-	//
-	//		// Replace with: data.cloudflare_zones.$1.result (preserving instance name)
-	//		replacement := rename.ResourceType + ".$1." + rename.NewAttribute
-	//		newContent := re.ReplaceAllString(contentStr, replacement)
-	//
-	//		if newContent != contentStr {
-	//			modified = true
-	//			contentStr = newContent
-	//			log.Debug("Updated attribute references",
-	//				"file", filepath.Base(outputPath),
-	//				"resource_type", rename.ResourceType,
-	//				"old_attr", rename.OldAttribute,
-	//				"new_attr", rename.NewAttribute)
-	//		}
-	//	}
-	//
-	//	// Write back if modified
-	//	if modified {
-	//		if err := os.WriteFile(outputPath, []byte(contentStr), 0644); err != nil {
-	//			return fmt.Errorf("failed to write updated file %s: %w", outputPath, err)
-	//		}
-	//	}
-	//}
-	//
-	//fmt.Printf("✓ Updated cross-file references (%d updates applied)\n", totalUpdates)
-	//return nil
+}
+
+// replaceSkippingMovedBlocks replaces old with new in content, but skips any content within moved blocks
+func replaceSkippingMovedBlocks(content, old, new string) string {
+	// Regex to match moved blocks: moved { ... }
+	// This matches multiline moved blocks with any content inside
+	movedBlockPattern := regexp.MustCompile(`(?s)moved\s*\{[^}]*\}`)
+
+	// Find all moved block positions
+	matches := movedBlockPattern.FindAllStringIndex(content, -1)
+	if len(matches) == 0 {
+		// No moved blocks, do simple replacement
+		return strings.ReplaceAll(content, old, new)
+	}
+
+	// Build result by processing content in segments
+	var result strings.Builder
+	lastEnd := 0
+
+	for _, match := range matches {
+		start, end := match[0], match[1]
+
+		// Process content before this moved block
+		before := content[lastEnd:start]
+		result.WriteString(strings.ReplaceAll(before, old, new))
+
+		// Copy the moved block as-is
+		result.WriteString(content[start:end])
+
+		lastEnd = end
+	}
+
+	// Process remaining content after last moved block
+	result.WriteString(strings.ReplaceAll(content[lastEnd:], old, new))
+
+	return result.String()
+}
+
+// regexReplaceSkippingMovedBlocks replaces regex matches in content, but skips any content within moved blocks
+func regexReplaceSkippingMovedBlocks(content, pattern, replacement string) string {
+	// Regex to match moved blocks
+	movedBlockPattern := regexp.MustCompile(`(?s)moved\s*\{[^}]*\}`)
+
+	// Find all moved block positions
+	matches := movedBlockPattern.FindAllStringIndex(content, -1)
+	if len(matches) == 0 {
+		// No moved blocks, do simple replacement
+		re := regexp.MustCompile(pattern)
+		return re.ReplaceAllString(content, replacement)
+	}
+
+	// Build result by processing content in segments
+	var result strings.Builder
+	lastEnd := 0
+	re := regexp.MustCompile(pattern)
+
+	for _, match := range matches {
+		start, end := match[0], match[1]
+
+		// Process content before this moved block
+		before := content[lastEnd:start]
+		result.WriteString(re.ReplaceAllString(before, replacement))
+
+		// Copy the moved block as-is
+		result.WriteString(content[start:end])
+
+		lastEnd = end
+	}
+
+	// Process remaining content after last moved block
+	result.WriteString(re.ReplaceAllString(content[lastEnd:], replacement))
+
+	return result.String()
 }
 
 func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config, apiClient *cloudflare.Client, parsedConfigs map[string]*hclwrite.File) error {
