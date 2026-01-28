@@ -303,15 +303,15 @@ resource "cloudflare_access_organization" "test" {
 
 **How It Works:**
 1. E2E runner scans module files for `# tf-migrate:import-address=<address>` annotations during init
-2. Substitutes variables: `${var.cloudflare_account_id}` → actual account ID (e.g., `abc123`)
+2. Converts variable syntax: `${var.cloudflare_account_id}` → `var.cloudflare_account_id`
 3. Generates native Terraform import blocks in root `main.tf`:
    ```hcl
    import {
      to = module.zero_trust_organization.cloudflare_access_organization.test
-     id = "abc123"
+     id = var.cloudflare_account_id
    }
    ```
-4. Terraform automatically imports resources during `terraform apply`
+4. Terraform resolves variables at runtime from `terraform.tfvars` and imports resources during `terraform apply`
 
 **Why This Approach:**
 - ✅ Uses native Terraform import blocks (Terraform 1.5+)
