@@ -185,8 +185,8 @@ resource "cloudflare_something" "root" {
 		t.Fatalf("failed to write root file: %v", err)
 	}
 
-	// Find import specs
-	specs, err := findImportSpecs(tmpDir)
+	// Find import specs (pass nil to scan all modules)
+	specs, err := findImportSpecs(tmpDir, nil)
 	if err != nil {
 		t.Fatalf("findImportSpecs() error = %v", err)
 	}
@@ -205,6 +205,135 @@ resource "cloudflare_something" "root" {
 			t.Errorf("ResourceType = %q, want %q", got.ResourceType, "cloudflare_access_organization")
 		}
 	}
+}
+
+func TestFindImportSpecsWithFilter(t *testing.T) {
+	// Create temporary directory structure
+	tmpDir := t.TempDir()
+
+	// Create module directories
+	module1Dir := filepath.Join(tmpDir, "module1")
+	module2Dir := filepath.Join(tmpDir, "module2")
+	module3Dir := filepath.Join(tmpDir, "module3")
+	if err := os.MkdirAll(module1Dir, 0755); err != nil {
+		t.Fatalf("failed to create module1 dir: %v", err)
+	}
+	if err := os.MkdirAll(module2Dir, 0755); err != nil {
+		t.Fatalf("failed to create module2 dir: %v", err)
+	}
+	if err := os.MkdirAll(module3Dir, 0755); err != nil {
+		t.Fatalf("failed to create module3 dir: %v", err)
+	}
+
+	// Create test files with import annotations
+	module1Content := `# tf-migrate:import-address=${var.cloudflare_account_id}
+resource "cloudflare_access_organization" "test" {
+  account_id = var.cloudflare_account_id
+}
+`
+	if err := os.WriteFile(filepath.Join(module1Dir, "main.tf"), []byte(module1Content), 0644); err != nil {
+		t.Fatalf("failed to write module1 file: %v", err)
+	}
+
+	module2Content := `# tf-migrate:import-address=${var.cloudflare_zone_id}
+resource "cloudflare_waf_package" "test" {
+  zone_id = var.cloudflare_zone_id
+}
+`
+	if err := os.WriteFile(filepath.Join(module2Dir, "main.tf"), []byte(module2Content), 0644); err != nil {
+		t.Fatalf("failed to write module2 file: %v", err)
+	}
+
+	module3Content := `# Regular resource, no import needed
+resource "cloudflare_record" "test" {
+  zone_id = var.cloudflare_zone_id
+  name    = "test"
+}
+`
+	if err := os.WriteFile(filepath.Join(module3Dir, "main.tf"), []byte(module3Content), 0644); err != nil {
+		t.Fatalf("failed to write module3 file: %v", err)
+	}
+
+	t.Run("filter to single module with import", func(t *testing.T) {
+		// Find import specs filtering to only module1
+		specs, err := findImportSpecs(tmpDir, []string{"module1"})
+		if err != nil {
+			t.Fatalf("findImportSpecs() error = %v", err)
+		}
+
+		// Should find only module1's import
+		if len(specs) != 1 {
+			t.Errorf("findImportSpecs() got %d specs, want 1", len(specs))
+		}
+
+		if len(specs) > 0 {
+			got := specs[0]
+			if got.ModuleName != "module1" {
+				t.Errorf("ModuleName = %q, want %q", got.ModuleName, "module1")
+			}
+			if got.ResourceType != "cloudflare_access_organization" {
+				t.Errorf("ResourceType = %q, want %q", got.ResourceType, "cloudflare_access_organization")
+			}
+		}
+	})
+
+	t.Run("filter to module without import", func(t *testing.T) {
+		// Find import specs filtering to only module3 (no imports)
+		specs, err := findImportSpecs(tmpDir, []string{"module3"})
+		if err != nil {
+			t.Fatalf("findImportSpecs() error = %v", err)
+		}
+
+		// Should find no imports
+		if len(specs) != 0 {
+			t.Errorf("findImportSpecs() got %d specs, want 0", len(specs))
+		}
+	})
+
+	t.Run("filter to multiple modules", func(t *testing.T) {
+		// Find import specs filtering to module1 and module2
+		specs, err := findImportSpecs(tmpDir, []string{"module1", "module2"})
+		if err != nil {
+			t.Fatalf("findImportSpecs() error = %v", err)
+		}
+
+		// Should find both imports
+		if len(specs) != 2 {
+			t.Errorf("findImportSpecs() got %d specs, want 2", len(specs))
+		}
+
+		// Check that we got imports from both modules
+		foundModule1 := false
+		foundModule2 := false
+		for _, spec := range specs {
+			if spec.ModuleName == "module1" {
+				foundModule1 = true
+			}
+			if spec.ModuleName == "module2" {
+				foundModule2 = true
+			}
+		}
+
+		if !foundModule1 {
+			t.Error("Expected to find import from module1")
+		}
+		if !foundModule2 {
+			t.Error("Expected to find import from module2")
+		}
+	})
+
+	t.Run("filter to nonexistent module", func(t *testing.T) {
+		// Find import specs filtering to module that doesn't exist
+		specs, err := findImportSpecs(tmpDir, []string{"nonexistent"})
+		if err != nil {
+			t.Fatalf("findImportSpecs() error = %v", err)
+		}
+
+		// Should find no imports (no error, just empty result)
+		if len(specs) != 0 {
+			t.Errorf("findImportSpecs() got %d specs, want 0", len(specs))
+		}
+	})
 }
 
 func TestConvertToTerraformVar(t *testing.T) {

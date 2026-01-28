@@ -208,7 +208,7 @@ cloudflare_domain     = "%s"
 
 	// Scan for import annotations before generating main.tf
 	printYellow("Scanning for import annotations...")
-	importSpecs, err := findImportSpecs(v4Dir)
+	importSpecs, err := findImportSpecs(v4Dir, moduleNames)
 	if err != nil {
 		return fmt.Errorf("failed to scan for import annotations: %w", err)
 	}

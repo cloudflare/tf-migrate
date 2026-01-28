@@ -36,44 +36,74 @@ type ImportSpec struct {
 	ModuleName      string // e.g., "zero_trust_organization" (extracted from file path)
 }
 
-// findImportSpecs scans a directory for import annotations and returns import specifications
-func findImportSpecs(dir string) ([]ImportSpec, error) {
+// findImportSpecs scans specific module directories for import annotations and returns import specifications
+func findImportSpecs(dir string, moduleNames []string) ([]ImportSpec, error) {
 	var specs []ImportSpec
 
-	// Walk through all .tf files in subdirectories (modules)
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+	// If no module names specified, scan all modules
+	if len(moduleNames) == 0 {
+		// Walk through all .tf files in subdirectories (modules)
+		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
 
-		// Skip if not a .tf file
-		if info.IsDir() || !strings.HasSuffix(info.Name(), ".tf") {
+			// Skip if not a .tf file
+			if info.IsDir() || !strings.HasSuffix(info.Name(), ".tf") {
+				return nil
+			}
+
+			// Skip root directory files (only look in modules)
+			relPath, err := filepath.Rel(dir, path)
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(relPath, string(filepath.Separator)) {
+				return nil // Skip files in root directory
+			}
+
+			// Extract module name from path (first directory component)
+			moduleName := strings.Split(relPath, string(filepath.Separator))[0]
+
+			// Parse file for import annotations
+			fileSpecs, err := parseImportAnnotations(path, moduleName)
+			if err != nil {
+				return fmt.Errorf("failed to parse %s: %w", path, err)
+			}
+
+			specs = append(specs, fileSpecs...)
 			return nil
+		})
+
+		return specs, err
+	}
+
+	// Scan only specified module directories
+	for _, moduleName := range moduleNames {
+		moduleDir := filepath.Join(dir, moduleName)
+
+		// Check if module directory exists
+		if _, err := os.Stat(moduleDir); os.IsNotExist(err) {
+			continue // Skip if module doesn't exist
 		}
 
-		// Skip root directory files (only look in modules)
-		relPath, err := filepath.Rel(dir, path)
+		// Find all .tf files in this module directory
+		tfFiles, err := filepath.Glob(filepath.Join(moduleDir, "*.tf"))
 		if err != nil {
-			return err
-		}
-		if !strings.Contains(relPath, string(filepath.Separator)) {
-			return nil // Skip files in root directory
+			return nil, fmt.Errorf("failed to glob tf files in %s: %w", moduleDir, err)
 		}
 
-		// Extract module name from path (first directory component)
-		moduleName := strings.Split(relPath, string(filepath.Separator))[0]
-
-		// Parse file for import annotations
-		fileSpecs, err := parseImportAnnotations(path, moduleName)
-		if err != nil {
-			return fmt.Errorf("failed to parse %s: %w", path, err)
+		// Parse each .tf file for import annotations
+		for _, tfFile := range tfFiles {
+			fileSpecs, err := parseImportAnnotations(tfFile, moduleName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse %s: %w", tfFile, err)
+			}
+			specs = append(specs, fileSpecs...)
 		}
+	}
 
-		specs = append(specs, fileSpecs...)
-		return nil
-	})
-
-	return specs, err
+	return specs, nil
 }
 
 // parseImportAnnotations parses a single .tf file for import annotations
