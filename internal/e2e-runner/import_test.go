@@ -3,6 +3,7 @@ package e2e
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -17,7 +18,7 @@ func TestParseImportAnnotations(t *testing.T) {
 		{
 			name: "single import annotation",
 			fileContent: `# Some comment
-# tf-migrate:import-address=account/${var.cloudflare_account_id}
+# tf-migrate:import-address=${var.cloudflare_account_id}
 resource "cloudflare_access_organization" "test" {
   account_id = var.cloudflare_account_id
 }
@@ -28,7 +29,7 @@ resource "cloudflare_access_organization" "test" {
 				ResourceType:    "cloudflare_access_organization",
 				ResourceName:    "test",
 				ResourceAddress: "cloudflare_access_organization.test",
-				ImportAddress:   "account/${var.cloudflare_account_id}",
+				ImportAddress:   "${var.cloudflare_account_id}",
 				ModuleName:      "zero_trust_organization",
 			},
 		},
@@ -39,7 +40,7 @@ resource "cloudflare_waf_package" "test" {
   zone_id = var.cloudflare_zone_id
 }
 
-# tf-migrate:import-address=account/${var.cloudflare_account_id}
+# tf-migrate:import-address=${var.cloudflare_account_id}
 resource "cloudflare_access_organization" "test" {
   account_id = var.cloudflare_account_id
 }
@@ -67,7 +68,7 @@ resource "cloudflare_record" "test" {
 		},
 		{
 			name: "annotation with spaces",
-			fileContent: `  #  tf-migrate:import-address=account/${var.cloudflare_account_id}
+			fileContent: `  #  tf-migrate:import-address=${var.cloudflare_account_id}
 resource "cloudflare_access_organization" "test" {
   account_id = var.cloudflare_account_id
 }
@@ -78,13 +79,13 @@ resource "cloudflare_access_organization" "test" {
 				ResourceType:    "cloudflare_access_organization",
 				ResourceName:    "test",
 				ResourceAddress: "cloudflare_access_organization.test",
-				ImportAddress:   "account/${var.cloudflare_account_id}",
+				ImportAddress:   "${var.cloudflare_account_id}",
 				ModuleName:      "zero_trust_organization",
 			},
 		},
 		{
 			name: "annotation not followed by resource",
-			fileContent: `# tf-migrate:import-address=account/${var.cloudflare_account_id}
+			fileContent: `# tf-migrate:import-address=${var.cloudflare_account_id}
 # Some other comment
 variable "test" {
   type = string
@@ -155,7 +156,7 @@ func TestFindImportSpecs(t *testing.T) {
 	}
 
 	// Create test files
-	module1Content := `# tf-migrate:import-address=account/${var.cloudflare_account_id}
+	module1Content := `# tf-migrate:import-address=${var.cloudflare_account_id}
 resource "cloudflare_access_organization" "test" {
   account_id = var.cloudflare_account_id
 }
@@ -206,40 +207,34 @@ resource "cloudflare_something" "root" {
 	}
 }
 
-func TestResolveImportAddress(t *testing.T) {
-	env := &E2EEnv{
-		AccountID: "test-account-123",
-		ZoneID:    "test-zone-456",
-		Domain:    "example.com",
-	}
-
+func TestConvertToTerraformVar(t *testing.T) {
 	tests := []struct {
 		name     string
 		address  string
 		expected string
 	}{
 		{
-			name:     "account ID substitution",
-			address:  "account/${var.cloudflare_account_id}",
-			expected: "account/test-account-123",
+			name:     "account ID variable",
+			address:  "${var.cloudflare_account_id}",
+			expected: "var.cloudflare_account_id",
 		},
 		{
-			name:     "zone ID substitution",
+			name:     "zone ID in path",
 			address:  "zones/${var.cloudflare_zone_id}/settings/waf",
-			expected: "zones/test-zone-456/settings/waf",
+			expected: "zones/var.cloudflare_zone_id/settings/waf",
 		},
 		{
-			name:     "domain substitution",
+			name:     "domain variable",
 			address:  "${var.cloudflare_domain}/path",
-			expected: "example.com/path",
+			expected: "var.cloudflare_domain/path",
 		},
 		{
-			name:     "multiple substitutions",
+			name:     "multiple variables",
 			address:  "account/${var.cloudflare_account_id}/zone/${var.cloudflare_zone_id}",
-			expected: "account/test-account-123/zone/test-zone-456",
+			expected: "account/var.cloudflare_account_id/zone/var.cloudflare_zone_id",
 		},
 		{
-			name:     "no substitutions",
+			name:     "no variables",
 			address:  "static/path/123",
 			expected: "static/path/123",
 		},
@@ -247,9 +242,102 @@ func TestResolveImportAddress(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolveImportAddress(tt.address, env)
+			got := convertToTerraformVar(tt.address)
 			if got != tt.expected {
-				t.Errorf("resolveImportAddress() = %q, want %q", got, tt.expected)
+				t.Errorf("convertToTerraformVar() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGenerateImportBlocks(t *testing.T) {
+	tests := []struct {
+		name     string
+		specs    []ImportSpec
+		expected []string // Strings that should be present in output
+	}{
+		{
+			name:     "no imports",
+			specs:    []ImportSpec{},
+			expected: []string{},
+		},
+		{
+			name: "single import with account ID variable",
+			specs: []ImportSpec{
+				{
+					ResourceType:    "cloudflare_access_organization",
+					ResourceName:    "test",
+					ResourceAddress: "cloudflare_access_organization.test",
+					ImportAddress:   "${var.cloudflare_account_id}",
+					ModuleName:      "zero_trust_organization",
+				},
+			},
+			expected: []string{
+				"import {",
+				"to = module.zero_trust_organization.cloudflare_access_organization.test",
+				"id = var.cloudflare_account_id", // Variable reference, not quoted
+			},
+		},
+		{
+			name: "import with literal string ID",
+			specs: []ImportSpec{
+				{
+					ResourceType:    "cloudflare_something",
+					ResourceName:    "test",
+					ResourceAddress: "cloudflare_something.test",
+					ImportAddress:   "static-id-123",
+					ModuleName:      "something",
+				},
+			},
+			expected: []string{
+				"import {",
+				"to = module.something.cloudflare_something.test",
+				`id = "static-id-123"`, // Literal string, quoted
+			},
+		},
+		{
+			name: "multiple imports with mixed types",
+			specs: []ImportSpec{
+				{
+					ResourceType:    "cloudflare_access_organization",
+					ResourceName:    "test",
+					ResourceAddress: "cloudflare_access_organization.test",
+					ImportAddress:   "${var.cloudflare_account_id}",
+					ModuleName:      "zero_trust_organization",
+				},
+				{
+					ResourceType:    "cloudflare_waf_package",
+					ResourceName:    "test",
+					ResourceAddress: "cloudflare_waf_package.test",
+					ImportAddress:   "zones/${var.cloudflare_zone_id}/settings/waf",
+					ModuleName:      "waf",
+				},
+			},
+			expected: []string{
+				"import {",
+				"to = module.zero_trust_organization.cloudflare_access_organization.test",
+				"id = var.cloudflare_account_id",
+				"to = module.waf.cloudflare_waf_package.test",
+				"id = zones/var.cloudflare_zone_id/settings/waf", // Mixed literal and variable
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := generateImportBlocks(tt.specs)
+
+			if len(tt.expected) == 0 {
+				if got != "" {
+					t.Errorf("generateImportBlocks() expected empty string, got %q", got)
+				}
+				return
+			}
+
+			for _, expected := range tt.expected {
+				if !strings.Contains(got, expected) {
+					t.Errorf("generateImportBlocks() missing expected string %q\nGot:\n%s", expected, got)
+				}
 			}
 		})
 	}
