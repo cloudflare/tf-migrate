@@ -20,6 +20,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/load_balancer_pool"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpull_retention"
 	"github.com/cloudflare/tf-migrate/internal/resources/logpush_job"
+	"github.com/cloudflare/tf-migrate/internal/resources/logpush_ownership_challenge"
 	"github.com/cloudflare/tf-migrate/internal/resources/managed_transforms"
 	"github.com/cloudflare/tf-migrate/internal/resources/notification_policy"
 	"github.com/cloudflare/tf-migrate/internal/resources/notification_policy_webhooks"
@@ -94,6 +95,7 @@ func RegisterAllMigrations() {
 	zone_setting.NewV4ToV5Migrator()
 	logpull_retention.NewV4ToV5Migrator()
 	logpush_job.NewV4ToV5Migrator()
+	logpush_ownership_challenge.NewV4ToV5Migrator()
 	managed_transforms.NewV4ToV5Migrator()
 	notification_policy.NewV4ToV5Migrator()
 	notification_policy_webhooks.NewV4ToV5Migrator()
