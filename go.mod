@@ -3,7 +3,7 @@ module github.com/cloudflare/tf-migrate
 go 1.25.1
 
 require (
-	github.com/cloudflare/cloudflare-go/v6 v6.2.0
+	github.com/cloudflare/cloudflare-go/v6 v6.6.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/sergi/go-diff v1.4.0

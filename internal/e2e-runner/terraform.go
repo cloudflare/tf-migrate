@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // TerraformRunner handles terraform command execution
@@ -41,26 +42,91 @@ func NewTerraformRunner(workDir string) *TerraformRunner {
 
 // Run executes a terraform command
 func (tr *TerraformRunner) Run(args ...string) (string, error) {
-	cmd := exec.Command("terraform", args...)
-	cmd.Dir = tr.WorkDir
-
-	// Set environment variables
-	cmd.Env = os.Environ()
-	for k, v := range tr.EnvVars {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	// Add parallelism limit to reduce API rate limit issues
+	// Check if this is a plan or apply command and parallelism not already set
+	if len(args) > 0 && (args[0] == "plan" || args[0] == "apply") {
+		hasParallelism := false
+		for _, arg := range args {
+			if strings.HasPrefix(arg, "-parallelism=") {
+				hasParallelism = true
+				break
+			}
+		}
+		if !hasParallelism {
+			// Insert parallelism flag after the command but before any positional args (like plan file)
+			// Find the last flag (starts with -) or insert after command
+			insertIndex := 1
+			for i := 1; i < len(args); i++ {
+				if strings.HasPrefix(args[i], "-") {
+					insertIndex = i + 1
+				} else {
+					// Found first positional argument, insert before it
+					break
+				}
+			}
+			// Insert parallelism flag at the correct position
+			// Using parallelism=3 to reduce API rate limit issues (default is 10)
+			newArgs := make([]string, 0, len(args)+1)
+			newArgs = append(newArgs, args[:insertIndex]...)
+			newArgs = append(newArgs, "-parallelism=5")
+			newArgs = append(newArgs, args[insertIndex:]...)
+			args = newArgs
+		}
 	}
 
-	// Add TF_CLI_CONFIG_FILE if set
-	if tr.TFConfigFile != "" {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("TF_CLI_CONFIG_FILE=%s", tr.TFConfigFile))
+	// Retry logic for rate limiting (429 errors)
+	maxRetries := 3
+	retryDelay := 5 * time.Second
+
+	var err error
+	var output string
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			// Wait before retry with exponential backoff
+			waitTime := retryDelay * time.Duration(attempt)
+			printYellow("Rate limit detected, waiting %v before retry %d/%d...", waitTime, attempt, maxRetries)
+			time.Sleep(waitTime)
+		}
+
+		// Create command for each attempt
+		cmd := exec.Command("terraform", args...)
+		cmd.Dir = tr.WorkDir
+
+		// Set environment variables
+		cmd.Env = os.Environ()
+		for k, v := range tr.EnvVars {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		}
+
+		// Add TF_CLI_CONFIG_FILE if set
+		if tr.TFConfigFile != "" {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("TF_CLI_CONFIG_FILE=%s", tr.TFConfigFile))
+		}
+
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+
+		err = cmd.Run()
+		output = stdout.String() + stderr.String()
+
+		// Check if this is a rate limit error
+		if err != nil && strings.Contains(output, "429 Too Many Requests") {
+			if attempt < maxRetries {
+				continue // Retry
+			}
+			// Max retries reached, will return error below
+		} else {
+			// Success or non-rate-limit error
+			break
+		}
 	}
 
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	output := stdout.String() + stderr.String()
+	// Add a small delay after plan/apply to avoid rate limiting
+	if len(args) > 0 && (args[0] == "plan" || args[0] == "apply") {
+		time.Sleep(1 * time.Second)
+	}
 
 	// Sanitize output if enabled
 	if tr.SanitizeOutput {
