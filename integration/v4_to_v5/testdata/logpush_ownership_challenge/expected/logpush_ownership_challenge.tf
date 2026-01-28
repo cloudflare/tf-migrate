@@ -12,6 +12,11 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_domain" {
+  description = "Cloudflare domain"
+  type        = string
+}
+
 # =============================================================================
 # Pattern 1: Basic resources with zone_id
 # =============================================================================
