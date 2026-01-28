@@ -9,24 +9,28 @@
 # E2E TEST WORKFLOW (AUTOMATED):
 # ================================
 #
-# The E2E runner handles imports automatically via the tf-migrate:import-address annotation!
+# The resource is imported using Terraform's native import block!
+# The import annotation below is detected by the e2e runner during init,
+# which generates an import block in the root main.tf.
 #
 # Automated workflow (run via `e2e run`):
 # 1. PREREQUISITE: Enable Zero Trust in your Cloudflare account via dashboard
-# 2. Runner automatically imports the organization (detects annotation below)
-# 3. V4 apply configures the imported organization
-# 4. Migration transforms v4 config to v5
-# 5. V5 plan verifies no drift
-# 6. V5 apply succeeds
+# 2. E2E runner generates import block in root main.tf (from annotation below)
+# 3. Terraform import block automatically imports the organization during apply
+# 4. V4 apply configures the imported organization
+# 5. Migration transforms v4 config to v5
+# 6. V5 plan verifies no drift
+# 7. V5 apply succeeds
 #
 # Manual workflow (for testing without E2E runner):
 # 1. PREREQUISITE: Enable Zero Trust via dashboard
-# 2. IMPORT: terraform import cloudflare_access_organization.test YOUR_ACCOUNT_ID
-# 3. APPLY: terraform apply
-# 4. MIGRATE: tf-migrate migrate --config-dir .
-# 5. UPGRADE: terraform init -upgrade
-# 6. VERIFY: terraform plan  # Should show "No changes"
-# 7. APPLY: terraform apply
+# 2. RUN: ./bin/e2e-runner init  # Generates main.tf with import blocks
+# 3. INIT: cd e2e/tf/v4 && terraform init
+# 4. APPLY: terraform apply
+# 5. MIGRATE: ../../bin/tf-migrate migrate --config-dir .
+# 6. UPGRADE: terraform init -upgrade
+# 7. VERIFY: terraform plan  # Should show "No changes"
+# 8. APPLY: terraform apply
 #
 # SUCCESS CRITERIA:
 # - Import succeeds (automatic in E2E runner)
@@ -62,8 +66,8 @@ variable "cloudflare_domain" {
 # Basic organization configuration for E2E testing
 # NOTE: This is a SINGLETON resource - only one organization per account.
 #
-# IMPORT ANNOTATION: The line below tells the E2E runner to automatically import this resource.
-# The runner will execute: terraform import module.zero_trust_organization.cloudflare_access_organization.test <ACCOUNT_ID>
+# IMPORT ANNOTATION: The line below tells the E2E runner to generate an import block in root main.tf.
+# The runner will generate: import { to = module.zero_trust_organization.cloudflare_access_organization.test, id = "ACCOUNT_ID" }
 # tf-migrate:import-address=${var.cloudflare_account_id}
 resource "cloudflare_access_organization" "test" {
   account_id  = var.cloudflare_account_id

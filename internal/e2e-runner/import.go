@@ -1,8 +1,8 @@
-// import.go handles Terraform import operations for import-only resources.
+// import.go handles parsing import annotations and generating import blocks.
 //
 // This file provides functionality to:
 //   - Parse import annotations from Terraform configuration files
-//   - Execute terraform import commands for resources that cannot be created
+//   - Generate import blocks in the root main.tf for resources that cannot be created
 //   - Support variable interpolation in import addresses
 //
 // Import annotations use the format:
@@ -10,6 +10,12 @@
 //   resource "type" "name" { ... }
 //
 // Where <address> can include variable references like ${var.cloudflare_account_id}
+//
+// The generated import blocks are placed in the root module's main.tf:
+//   import {
+//     to = module.<module_name>.<resource_type>.<resource_name>
+//     id = <resolved_address>
+//   }
 package e2e
 
 import (
@@ -122,69 +128,46 @@ func parseImportAnnotations(filePath, moduleName string) ([]ImportSpec, error) {
 	return specs, nil
 }
 
-// resolveImportAddress replaces variable references in import address with actual values
-func resolveImportAddress(address string, env *E2EEnv) string {
-	// Replace common variable references
-	address = strings.ReplaceAll(address, "${var.cloudflare_account_id}", env.AccountID)
-	address = strings.ReplaceAll(address, "${var.cloudflare_zone_id}", env.ZoneID)
-	address = strings.ReplaceAll(address, "${var.cloudflare_domain}", env.Domain)
+// convertToTerraformVar converts ${var.X} syntax to var.X for use in import blocks
+func convertToTerraformVar(address string) string {
+	// Convert ${var.cloudflare_account_id} to var.cloudflare_account_id
+	address = strings.ReplaceAll(address, "${var.cloudflare_account_id}", "var.cloudflare_account_id")
+	address = strings.ReplaceAll(address, "${var.cloudflare_zone_id}", "var.cloudflare_zone_id")
+	address = strings.ReplaceAll(address, "${var.cloudflare_domain}", "var.cloudflare_domain")
 
 	return address
 }
 
-// executeImports runs terraform import commands for all import specs
-func executeImports(ctx *testContext, specs []ImportSpec) error {
+// generateImportBlocks generates import block declarations for the root main.tf
+func generateImportBlocks(specs []ImportSpec) string {
 	if len(specs) == 0 {
-		return nil // No imports needed
+		return ""
 	}
 
-	printHeader("Importing Resources")
-	printYellow("Found %d resource(s) marked for import", len(specs))
-	fmt.Println()
-
-	tf := NewTerraformRunner(ctx.v4Dir)
-
-	// Set R2 credentials for terraform commands
-	r2AccessKey := os.Getenv("CLOUDFLARE_R2_ACCESS_KEY_ID")
-	r2SecretKey := os.Getenv("CLOUDFLARE_R2_SECRET_ACCESS_KEY")
-	if r2AccessKey != "" && r2SecretKey != "" {
-		tf.EnvVars["AWS_ACCESS_KEY_ID"] = r2AccessKey
-		tf.EnvVars["AWS_SECRET_ACCESS_KEY"] = r2SecretKey
-	}
+	var blocks strings.Builder
+	blocks.WriteString("\n# Import blocks for resources that cannot be created via Terraform\n")
+	blocks.WriteString("# These resources must be imported from existing infrastructure\n\n")
 
 	for _, spec := range specs {
-		// Resolve variables in import address
-		importAddress := resolveImportAddress(spec.ImportAddress, ctx.env)
+		// Convert variable syntax for Terraform (${var.X} -> var.X)
+		importID := convertToTerraformVar(spec.ImportAddress)
 
 		// Build full resource address including module prefix
 		fullResourceAddress := fmt.Sprintf("module.%s.%s", spec.ModuleName, spec.ResourceAddress)
 
-		printYellow("Importing %s...", fullResourceAddress)
-		printBlue("  Import address: %s", importAddress)
+		blocks.WriteString(fmt.Sprintf("import {\n"))
+		blocks.WriteString(fmt.Sprintf("  to = %s\n", fullResourceAddress))
 
-		// Run terraform import
-		output, err := tf.Run("import", "-no-color", "-input=false", fullResourceAddress, importAddress)
-		if err != nil {
-			// Check if resource already exists in state
-			if strings.Contains(output, "Resource already managed by Terraform") ||
-				strings.Contains(output, "already exists in state") {
-				printGreen("  ✓ Resource already imported")
-				continue
-			}
-
-			printError("Failed to import %s", fullResourceAddress)
-			fmt.Println()
-			printRed("Error output:")
-			fmt.Println(output)
-			return fmt.Errorf("import failed for %s: %w", fullResourceAddress, err)
+		// Check if importID looks like a variable reference (starts with var.)
+		if strings.HasPrefix(importID, "var.") || strings.Contains(importID, "var.") {
+			// Don't quote variable references
+			blocks.WriteString(fmt.Sprintf("  id = %s\n", importID))
+		} else {
+			// Quote literal strings
+			blocks.WriteString(fmt.Sprintf("  id = %q\n", importID))
 		}
-
-		printSuccess("Successfully imported %s", fullResourceAddress)
-		fmt.Println()
+		blocks.WriteString(fmt.Sprintf("}\n\n"))
 	}
 
-	printSuccess("All imports completed")
-	fmt.Println()
-
-	return nil
+	return blocks.String()
 }

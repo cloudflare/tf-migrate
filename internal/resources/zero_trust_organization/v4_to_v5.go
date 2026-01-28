@@ -113,6 +113,10 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	result = state.EnsureField(result, "attributes", attrs, "auto_redirect_to_identity", false)
 	result = state.EnsureField(result, "attributes", attrs, "is_ui_read_only", false)
 
+	// Remove the 'id' attribute - Framework manages ID separately from attributes
+	// In SDKv2 (v4), ID was stored as an attribute. In Framework (v5), it's managed separately.
+	result, _ = sjson.Delete(result, "attributes.id")
+
 	// Set schema_version to 0 for v5 (ALWAYS required!)
 	result, _ = sjson.Set(result, "schema_version", 0)
 

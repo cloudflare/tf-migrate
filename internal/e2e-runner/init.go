@@ -206,6 +206,21 @@ cloudflare_domain     = "%s"
 	printGreen("    File: v4/terraform.tfvars")
 	fmt.Println()
 
+	// Scan for import annotations before generating main.tf
+	printYellow("Scanning for import annotations...")
+	importSpecs, err := findImportSpecs(v4Dir)
+	if err != nil {
+		return fmt.Errorf("failed to scan for import annotations: %w", err)
+	}
+
+	if len(importSpecs) > 0 {
+		printGreen("  ✓ Found %d resource(s) requiring import", len(importSpecs))
+		for _, spec := range importSpecs {
+			printBlue("    - module.%s.%s", spec.ModuleName, spec.ResourceAddress)
+		}
+	}
+	fmt.Println()
+
 	// Update main.tf with all discovered modules
 	printYellow("Updating main.tf with module references...")
 
@@ -215,6 +230,11 @@ cloudflare_domain     = "%s"
 # Each resource type is in its own subdirectory
 
 `
+
+	// Add import blocks if any resources need importing
+	if len(importSpecs) > 0 {
+		mainTfContent += generateImportBlocks(importSpecs)
+	}
 
 	for _, moduleName := range moduleNames {
 		mainTfContent += fmt.Sprintf(`
@@ -233,7 +253,11 @@ module "%s" {
 		return fmt.Errorf("failed to write main.tf to %s: %w", mainTfPath, err)
 	}
 
-	printGreen("  ↻ Updated main.tf with %d module references", len(moduleNames))
+	if len(importSpecs) > 0 {
+		printGreen("  ↻ Updated main.tf with %d module references and %d import blocks", len(moduleNames), len(importSpecs))
+	} else {
+		printGreen("  ↻ Updated main.tf with %d module references", len(moduleNames))
+	}
 
 	fmt.Println()
 	printHeader("✓ Sync Complete!")
