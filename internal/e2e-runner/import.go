@@ -1,4 +1,5 @@
 // import.go handles parsing import annotations and generating import blocks.
+// import.go handles parsing import annotations and generating import blocks.
 //
 // This file provides functionality to:
 //   - Parse import annotations from Terraform configuration files

@@ -422,4 +422,3 @@ func discoverModuleVariables(moduleDir string) (map[string]bool, error) {
 
 	return variables, nil
 }
-
