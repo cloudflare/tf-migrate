@@ -57,6 +57,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_settings"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_local_fallback_domain"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_organization"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared_config"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared_route"
@@ -132,6 +133,7 @@ func RegisterAllMigrations() {
 	zero_trust_gateway_settings.NewV4ToV5Migrator()
 	zero_trust_list.NewV4ToV5Migrator()
 	zero_trust_local_fallback_domain.NewV4ToV5Migrator()
+	zero_trust_organization.NewV4ToV5Migrator()
 	zero_trust_tunnel_cloudflared.NewV4ToV5Migrator()
 	zero_trust_tunnel_cloudflared_config.NewV4ToV5Migrator()
 	zero_trust_tunnel_cloudflared_route.NewV4ToV5Migrator()
