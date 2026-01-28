@@ -85,6 +85,8 @@ func (h *ResourceTransformHandler) Handle(ctx *transform.Context) (*transform.Co
 	}
 
 	for _, block := range blocksToAdd {
+		// Add newline before each block to ensure proper separation
+		body.AppendNewline()
 		body.AppendBlock(block)
 	}
 

@@ -113,16 +113,23 @@ func (r *TestRunner) runMigration(dir string) error {
 		return fmt.Errorf("building tf-migrate: %w\nOutput: %s", err, output)
 	}
 
-	// Run migration
-	migrateCmd := exec.Command(
-		filepath.Join(r.TfMigrateDir, "tf-migrate"),
+	// Build command arguments
+	args := []string{
 		"migrate",
 		"--config-dir", dir,
-		"--state-file", filepath.Join(dir, "terraform.tfstate"),
 		"--source-version", r.SourceVersion,
 		"--target-version", r.TargetVersion,
 		"--backup=false",
-	)
+	}
+
+	// Only add state-file flag if the file exists
+	stateFile := filepath.Join(dir, "terraform.tfstate")
+	if _, err := os.Stat(stateFile); err == nil {
+		args = append(args, "--state-file", stateFile)
+	}
+
+	// Run migration
+	migrateCmd := exec.Command(filepath.Join(r.TfMigrateDir, "tf-migrate"), args...)
 	// Set GODEBUG to make map iteration deterministic for consistent test output
 	migrateCmd.Env = append(os.Environ(), "GODEBUG=randommapseed=0")
 
