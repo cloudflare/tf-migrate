@@ -168,8 +168,7 @@ Integration tests verify the complete migration workflow using real configuratio
 
 ```bash
 # Run all v4 to v5 integration tests
-cd integration/v4_to_v5
-go test -v
+make test-integration
 
 # Run tests for a specific resource
 go test -v -run TestV4ToV5Migration/DNSRecord
@@ -288,6 +287,45 @@ dns_record:
 ```
 
 Use `--apply-exemptions` to ignore these known drifts during testing.
+
+**Import Annotations (Import-Only Resources):**
+
+Some Cloudflare resources cannot be created via Terraform and must be imported from existing infrastructure (e.g., `zero_trust_organization`). The E2E runner supports automatic import block generation via annotations in `_e2e.tf` files:
+
+```hcl
+# tf-migrate:import-address=${var.cloudflare_account_id}
+resource "cloudflare_access_organization" "test" {
+  account_id  = var.cloudflare_account_id
+  name        = "Test Organization"
+  auth_domain = "test.cloudflareaccess.com"
+}
+```
+
+**How It Works:**
+1. E2E runner scans module files for `# tf-migrate:import-address=<address>` annotations during init
+2. Converts variable syntax: `${var.cloudflare_account_id}` → `var.cloudflare_account_id`
+3. Generates native Terraform import blocks in root `main.tf`:
+   ```hcl
+   import {
+     to = module.zero_trust_organization.cloudflare_access_organization.test
+     id = var.cloudflare_account_id
+   }
+   ```
+4. Terraform resolves variables at runtime from `terraform.tfvars` and imports resources during `terraform apply`
+
+**Why This Approach:**
+- ✅ Uses native Terraform import blocks (Terraform 1.5+)
+- ✅ Import blocks in root module (where they're allowed)
+- ✅ Resource definitions in child modules (organized structure)
+- ✅ Automatic generation from annotations (no manual import block maintenance)
+
+**Supported Variables:**
+- `${var.cloudflare_account_id}` - Account ID from environment
+- `${var.cloudflare_zone_id}` - Zone ID from environment
+- `${var.cloudflare_domain}` - Domain from environment
+
+**Multiple Imports:**
+Multiple resources can be annotated in different modules - all will have import blocks generated in root main.tf.
 
 **Project Structure:**
 

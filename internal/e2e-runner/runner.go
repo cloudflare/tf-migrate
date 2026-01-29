@@ -739,6 +739,7 @@ func runV4Tests(ctx *testContext) error {
 	}
 	printSuccess("Terraform init successful (remote state loaded from R2)")
 
+
 	// Run terraform plan
 	printYellow("Running terraform plan in v4/...")
 	planArgs := append([]string{"plan", "-no-color", "-out=" + filepath.Join(ctx.tmpDir, "v4.tfplan"), "-input=false"}, ctx.targetArgs...)
