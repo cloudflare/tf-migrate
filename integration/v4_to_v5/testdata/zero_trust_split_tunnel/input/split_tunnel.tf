@@ -4,122 +4,126 @@ variable "cloudflare_account_id" {
 }
 
 variable "policy_id" {
-  description = "Dynamic policy ID"
+  description = "Dynamic policy ID for testing unparseable references"
   type        = string
 }
 
 locals {
-  name_prefix = "cftftest_split_tunnel"
-  account_id  = var.cloudflare_account_id
+  account_id = var.cloudflare_account_id
 }
 
+# Default profile (will receive split tunnels without policy_id)
 resource "cloudflare_zero_trust_device_profiles" "default" {
   account_id = local.account_id
   default    = true
 }
 
-resource "cloudflare_zero_trust_device_profiles" "employees" {
-  account_id = local.account_id
-  name       = "${local.name_prefix}_employees"
-  match      = "identity.groups == \"employees\""
-  precedence = 100
-}
-
-resource "cloudflare_zero_trust_device_profiles" "contractors" {
-  account_id = local.account_id
-  name       = "${local.name_prefix}_contractors"
-  match      = "identity.email endsWith \"@contractor.example.com\""
-  precedence = 200
-}
-
-resource "cloudflare_split_tunnel" "default_exclude_private" {
+# Split tunnel embedded in default profile (no policy_id)
+resource "cloudflare_split_tunnel" "default_exclude" {
   account_id = local.account_id
   mode       = "exclude"
 
   tunnels {
     address     = "192.168.0.0/16"
-    description = "Private network - Class C"
+    description = "Private network"
   }
 
   tunnels {
-    address     = "10.0.0.0/8"
-    description = "Private network - Class A"
-  }
-
-  tunnels {
-    address = "172.16.0.0/12"
+    address = "10.0.0.0/8"
     host    = "internal.local"
   }
 }
 
-resource "cloudflare_split_tunnel" "default_include_corporate" {
+resource "cloudflare_split_tunnel" "default_include" {
   account_id = local.account_id
   mode       = "include"
 
   tunnels {
     address     = "203.0.113.0/24"
-    description = "Corporate VPN range"
-  }
-
-  tunnels {
-    address = "198.51.100.0/24"
+    description = "Corporate VPN"
   }
 }
 
-resource "cloudflare_split_tunnel" "employee_exclude_dev" {
+# Custom profile with single tunnel
+resource "cloudflare_zero_trust_device_profiles" "single_tunnel" {
   account_id = local.account_id
-  policy_id  = cloudflare_zero_trust_device_profiles.employees.id
+  name       = "single_tunnel_profile"
+  match      = "identity.groups == \"developers\""
+  precedence = 100
+}
+
+resource "cloudflare_split_tunnel" "single" {
+  account_id = local.account_id
+  policy_id  = cloudflare_zero_trust_device_profiles.single_tunnel.id
+  mode       = "exclude"
+
+  tunnels {
+    address     = "172.16.0.0/12"
+    description = "Dev environment"
+  }
+}
+
+# Custom profile with multiple tunnels
+resource "cloudflare_zero_trust_device_profiles" "multiple_tunnels" {
+  account_id = local.account_id
+  name       = "multiple_tunnels_profile"
+  match      = "identity.groups == \"admins\""
+  precedence = 200
+}
+
+resource "cloudflare_split_tunnel" "multi_exclude" {
+  account_id = local.account_id
+  policy_id  = cloudflare_zero_trust_device_profiles.multiple_tunnels.id
   mode       = "exclude"
 
   tunnels {
     address     = "172.20.0.0/16"
-    description = "Development environment"
+    description = "Admin network 1"
   }
 
   tunnels {
     address = "172.21.0.0/16"
-    host    = "dev.internal.corp"
+    host    = "admin.internal"
   }
 }
 
-resource "cloudflare_split_tunnel" "employee_include_prod" {
+resource "cloudflare_split_tunnel" "multi_include" {
   account_id = local.account_id
-  policy_id  = cloudflare_zero_trust_device_profiles.employees.id
+  policy_id  = cloudflare_zero_trust_device_profiles.multiple_tunnels.id
   mode       = "include"
 
   tunnels {
     address     = "10.100.0.0/16"
-    description = "Production resources"
-    host        = "prod.internal.corp"
+    description = "Admin resources"
+    host        = "prod.internal"
   }
 }
 
-resource "cloudflare_split_tunnel" "contractor_include_limited" {
-  account_id = local.account_id
-  policy_id  = cloudflare_zero_trust_device_profiles.contractors.id
-  mode       = "include"
-
-  tunnels {
-    address     = "10.200.0.0/16"
-    description = "Contractor resources only"
-  }
-
-  tunnels {
-    address = "10.201.0.0/24"
-  }
-}
-
-resource "cloudflare_split_tunnel" "unparseable_policy_id" {
+# Unparseable policy_id - variable reference
+resource "cloudflare_split_tunnel" "unparseable_var" {
   account_id = local.account_id
   policy_id  = var.policy_id
   mode       = "exclude"
 
   tunnels {
     address     = "192.168.1.0/24"
-    description = "Unparseable policy_id reference"
+    description = "Variable reference"
   }
 }
 
+# Unparseable policy_id - complex expression
+resource "cloudflare_split_tunnel" "unparseable_expression" {
+  account_id = local.account_id
+  policy_id  = element(values(cloudflare_zero_trust_device_profiles), 0).id
+  mode       = "exclude"
+
+  tunnels {
+    address     = "192.168.2.0/24"
+    description = "Complex expression"
+  }
+}
+
+# Reference to non-existent device profile
 resource "cloudflare_split_tunnel" "missing_profile" {
   account_id = local.account_id
   policy_id  = cloudflare_zero_trust_device_profiles.nonexistent.id
@@ -128,15 +132,5 @@ resource "cloudflare_split_tunnel" "missing_profile" {
   tunnels {
     address     = "10.20.0.0/16"
     description = "References missing profile"
-  }
-}
-
-resource "cloudflare_split_tunnel" "complex_expression" {
-  account_id = local.account_id
-  policy_id  = element(values(cloudflare_zero_trust_device_profiles), 0).id
-  mode       = "exclude"
-
-  tunnels {
-    address = "172.31.0.0/16"
   }
 }
