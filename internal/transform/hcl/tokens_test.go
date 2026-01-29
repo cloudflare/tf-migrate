@@ -426,3 +426,165 @@ func TestTokensForSimpleValue_TokenTypes(t *testing.T) {
 		assert.True(t, hasIdent, "Should have identifier token for boolean")
 	})
 }
+
+func TestAppendWarningComment(t *testing.T) {
+	tests := []struct {
+		name            string
+		message         string
+		expectedComment string
+	}{
+		{
+			name:            "Simple warning message",
+			message:         "This resource needs manual review",
+			expectedComment: "# MIGRATION WARNING: This resource needs manual review",
+		},
+		{
+			name:            "Warning with special characters",
+			message:         "Complex patterns like [0-9]+ are not supported",
+			expectedComment: "# MIGRATION WARNING: Complex patterns like [0-9]+ are not supported",
+		},
+		{
+			name:            "Long warning message",
+			message:         "Unable to automatically merge cloudflare_list_item resources",
+			expectedComment: "# MIGRATION WARNING: Unable to automatically merge cloudflare_list_item resources",
+		},
+		{
+			name:            "Warning with punctuation",
+			message:         "Cannot determine list kind - manual merge may be required",
+			expectedComment: "# MIGRATION WARNING: Cannot determine list kind - manual merge may be required",
+		},
+		{
+			name:            "Empty message",
+			message:         "",
+			expectedComment: "# MIGRATION WARNING: ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a new file and body
+			file := hclwrite.NewEmptyFile()
+			body := file.Body()
+
+			// Add a test attribute to ensure body is not empty
+			body.SetAttributeRaw("test", TokensForSimpleValue("value"))
+
+			// Add the migration warning
+			AppendWarningComment(body, tt.message)
+
+			// Get the resulting HCL
+			result := string(file.Bytes())
+
+			// Verify the warning comment is present
+			assert.Contains(t, result, tt.expectedComment, "Should contain the warning comment")
+
+			// Verify the original attribute is still present
+			assert.Contains(t, result, `test = "value"`, "Should preserve original content")
+		})
+	}
+}
+
+func TestAppendWarningComment_Structure(t *testing.T) {
+	// Test the token structure in detail
+	file := hclwrite.NewEmptyFile()
+	body := file.Body()
+
+	message := "Test warning message"
+	AppendWarningComment(body, message)
+
+	result := string(file.Bytes())
+
+	// Verify structure
+	assert.Contains(t, result, "# MIGRATION WARNING: Test warning message\n")
+
+	// Verify it starts with # (comment marker)
+	lines := strings.Split(result, "\n")
+	var commentLine string
+	for _, line := range lines {
+		if strings.Contains(line, "MIGRATION WARNING") {
+			commentLine = line
+			break
+		}
+	}
+
+	assert.NotEmpty(t, commentLine, "Should have found comment line")
+	assert.True(t, strings.HasPrefix(commentLine, "#"), "Comment should start with #")
+	assert.Contains(t, commentLine, "MIGRATION WARNING:", "Should contain MIGRATION WARNING:")
+	assert.Contains(t, commentLine, message, "Should contain the message")
+}
+
+func TestAppendWarningComment_MultipleWarnings(t *testing.T) {
+	// Test adding multiple warnings to the same body
+	file := hclwrite.NewEmptyFile()
+	body := file.Body()
+
+	// Add an attribute first
+	body.SetAttributeRaw("test", TokensForSimpleValue("value"))
+
+	// Add multiple warnings
+	AppendWarningComment(body, "First warning")
+	AppendWarningComment(body, "Second warning")
+	AppendWarningComment(body, "Third warning")
+
+	result := string(file.Bytes())
+
+	// Verify all warnings are present
+	assert.Contains(t, result, "# MIGRATION WARNING: First warning")
+	assert.Contains(t, result, "# MIGRATION WARNING: Second warning")
+	assert.Contains(t, result, "# MIGRATION WARNING: Third warning")
+
+	// Count occurrences of MIGRATION WARNING
+	count := strings.Count(result, "MIGRATION WARNING")
+	assert.Equal(t, 3, count, "Should have exactly 3 warnings")
+}
+
+func TestAppendWarningComment_WithResource(t *testing.T) {
+	// Test adding a warning to a resource block
+	file := hclwrite.NewEmptyFile()
+	body := file.Body()
+
+	// Create a resource block
+	block := body.AppendNewBlock("resource", []string{"cloudflare_list", "example"})
+	blockBody := block.Body()
+	blockBody.SetAttributeRaw("account_id", TokensForSimpleValue("abc123"))
+	blockBody.SetAttributeRaw("name", TokensForSimpleValue("example_list"))
+	blockBody.SetAttributeRaw("kind", TokensForSimpleValue("ip"))
+
+	// Add warning to the block body
+	AppendWarningComment(blockBody, "Cannot determine list kind for merging list_item resources")
+
+	result := string(file.Bytes())
+
+	// Verify the resource structure is preserved
+	assert.Contains(t, result, `resource "cloudflare_list" "example"`)
+	assert.Contains(t, result, `"abc123"`)
+	assert.Contains(t, result, `"example_list"`)
+	assert.Contains(t, result, `"ip"`)
+
+	// Verify the warning is present inside the block
+	assert.Contains(t, result, "# MIGRATION WARNING: Cannot determine list kind for merging list_item resources")
+}
+
+func TestAppendWarningComment_PreservesFormatting(t *testing.T) {
+	// Test that adding a warning doesn't break existing formatting
+	file := hclwrite.NewEmptyFile()
+	body := file.Body()
+
+	// Add some attributes with specific formatting
+	body.SetAttributeRaw("first", TokensForSimpleValue("value1"))
+	body.SetAttributeRaw("second", TokensForSimpleValue("value2"))
+
+	// Add warning
+	AppendWarningComment(body, "Manual review required")
+
+	// Add more attributes after warning
+	body.SetAttributeRaw("third", TokensForSimpleValue("value3"))
+
+	result := string(file.Bytes())
+
+	// All attributes should still be present (check values, not exact formatting)
+	assert.Contains(t, result, `"value1"`)
+	assert.Contains(t, result, `"value2"`)
+	assert.Contains(t, result, `"value3"`)
+	assert.Contains(t, result, "# MIGRATION WARNING: Manual review required")
+}

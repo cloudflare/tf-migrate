@@ -92,14 +92,14 @@ func ProcessCrossResourceConfigMigration(file *hclwrite.File) {
 
 		kind := tfhcl.ExtractStringFromAttribute(listBlock.Body().GetAttribute("kind"))
 		if kind == "" {
-			addMigrationWarning(listBlock.Body(), "Cannot determine list kind for merging list_item resources")
+			tfhcl.AppendWarningComment(listBlock.Body(), "Cannot determine list kind for merging list_item resources")
 			continue
 		}
 
 		// Check if list already has items
 		existingItems := listBlock.Body().GetAttribute("items")
 		if existingItems != nil {
-			addMigrationWarning(listBlock.Body(), "List already has items - manual merge may be required")
+			tfhcl.AppendWarningComment(listBlock.Body(), "List already has items - manual merge may be required")
 			for _, itemBlock := range items {
 				body.RemoveBlock(itemBlock)
 			}
@@ -375,7 +375,7 @@ func setItemsAttributeFromString(body *hclwrite.Body, exprStr string) {
 	attrHCL := fmt.Sprintf("items = %s", exprStr)
 	file, diags := hclwrite.ParseConfig([]byte(attrHCL), "items", hcl.InitialPos)
 	if diags.HasErrors() {
-		addMigrationWarning(body, fmt.Sprintf("Could not parse items expression: %s", attrHCL))
+		tfhcl.AppendWarningComment(body, fmt.Sprintf("Could not parse items expression: %s", attrHCL))
 		return
 	}
 
@@ -792,16 +792,6 @@ func transformRedirectData(data gjson.Result) map[string]interface{} {
 	}
 
 	return redirectObj
-}
-
-func addMigrationWarning(body *hclwrite.Body, message string) {
-	comment := hclwrite.Tokens{
-		&hclwrite.Token{
-			Type:  hclsyntax.TokenComment,
-			Bytes: []byte("# MIGRATION WARNING: " + message + "\n"),
-		},
-	}
-	body.AppendUnstructuredTokens(comment)
 }
 
 func parseNumber(s string) int64 {
