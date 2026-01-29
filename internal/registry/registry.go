@@ -9,6 +9,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	"github.com/cloudflare/tf-migrate/internal/resources/argo"
 	"github.com/cloudflare/tf-migrate/internal/resources/bot_management"
+	"github.com/cloudflare/tf-migrate/internal/resources/byo_ip_prefix"
 	"github.com/cloudflare/tf-migrate/internal/resources/certificate_pack"
 	"github.com/cloudflare/tf-migrate/internal/resources/custom_pages"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
@@ -78,6 +79,7 @@ func RegisterAllMigrations() {
 	api_token.NewV4ToV5Migrator()
 	argo.NewV4ToV5Migrator()
 	bot_management.NewV4ToV5Migrator()
+	byo_ip_prefix.NewV4ToV5Migrator()
 	certificate_pack.NewV4ToV5Migrator()
 	custom_pages.NewV4ToV5Migrator()
 	dns_record.NewV4ToV5Migrator()
