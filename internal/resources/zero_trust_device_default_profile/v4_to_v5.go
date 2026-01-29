@@ -1,6 +1,7 @@
 package zero_trust_device_default_profile
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_split_tunnel"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
@@ -80,7 +82,16 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
-	// No preprocessing needed - all transformations done at HCL level
+	// Check if this is JSON state content (starts with '{')
+	trimmed := strings.TrimSpace(content)
+	if strings.HasPrefix(trimmed, "{") {
+		// First, update all cloudflare_zero_trust_device_profiles resource types to their correct v5 types
+		// This must happen before individual resource processing so GetResourceType() returns the correct type
+		content = m.updateDeviceProfileTypesInState(content)
+
+		// Process cross-resource state migrations (merge split_tunnel into device profiles, remove split_tunnels)
+		return zero_trust_split_tunnel.ProcessCrossResourceStateMigration(content)
+	}
 	return content
 }
 
@@ -93,6 +104,12 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	// Reset lastTransformedType at start of each transformation to avoid test interference
 	m.lastTransformedType = ""
+
+	// Process cross-resource migration - merge split_tunnel resources into device profiles
+	// This is idempotent - safe to call multiple times
+	if ctx.CFGFile != nil {
+		zero_trust_split_tunnel.ProcessCrossResourceConfigMigration(ctx.CFGFile)
+	}
 
 	body := block.Body()
 
@@ -210,6 +227,9 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
+	// Reset lastTransformedType at start of each transformation to avoid interference between resources
+	m.lastTransformedType = ""
+
 	result := stateJSON.String()
 	attrs := stateJSON.Get("attributes")
 
@@ -309,6 +329,51 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	result, _ = sjson.Set(result, "schema_version", 0)
 
 	return result, nil
+}
+
+// updateDeviceProfileTypesInState updates all cloudflare_zero_trust_device_profiles resource types
+// to their correct v5 types (default or custom) based on their attributes.
+// This must be called before individual resource processing so GetResourceType() returns the correct type.
+func (m *V4ToV5Migrator) updateDeviceProfileTypesInState(stateJSON string) string {
+	result := stateJSON
+
+	resources := gjson.Get(stateJSON, "resources")
+	if !resources.Exists() || !resources.IsArray() {
+		return result
+	}
+
+	for i, resource := range resources.Array() {
+		resourceType := resource.Get("type").String()
+		if resourceType != "cloudflare_zero_trust_device_profiles" {
+			continue
+		}
+
+		// Check attributes to determine if this is a custom or default profile
+		attrs := resource.Get("instances.0.attributes")
+		if !attrs.Exists() {
+			continue
+		}
+
+		defaultAttr := attrs.Get("default")
+		matchAttr := attrs.Get("match")
+		precedenceAttr := attrs.Get("precedence")
+
+		isExplicitDefault := defaultAttr.Exists() && defaultAttr.Bool()
+		isCustomProfile := !isExplicitDefault && matchAttr.Exists() && precedenceAttr.Exists()
+
+		var newType string
+		if isCustomProfile {
+			newType = m.newTypeCustom
+		} else {
+			newType = m.newTypeDefault
+		}
+
+		// Update the resource type
+		typePath := fmt.Sprintf("resources.%d.type", i)
+		result, _ = sjson.Set(result, typePath, newType)
+	}
+
+	return result
 }
 
 // createServiceModeV2 creates the service_mode_v2 nested object from v4's flat fields

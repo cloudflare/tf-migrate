@@ -683,6 +683,222 @@ resource "cloudflare_zero_trust_device_custom_profile" "example" {
 		testhelpers.RunStateTransformTests(t, tests, migrator)
 	})
 
+	t.Run("ConfigTransformation_SplitTunnelEmbedding", func(t *testing.T) {
+		migrator := NewV4ToV5Migrator()
+		tests := []testhelpers.ConfigTestCase{
+			{
+				Name: "default profile with single exclude split tunnel",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Default Profile"
+  default    = true
+}
+
+resource "cloudflare_split_tunnel" "exclude_tunnel" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  mode       = "exclude"
+  tunnels {
+    address     = "192.168.1.0/24"
+    description = "Local network"
+  }
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  exclude = [{
+    address     = "192.168.1.0/24"
+    description = "Local network"
+  }]
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "default profile with single include split tunnel",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Default Profile"
+  default    = true
+}
+
+resource "cloudflare_split_tunnel" "include_tunnel" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  mode       = "include"
+  tunnels {
+    address     = "10.0.0.0/8"
+    description = "Corporate network"
+  }
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  include = [{
+    address     = "10.0.0.0/8"
+    description = "Corporate network"
+  }]
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "default profile with multiple exclude split tunnels",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Default Profile"
+  default    = true
+}
+
+resource "cloudflare_split_tunnel" "exclude_tunnel1" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  mode       = "exclude"
+  tunnels {
+    address     = "192.168.1.0/24"
+    description = "Network 1"
+  }
+}
+
+resource "cloudflare_split_tunnel" "exclude_tunnel2" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  mode       = "exclude"
+  tunnels {
+    address     = "10.0.0.0/8"
+    description = "Network 2"
+  }
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  exclude = [{
+    address     = "192.168.1.0/24"
+    description = "Network 1"
+  }, {
+    address     = "10.0.0.0/8"
+    description = "Network 2"
+  }]
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "default profile with both exclude and include split tunnels",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Default Profile"
+  default    = true
+}
+
+resource "cloudflare_split_tunnel" "exclude_tunnel" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  mode       = "exclude"
+  tunnels {
+    address     = "192.168.1.0/24"
+    description = "Exclude network"
+  }
+}
+
+resource "cloudflare_split_tunnel" "include_tunnel" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  mode       = "include"
+  tunnels {
+    address     = "10.0.0.0/8"
+    description = "Include network"
+  }
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  exclude = [{
+    address     = "192.168.1.0/24"
+    description = "Exclude network"
+  }]
+  include = [{
+    address     = "10.0.0.0/8"
+    description = "Include network"
+  }]
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "default profile with split tunnels and other settings",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id            = "f037e56e89293a057740de681ac9abbe"
+  name                  = "Default Profile"
+  default               = true
+  allow_mode_switch     = false
+  allow_updates         = true
+  tunnel_protocol       = "wireguard"
+  service_mode_v2_mode  = "warp"
+  service_mode_v2_port  = 8080
+}
+
+resource "cloudflare_split_tunnel" "exclude_tunnel" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  mode       = "exclude"
+  tunnels {
+    address     = "192.168.0.0/16"
+    description = "Private network"
+  }
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_default_profile" "example" {
+  account_id        = "f037e56e89293a057740de681ac9abbe"
+  allow_mode_switch = false
+  allow_updates     = true
+  tunnel_protocol   = "wireguard"
+  service_mode_v2 = {
+    mode = "warp"
+    port = 8080
+  }
+  exclude = [{
+    address     = "192.168.0.0/16"
+    description = "Private network"
+  }]
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}`,
+			},
+			{
+				Name: "v4 custom profile with split tunnel referencing it",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "employees" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Employee Profile"
+  match      = "identity.groups == \"employees\""
+  precedence = 100
+}
+
+resource "cloudflare_split_tunnel" "employee_tunnel" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  policy_id  = cloudflare_zero_trust_device_profiles.employees.id
+  mode       = "include"
+  tunnels {
+    address     = "10.100.0.0/16"
+    description = "Employee resources"
+  }
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_custom_profile" "employees" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Employee Profile"
+  match      = "identity.groups == \"employees\""
+  precedence = 1000
+  include = [{
+    address     = "10.100.0.0/16"
+    description = "Employee resources"
+  }]
+}`,
+			},
+		}
+
+		testhelpers.RunConfigTransformTests(t, tests, migrator)
+	})
+
 	// Note: No StateTransformation_CustomProfile tests
 	// State transformation tests for conditional routing (custom vs default) are not feasible
 	// because GetResourceType() is called before TransformState() has access to instance data.

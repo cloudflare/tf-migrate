@@ -52,6 +52,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_default_profile"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_managed_networks"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_posture_rule"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_split_tunnel"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dex_test"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_certificate"
@@ -130,6 +131,7 @@ func RegisterAllMigrations() {
 	zero_trust_device_default_profile.NewV4ToV5Migrator()
 	zero_trust_device_managed_networks.NewV4ToV5Migrator()
 	zero_trust_device_posture_rule.NewV4ToV5Migrator()
+	zero_trust_split_tunnel.NewV4ToV5Migrator()
 	zero_trust_dex_test.NewV4ToV5Migrator()
 	zero_trust_dlp_custom_profile.NewV4ToV5Migrator()
 	zero_trust_gateway_certificate.NewV4ToV5Migrator()
