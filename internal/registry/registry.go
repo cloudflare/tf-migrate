@@ -13,6 +13,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/custom_pages"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	"github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
+	"github.com/cloudflare/tf-migrate/internal/resources/leaked_credential_check"
 	"github.com/cloudflare/tf-migrate/internal/resources/list"
 	"github.com/cloudflare/tf-migrate/internal/resources/list_item"
 	"github.com/cloudflare/tf-migrate/internal/resources/load_balancer"
@@ -86,6 +87,7 @@ func RegisterAllMigrations() {
 	custom_pages.NewV4ToV5Migrator()
 	dns_record.NewV4ToV5Migrator()
 	healthcheck.NewV4ToV5Migrator()
+	leaked_credential_check.NewV4ToV5Migrator()
 	load_balancer.NewV4ToV5Migrator()
 	load_balancer_monitor.NewV4ToV5Migrator()
 	load_balancer_pool.NewV4ToV5Migrator()
