@@ -44,10 +44,6 @@
 # cloudflare_zero_trust_access_organization) simultaneously because they would
 # both try to manage the same underlying organization.
 
-locals {
-  name_prefix = "cftftest"
-}
-
 variable "cloudflare_account_id" {
   description = "Cloudflare account ID"
   type        = string
@@ -63,6 +59,15 @@ variable "cloudflare_domain" {
   type        = string
 }
 
+# Generate unique, stable auth domain per account
+# Each account gets a deterministic domain based on account ID hash
+# This prevents collisions between different test accounts
+locals {
+  name_prefix  = "cftftest"
+  account_hash = substr(md5(var.cloudflare_account_id), 0, 8)
+  auth_domain  = "cftftest-${local.account_hash}.cloudflareaccess.com"
+}
+
 # Basic organization configuration for E2E testing
 # NOTE: This is a SINGLETON resource - only one organization per account.
 #
@@ -72,7 +77,7 @@ variable "cloudflare_domain" {
 resource "cloudflare_access_organization" "test" {
   account_id  = var.cloudflare_account_id
   name        = "${local.name_prefix} E2E Test Organization"
-  auth_domain = "${local.name_prefix}-e2e.cloudflareaccess.com"
+  auth_domain = local.auth_domain  # Unique per account, stable across runs
 
   # Test MaxItems:1 block transformation
   login_design {
