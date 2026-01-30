@@ -388,11 +388,17 @@ func ProcessCrossResourceStateMigration(stateJSON string) string {
 					isCustomProfile := !isExplicitDefault && matchAttr.Exists() && precedenceAttr.Exists()
 
 					if isCustomProfile {
-						// It's a custom profile - extract policy_id from ID
-						// v4 ID format: account_id/profile_id
-						id := attrs.Get("id").String()
-						if slashIdx := strings.Index(id, "/"); slashIdx != -1 && slashIdx < len(id)-1 {
-							policyID := id[slashIdx+1:]
+						// It's a custom profile - get policy_id
+						// Try policy_id attribute first, then extract from compound ID if needed
+						policyID := attrs.Get("policy_id").String()
+						if policyID == "" {
+							// Fallback: extract from ID if it has format account_id/profile_id
+							id := attrs.Get("id").String()
+							if slashIdx := strings.Index(id, "/"); slashIdx != -1 && slashIdx < len(id)-1 {
+								policyID = id[slashIdx+1:]
+							}
+						}
+						if policyID != "" {
 							customProfiles[policyID] = i
 						}
 					} else {
