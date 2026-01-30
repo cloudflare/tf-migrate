@@ -13,8 +13,8 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_split_tunnel"
 	"github.com/cloudflare/tf-migrate/internal/transform"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
+	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of zero trust device profile resources from v4 to v5
@@ -85,10 +85,6 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	// Check if this is JSON state content (starts with '{')
 	trimmed := strings.TrimSpace(content)
 	if strings.HasPrefix(trimmed, "{") {
-		// First, update all cloudflare_zero_trust_device_profiles resource types to their correct v5 types
-		// This must happen before individual resource processing so GetResourceType() returns the correct type
-		content = m.updateDeviceProfileTypesInState(content)
-
 		// Process cross-resource state migrations (merge split_tunnel into device profiles, remove split_tunnels)
 		return zero_trust_split_tunnel.ProcessCrossResourceStateMigration(content)
 	}
@@ -380,14 +376,16 @@ func (m *V4ToV5Migrator) updateDeviceProfileTypesInState(stateJSON string) strin
 // Pattern from healthcheck migration (createTCPConfig)
 //
 // v4 structure:
-//   service_mode_v2_mode: "warp"
-//   service_mode_v2_port: 8080
+//
+//	service_mode_v2_mode: "warp"
+//	service_mode_v2_port: 8080
 //
 // v5 structure:
-//   service_mode_v2: {
-//     mode: "warp"
-//     port: 8080
-//   }
+//
+//	service_mode_v2: {
+//	  mode: "warp"
+//	  port: 8080
+//	}
 func (m *V4ToV5Migrator) createServiceModeV2(stateJSON string, attrs gjson.Result) string {
 	mode := attrs.Get("service_mode_v2_mode")
 	port := attrs.Get("service_mode_v2_port")
