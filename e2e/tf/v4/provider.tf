@@ -33,3 +33,30 @@ variable "cloudflare_domain" {
   description = "Cloudflare domain for testing"
   type        = string
 }
+
+# CrowdStrike credentials for device posture integration tests
+# Set via TF_VAR_crowdstrike_* environment variables or CLOUDFLARE_CROWDSTRIKE_* variables
+variable "crowdstrike_client_id" {
+  description = "CrowdStrike S2S Client ID"
+  type        = string
+  default     = ""
+}
+
+variable "crowdstrike_client_secret" {
+  description = "CrowdStrike S2S Client Secret"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "crowdstrike_api_url" {
+  description = "CrowdStrike API URL"
+  type        = string
+  default     = ""
+}
+
+variable "crowdstrike_customer_id" {
+  description = "CrowdStrike Customer ID"
+  type        = string
+  default     = ""
+}

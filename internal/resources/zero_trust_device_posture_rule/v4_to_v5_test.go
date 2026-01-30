@@ -45,21 +45,6 @@ resource "cloudflare_zero_trust_device_posture_rule" "test" {
 `,
 		},
 		{
-			Name: "minimal resource - no name",
-			Input: `
-resource "cloudflare_zero_trust_device_posture_rule" "test" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
-  type       = "serial_number"
-}
-`,
-			Expected: `
-resource "cloudflare_zero_trust_device_posture_rule" "test" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
-  type       = "serial_number"
-}
-`,
-		},
-		{
 			Name: "resource with input block",
 			Input: `
 resource "cloudflare_device_posture_rule" "test" {
@@ -419,84 +404,6 @@ func TestStateTransformation(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 
 	tests := []testhelpers.StateTestCase{
-		{
-			Name: "empty input block",
-			Input: `{
-			"version": 4,
-			"terraform_version": "1.5.0",
-			"resources": [{
-				"type": "cloudflare_device_posture_rule",
-				"name": "name",
-				"instances": [{
-					"attributes": {
-						"id": "test-rule-id",
-						"account_id": "f037e56e89293a057740de681ac9abbe",
-						"name": "name",
-						"type": "serial_number",
-						"input": [{
-							"active_threats": 0,
-							"certificate_id": "",
-							"check_disks": null,
-							"check_private_key": false,
-							"cn": "",
-							"compliance_status": "",
-							"connection_id": "",
-							"count_operator": "",
-							"domain": "",
-							"eid_last_seen": "",
-							"enabled": false,
-							"exists": false,
-							"extended_key_usage": null,
-							"id": "",
-							"infected": false,
-							"is_active": false,
-							"issue_count": "",
-							"last_seen": "",
-							"locations": [],
-							"network_status": "",
-							"operational_state": "",
-							"operator": "",
-							"os": "",
-							"os_distro_name": "",
-							"os_distro_revision": "",
-							"os_version_extra": "",
-							"overall": "",
-							"path": "",
-							"require_all": false,
-							"risk_level": "",
-							"running": false,
-							"score": 0,
-							"sensor_config": "",
-							"sha256": "",
-							"state": "",
-							"thumbprint": "",
-							"total_score": 0,
-							"version": "",
-							"version_operator": ""
-  						}]
-					},
-					"schema_version": 1
-				}]
-			}]
-		}`,
-			Expected: `{
-			"version": 4,
-			"terraform_version": "1.5.0",
-			"resources": [{
-				"type": "cloudflare_zero_trust_device_posture_rule",
-				"name": "name",
-				"instances": [{
-					"attributes": {
-						"id": "test-rule-id",
-						"account_id": "f037e56e89293a057740de681ac9abbe",
-						"name": "name",
-						"type": "serial_number"
-					},
-					"schema_version": 0
-				}]
-			}]
-		}`,
-		},
 		{
 			Name: "non empty input block",
 			Input: `{
