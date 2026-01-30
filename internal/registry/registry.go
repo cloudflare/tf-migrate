@@ -1,6 +1,7 @@
 package registry
 
 import (
+	rulesetsdata "github.com/cloudflare/tf-migrate/internal/datasources/rulesets"
 	zonedata "github.com/cloudflare/tf-migrate/internal/datasources/zone"
 	zonesdata "github.com/cloudflare/tf-migrate/internal/datasources/zones"
 	"github.com/cloudflare/tf-migrate/internal/resources/access_rule"
@@ -76,6 +77,7 @@ import (
 // Each resource package's NewV4ToV5Migrator function registers itself with the internal registry.
 func RegisterAllMigrations() {
 	// Datasources
+	rulesetsdata.NewV4ToV5Migrator()
 	zonedata.NewV4ToV5Migrator()
 	zonesdata.NewV4ToV5Migrator()
 
