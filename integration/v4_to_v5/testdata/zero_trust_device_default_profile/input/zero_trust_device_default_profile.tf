@@ -267,12 +267,78 @@ resource "cloudflare_zero_trust_device_profiles" "interpolation" {
   captive_portal = 180
 }
 
+# ============================================================================
+# Pattern Group 8: Custom Profiles (match + precedence)
+# Tests: custom profile routing, precedence transformation, field preservation
+# ============================================================================
+
+# Basic custom profile
+resource "cloudflare_zero_trust_device_profiles" "custom_employees" {
+  account_id  = var.cloudflare_account_id
+  name        = "Employee Profile"
+  description = "Custom profile for employees"
+  match       = "identity.groups == \"employees\""
+  precedence  = 100
+}
+
+# Custom profile with service_mode_v2
+resource "cloudflare_zero_trust_device_profiles" "custom_contractors" {
+  account_id           = var.cloudflare_account_id
+  name                 = "Contractor Profile"
+  description          = "Custom profile for contractors"
+  match                = "identity.groups == \"contractors\""
+  precedence           = 200
+  service_mode_v2_mode = "proxy"
+  service_mode_v2_port = 8080
+}
+
+# Custom profile with many optional fields
+resource "cloudflare_zero_trust_device_profiles" "custom_admins" {
+  account_id            = var.cloudflare_account_id
+  name                  = "Admin Profile"
+  description           = "Custom profile for administrators"
+  match                 = "identity.groups == \"admins\""
+  precedence            = 50
+  allow_mode_switch     = false
+  allow_updates         = true
+  allowed_to_leave      = true
+  auto_connect          = 30
+  captive_portal        = 300
+  disable_auto_fallback = true
+  exclude_office_ips    = true
+  support_url           = "https://admin-support.cf-tf-test.com"
+  switch_locked         = true
+  tunnel_protocol       = "wireguard"
+}
+
+# Multiple custom profiles with for_each
+resource "cloudflare_zero_trust_device_profiles" "custom_teams" {
+  for_each = {
+    "engineering" = {
+      precedence = 150
+      match      = "identity.groups == \"engineering\""
+    }
+    "sales" = {
+      precedence = 160
+      match      = "identity.groups == \"sales\""
+    }
+  }
+
+  account_id  = var.cloudflare_account_id
+  name        = "${title(each.key)} Team Profile"
+  description = "Custom profile for ${each.key} team"
+  match       = each.value.match
+  precedence  = each.value.precedence
+  auto_connect = 15
+}
+
 # TOTAL RESOURCES:
-# - for_each maps: 5 instances
-# - for_each sets: 4 instances
-# - count-based: 4 instances
-# - conditional: 1 instance
-# - lifecycle: 1 instance
-# - functions: 1 instance
-# - edge cases: 7 instances
-# TOTAL: 23 resource instances
+# - for_each maps: 5 instances (default profiles)
+# - for_each sets: 4 instances (default profiles)
+# - count-based: 4 instances (default profiles)
+# - conditional: 1 instance (default profile)
+# - lifecycle: 1 instance (default profile)
+# - functions: 1 instance (default profile)
+# - edge cases: 7 instances (default profiles)
+# - custom profiles: 5 instances (3 single + 2 for_each)
+# TOTAL: 28 resource instances
