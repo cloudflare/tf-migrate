@@ -1,5 +1,16 @@
 variable "cloudflare_account_id" {
-  type = string
+  description = "Cloudflare account ID"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID"
+  type        = string
+}
+
+variable "cloudflare_domain" {
+  description = "Cloudflare domain for testing"
+  type        = string
 }
 
 locals {
