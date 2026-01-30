@@ -77,6 +77,7 @@ func runStateTransformTest(t *testing.T, tt StateTestCase, migrator transform.Re
 
 		resources.ForEach(func(k, resource gjson.Result) bool {
 			resourceType := resource.Get("type").String()
+			resourceName := resource.Get("name").String()
 
 			// Check if migrator can handle this resource type
 			if !migrator.CanHandle(resourceType) {
@@ -87,24 +88,19 @@ func runStateTransformTest(t *testing.T, tt StateTestCase, migrator transform.Re
 				return true
 			}
 
-			// Transform resource type
-			newResourceType := migrator.GetResourceType()
-
-			// Build transformed resource
-			transformedResource := map[string]interface{}{
-				"type": newResourceType,
-				"name": resource.Get("name").String(),
+			// Initialize StateTypeRenames if not present
+			if ctx.StateTypeRenames == nil {
+				ctx.StateTypeRenames = make(map[string]interface{})
 			}
 
-			// Process instances
+			// Process instances (this may populate StateTypeRenames)
+			var transformedInstances []interface{}
 			instances := resource.Get("instances")
 			if instances.Exists() {
 				if instances.IsArray() && instances.Array() != nil && len(instances.Array()) > 0 {
-					var transformedInstances []interface{}
-
 					instances.ForEach(func(i, instance gjson.Result) bool {
 						// Transform each instance
-						transformedInstance, err := migrator.TransformState(ctx, instance, "", "")
+						transformedInstance, err := migrator.TransformState(ctx, instance, "", resourceName)
 						require.NoError(t, err, "Failed to transform instance")
 
 						var inst interface{}
@@ -114,12 +110,34 @@ func runStateTransformTest(t *testing.T, tt StateTestCase, migrator transform.Re
 						transformedInstances = append(transformedInstances, inst)
 						return true
 					})
-
-					transformedResource["instances"] = transformedInstances
-				} else {
-					// Keep empty arrays as empty arrays, not nil
-					transformedResource["instances"] = []interface{}{}
 				}
+			}
+
+			// Determine new resource type - check StateTypeRenames first, then GetResourceType
+			newResourceType := resourceType // Default to keep same type
+			stateTypeRenameKey := resourceType + "." + resourceName
+			if dynamicType, ok := ctx.StateTypeRenames[stateTypeRenameKey]; ok {
+				if dynamicTypeStr, ok := dynamicType.(string); ok && dynamicTypeStr != "" {
+					newResourceType = dynamicTypeStr
+				}
+			} else {
+				// Fallback to GetResourceType (legacy behavior)
+				if typeFromMigrator := migrator.GetResourceType(); typeFromMigrator != "" {
+					newResourceType = typeFromMigrator
+				}
+			}
+
+			// Build transformed resource
+			transformedResource := map[string]interface{}{
+				"type": newResourceType,
+				"name": resourceName,
+			}
+
+			if len(transformedInstances) > 0 {
+				transformedResource["instances"] = transformedInstances
+			} else {
+				// Keep empty arrays as empty arrays, not nil
+				transformedResource["instances"] = []interface{}{}
 			}
 
 			transformedResources = append(transformedResources, transformedResource)

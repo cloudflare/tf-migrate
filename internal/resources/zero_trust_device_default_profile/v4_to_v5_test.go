@@ -899,10 +899,526 @@ resource "cloudflare_zero_trust_device_custom_profile" "employees" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	// Note: No StateTransformation_CustomProfile tests
-	// State transformation tests for conditional routing (custom vs default) are not feasible
-	// because GetResourceType() is called before TransformState() has access to instance data.
-	// The config transformation tests above already validate the routing logic.
+	t.Run("StateTransformation_CustomProfile", func(t *testing.T) {
+		migrator := NewV4ToV5Migrator()
+		tests := []testhelpers.StateTestCase{
+			{
+				Name: "basic custom profile state",
+				Input: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "cloudflare_zero_trust_device_profiles",
+      "name": "custom",
+      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/profile-abc-123",
+            "name": "Custom Profile",
+            "description": "Custom device settings",
+            "match": "identity.email == \"user@example.com\"",
+            "precedence": 100,
+            "enabled": true
+          }
+        }
+      ]
+    }
+  ]
+}`,
+				Expected: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "type": "cloudflare_zero_trust_device_custom_profile",
+      "name": "custom",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/profile-abc-123",
+            "name": "Custom Profile",
+            "description": "Custom device settings",
+            "match": "identity.email == \"user@example.com\"",
+            "precedence": 100.0,
+            "policy_id": "profile-abc-123"
+          }
+        }
+      ]
+    }
+  ]
+}`,
+			},
+			{
+				Name: "custom profile with policy_id already present",
+				Input: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "cloudflare_zero_trust_device_profiles",
+      "name": "custom",
+      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "test-policy-456",
+            "name": "Custom Profile",
+            "match": "identity.groups == \"developers\"",
+            "precedence": 200,
+            "policy_id": "test-policy-456"
+          }
+        }
+      ]
+    }
+  ]
+}`,
+				Expected: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "type": "cloudflare_zero_trust_device_custom_profile",
+      "name": "custom",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "test-policy-456",
+            "name": "Custom Profile",
+            "match": "identity.groups == \"developers\"",
+            "precedence": 200.0,
+            "policy_id": "test-policy-456"
+          }
+        }
+      ]
+    }
+  ]
+}`,
+			},
+			{
+				Name: "custom profile with service_mode_v2 and all fields",
+				Input: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "cloudflare_zero_trust_device_profiles",
+      "name": "custom",
+      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/policy-xyz",
+            "name": "Employee Profile",
+            "description": "For employees",
+            "default": false,
+            "match": "identity.groups == \"employees\"",
+            "precedence": 150,
+            "enabled": true,
+            "auto_connect": 30,
+            "captive_portal": 180,
+            "service_mode_v2_mode": "proxy",
+            "service_mode_v2_port": 8080,
+            "tunnel_protocol": "wireguard"
+          }
+        }
+      ]
+    }
+  ]
+}`,
+				Expected: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "type": "cloudflare_zero_trust_device_custom_profile",
+      "name": "custom",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/policy-xyz",
+            "name": "Employee Profile",
+            "description": "For employees",
+            "match": "identity.groups == \"employees\"",
+            "precedence": 150.0,
+            "auto_connect": 30.0,
+            "captive_portal": 180.0,
+            "service_mode_v2": {
+              "mode": "proxy",
+              "port": 8080.0
+            },
+            "tunnel_protocol": "wireguard",
+            "policy_id": "policy-xyz"
+          }
+        }
+      ]
+    }
+  ]
+}`,
+			},
+			{
+				Name: "custom profile removes only default and enabled fields",
+				Input: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "cloudflare_zero_trust_device_profiles",
+      "name": "custom",
+      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/custom-123",
+            "name": "Custom Profile",
+            "description": "Should be kept",
+            "default": false,
+            "match": "identity.email == \"test@example.com\"",
+            "precedence": 50,
+            "enabled": false
+          }
+        }
+      ]
+    }
+  ]
+}`,
+				Expected: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "type": "cloudflare_zero_trust_device_custom_profile",
+      "name": "custom",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/custom-123",
+            "name": "Custom Profile",
+            "description": "Should be kept",
+            "match": "identity.email == \"test@example.com\"",
+            "precedence": 50.0,
+            "policy_id": "custom-123"
+          }
+        }
+      ]
+    }
+  ]
+}`,
+			},
+		}
+
+		testhelpers.RunStateTransformTests(t, tests, migrator)
+	})
+
+	t.Run("StateTransformation_MultipleResources", func(t *testing.T) {
+		migrator := NewV4ToV5Migrator()
+		tests := []testhelpers.StateTestCase{
+			{
+				Name: "multiple resources - mix of default and custom profiles",
+				Input: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "cloudflare_zero_trust_device_profiles",
+      "name": "default",
+      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe",
+            "name": "Default Profile",
+            "default": true,
+            "auto_connect": 15
+          }
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "cloudflare_zero_trust_device_profiles",
+      "name": "custom_one",
+      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/policy-one",
+            "name": "Custom One",
+            "match": "identity.groups == \"group1\"",
+            "precedence": 100,
+            "captive_portal": 180
+          }
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "cloudflare_zero_trust_device_profiles",
+      "name": "custom_two",
+      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/policy-two",
+            "name": "Custom Two",
+            "match": "identity.groups == \"group2\"",
+            "precedence": 200,
+            "allow_mode_switch": false
+          }
+        }
+      ]
+    }
+  ]
+}`,
+				Expected: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "type": "cloudflare_zero_trust_device_default_profile",
+      "name": "default",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe",
+            "auto_connect": 15.0
+          }
+        }
+      ]
+    },
+    {
+      "type": "cloudflare_zero_trust_device_custom_profile",
+      "name": "custom_one",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/policy-one",
+            "name": "Custom One",
+            "match": "identity.groups == \"group1\"",
+            "precedence": 100.0,
+            "captive_portal": 180.0,
+            "policy_id": "policy-one"
+          }
+        }
+      ]
+    },
+    {
+      "type": "cloudflare_zero_trust_device_custom_profile",
+      "name": "custom_two",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/policy-two",
+            "name": "Custom Two",
+            "match": "identity.groups == \"group2\"",
+            "precedence": 200.0,
+            "allow_mode_switch": false,
+            "policy_id": "policy-two"
+          }
+        }
+      ]
+    }
+  ]
+}`,
+			},
+			{
+				Name: "multiple resources - all default profiles",
+				Input: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "cloudflare_zero_trust_device_profiles",
+      "name": "first",
+      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "account-111",
+            "id": "profile-111",
+            "name": "First",
+            "default": true
+          }
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "cloudflare_zero_trust_device_profiles",
+      "name": "second",
+      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "account-222",
+            "id": "profile-222",
+            "name": "Second",
+            "default": true
+          }
+        }
+      ]
+    }
+  ]
+}`,
+				Expected: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "type": "cloudflare_zero_trust_device_default_profile",
+      "name": "first",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "account-111",
+            "id": "profile-111"
+          }
+        }
+      ]
+    },
+    {
+      "type": "cloudflare_zero_trust_device_default_profile",
+      "name": "second",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "account-222",
+            "id": "profile-222"
+          }
+        }
+      ]
+    }
+  ]
+}`,
+			},
+			{
+				Name: "multiple resources - all custom profiles",
+				Input: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "cloudflare_zero_trust_device_profiles",
+      "name": "employees",
+      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/emp-policy",
+            "name": "Employees",
+            "match": "identity.groups == \"employees\"",
+            "precedence": 100
+          }
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "cloudflare_zero_trust_device_profiles",
+      "name": "contractors",
+      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/con-policy",
+            "name": "Contractors",
+            "match": "identity.groups == \"contractors\"",
+            "precedence": 200
+          }
+        }
+      ]
+    }
+  ]
+}`,
+				Expected: `{
+  "version": 4,
+  "terraform_version": "1.5.0",
+  "resources": [
+    {
+      "type": "cloudflare_zero_trust_device_custom_profile",
+      "name": "employees",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/emp-policy",
+            "name": "Employees",
+            "match": "identity.groups == \"employees\"",
+            "precedence": 100.0,
+            "policy_id": "emp-policy"
+          }
+        }
+      ]
+    },
+    {
+      "type": "cloudflare_zero_trust_device_custom_profile",
+      "name": "contractors",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "account_id": "f037e56e89293a057740de681ac9abbe",
+            "id": "f037e56e89293a057740de681ac9abbe/con-policy",
+            "name": "Contractors",
+            "match": "identity.groups == \"contractors\"",
+            "precedence": 200.0,
+            "policy_id": "con-policy"
+          }
+        }
+      ]
+    }
+  ]
+}`,
+			},
+		}
+
+		testhelpers.RunStateTransformTests(t, tests, migrator)
+	})
 
 	t.Run("StateTransformation_EdgeCases", func(t *testing.T) {
 		migrator := NewV4ToV5Migrator()
