@@ -2,6 +2,7 @@ package registry
 
 import (
 	lbpoolsdata "github.com/cloudflare/tf-migrate/internal/datasources/load_balancer_pools"
+	rulesetsdata "github.com/cloudflare/tf-migrate/internal/datasources/rulesets"
 	zonedata "github.com/cloudflare/tf-migrate/internal/datasources/zone"
 	zonesdata "github.com/cloudflare/tf-migrate/internal/datasources/zones"
 	"github.com/cloudflare/tf-migrate/internal/resources/access_rule"
@@ -15,6 +16,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	"github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
 	"github.com/cloudflare/tf-migrate/internal/resources/leaked_credential_check"
+	"github.com/cloudflare/tf-migrate/internal/resources/leaked_credential_check_rule"
 	"github.com/cloudflare/tf-migrate/internal/resources/list"
 	"github.com/cloudflare/tf-migrate/internal/resources/list_item"
 	"github.com/cloudflare/tf-migrate/internal/resources/load_balancer"
@@ -40,10 +42,10 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/turnstile_widget"
 	"github.com/cloudflare/tf-migrate/internal/resources/url_normalization_settings"
 	"github.com/cloudflare/tf-migrate/internal/resources/worker_route"
+	"github.com/cloudflare/tf-migrate/internal/resources/workers_for_platforms_dispatch_namespace"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_script"
-	"github.com/cloudflare/tf-migrate/internal/resources/workers_for_platforms_dispatch_namespace"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_application"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_group"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_identity_provider"
@@ -77,6 +79,7 @@ import (
 func RegisterAllMigrations() {
 	// Datasources
 	lbpoolsdata.NewV4ToV5Migrator()
+	rulesetsdata.NewV4ToV5Migrator()
 	zonedata.NewV4ToV5Migrator()
 	zonesdata.NewV4ToV5Migrator()
 
@@ -92,6 +95,7 @@ func RegisterAllMigrations() {
 	dns_record.NewV4ToV5Migrator()
 	healthcheck.NewV4ToV5Migrator()
 	leaked_credential_check.NewV4ToV5Migrator()
+	leaked_credential_check_rule.NewV4ToV5Migrator()
 	load_balancer.NewV4ToV5Migrator()
 	load_balancer_monitor.NewV4ToV5Migrator()
 	load_balancer_pool.NewV4ToV5Migrator()
