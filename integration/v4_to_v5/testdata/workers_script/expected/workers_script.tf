@@ -29,27 +29,13 @@ resource "cloudflare_workers_kv_namespace" "test_kv_multiple" {
 }
 
 # ========================================
-# Dependencies - D1 Databases
-# ========================================
-# TODO: Uncomment when d1_database v4→v5 migration is created
-# D1 bindings also require ES module format which adds complexity
-
-# resource "cloudflare_d1_database" "test_d1" {
-#   account_id = var.cloudflare_account_id
-#   name       = "cftftest-d1-database"
-# }
-
-# ========================================
 # Dependencies - Queues
 # ========================================
-# TODO: Uncomment when queue v4→v5 migration is created
-# The v4 schema uses 'name', v5 uses 'queue_name'
-# Need to create: internal/resources/queue/v4_to_v5.go
 
-# resource "cloudflare_queue" "test_queue" {
-#   account_id = var.cloudflare_account_id
-#   name       = "cftftest-queue"
-# }
+resource "cloudflare_queue" "test_queue" {
+  account_id = var.cloudflare_account_id
+  queue_name = "cftftest-queue"
+}
 
 # ========================================
 # Dependencies - R2 Buckets
@@ -180,18 +166,20 @@ resource "cloudflare_workers_script" "analytics_engine" {
 # ========================================
 # Pattern 8: Worker with queue_binding (binding → name, queue → queue_name)
 # ========================================
-# TODO: Uncomment when queue v4→v5 migration is created
 
-# resource "cloudflare_workers_script" "queue" {
-#   account_id = var.cloudflare_account_id
-#   name       = "cftftest-queue-worker"
-#   content    = local.common_content
-#
-#   queue_binding {
-#     binding = "MY_QUEUE"
-#     queue   = cloudflare_queue.test_queue.name
-#   }
-# }
+resource "cloudflare_workers_script" "queue" {
+  account_id = var.cloudflare_account_id
+  content    = local.common_content
+
+  script_name = "cftftest-queue-worker"
+  bindings = [
+    {
+      type  = "queue"
+      name  = "MY_QUEUE"
+      queue = cloudflare_queue.test_queue.queue_name
+    }
+  ]
+}
 
 # ========================================
 # Pattern 9: Worker with multiple bindings (order preservation test)
@@ -470,11 +458,6 @@ resource "cloudflare_workers_script" "dependent" {
 
 
 
-  # queue_binding commented out - requires queue v4→v5 migration
-  # queue_binding {
-  #   binding = "JOBS"
-  #   queue   = cloudflare_queue.test_queue.name
-  # }
   script_name = "cftftest-dependent-worker"
   bindings = [
     {
@@ -489,6 +472,10 @@ resource "cloudflare_workers_script" "dependent" {
       type        = "r2_bucket"
       name        = "STORAGE"
       bucket_name = cloudflare_r2_bucket.test_r2.name
+      }, {
+      type  = "queue"
+      name  = "JOBS"
+      queue = cloudflare_queue.test_queue.queue_name
     }
   ]
 }
@@ -567,16 +554,8 @@ resource "cloudflare_workers_script" "environment" {
 
 
 
-  # dynamic queue_binding commented out - requires queue v4→v5 migration
-  # dynamic "queue_binding" {
-  #   for_each = each.value.use_queue ? [1] : []
-  #   content {
-  #     binding = "ENV_QUEUE"
-  #     queue   = cloudflare_queue.test_queue.name
-  #   }
-  # }
   script_name = "cftftest-${each.key}-worker"
-  bindings = [
+  bindings = concat([
     {
       type = "plain_text"
       name = "ENVIRONMENT"
@@ -586,5 +565,67 @@ resource "cloudflare_workers_script" "environment" {
       name         = "ENV_KV"
       namespace_id = cloudflare_workers_kv_namespace.test_kv_multiple[each.value.kv_index].id
     }
-  ]
+    ], each.value.use_queue ? [{
+      type  = "queue"
+      name  = "ENV_QUEUE"
+      queue = cloudflare_queue.test_queue.queue_name
+  }] : [])
+}
+
+# ========================================
+# Pattern 28: Dynamic plain_text_binding
+# Tests dynamic block transformation with plain_text binding type
+# ========================================
+
+variable "enable_debug_mode" {
+  type    = bool
+  default = false
+}
+
+resource "cloudflare_workers_script" "dynamic_plain_text" {
+  account_id = var.cloudflare_account_id
+  content    = local.common_content
+
+
+  script_name = "cftftest-dynamic-plain-text-worker"
+  bindings = concat([
+    {
+      type = "plain_text"
+      name = "STATIC_VAR"
+      text = "always-present"
+    }
+    ], var.enable_debug_mode ? [{
+      type = "plain_text"
+      name = "DEBUG_MODE"
+      text = "enabled"
+  }] : [])
+}
+
+# ========================================
+# Pattern 29: Dynamic kv_namespace_binding with conditional
+# Tests dynamic block transformation with kv_namespace binding type
+# ========================================
+
+variable "enable_kv_cache" {
+  type    = bool
+  default = true
+}
+
+resource "cloudflare_workers_script" "dynamic_kv" {
+  account_id = var.cloudflare_account_id
+  content    = local.common_content
+
+
+  script_name = "cftftest-dynamic-kv-worker"
+  bindings = concat([
+    {
+      type = "plain_text"
+      name = "ALWAYS_PRESENT"
+      text = "yes"
+    }
+    ], var.enable_kv_cache ? [{
+      type         = "kv_namespace"
+      name         = "KV_CACHE"
+      namespace_id = cloudflare_workers_kv_namespace.test_kv.id
+  }] : [])
 }
