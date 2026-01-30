@@ -98,7 +98,6 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 		}
 
 		// Iterate through all pages using AutoPaging iterator
-		// fix mee!!!!!!
 		iter := ctx.APIClient.ZeroTrust.Networks.Routes.ListAutoPaging(context.Background(), params)
 		for iter.Next() {
 			route := iter.Current()
