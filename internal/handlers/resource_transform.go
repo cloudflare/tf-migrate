@@ -84,8 +84,16 @@ func (h *ResourceTransformHandler) Handle(ctx *transform.Context) (*transform.Co
 		body.RemoveBlock(block)
 	}
 
-	for _, block := range blocksToAdd {
+	for i, block := range blocksToAdd {
+		// Add newline before first block to separate from previous content
+		if i == 0 {
+			body.AppendNewline()
+		}
 		body.AppendBlock(block)
+		// Add newline after each block except the last to separate split resources
+		if i < len(blocksToAdd)-1 {
+			body.AppendNewline()
+		}
 	}
 
 	return h.Next(ctx)

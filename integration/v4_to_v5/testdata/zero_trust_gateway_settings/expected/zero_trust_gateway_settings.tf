@@ -619,6 +619,7 @@ resource "cloudflare_zero_trust_gateway_settings" "all_scanning" {
 # - lifecycle: 3 resources (26-28)
 # - combinations: 2 resources (29-30)
 # Total: 29 resource instances created
+
 resource "cloudflare_zero_trust_gateway_settings" "with_logging" {
   account_id = var.cloudflare_account_id
 
@@ -632,6 +633,7 @@ resource "cloudflare_zero_trust_gateway_settings" "with_logging" {
     }
   }
 }
+
 resource "cloudflare_zero_trust_gateway_logging" "with_logging_logging" {
   account_id = var.cloudflare_account_id
   settings_by_rule_type = {
@@ -650,6 +652,7 @@ resource "cloudflare_zero_trust_gateway_logging" "with_logging_logging" {
   }
   redact_pii = true
 }
+
 resource "cloudflare_zero_trust_gateway_settings" "with_proxy" {
   account_id = var.cloudflare_account_id
 
@@ -660,6 +663,7 @@ resource "cloudflare_zero_trust_gateway_settings" "with_proxy" {
     }
   }
 }
+
 resource "cloudflare_zero_trust_device_settings" "with_proxy_device_settings" {
   account_id                            = var.cloudflare_account_id
   gateway_proxy_enabled                 = true
@@ -668,6 +672,7 @@ resource "cloudflare_zero_trust_device_settings" "with_proxy_device_settings" {
   use_zt_virtual_ip                     = false
   disable_for_time                      = 300
 }
+
 resource "cloudflare_zero_trust_gateway_settings" "with_both_deprecated" {
   account_id = var.cloudflare_account_id
 
@@ -688,6 +693,7 @@ resource "cloudflare_zero_trust_gateway_settings" "with_both_deprecated" {
     }
   }
 }
+
 resource "cloudflare_zero_trust_gateway_logging" "with_both_deprecated_logging" {
   account_id = var.cloudflare_account_id
   settings_by_rule_type = {
@@ -706,6 +712,7 @@ resource "cloudflare_zero_trust_gateway_logging" "with_both_deprecated_logging" 
   }
   redact_pii = false
 }
+
 resource "cloudflare_zero_trust_device_settings" "with_both_deprecated_device_settings" {
   account_id                            = var.cloudflare_account_id
   gateway_proxy_enabled                 = false

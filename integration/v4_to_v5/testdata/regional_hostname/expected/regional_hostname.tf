@@ -21,42 +21,9 @@ locals {
   domain = data.cloudflare_zone.this.name
 }
 
-# DNS Records (required before creating regional hostnames)
-resource "cloudflare_dns_record" "rh_minimal" {
-  zone_id = var.cloudflare_zone_id
-  name    = "cftftest-rh-minimal"
-  type    = "A"
-  proxied = true
-  ttl     = 1
-  content = "192.0.2.1"
-}
 
-resource "cloudflare_dns_record" "rh_timeouts" {
-  zone_id = var.cloudflare_zone_id
-  name    = "cftftest-rh-timeouts"
-  type    = "A"
-  proxied = true
-  ttl     = 1
-  content = "192.0.2.2"
-}
 
-resource "cloudflare_dns_record" "rh_create_timeout" {
-  zone_id = var.cloudflare_zone_id
-  name    = "cftftest-rh-create-timeout"
-  type    = "A"
-  proxied = true
-  ttl     = 1
-  content = "192.0.2.3"
-}
 
-resource "cloudflare_dns_record" "rh_no_timeouts" {
-  zone_id = var.cloudflare_zone_id
-  name    = "cftftest-rh-no-timeouts"
-  type    = "A"
-  proxied = true
-  ttl     = 1
-  content = "192.0.2.4"
-}
 
 # Regional hostname with no timeouts
 resource "cloudflare_regional_hostname" "minimal" {
@@ -93,4 +60,61 @@ resource "cloudflare_regional_hostname" "no_timeouts" {
   region_key = "ca"
 
   depends_on = [cloudflare_dns_record.rh_no_timeouts]
+}
+
+# DNS Records (required before creating regional hostnames)
+resource "cloudflare_dns_record" "rh_minimal" {
+  zone_id = var.cloudflare_zone_id
+  name    = "cftftest-rh-minimal"
+  type    = "A"
+  proxied = true
+  ttl     = 1
+  content = "192.0.2.1"
+}
+
+moved {
+  from = cloudflare_record.rh_minimal
+  to   = cloudflare_dns_record.rh_minimal
+}
+
+resource "cloudflare_dns_record" "rh_timeouts" {
+  zone_id = var.cloudflare_zone_id
+  name    = "cftftest-rh-timeouts"
+  type    = "A"
+  proxied = true
+  ttl     = 1
+  content = "192.0.2.2"
+}
+
+moved {
+  from = cloudflare_record.rh_timeouts
+  to   = cloudflare_dns_record.rh_timeouts
+}
+
+resource "cloudflare_dns_record" "rh_create_timeout" {
+  zone_id = var.cloudflare_zone_id
+  name    = "cftftest-rh-create-timeout"
+  type    = "A"
+  proxied = true
+  ttl     = 1
+  content = "192.0.2.3"
+}
+
+moved {
+  from = cloudflare_record.rh_create_timeout
+  to   = cloudflare_dns_record.rh_create_timeout
+}
+
+resource "cloudflare_dns_record" "rh_no_timeouts" {
+  zone_id = var.cloudflare_zone_id
+  name    = "cftftest-rh-no-timeouts"
+  type    = "A"
+  proxied = true
+  ttl     = 1
+  content = "192.0.2.4"
+}
+
+moved {
+  from = cloudflare_record.rh_no_timeouts
+  to   = cloudflare_dns_record.rh_no_timeouts
 }

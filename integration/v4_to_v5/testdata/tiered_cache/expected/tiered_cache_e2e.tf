@@ -14,23 +14,18 @@ variable "cloudflare_domain" {
 }
 
 
-resource "cloudflare_argo_smart_routing" "both_with_lifecycle" {
+resource "cloudflare_tiered_cache" "generic_with_lifecycle" {
   zone_id = var.cloudflare_zone_id
-  value   = "on"
+  value   = "off"
   lifecycle {
-    ignore_changes = [value]
+    create_before_destroy = true
   }
 }
 
-moved {
-  from = cloudflare_argo.both_with_lifecycle
-  to   = cloudflare_argo_smart_routing.both_with_lifecycle
-}
-
-resource "cloudflare_argo_tiered_caching" "both_with_lifecycle_tiered" {
+resource "cloudflare_argo_tiered_caching" "generic_with_lifecycle" {
   zone_id = var.cloudflare_zone_id
   value   = "on"
   lifecycle {
-    ignore_changes = [value]
+    create_before_destroy = true
   }
 }
