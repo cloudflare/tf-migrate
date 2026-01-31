@@ -1,6 +1,7 @@
 package zero_trust_device_default_profile
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,19 +11,19 @@ import (
 	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_split_tunnel"
 	"github.com/cloudflare/tf-migrate/internal/transform"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
+	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of zero trust device profile resources from v4 to v5
 // This migrator routes to either default or custom profile based on match/precedence presence
 type V4ToV5Migrator struct {
-	oldType             string
-	oldTypeDeprecated   string
-	newTypeDefault      string
-	newTypeCustom       string
-	lastTransformedType string
+	oldType           string
+	oldTypeDeprecated string
+	newTypeDefault    string
+	newTypeCustom     string
 }
 
 // findStateFile searches upward from the given directory to find terraform.tfstate
@@ -48,11 +49,10 @@ func findStateFile(startDir string) string {
 
 func NewV4ToV5Migrator() transform.ResourceTransformer {
 	migrator := &V4ToV5Migrator{
-		oldType:             "cloudflare_zero_trust_device_profiles",
-		oldTypeDeprecated:   "cloudflare_device_settings_policy",
-		newTypeDefault:      "cloudflare_zero_trust_device_default_profile",
-		newTypeCustom:       "cloudflare_zero_trust_device_custom_profile",
-		lastTransformedType: "",
+		oldType:           "cloudflare_zero_trust_device_profiles",
+		oldTypeDeprecated: "cloudflare_device_settings_policy",
+		newTypeDefault:    "cloudflare_zero_trust_device_default_profile",
+		newTypeCustom:     "cloudflare_zero_trust_device_custom_profile",
 	}
 
 	// Register BOTH old resource names - migrator will route based on match/precedence
@@ -63,12 +63,9 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 }
 
 func (m *V4ToV5Migrator) GetResourceType() string {
-	// Return the type used in the last transformation
-	// If not set, default to default profile
-	if m.lastTransformedType != "" {
-		return m.lastTransformedType
-	}
-	return m.newTypeDefault
+	// Return empty string - the actual type will be determined per-resource in TransformState
+	// and set via ctx.StateTypeRenames to avoid state bleeding between resources
+	return ""
 }
 
 func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
@@ -80,7 +77,12 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
-	// No preprocessing needed - all transformations done at HCL level
+	// Check if this is JSON state content (starts with '{')
+	trimmed := strings.TrimSpace(content)
+	if strings.HasPrefix(trimmed, "{") {
+		// Process cross-resource state migrations (merge split_tunnel into device profiles, remove split_tunnels)
+		return zero_trust_split_tunnel.ProcessCrossResourceStateMigration(content)
+	}
 	return content
 }
 
@@ -91,8 +93,11 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-	// Reset lastTransformedType at start of each transformation to avoid test interference
-	m.lastTransformedType = ""
+	// Process cross-resource migration - merge split_tunnel resources into device profiles
+	// This is idempotent - safe to call multiple times
+	if ctx.CFGFile != nil {
+		zero_trust_split_tunnel.ProcessCrossResourceConfigMigration(ctx.CFGFile)
+	}
 
 	body := block.Body()
 
@@ -123,7 +128,6 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	} else {
 		newResourceType = m.newTypeDefault
 	}
-	m.lastTransformedType = newResourceType
 
 	// 2. Rename resource type to appropriate v5 resource
 	currentType := tfhcl.GetResourceType(block)
@@ -231,12 +235,27 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// Otherwise, if it has match AND precedence, it's a custom profile
 	isCustomProfile := !isExplicitDefault && matchAttr.Exists() && precedenceAttr.Exists()
 
-	// Set lastTransformedType for GetResourceType to use
+	// Store the determined type in StateTypeRenames for the pipeline to apply
+	// This avoids state bleeding between resources (singleton migrator issue)
+	var newResourceType string
 	if isCustomProfile {
-		m.lastTransformedType = m.newTypeCustom
+		newResourceType = m.newTypeCustom
 	} else {
-		m.lastTransformedType = m.newTypeDefault
+		newResourceType = m.newTypeDefault
 	}
+
+	// Initialize StateTypeRenames map if needed
+	if ctx.StateTypeRenames == nil {
+		ctx.StateTypeRenames = make(map[string]interface{})
+	}
+
+	// Store the type rename using the format expected by state_transform.go
+	// The key format is "resourceType.resourceName"
+	// We need to store for BOTH old resource type names since we don't know which one is being used
+	stateTypeRenameKey1 := fmt.Sprintf("%s.%s", m.oldType, resourceName)
+	stateTypeRenameKey2 := fmt.Sprintf("%s.%s", m.oldTypeDeprecated, resourceName)
+	ctx.StateTypeRenames[stateTypeRenameKey1] = newResourceType
+	ctx.StateTypeRenames[stateTypeRenameKey2] = newResourceType
 
 	// 2. Remove fields based on profile type
 	if isCustomProfile {
@@ -315,14 +334,16 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 // Pattern from healthcheck migration (createTCPConfig)
 //
 // v4 structure:
-//   service_mode_v2_mode: "warp"
-//   service_mode_v2_port: 8080
+//
+//	service_mode_v2_mode: "warp"
+//	service_mode_v2_port: 8080
 //
 // v5 structure:
-//   service_mode_v2: {
-//     mode: "warp"
-//     port: 8080
-//   }
+//
+//	service_mode_v2: {
+//	  mode: "warp"
+//	  port: 8080
+//	}
 func (m *V4ToV5Migrator) createServiceModeV2(stateJSON string, attrs gjson.Result) string {
 	mode := attrs.Get("service_mode_v2_mode")
 	port := attrs.Get("service_mode_v2_port")

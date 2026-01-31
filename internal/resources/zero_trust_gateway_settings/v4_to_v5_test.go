@@ -1539,7 +1539,7 @@ resource "cloudflare_teams_account" "test" {
 }`,
 		},
 		{
-			Name: "block_page with explicitly set empty fields - transformed to null (known limitation)",
+			Name: "block_page with explicitly set empty fields - preserved as empty strings",
 			Input: `{
   "version": 4,
   "terraform_version": "1.5.0",
@@ -1582,8 +1582,8 @@ resource "cloudflare_teams_account" "test" {
             "enabled": true,
             "name": "Test",
             "footer_text": "Footer",
-            "mailto_address": null,
-            "mailto_subject": null
+            "mailto_address": "",
+            "mailto_subject": ""
           }
         }
       }

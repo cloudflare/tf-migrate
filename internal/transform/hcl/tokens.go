@@ -62,3 +62,26 @@ func TokensForSimpleValue(val interface{}) hclwrite.Tokens {
 func TokensForEmptyArray() hclwrite.Tokens {
 	return hclwrite.TokensForTuple([]hclwrite.Tokens{})
 }
+
+// AppendWarningComment adds a migration warning comment to a body.
+// Used to flag configurations that need manual review after automated migration.
+//
+// The comment will be formatted as: # MIGRATION WARNING: <message>
+//
+// Example:
+//
+//	body := hclwrite.NewEmptyFile().Body()
+//	AppendWarningComment(body, "Cannot determine list kind for merging list_item resources")
+//
+// Result in HCL:
+//
+//	# MIGRATION WARNING: Cannot determine list kind for merging list_item resources
+func AppendWarningComment(body *hclwrite.Body, message string) {
+	comment := hclwrite.Tokens{
+		&hclwrite.Token{
+			Type:  hclsyntax.TokenComment,
+			Bytes: []byte("# MIGRATION WARNING: " + message + "\n"),
+		},
+	}
+	body.AppendUnstructuredTokens(comment)
+}
