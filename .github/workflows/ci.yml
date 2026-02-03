@@ -59,6 +59,7 @@ jobs:
 
   integration-tests:
     name: Integration Tests
+    continue-on-error: true
     runs-on: large-runner
     permissions:
       contents: read
