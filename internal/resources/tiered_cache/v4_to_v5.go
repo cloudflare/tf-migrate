@@ -1,15 +1,12 @@
 package tiered_cache
 
 import (
-	"fmt"
-
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 // V4ToV5Migrator handles the migration of cloudflare_tiered_cache from v4 to v5.
@@ -168,53 +165,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-func (m *V4ToV5Migrator) createMovedBlock(fromName, toName, fromType, toType string) *hclwrite.Block {
-	from := fmt.Sprintf("%s.%s", fromType, fromName)
-	to := fmt.Sprintf("%s.%s", toType, toName)
-	return tfhcl.CreateMovedBlock(from, to)
-}
-
 // TransformState handles state file transformations.
+// State transformation is handled by the provider's StateUpgraders (UpgradeState)
+// The provider transforms cache_type to value when it sees schema_version=0
+// This function is a no-op for tiered_cache migration
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
-
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		return result, nil
-	}
-	attrs := stateJSON.Get("attributes")
-
-	// Check if we have cache_type attribute
-	cacheTypeField := attrs.Get("cache_type")
-	if !cacheTypeField.Exists() {
-		// Already migrated or no cache_type, just set schema version
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	cacheTypeValue := cacheTypeField.String()
-
-	// Transform based on cache_type value
-	// All resources stay as cloudflare_tiered_cache in the state
-	// The argo_tiered_caching resources in the config are new and will be created on next apply
-	if cacheTypeValue == "generic" {
-		// For generic, the tiered_cache resource gets value="off"
-		result, _ = sjson.Delete(result, "attributes.cache_type")
-		result, _ = sjson.Set(result, "attributes.value", "off")
-	} else if cacheTypeValue == "smart" {
-		// For smart, the tiered_cache resource gets value="on"
-		result, _ = sjson.Delete(result, "attributes.cache_type")
-		result, _ = sjson.Set(result, "attributes.value", "on")
-	} else if cacheTypeValue == "off" {
-		// For off, the tiered_cache resource gets value="off"
-		result, _ = sjson.Delete(result, "attributes.cache_type")
-		result, _ = sjson.Set(result, "attributes.value", "off")
-	} else {
-		// Unknown value (variables, expressions), just rename the field
-		result = state.RenameField(result, "attributes", attrs, "cache_type", "value")
-	}
-
-	// Set schema version to 0
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+	return stateJSON.String(), nil
 }

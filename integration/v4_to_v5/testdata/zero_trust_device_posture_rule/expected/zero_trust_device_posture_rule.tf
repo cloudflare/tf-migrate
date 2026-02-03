@@ -29,6 +29,51 @@ locals {
 # Pattern Group 2: for_each with Maps (5 resources)
 # ============================================================================
 
+
+# ============================================================================
+# Pattern Group 3: for_each with Sets (4 items)
+# ============================================================================
+
+
+# ============================================================================
+# Pattern Group 4: count-based Resources (3 instances)
+# ============================================================================
+
+
+# ============================================================================
+# Pattern Group 5: Conditional Creation
+# ============================================================================
+
+
+
+# ============================================================================
+# Pattern Group 7: Terraform Functions
+# ============================================================================
+
+
+
+# ============================================================================
+# Pattern Group 8: Lifecycle Meta-Arguments
+# ============================================================================
+
+
+
+# ============================================================================
+# Pattern Group 9: Edge Cases
+# ============================================================================
+
+
+
+
+# ============================================================================
+# Original Test Cases (Comprehensive Coverage)
+# ============================================================================
+
+
+
+
+
+
 resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
   for_each = {
     "prod" = {
@@ -90,9 +135,10 @@ resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
   ]
 }
 
-# ============================================================================
-# Pattern Group 3: for_each with Sets (4 items)
-# ============================================================================
+moved {
+  from = cloudflare_device_posture_rule.map_example
+  to   = cloudflare_zero_trust_device_posture_rule.map_example
+}
 
 resource "cloudflare_zero_trust_device_posture_rule" "set_example" {
   for_each = toset([
@@ -116,9 +162,10 @@ resource "cloudflare_zero_trust_device_posture_rule" "set_example" {
   }]
 }
 
-# ============================================================================
-# Pattern Group 4: count-based Resources (3 instances)
-# ============================================================================
+moved {
+  from = cloudflare_device_posture_rule.set_example
+  to   = cloudflare_zero_trust_device_posture_rule.set_example
+}
 
 resource "cloudflare_zero_trust_device_posture_rule" "counted" {
   count = 3
@@ -139,9 +186,10 @@ resource "cloudflare_zero_trust_device_posture_rule" "counted" {
   }]
 }
 
-# ============================================================================
-# Pattern Group 5: Conditional Creation
-# ============================================================================
+moved {
+  from = cloudflare_device_posture_rule.counted
+  to   = cloudflare_zero_trust_device_posture_rule.counted
+}
 
 resource "cloudflare_zero_trust_device_posture_rule" "conditional_enabled" {
   count = local.enable_firewall_rules ? 1 : 0
@@ -159,6 +207,11 @@ resource "cloudflare_zero_trust_device_posture_rule" "conditional_enabled" {
   match = [{
     platform = "windows"
   }]
+}
+
+moved {
+  from = cloudflare_device_posture_rule.conditional_enabled
+  to   = cloudflare_zero_trust_device_posture_rule.conditional_enabled
 }
 
 resource "cloudflare_zero_trust_device_posture_rule" "conditional_disabled" {
@@ -180,9 +233,10 @@ resource "cloudflare_zero_trust_device_posture_rule" "conditional_disabled" {
   }]
 }
 
-# ============================================================================
-# Pattern Group 7: Terraform Functions
-# ============================================================================
+moved {
+  from = cloudflare_device_posture_rule.conditional_disabled
+  to   = cloudflare_zero_trust_device_posture_rule.conditional_disabled
+}
 
 resource "cloudflare_zero_trust_device_posture_rule" "with_functions" {
   account_id = local.common_account
@@ -204,6 +258,11 @@ resource "cloudflare_zero_trust_device_posture_rule" "with_functions" {
   }]
 }
 
+moved {
+  from = cloudflare_device_posture_rule.with_functions
+  to   = cloudflare_zero_trust_device_posture_rule.with_functions
+}
+
 resource "cloudflare_zero_trust_device_posture_rule" "with_interpolation" {
   account_id  = var.cloudflare_account_id
   name        = "${local.name_prefix}-rule-for-account-${var.cloudflare_account_id}"
@@ -220,9 +279,10 @@ resource "cloudflare_zero_trust_device_posture_rule" "with_interpolation" {
   }]
 }
 
-# ============================================================================
-# Pattern Group 8: Lifecycle Meta-Arguments
-# ============================================================================
+moved {
+  from = cloudflare_device_posture_rule.with_interpolation
+  to   = cloudflare_zero_trust_device_posture_rule.with_interpolation
+}
 
 resource "cloudflare_zero_trust_device_posture_rule" "with_lifecycle" {
   account_id  = var.cloudflare_account_id
@@ -246,6 +306,11 @@ resource "cloudflare_zero_trust_device_posture_rule" "with_lifecycle" {
   }]
 }
 
+moved {
+  from = cloudflare_device_posture_rule.with_lifecycle
+  to   = cloudflare_zero_trust_device_posture_rule.with_lifecycle
+}
+
 resource "cloudflare_zero_trust_device_posture_rule" "with_prevent_destroy" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-prevent-destroy-rule"
@@ -265,9 +330,10 @@ resource "cloudflare_zero_trust_device_posture_rule" "with_prevent_destroy" {
   }]
 }
 
-# ============================================================================
-# Pattern Group 9: Edge Cases
-# ============================================================================
+moved {
+  from = cloudflare_device_posture_rule.with_prevent_destroy
+  to   = cloudflare_zero_trust_device_posture_rule.with_prevent_destroy
+}
 
 # Minimal resource (only required fields)
 resource "cloudflare_zero_trust_device_posture_rule" "minimal" {
@@ -283,6 +349,11 @@ resource "cloudflare_zero_trust_device_posture_rule" "minimal" {
   match = [{
     platform = "linux"
   }]
+}
+
+moved {
+  from = cloudflare_device_posture_rule.minimal
+  to   = cloudflare_zero_trust_device_posture_rule.minimal
 }
 
 # Maximal resource (all fields populated)
@@ -307,6 +378,11 @@ resource "cloudflare_zero_trust_device_posture_rule" "maximal" {
   }]
 }
 
+moved {
+  from = cloudflare_device_posture_rule.maximal
+  to   = cloudflare_zero_trust_device_posture_rule.maximal
+}
+
 # Resource with empty/null optional fields
 resource "cloudflare_zero_trust_device_posture_rule" "with_nulls" {
   account_id  = var.cloudflare_account_id
@@ -325,9 +401,10 @@ resource "cloudflare_zero_trust_device_posture_rule" "with_nulls" {
   }]
 }
 
-# ============================================================================
-# Original Test Cases (Comprehensive Coverage)
-# ============================================================================
+moved {
+  from = cloudflare_device_posture_rule.with_nulls
+  to   = cloudflare_zero_trust_device_posture_rule.with_nulls
+}
 
 # Test case 1: Basic os_version rule with input and match
 resource "cloudflare_zero_trust_device_posture_rule" "basic" {
@@ -351,6 +428,11 @@ resource "cloudflare_zero_trust_device_posture_rule" "basic" {
   }]
 }
 
+moved {
+  from = cloudflare_device_posture_rule.basic
+  to   = cloudflare_zero_trust_device_posture_rule.basic
+}
+
 # Test case 2: Firewall rule with enabled input
 resource "cloudflare_zero_trust_device_posture_rule" "firewall" {
   account_id = var.cloudflare_account_id
@@ -365,6 +447,11 @@ resource "cloudflare_zero_trust_device_posture_rule" "firewall" {
   match = [{
     platform = "windows"
   }]
+}
+
+moved {
+  from = cloudflare_device_posture_rule.firewall
+  to   = cloudflare_zero_trust_device_posture_rule.firewall
 }
 
 # Test case 3: Disk encryption with check_disks (Set->List conversion)
@@ -382,6 +469,11 @@ resource "cloudflare_zero_trust_device_posture_rule" "disk_encryption" {
   match = [{
     platform = "windows"
   }]
+}
+
+moved {
+  from = cloudflare_device_posture_rule.disk_encryption
+  to   = cloudflare_zero_trust_device_posture_rule.disk_encryption
 }
 
 # Test case 4: Multiple platforms (multiple match blocks)
@@ -406,6 +498,11 @@ resource "cloudflare_zero_trust_device_posture_rule" "multi_platform" {
   }]
 }
 
+moved {
+  from = cloudflare_device_posture_rule.multi_platform
+  to   = cloudflare_zero_trust_device_posture_rule.multi_platform
+}
+
 # Test case 5: Application rule with path and running (removed attribute)
 resource "cloudflare_zero_trust_device_posture_rule" "application" {
   account_id = var.cloudflare_account_id
@@ -421,4 +518,9 @@ resource "cloudflare_zero_trust_device_posture_rule" "application" {
   match = [{
     platform = "linux"
   }]
+}
+
+moved {
+  from = cloudflare_device_posture_rule.application
+  to   = cloudflare_zero_trust_device_posture_rule.application
 }

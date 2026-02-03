@@ -4,7 +4,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
-	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -46,6 +45,13 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	// CRITICAL: Capture resource name and original type BEFORE any modifications
+	// This is required for correct moved block generation
+	resourceName := tfhcl.GetResourceName(block)
+	originalType := block.Labels()[0]
+	needsMovedBlock := originalType == "cloudflare_device_posture_rule"
+
+	// Rename resource type
 	tfhcl.RenameResourceType(block, "cloudflare_device_posture_rule", "cloudflare_zero_trust_device_posture_rule")
 
 	body := block.Body()
@@ -63,26 +69,21 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.MergeAttributeAndBlocksToObjectArray(body, "", "match", "match", "platform", []string{}, true)
 	}
 
-	// IF there is no name attribute, check in state for a name value and if so, use it
-	if !tfhcl.HasAttribute(body, "name") {
-		if ctx.StateJSON != "" {
-			labels := block.Labels()
-			resourceName := labels[1]
-			gjson.Parse(ctx.StateJSON).Get("resources").ForEach(func(key, resource gjson.Result) bool {
-				if m.CanHandle(resource.Get("type").String()) && resource.Get("name").String() == resourceName {
-					if resource.Get("instances.0.attributes.name").Exists() {
-						body.SetAttributeValue("name", cty.StringVal(resource.Get("instances.0.attributes.name").String()))
-					}
-					return false
-				}
-				return true
-			})
-		}
+	// Build result blocks
+	resultBlocks := []*hclwrite.Block{block}
+
+	// Generate moved block for state migration (only when renaming from old type)
+	if needsMovedBlock {
+		oldType, newType := m.GetResourceRename()
+		from := oldType + "." + resourceName
+		to := newType + "." + resourceName
+		movedBlock := tfhcl.CreateMovedBlock(from, to)
+		resultBlocks = append(resultBlocks, movedBlock)
 	}
 
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         resultBlocks,
+		RemoveOriginal: true,
 	}, nil
 }
 
