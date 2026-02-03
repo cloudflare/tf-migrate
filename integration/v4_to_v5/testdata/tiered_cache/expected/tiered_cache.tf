@@ -55,12 +55,7 @@ resource "cloudflare_argo_tiered_caching" "generic" {
 
 resource "cloudflare_tiered_cache" "variable" {
   zone_id = var.cloudflare_zone_id
-  value   = "off"
-}
-
-resource "cloudflare_argo_tiered_caching" "variable" {
-  zone_id = var.cloudflare_zone_id
-  value   = "off"
+  value   = var.cache_type
 }
 
 resource "cloudflare_tiered_cache" "lifecycle" {
