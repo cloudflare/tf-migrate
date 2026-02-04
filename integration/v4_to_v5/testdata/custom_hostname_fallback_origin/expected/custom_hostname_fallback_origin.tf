@@ -37,7 +37,7 @@ resource "cloudflare_custom_hostname_fallback_origin" "with_variable" {
 # Test 3: Resource with explicit string values (no interpolation)
 resource "cloudflare_custom_hostname_fallback_origin" "explicit" {
   zone_id = "0123456789abcdef0123456789abcdef"
-  origin  = "cftftest-explicit.cf-tf-test.com"
+  origin  = "${local.name_prefix}-explicit.cf-tf-test.com"
 }
 
 # Test 4: Using for_each with a set
@@ -109,7 +109,7 @@ resource "cloudflare_custom_hostname_fallback_origin" "with_depends_on" {
 # Test 12: Minimal configuration (just required fields)
 resource "cloudflare_custom_hostname_fallback_origin" "minimal" {
   zone_id = "fedcba9876543210fedcba9876543210"
-  origin  = "cftftest-minimal.cf-tf-test.com"
+  origin  = "${local.name_prefix}-minimal.cf-tf-test.com"
 }
 
 # Test 13: Using terraform expressions
@@ -127,12 +127,12 @@ resource "cloudflare_custom_hostname_fallback_origin" "complex_origin" {
 # Test 15: Multiple zones scenario
 resource "cloudflare_custom_hostname_fallback_origin" "zone_1" {
   zone_id = "zone1zone1zone1zone1zone1zone1zo"
-  origin  = "cftftest-zone1.cf-tf-test.com"
+  origin  = "${local.name_prefix}-zone1.cf-tf-test.com"
 }
 
 resource "cloudflare_custom_hostname_fallback_origin" "zone_2" {
   zone_id = "zone2zone2zone2zone2zone2zone2zo"
-  origin  = "cftftest-zone2.cf-tf-test.com"
+  origin  = "${local.name_prefix}-zone2.cf-tf-test.com"
 }
 
 # Total: 20+ resource instances covering:

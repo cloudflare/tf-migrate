@@ -53,11 +53,13 @@ resource "cloudflare_custom_hostname_fallback_origin" "example2" {
 	})
 
 	t.Run("StateTransformation", func(t *testing.T) {
+		// NOTE: TransformState is a NO-OP since the provider handles all state migration
+		// via StateUpgraders. These tests verify that state passes through unchanged.
 		tests := []testhelpers.StateTestCase{
 			{
-				Name: "basic state - only schema_version changes",
+				Name: "basic state - passes through unchanged",
 				Input: `{
-  "schema_version": 0,
+  "schema_version": 500,
   "attributes": {
     "zone_id": "d41d8cd98f00b204e9800998ecf8427e",
     "origin": "fallback.example.com",
@@ -65,7 +67,7 @@ resource "cloudflare_custom_hostname_fallback_origin" "example2" {
   }
 }`,
 				Expected: `{
-  "schema_version": 0,
+  "schema_version": 500,
   "attributes": {
     "zone_id": "d41d8cd98f00b204e9800998ecf8427e",
     "origin": "fallback.example.com",
@@ -74,9 +76,9 @@ resource "cloudflare_custom_hostname_fallback_origin" "example2" {
 }`,
 			},
 			{
-				Name: "state with different status",
+				Name: "state with different status - passes through unchanged",
 				Input: `{
-  "schema_version": 0,
+  "schema_version": 500,
   "attributes": {
     "zone_id": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
     "origin": "backup.example.com",
@@ -84,7 +86,7 @@ resource "cloudflare_custom_hostname_fallback_origin" "example2" {
   }
 }`,
 				Expected: `{
-  "schema_version": 0,
+  "schema_version": 500,
   "attributes": {
     "zone_id": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
     "origin": "backup.example.com",
@@ -93,16 +95,16 @@ resource "cloudflare_custom_hostname_fallback_origin" "example2" {
 }`,
 			},
 			{
-				Name: "minimal state - only required fields",
+				Name: "minimal state - passes through unchanged",
 				Input: `{
-  "schema_version": 0,
+  "schema_version": 500,
   "attributes": {
     "zone_id": "d41d8cd98f00b204e9800998ecf8427e",
     "origin": "fallback.example.com"
   }
 }`,
 				Expected: `{
-  "schema_version": 0,
+  "schema_version": 500,
   "attributes": {
     "zone_id": "d41d8cd98f00b204e9800998ecf8427e",
     "origin": "fallback.example.com"
