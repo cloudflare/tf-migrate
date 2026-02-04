@@ -30,6 +30,26 @@ locals {
 # Application-specific policies (with application_id in v4) cannot be migrated
 # as they use different API endpoints and are fundamentally different resources.
 
+
+
+
+
+
+
+
+
+
+
+# Pattern Group 8: Edge Cases
+
+
+
+
+
+
+
+
+
 # Basic test cases
 resource "cloudflare_zero_trust_access_policy" "example" {
   account_id = var.cloudflare_account_id
@@ -42,6 +62,11 @@ resource "cloudflare_zero_trust_access_policy" "example" {
     approvals_needed = 1
     email_addresses  = ["approver@example.com"]
   }]
+}
+
+moved {
+  from = cloudflare_access_policy.example
+  to   = cloudflare_zero_trust_access_policy.example
 }
 
 resource "cloudflare_zero_trust_access_policy" "complex" {
@@ -57,6 +82,11 @@ resource "cloudflare_zero_trust_access_policy" "complex" {
   { ip = { ip = "10.0.0.0/8" } }]
 
   require = [{ email = { email = "required@example.com" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.complex
+  to   = cloudflare_zero_trust_access_policy.complex
 }
 
 # Pattern Group 2: for_each with Maps (3-5 resources)
@@ -83,6 +113,11 @@ resource "cloudflare_zero_trust_access_policy" "map_example" {
   include = [{ email = { email = "@example.com" } }]
 }
 
+moved {
+  from = cloudflare_access_policy.map_example
+  to   = cloudflare_zero_trust_access_policy.map_example
+}
+
 # Pattern Group 3: for_each with Sets (3-5 items)
 resource "cloudflare_zero_trust_access_policy" "set_example" {
   for_each = toset(["alpha", "beta", "gamma", "delta", "epsilon"])
@@ -92,6 +127,11 @@ resource "cloudflare_zero_trust_access_policy" "set_example" {
   decision   = "allow"
 
   include = [{ email = { email = "@example.com" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.set_example
+  to   = cloudflare_zero_trust_access_policy.set_example
 }
 
 # Pattern Group 4: count-based Resources (at least 3)
@@ -105,6 +145,11 @@ resource "cloudflare_zero_trust_access_policy" "counted" {
   include = [{ ip = { ip = "10.0.${count.index}.0/24" } }]
 }
 
+moved {
+  from = cloudflare_access_policy.counted
+  to   = cloudflare_zero_trust_access_policy.counted
+}
+
 # Pattern Group 5: Conditional Creation
 resource "cloudflare_zero_trust_access_policy" "conditional_enabled" {
   count = local.enable_test ? 1 : 0
@@ -114,6 +159,11 @@ resource "cloudflare_zero_trust_access_policy" "conditional_enabled" {
   decision   = "allow"
 
   include = [{ everyone = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.conditional_enabled
+  to   = cloudflare_zero_trust_access_policy.conditional_enabled
 }
 
 resource "cloudflare_zero_trust_access_policy" "conditional_disabled" {
@@ -126,6 +176,11 @@ resource "cloudflare_zero_trust_access_policy" "conditional_disabled" {
   include = [{ everyone = {} }]
 }
 
+moved {
+  from = cloudflare_access_policy.conditional_disabled
+  to   = cloudflare_zero_trust_access_policy.conditional_disabled
+}
+
 # Pattern Group 6: Terraform Functions
 resource "cloudflare_zero_trust_access_policy" "with_functions" {
   account_id = var.cloudflare_account_id
@@ -134,6 +189,11 @@ resource "cloudflare_zero_trust_access_policy" "with_functions" {
 
   include = [{ email = { email = "function1@example.com" } },
   { email = { email = "function2@example.com" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.with_functions
+  to   = cloudflare_zero_trust_access_policy.with_functions
 }
 
 # Pattern Group 7: Lifecycle Meta-Arguments
@@ -150,6 +210,11 @@ resource "cloudflare_zero_trust_access_policy" "with_lifecycle" {
   include = [{ everyone = {} }]
 }
 
+moved {
+  from = cloudflare_access_policy.with_lifecycle
+  to   = cloudflare_zero_trust_access_policy.with_lifecycle
+}
+
 resource "cloudflare_zero_trust_access_policy" "with_prevent_destroy" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-prevent-destroy"
@@ -162,7 +227,10 @@ resource "cloudflare_zero_trust_access_policy" "with_prevent_destroy" {
   include = [{ email = { email = "protected@example.com" } }]
 }
 
-# Pattern Group 8: Edge Cases
+moved {
+  from = cloudflare_access_policy.with_prevent_destroy
+  to   = cloudflare_zero_trust_access_policy.with_prevent_destroy
+}
 
 # Minimal resource (only required fields)
 resource "cloudflare_zero_trust_access_policy" "minimal" {
@@ -171,6 +239,11 @@ resource "cloudflare_zero_trust_access_policy" "minimal" {
   decision   = "allow"
 
   include = [{ everyone = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.minimal
+  to   = cloudflare_zero_trust_access_policy.minimal
 }
 
 # Maximal resource (all optional fields populated)
@@ -197,6 +270,11 @@ resource "cloudflare_zero_trust_access_policy" "maximal" {
   }]
 }
 
+moved {
+  from = cloudflare_access_policy.maximal
+  to   = cloudflare_zero_trust_access_policy.maximal
+}
+
 # Policy with common_name
 resource "cloudflare_zero_trust_access_policy" "with_common_name" {
   account_id = var.cloudflare_account_id
@@ -206,6 +284,11 @@ resource "cloudflare_zero_trust_access_policy" "with_common_name" {
   include = [{ common_name = { common_name = "device1.example.com" } }]
 }
 
+moved {
+  from = cloudflare_access_policy.with_common_name
+  to   = cloudflare_zero_trust_access_policy.with_common_name
+}
+
 # Policy with auth_method
 resource "cloudflare_zero_trust_access_policy" "with_auth_method" {
   account_id = var.cloudflare_account_id
@@ -213,6 +296,11 @@ resource "cloudflare_zero_trust_access_policy" "with_auth_method" {
   decision   = "allow"
 
   include = [{ auth_method = { auth_method = "swk" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.with_auth_method
+  to   = cloudflare_zero_trust_access_policy.with_auth_method
 }
 
 # Policy with login_method
@@ -225,6 +313,11 @@ resource "cloudflare_zero_trust_access_policy" "with_login_method" {
   { login_method = { id = "warp" } }]
 }
 
+moved {
+  from = cloudflare_access_policy.with_login_method
+  to   = cloudflare_zero_trust_access_policy.with_login_method
+}
+
 # Policy with any_valid_service_token
 resource "cloudflare_zero_trust_access_policy" "with_service_token" {
   account_id = var.cloudflare_account_id
@@ -232,6 +325,11 @@ resource "cloudflare_zero_trust_access_policy" "with_service_token" {
   decision   = "allow"
 
   include = [{ any_valid_service_token = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.with_service_token
+  to   = cloudflare_zero_trust_access_policy.with_service_token
 }
 
 # Deny policy
@@ -243,6 +341,11 @@ resource "cloudflare_zero_trust_access_policy" "deny_policy" {
   include = [{ ip = { ip = "198.51.100.0/24" } }]
 }
 
+moved {
+  from = cloudflare_access_policy.deny_policy
+  to   = cloudflare_zero_trust_access_policy.deny_policy
+}
+
 # Bypass policy
 resource "cloudflare_zero_trust_access_policy" "bypass_policy" {
   account_id = var.cloudflare_account_id
@@ -250,4 +353,9 @@ resource "cloudflare_zero_trust_access_policy" "bypass_policy" {
   decision   = "bypass"
 
   include = [{ ip = { ip = "192.0.2.0/24" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.bypass_policy
+  to   = cloudflare_zero_trust_access_policy.bypass_policy
 }

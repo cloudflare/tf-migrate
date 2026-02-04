@@ -2,20 +2,17 @@ package zero_trust_access_policy
 
 import (
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of Zero Trust Access Policy resources from v4 to v5
@@ -49,9 +46,29 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 	return "cloudflare_access_policy", "cloudflare_zero_trust_access_policy"
 }
 
+// TransformState is a no-op for this migrator - state transformation is handled by moved blocks
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
+	return stateJSON.String(), nil
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	// Get the resource name before renaming (for moved block generation)
+	resourceName := tfhcl.GetResourceName(block)
+	resourceType := tfhcl.GetResourceType(block)
+
+	// Track if we need to generate a moved block
+	var movedBlock *hclwrite.Block
+
 	// 1. Rename resource type: cloudflare_access_policy → cloudflare_zero_trust_access_policy
-	tfhcl.RenameResourceType(block, "cloudflare_access_policy", "cloudflare_zero_trust_access_policy")
+	if resourceType == "cloudflare_access_policy" {
+		tfhcl.RenameResourceType(block, "cloudflare_access_policy", "cloudflare_zero_trust_access_policy")
+
+		// Generate moved block for state migration
+		oldType, newType := m.GetResourceRename()
+		from := oldType + "." + resourceName
+		to := newType + "." + resourceName
+		movedBlock = tfhcl.CreateMovedBlock(from, to)
+	}
 
 	body := block.Body()
 
@@ -87,9 +104,15 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Only remove exclude and require, keep include even if empty
 	m.removeEmptyConditionArrays(body)
 
+	// Build result blocks
+	blocks := []*hclwrite.Block{block}
+	if movedBlock != nil {
+		blocks = append(blocks, movedBlock)
+	}
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         blocks,
+		RemoveOriginal: movedBlock != nil, // Remove original if we generated a moved block
 	}, nil
 }
 
@@ -727,442 +750,8 @@ func (m *V4ToV5Migrator) buildExprTokens(expr hclsyntax.Expression) hclwrite.Tok
 	return tokens
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// This function receives a single instance and needs to return the transformed instance JSON
-	result := stateJSON.String()
 
-	// Get attributes
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Exists() {
-		// Even for invalid instances, set schema_version
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
 
-	// 1. Field renames: approval_group → approval_groups
-	if attrs.Get("approval_group").Exists() {
-		approvalGroupValue := attrs.Get("approval_group").Value()
-		result, _ = sjson.Set(result, "attributes.approval_groups", approvalGroupValue)
-		result, _ = sjson.Delete(result, "attributes.approval_group")
-	}
-
-	// 2. Remove deprecated/invalid fields
-	result, _ = sjson.Delete(result, "attributes.application_id")
-	result, _ = sjson.Delete(result, "attributes.precedence")
-	result, _ = sjson.Delete(result, "attributes.zone_id")
-	result, _ = sjson.Delete(result, "attributes.session_duration")
-
-	// 3. Type conversions in approval_groups
-	// Convert approvals_needed from int to float64
-	if approvalGroups := attrs.Get("approval_groups"); approvalGroups.Exists() && approvalGroups.IsArray() {
-		var transformedGroups []map[string]interface{}
-		approvalGroups.ForEach(func(k, v gjson.Result) bool {
-			group := make(map[string]interface{})
-
-			// Convert approvals_needed to float64
-			if approvalsNeeded := v.Get("approvals_needed"); approvalsNeeded.Exists() {
-				group["approvals_needed"] = state.ConvertToFloat64(approvalsNeeded)
-			}
-
-			// Copy other fields
-			if emailAddresses := v.Get("email_addresses"); emailAddresses.Exists() {
-				group["email_addresses"] = emailAddresses.Value()
-			}
-			if emailListUUID := v.Get("email_list_uuid"); emailListUUID.Exists() {
-				group["email_list_uuid"] = emailListUUID.Value()
-			}
-
-			transformedGroups = append(transformedGroups, group)
-			return true
-		})
-
-		if len(transformedGroups) > 0 {
-			result, _ = sjson.Set(result, "attributes.approval_groups", transformedGroups)
-		}
-	}
-
-	// 4. Transform connection_rules (MaxItems:1 array → object)
-	if connRules := attrs.Get("connection_rules"); connRules.Exists() && connRules.IsArray() {
-		arr := connRules.Array()
-		if len(arr) > 0 {
-			connRulesObj := arr[0]
-
-			// Transform nested ssh from array to object
-			transformedConnRules := make(map[string]interface{})
-
-			if ssh := connRulesObj.Get("ssh"); ssh.Exists() && ssh.IsArray() {
-				sshArr := ssh.Array()
-				if len(sshArr) > 0 {
-					sshObj := sshArr[0]
-
-					// Build ssh object
-					transformedSSH := make(map[string]interface{})
-					if usernames := sshObj.Get("usernames"); usernames.Exists() {
-						transformedSSH["usernames"] = usernames.Value()
-					}
-					if allowEmailAlias := sshObj.Get("allow_email_alias"); allowEmailAlias.Exists() {
-						transformedSSH["allow_email_alias"] = allowEmailAlias.Value()
-					}
-
-					transformedConnRules["ssh"] = transformedSSH
-				}
-			}
-
-			// Set the transformed connection_rules as an object
-			result, _ = sjson.Set(result, "attributes.connection_rules", transformedConnRules)
-		} else {
-			// Empty connection_rules array - remove it
-			result, _ = sjson.Delete(result, "attributes.connection_rules")
-		}
-	}
-
-	// 5. Transform include/exclude/require conditions in state
-	conditionFields := []string{"include", "exclude", "require"}
-	for _, field := range conditionFields {
-		if conditionValue := attrs.Get(field); conditionValue.Exists() && conditionValue.IsArray() {
-			transformedConditions := m.transformStateConditions(conditionValue)
-
-			// Clean each condition element to remove null nested object fields
-			// This prevents drift from empty objects like "email_domain = {}"
-			cleanedConditions := m.cleanConditionElements(transformedConditions)
-
-			// Always set the transformed conditions, even if empty (e.g., when all items were "false" booleans)
-			// Special handling for empty arrays to ensure they serialize as [] not null
-			if len(cleanedConditions) == 0 {
-				result, _ = sjson.SetRaw(result, "attributes."+field, "[]")
-			} else {
-				result, _ = sjson.Set(result, "attributes."+field, cleanedConditions)
-			}
-		}
-	}
-
-	// 6. Clean up zero-value fields to prevent drift
-	// Remove empty arrays that the v5 provider normalizes to null
-	// Keep include even if empty, but remove empty exclude and require
-	emptyArrayFields := []string{
-		"attributes.approval_groups",
-		"attributes.exclude",
-		"attributes.require",
-	}
-	for _, fieldPath := range emptyArrayFields {
-		if value := gjson.Get(result, fieldPath); value.Exists() && value.IsArray() && len(value.Array()) == 0 {
-			result, _ = sjson.Delete(result, fieldPath)
-		}
-	}
-
-	// Remove false boolean fields that the v5 provider normalizes to null
-	falseBoolFields := []string{
-		"attributes.approval_required",
-		"attributes.isolation_required",
-		"attributes.purpose_justification_required",
-	}
-	for _, fieldPath := range falseBoolFields {
-		if value := gjson.Get(result, fieldPath); value.Exists() && value.IsBool() && !value.Bool() {
-			result, _ = sjson.Delete(result, fieldPath)
-		}
-	}
-
-	// 7. Final cleanup: Remove null nested object fields from condition elements in the JSON
-	// This must be done AFTER sjson.Set has written the arrays, because Terraform
-	// re-adds null fields when reading the state
-	validEmptyObjects := map[string]bool{
-		"everyone":                true,
-		"certificate":             true,
-		"any_valid_service_token": true,
-	}
-	conditionFields = []string{"include", "exclude", "require"}
-	for _, field := range conditionFields {
-		fieldPath := "attributes." + field
-		if condArray := gjson.Get(result, fieldPath); condArray.Exists() && condArray.IsArray() {
-			var cleanedArray []map[string]interface{}
-			condArray.ForEach(func(_, elem gjson.Result) bool {
-				cleanedElem := make(map[string]interface{})
-				elem.ForEach(func(key, value gjson.Result) bool {
-					keyStr := key.String()
-					// Only include non-null values
-					if value.Exists() && value.Type != gjson.Null {
-						// Keep empty objects for boolean conditions
-						if value.IsObject() && len(value.Map()) == 0 {
-							if validEmptyObjects[keyStr] {
-								cleanedElem[keyStr] = value.Value()
-							}
-							// Skip other empty objects
-							return true
-						}
-						cleanedElem[keyStr] = value.Value()
-					}
-					return true
-				})
-				if len(cleanedElem) > 0 {
-					cleanedArray = append(cleanedArray, cleanedElem)
-				}
-				return true
-			})
-			// Always set the array, even if empty (to preserve empty arrays like [])
-			if len(cleanedArray) == 0 {
-				// Use SetRaw to ensure empty array is serialized as [] not null
-				result, _ = sjson.SetRaw(result, fieldPath, "[]")
-			} else {
-				result, _ = sjson.Set(result, fieldPath, cleanedArray)
-			}
-		}
-	}
-
-	// Always set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
-}
-
-// transformStateConditions transforms condition arrays in state
-// Handles boolean → object conversion and array expansion
-func (m *V4ToV5Migrator) transformStateConditions(conditionsArray gjson.Result) []map[string]interface{} {
-	var result []map[string]interface{}
-
-	conditionsArray.ForEach(func(_, conditionItem gjson.Result) bool {
-		// Each condition item is an object with keys like "everyone", "email", "ip", etc.
-		conditionMap := conditionItem.Map()
-
-		// Sort keys alphabetically for deterministic output
-		// This matches the v5 provider's normalization behavior
-		keys := make([]string, 0, len(conditionMap))
-		for key := range conditionMap {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-
-		for _, key := range keys {
-			value := conditionMap[key]
-
-			// Skip null values and empty objects entirely
-			if !value.Exists() || value.Type == gjson.Null {
-				continue
-			}
-			// Also skip empty objects {}
-			if value.IsObject() {
-				valueMap := value.Map()
-				if len(valueMap) == 0 {
-					continue
-				}
-			}
-			// Skip empty arrays []
-			if value.IsArray() && len(value.Array()) == 0 {
-				continue
-			}
-
-			// Handle boolean attributes (everyone, certificate, any_valid_service_token)
-			if key == "everyone" || key == "certificate" || key == "any_valid_service_token" {
-				if value.IsBool() {
-					if value.Bool() {
-						// true → {}
-						result = append(result, map[string]interface{}{
-							key: map[string]interface{}{},
-						})
-					}
-					// false → skip (remove)
-					continue
-				} else if value.IsObject() {
-					// Already an object, keep as-is
-					result = append(result, map[string]interface{}{
-						key: value.Value(),
-					})
-					continue
-				}
-			}
-
-			// Handle array fields that need expansion
-			arrayFields := map[string]string{
-				"email":        "email",
-				"ip":           "ip",
-				"email_domain": "domain",
-				"geo":          "country_code",
-				"group":        "id",
-				"login_method": "id",
-			}
-
-			if nestedKey, isArrayField := arrayFields[key]; isArrayField {
-				if value.IsArray() {
-					// Expand array: email = ["a", "b"] → [{email: {email: "a"}}, {email: {email: "b"}}]
-					value.ForEach(func(_, arrayItem gjson.Result) bool {
-						itemValue := arrayItem.Value()
-						// Normalize IP addresses by adding /32 suffix if not present
-						if key == "ip" {
-							if ipStr, ok := itemValue.(string); ok {
-								itemValue = normalizeIP(ipStr)
-							}
-						}
-						result = append(result, map[string]interface{}{
-							key: map[string]interface{}{
-								nestedKey: itemValue,
-							},
-						})
-						return true
-					})
-					continue
-				} else if value.IsObject() {
-					// Check if it's an empty object - skip it
-					valueMap := value.Map()
-					if len(valueMap) == 0 {
-						continue
-					}
-					// Check if already in v5 format (has the nested key)
-					if _, hasNestedKey := valueMap[nestedKey]; hasNestedKey {
-						// Already transformed, keep as-is
-						// But ONLY include this field, not the whole parent object
-						// This prevents multi-field objects from causing drift
-						result = append(result, map[string]interface{}{
-							key: value.Value(),
-						})
-						continue
-					}
-				}
-			}
-
-			// Handle MaxItems:1 fields that were arrays in v4 but are single objects in v5
-			// These fields should convert array → first element object
-			maxItemsOneFields := map[string]bool{
-				"auth_context":        true,
-				"auth_method":         true,
-				"azure_ad":            true,
-				"common_name":         true,
-				"device_posture":      true,
-				"email_list":          true,
-				"external_evaluation": true,
-				"gsuite":              true,
-				"ip_list":             true,
-				"linked_app_token":    true,
-				"oidc":                true,
-				"okta":                true,
-				"saml":                true,
-				"service_token":       true,
-			}
-
-			if maxItemsOneFields[key] {
-				if value.IsArray() {
-					arr := value.Array()
-					if len(arr) > 0 && arr[0].Exists() {
-						// Array → take first element as single object
-						result = append(result, map[string]interface{}{
-							key: arr[0].Value(),
-						})
-					}
-					// Empty array → skip
-					continue
-				} else if value.IsObject() {
-					// Already an object, keep as-is
-					result = append(result, map[string]interface{}{
-						key: value.Value(),
-					})
-					continue
-				}
-			}
-
-			// Handle github_organization special case
-			if key == "github_organization" {
-				if value.IsObject() {
-					org := value.Map()
-					name := org["name"]
-					identityProviderID := org["identity_provider_id"]
-					teams := org["teams"]
-
-					if teams.Exists() && teams.IsArray() {
-						// Expand teams
-						teams.ForEach(func(_, team gjson.Result) bool {
-							newOrg := map[string]interface{}{
-								"github_organization": map[string]interface{}{
-									"name": name.Value(),
-									"team": team.Value(),
-								},
-							}
-							if identityProviderID.Exists() {
-								newOrg["github_organization"].(map[string]interface{})["identity_provider_id"] = identityProviderID.Value()
-							}
-							result = append(result, newOrg)
-							return true
-						})
-					} else {
-						// No teams, keep as-is
-						newOrg := map[string]interface{}{
-							"github_organization": map[string]interface{}{
-								"name": name.Value(),
-							},
-						}
-						if identityProviderID.Exists() {
-							newOrg["github_organization"].(map[string]interface{})["identity_provider_id"] = identityProviderID.Value()
-						}
-						result = append(result, newOrg)
-					}
-					continue
-				}
-			}
-
-			// For all other fields, keep as-is (wrapped in the key)
-			if value.IsObject() {
-				// Skip empty objects
-				valueMap := value.Map()
-				if len(valueMap) > 0 {
-					result = append(result, map[string]interface{}{
-						key: value.Value(),
-					})
-				}
-			} else if value.IsArray() {
-				result = append(result, map[string]interface{}{
-					key: value.Value(),
-				})
-			}
-		}
-
-		return true
-	})
-
-	return result
-}
-
-// cleanConditionElements removes null nested object fields from condition elements
-// This prevents drift from empty objects like "email_domain = {}" in plan outputs
-// Each condition element should only have ONE top-level key with a populated value
-func (m *V4ToV5Migrator) cleanConditionElements(conditions []map[string]interface{}) []map[string]interface{} {
-	cleaned := make([]map[string]interface{}, 0, len(conditions))
-
-	// Boolean conditions that are valid as empty objects in v5
-	validEmptyObjects := map[string]bool{
-		"everyone":                true,
-		"certificate":             true,
-		"any_valid_service_token": true,
-	}
-
-	for _, elem := range conditions {
-		cleanedElem := make(map[string]interface{})
-
-		// Iterate through each key in the condition element
-		for key, value := range elem {
-			// Skip null values
-			if value == nil {
-				continue
-			}
-
-			// Check if this is an empty map
-			if valueMap, ok := value.(map[string]interface{}); ok && len(valueMap) == 0 {
-				// Keep empty objects for boolean conditions (everyone, certificate, etc.)
-				if validEmptyObjects[key] {
-					cleanedElem[key] = value
-				}
-				// Skip other empty objects
-				continue
-			}
-
-			// Keep non-null, non-empty values
-			cleanedElem[key] = value
-		}
-
-		// Only add the element if it has at least one populated field
-		if len(cleanedElem) > 0 {
-			cleaned = append(cleaned, cleanedElem)
-		}
-	}
-
-	return cleaned
-}
 
 // normalizeIP adds /32 suffix to single IP addresses without CIDR notation
 // The Cloudflare API normalizes single IPs to /32 format
