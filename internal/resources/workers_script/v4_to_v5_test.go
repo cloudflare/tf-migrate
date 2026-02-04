@@ -229,7 +229,7 @@ func TestWorkerScriptStateTransform_Bindings(t *testing.T) {
       {
         "type": "queue",
         "name": "MY_QUEUE",
-        "queue_name": "my-queue"
+        "queue": "my-queue"
       }
     ]
   }
@@ -596,9 +596,9 @@ func TestWorkerScriptConfigTransform_Bindings(t *testing.T) {
   script_name = "my-worker"
   bindings = [
     {
-      type       = "queue"
-      name       = "MY_QUEUE"
-      queue_name = "my-queue"
+      type  = "queue"
+      name  = "MY_QUEUE"
+      queue = "my-queue"
     }
   ]
 }`,
