@@ -16,9 +16,36 @@ variable "cloudflare_domain" {
   type        = string
 }
 
+# Crowdstrike variables (not used by pages_domain, but required by e2e framework)
+variable "crowdstrike_client_id" {
+  description = "Crowdstrike client ID (unused)"
+  type        = string
+  default     = ""
+}
+
+variable "crowdstrike_client_secret" {
+  description = "Crowdstrike client secret (unused)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "crowdstrike_api_url" {
+  description = "Crowdstrike API URL (unused)"
+  type        = string
+  default     = ""
+}
+
+variable "crowdstrike_customer_id" {
+  description = "Crowdstrike customer ID (unused)"
+  type        = string
+  default     = ""
+}
+
 # Locals for common values
 locals {
-  name_prefix = "tf-migrate-e2e-test"
+  prefix      = "cftftest"
+  name_prefix = "${local.prefix}-tf-migrate-e2e-test"
 }
 
 # ============================================================================
@@ -27,7 +54,7 @@ locals {
 
 resource "cloudflare_pages_project" "basic" {
   account_id        = var.cloudflare_account_id
-  name              = "${local.name_prefix}-basic"
+  name              = "${local.name_prefix}-pages-domain-basic"
   production_branch = "main"
 }
 
@@ -43,7 +70,7 @@ resource "cloudflare_pages_domain" "basic" {
 
 resource "cloudflare_pages_project" "multi_domain" {
   account_id        = var.cloudflare_account_id
-  name              = "${local.name_prefix}-multi"
+  name              = "${local.name_prefix}-pages-domain-multi"
   production_branch = "main"
 }
 
@@ -65,7 +92,7 @@ resource "cloudflare_pages_domain" "secondary" {
 
 resource "cloudflare_pages_project" "foreach_test" {
   account_id        = var.cloudflare_account_id
-  name              = "${local.name_prefix}-foreach"
+  name              = "${local.name_prefix}-pages-domain-foreach"
   production_branch = "main"
 }
 
@@ -91,7 +118,7 @@ resource "cloudflare_pages_domain" "environments" {
 
 resource "cloudflare_pages_project" "conditional" {
   account_id        = var.cloudflare_account_id
-  name              = "${local.name_prefix}-conditional"
+  name              = "${local.name_prefix}-pages-domain-conditional"
   production_branch = "main"
 }
 
@@ -114,8 +141,8 @@ resource "cloudflare_pages_domain" "conditional" {
 
 locals {
   projects = {
-    app = "${local.name_prefix}-app"
-    api = "${local.name_prefix}-api"
+    app = "${local.name_prefix}-pages-domain-app"
+    api = "${local.name_prefix}-pages-domain-api"
   }
 }
 
@@ -134,11 +161,11 @@ resource "cloudflare_pages_project" "api" {
 resource "cloudflare_pages_domain" "app_domain" {
   account_id   = var.cloudflare_account_id
   project_name = cloudflare_pages_project.app.name
-  domain       = "app.${var.cloudflare_domain}"
+  domain       = "${local.prefix}-app.${var.cloudflare_domain}"
 }
 
 resource "cloudflare_pages_domain" "api_domain" {
   account_id   = var.cloudflare_account_id
   project_name = cloudflare_pages_project.api.name
-  domain       = "api.${var.cloudflare_domain}"
+  domain       = "${local.prefix}-api.${var.cloudflare_domain}"
 }

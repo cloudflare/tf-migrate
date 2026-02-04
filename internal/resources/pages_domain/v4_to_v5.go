@@ -4,10 +4,8 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 type V4ToV5Migrator struct {
@@ -54,19 +52,16 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is handled by the provider's StateUpgraders (UpgradeState)
+	// The provider's migration logic (in internal/services/pages_domain/migration/v500/) handles:
+	//   - Field rename: domain → name
+	//   - Schema version: 0 → 500
+	// This function is a no-op for pages_domain migration
+	return stateJSON.String(), nil
+}
 
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		return result, nil
-	}
-
-	attrs := stateJSON.Get("attributes")
-
-	// Rename domain → name in state
-	result = state.RenameField(result, "attributes", attrs, "domain", "name")
-
-	// Set schema version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+// via StateUpgraders rather than tf-migrate's TransformState
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
