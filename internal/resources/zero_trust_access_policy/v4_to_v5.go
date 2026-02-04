@@ -50,8 +50,23 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	// Get the resource name before renaming (for moved block generation)
+	resourceName := tfhcl.GetResourceName(block)
+	resourceType := tfhcl.GetResourceType(block)
+
+	// Track if we need to generate a moved block
+	var movedBlock *hclwrite.Block
+
 	// 1. Rename resource type: cloudflare_access_policy → cloudflare_zero_trust_access_policy
-	tfhcl.RenameResourceType(block, "cloudflare_access_policy", "cloudflare_zero_trust_access_policy")
+	if resourceType == "cloudflare_access_policy" {
+		tfhcl.RenameResourceType(block, "cloudflare_access_policy", "cloudflare_zero_trust_access_policy")
+
+		// Generate moved block for state migration
+		oldType, newType := m.GetResourceRename()
+		from := oldType + "." + resourceName
+		to := newType + "." + resourceName
+		movedBlock = tfhcl.CreateMovedBlock(from, to)
+	}
 
 	body := block.Body()
 
@@ -87,9 +102,15 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Only remove exclude and require, keep include even if empty
 	m.removeEmptyConditionArrays(body)
 
+	// Build result blocks
+	blocks := []*hclwrite.Block{block}
+	if movedBlock != nil {
+		blocks = append(blocks, movedBlock)
+	}
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         blocks,
+		RemoveOriginal: movedBlock != nil, // Remove original if we generated a moved block
 	}, nil
 }
 

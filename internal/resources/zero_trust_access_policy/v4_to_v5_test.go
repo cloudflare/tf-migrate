@@ -29,6 +29,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
   decision   = "allow"
 
   include = [{ everyone = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -53,6 +58,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
   decision   = "allow"
 
   include = [{ everyone = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -83,6 +93,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
     email_addresses  = ["admin@example.com"]
   }]
   include = [{ everyone = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -117,6 +132,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
     }
   }
   include = [{ everyone = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 	}
@@ -147,6 +167,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
   decision   = "allow"
 
   include = [{ everyone = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -168,6 +193,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
   decision   = "allow"
 
   include = [{ any_valid_service_token = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -190,6 +220,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
 
   include = [{ email = { email = "alice@example.com" } },
   { email = { email = "bob@example.com" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -212,6 +247,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
 
   include = [{ group = { id = "group-id-1" } },
   { group = { id = "group-id-2" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -237,6 +277,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
   include = [{ email = { email = "admin@example.com" } },
     { group = { id = "admins" } },
   { everyone = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -267,6 +312,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
     { github_organization = { name = "my-org"
       team = "devops"
   identity_provider_id = "provider-123" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -299,6 +349,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
   exclude = [{ geo = { country_code = "CN"  }  },
   { geo = { country_code = "RU"  }  }]
   require = [{ certificate = {}  }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -324,6 +379,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
     { ip = { ip = "10.0.0.0/8" } },
     { email_domain = { domain = "example.com" } },
   { email_domain = { domain = "company.org" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -345,6 +405,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
   decision   = "allow"
 
   include = [{ common_name = { common_name = "device1.example.com" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -366,6 +431,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
   decision   = "allow"
 
   include = [{ auth_method = { auth_method = "swk" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 		{
@@ -388,6 +458,11 @@ resource "cloudflare_zero_trust_access_policy" "test" {
 
   include = [{ login_method = { id = "otp" } },
   { login_method = { id = "warp" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
 	}
