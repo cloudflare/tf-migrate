@@ -33,7 +33,6 @@ const (
 	permSecretFile = 0600 // rw------- - sensitive files (state, secrets)
 )
 
-
 // RunConfig holds configuration for e2e test run
 type RunConfig struct {
 	SkipV4Test                bool
