@@ -44,10 +44,11 @@ var runCmd = &cobra.Command{
 	SilenceUsage: true, // Don't show usage on error
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := &e2e.RunConfig{
-			SkipV4Test:      cmd.Flag("skip-v4-test").Changed,
-			ApplyExemptions: cmd.Flag("apply-exemptions").Changed,
-			Resources:       cmd.Flag("resources").Value.String(),
-			ProviderPath:    cmd.Flag("provider").Value.String(),
+			SkipV4Test:                cmd.Flag("skip-v4-test").Changed,
+			ApplyExemptions:           cmd.Flag("apply-exemptions").Changed,
+			Resources:                 cmd.Flag("resources").Value.String(),
+			ProviderPath:              cmd.Flag("provider").Value.String(),
+			UsesProviderStateUpgrader: cmd.Flag("uses-provider-state-upgrader").Changed,
 		}
 		return e2e.RunE2ETests(cfg)
 	},
@@ -96,6 +97,7 @@ func init() {
 	runCmd.Flags().Bool("apply-exemptions", false, "Apply drift exemptions from e2e/drift-exemptions.yaml")
 	runCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
 	runCmd.Flags().String("provider", "", "Use local provider from specified path")
+	runCmd.Flags().Bool("uses-provider-state-upgrader", false, "Only test resources that use provider-based state migration")
 
 	// Clean command flags
 	cleanCmd.Flags().String("modules", "", "Modules to remove from state (comma-separated)")

@@ -21,6 +21,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+
+	"github.com/cloudflare/tf-migrate/internal"
+	"github.com/cloudflare/tf-migrate/internal/registry"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 // File permission constants for consistent permission management
@@ -30,12 +35,22 @@ const (
 	permSecretFile = 0600 // rw------- - sensitive files (state, secrets)
 )
 
+var registryInitOnce sync.Once
+
+// ensureRegistryInitialized ensures the migration registry is initialized exactly once
+func ensureRegistryInitialized() {
+	registryInitOnce.Do(func() {
+		registry.RegisterAllMigrations()
+	})
+}
+
 // RunConfig holds configuration for e2e test run
 type RunConfig struct {
-	SkipV4Test       bool
-	ApplyExemptions  bool
-	Resources        string
-	ProviderPath     string
+	SkipV4Test                bool
+	ApplyExemptions           bool
+	Resources                 string
+	ProviderPath              string
+	UsesProviderStateUpgrader bool
 }
 
 // testContext holds shared state for e2e test execution
@@ -78,6 +93,45 @@ func RunE2ETests(cfg *RunConfig) error {
 	// Create tmp directory
 	if err := os.MkdirAll(tmpDir, permDir); err != nil {
 		return fmt.Errorf("failed to create tmp directory %s: %w", tmpDir, err)
+	}
+
+	// Handle --uses-provider-state-upgrader flag
+	// This flag controls which resources to run based on whether they use provider state upgraders
+	if cfg.UsesProviderStateUpgrader {
+		// Run ONLY resources that use provider-based state migration
+		providerResources, err := discoverProviderStateUpgraderResources()
+		if err != nil {
+			return fmt.Errorf("failed to discover provider state upgrader resources: %w", err)
+		}
+		if len(providerResources) == 0 {
+			return fmt.Errorf("no resources found with UsesProviderStateUpgrader")
+		}
+		// Override Resources with discovered list
+		cfg.Resources = strings.Join(providerResources, ",")
+		printCyan("Discovered %d resource(s) with provider-based state migration:", len(providerResources))
+		printCyan("  %s", cfg.Resources)
+		fmt.Println()
+	} else if cfg.Resources == "" {
+		// If no specific resources requested and flag not set, run all resources EXCEPT those using provider state upgrader
+		allResources, err := discoverAllResources()
+		if err != nil {
+			return fmt.Errorf("failed to discover all resources: %w", err)
+		}
+
+		// Filter out resources that use provider state upgrader
+		var nonProviderResources []string
+		for _, resource := range allResources {
+			if !hasProviderStateUpgrader(resource) {
+				nonProviderResources = append(nonProviderResources, resource)
+			}
+		}
+
+		if len(nonProviderResources) > 0 {
+			cfg.Resources = strings.Join(nonProviderResources, ",")
+			printCyan("Running %d resource(s) that use tf-migrate state transformation:", len(nonProviderResources))
+			printCyan("  %s", cfg.Resources)
+			fmt.Println()
+		}
 	}
 
 	// Build target arguments if resources specified
@@ -955,5 +1009,97 @@ func contains(slice []string, item string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// discoverAllResources finds all resource directories in testdata
+func discoverAllResources() ([]string, error) {
+	repoRoot := getRepoRoot()
+	testdataRoot := filepath.Join(repoRoot, "integration", "v4_to_v5", "testdata")
+
+	entries, err := os.ReadDir(testdataRoot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read testdata directory: %w", err)
+	}
+
+	var resources []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			resources = append(resources, entry.Name())
+		}
+	}
+
+	return resources, nil
+}
+
+// discoverProviderStateUpgraderResources finds all resources that implement
+// UsesProviderStateUpgrader and return true
+func discoverProviderStateUpgraderResources() ([]string, error) {
+	// Ensure registry is initialized
+	ensureRegistryInitialized()
+
+	repoRoot := getRepoRoot()
+	testdataRoot := filepath.Join(repoRoot, "integration", "v4_to_v5", "testdata")
+
+	// Find all resource directories in testdata
+	entries, err := os.ReadDir(testdataRoot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read testdata directory: %w", err)
+	}
+
+	var providerResources []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		resourceType := entry.Name()
+		fmt.Printf("DEBUG: Checking resource %s\n", resourceType)
+		if hasProviderStateUpgrader(resourceType) {
+			fmt.Printf("DEBUG: Resource %s has provider state upgrader\n", resourceType)
+			providerResources = append(providerResources, resourceType)
+		}
+	}
+
+	fmt.Printf("DEBUG: Found %d provider resources: %v\n", len(providerResources), providerResources)
+	return providerResources, nil
+}
+
+// hasProviderStateUpgrader checks if a resource implements UsesProviderStateUpgrader
+func hasProviderStateUpgrader(resourceType string) bool {
+	// Some resources use different names in testdata vs their registered name
+	// For example, dns_record testdata but registered as cloudflare_record
+	var lookupNames []string
+
+	if resourceType == "dns_record" {
+		// dns_record is registered as cloudflare_record (v4 name)
+		lookupNames = []string{"cloudflare_record", "cloudflare_dns_record"}
+	} else {
+		// Default: use cloudflare_ + resourceType
+		lookupNames = []string{"cloudflare_" + resourceType}
+	}
+
+	// Try each possible name
+	for _, fullResourceType := range lookupNames {
+		migrator := internal.GetMigrator(fullResourceType, "v4", "v5")
+		if migrator == nil {
+			fmt.Printf("DEBUG:   GetMigrator returned nil for %s\n", fullResourceType)
+			continue
+		}
+
+		fmt.Printf("DEBUG:   Found migrator for %s\n", fullResourceType)
+		// Check if the migrator implements the ProviderStateUpgrader interface
+		if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
+			fmt.Printf("DEBUG:   Migrator implements ProviderStateUpgrader\n")
+			if psu.UsesProviderStateUpgrader() {
+				fmt.Printf("DEBUG:   UsesProviderStateUpgrader() returned true\n")
+				return true
+			}
+			fmt.Printf("DEBUG:   UsesProviderStateUpgrader() returned false\n")
+		} else {
+			fmt.Printf("DEBUG:   Migrator does NOT implement ProviderStateUpgrader\n")
+		}
+	}
+
 	return false
 }

@@ -191,3 +191,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath string, resourceName string) (string, error) {
 	return instance.String(), nil
 }
+
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
+}
