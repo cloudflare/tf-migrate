@@ -177,8 +177,15 @@ func RunE2ETests(cfg *RunConfig) error {
 
 		printSuccess("Provider built successfully: %s", providerBinary)
 
-		// Create dev overrides config - use directory, not binary path
+		// Create dev overrides config - use absolute directory path
 		tfConfigFile = filepath.Join(repoRoot, ".terraformrc-tf-migrate")
+
+		// Convert to absolute path to avoid issues when running from subdirectories
+		absProviderDir, err := filepath.Abs(providerDir)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute path for provider directory: %w", err)
+		}
+
 		configContent := fmt.Sprintf(`provider_installation {
   dev_overrides {
     "cloudflare/cloudflare" = "%s"
@@ -187,7 +194,7 @@ func RunE2ETests(cfg *RunConfig) error {
   # For all other providers, install them directly as normal.
   direct {}
 }
-`, providerDir)
+`, absProviderDir)
 
 		if err := os.WriteFile(tfConfigFile, []byte(configContent), permFile); err != nil {
 			return fmt.Errorf("failed to create provider config at %s: %w", tfConfigFile, err)

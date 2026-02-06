@@ -241,19 +241,43 @@ crowdstrike_customer_id   = "%s"
 	}
 
 	for _, moduleName := range moduleNames {
-		mainTfContent += fmt.Sprintf(`
-module "%s" {
-  source = "./%s"
+		// Scan module directory for declared variables
+		moduleDir := filepath.Join(v4Dir, moduleName)
+		moduleVars, err := getModuleVariables(moduleDir)
+		if err != nil {
+			return fmt.Errorf("failed to scan variables for module %s: %w", moduleName, err)
+		}
 
-  cloudflare_account_id     = var.cloudflare_account_id
-  cloudflare_zone_id        = var.cloudflare_zone_id
-  cloudflare_domain         = var.cloudflare_domain
-  crowdstrike_client_id     = var.crowdstrike_client_id
-  crowdstrike_client_secret = var.crowdstrike_client_secret
-  crowdstrike_api_url       = var.crowdstrike_api_url
-  crowdstrike_customer_id   = var.crowdstrike_customer_id
-}
-`, moduleName, moduleName)
+		// Build module block with only variables that are declared in the module
+		moduleBlock := fmt.Sprintf("\nmodule \"%s\" {\n  source = \"./%s\"\n\n", moduleName, moduleName)
+
+		// Always pass cloudflare variables if they exist
+		if contains(moduleVars, "cloudflare_account_id") {
+			moduleBlock += "  cloudflare_account_id = var.cloudflare_account_id\n"
+		}
+		if contains(moduleVars, "cloudflare_zone_id") {
+			moduleBlock += "  cloudflare_zone_id    = var.cloudflare_zone_id\n"
+		}
+		if contains(moduleVars, "cloudflare_domain") {
+			moduleBlock += "  cloudflare_domain     = var.cloudflare_domain\n"
+		}
+
+		// Only pass crowdstrike variables if the module declares them
+		if contains(moduleVars, "crowdstrike_client_id") {
+			moduleBlock += "  crowdstrike_client_id     = var.crowdstrike_client_id\n"
+		}
+		if contains(moduleVars, "crowdstrike_client_secret") {
+			moduleBlock += "  crowdstrike_client_secret = var.crowdstrike_client_secret\n"
+		}
+		if contains(moduleVars, "crowdstrike_api_url") {
+			moduleBlock += "  crowdstrike_api_url       = var.crowdstrike_api_url\n"
+		}
+		if contains(moduleVars, "crowdstrike_customer_id") {
+			moduleBlock += "  crowdstrike_customer_id   = var.crowdstrike_customer_id\n"
+		}
+
+		moduleBlock += "}\n"
+		mainTfContent += moduleBlock
 	}
 
 	mainTfPath := filepath.Join(v4Dir, "main.tf")
@@ -362,5 +386,45 @@ func findInputDirs(root string) ([]string, error) {
 
 	sort.Strings(inputDirs)
 	return inputDirs, nil
+}
+
+// getModuleVariables scans a module directory for variable declarations
+func getModuleVariables(moduleDir string) ([]string, error) {
+	var variables []string
+
+	// Read all .tf files in the module directory
+	entries, err := os.ReadDir(moduleDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read module directory %s: %w", moduleDir, err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".tf") {
+			continue
+		}
+
+		filePath := filepath.Join(moduleDir, entry.Name())
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			continue // Skip files we can't read
+		}
+
+		// Simple pattern matching for variable declarations
+		// Look for: variable "name" {
+		lines := strings.Split(string(content), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "variable") {
+				// Extract variable name from: variable "name" {
+				parts := strings.Fields(line)
+				if len(parts) >= 2 {
+					varName := strings.Trim(parts[1], `"`)
+					variables = append(variables, varName)
+				}
+			}
+		}
+	}
+
+	return variables, nil
 }
 
