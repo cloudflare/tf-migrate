@@ -87,32 +87,43 @@ tfhcl.ConvertBlocksToAttributeList(body, "auth_id_characteristics", nil)
 - No custom logic needed
 
 ### State Transformation (JSON)
-**Approach:** Minimal transformation
+**Approach:** No-op (handled by provider)
+
+**Implementation:**
 ```go
-result, _ = sjson.Set(result, "schema_version", 0)
+// Return state unchanged - provider handles state migration via StateUpgraders
+return stateJSON.String(), nil
 ```
 
 **Rationale:**
-- State structure already uses array format in v4
-- No field renames or type conversions needed
-- Only schema_version update required
+- State migration is handled by the v5 provider's StateUpgraders
+- Provider UpgradeFromV4 handles v4 (schema_version=0) → v5 (version=500) transformation
+- Provider UpgradeFromV5 handles v5 (version=1) → v5 (version=500) version bump
+- tf-migrate only handles config (HCL) transformations
+- State passes through unchanged and is upgraded by provider on next apply
+
+**Provider StateUpgraders:**
+- Location: `cloudflare-terraform-next/internal/services/api_shield/migration/v500/`
+- Transform function handles:
+  - Direct field copies (id, zone_id)
+  - Array conversion (auth_id_characteristics SourceModel → TargetModel)
+  - Empty array handling (v4 Optional → v5 Required field)
 
 ## Testing Coverage
 
-### Unit Tests (8 total)
-**Config Transformation Tests (6):**
+### tf-migrate Unit Tests (5 total)
+**Config Transformation Tests (5):**
 1. Single header characteristic
 2. Single cookie characteristic
 3. Multiple characteristics
 4. Multiple resources
-5. Header with special name
-6. Cookie with special name
+5. Missing auth_id_characteristics - sets empty array
 
-**State Transformation Tests (2):**
-1. Single characteristic
-2. Multiple characteristics with different types
+**State Transformation Tests:**
+- Removed (state migration handled by provider)
+- See provider migration tests for state transformation coverage
 
-### Integration Tests (20 instances)
+### tf-migrate Integration Tests (20 instances)
 Test cases cover:
 - **Basic scenarios:** Single header, single cookie
 - **Multiple characteristics:** 2-4 per resource
@@ -127,6 +138,24 @@ Test cases cover:
   - Custom authentication schemes
 
 All tests passing ✓
+
+### Provider Migration Tests (6 test cases)
+**Location:** `cloudflare-terraform-next/internal/services/api_shield/migration/v500/migrations_test.go`
+
+Test cases cover state migration:
+1. Single header characteristic (v4→v5)
+2. Single cookie characteristic (v4→v5)
+3. Multiple mixed characteristics (v4→v5)
+4. Special characters in names (v4→v5)
+5. OAuth flow simulation (v4→v5)
+6. Empty auth_id_characteristics - Optional→Required (v4→v5)
+
+These tests verify:
+- StateUpgraders correctly transform v4 state to v5 state
+- Empty array handling for Optional→Required migration
+- Field value preservation (zone_id, type, name)
+- Array ordering preservation
+- Special character handling
 
 ## Migration Complexity Assessment
 
@@ -151,11 +180,12 @@ All tests passing ✓
 None identified.
 
 ## Verification Steps
-1. ✓ Unit tests pass (all 8 tests)
-2. ✓ Integration tests pass (20 test instances)
-3. ✓ Manual migration test verified
-4. ✓ Build succeeds with race detector
-5. ✓ All repository tests pass (1000+ tests)
+1. ✓ tf-migrate unit tests pass (5 config transformation tests)
+2. ✓ tf-migrate integration tests pass (20 test instances)
+3. ✓ Provider migration tests pass (6 state transformation tests)
+4. ✓ Manual migration test verified
+5. ✓ Build succeeds with race detector
+6. ✓ All repository tests pass
 
 ## References
 - v4 Schema: `cloudflare-terraform-v4/internal/sdkv2provider/schema_cloudflare_api_shield.go`
@@ -167,6 +197,14 @@ December 30, 2024
 
 ## Notes for Future Maintainers
 - The `auth_id_characteristics` field uses a simple list structure - no nested complexity
-- If additional fields are added to `auth_id_characteristics` in future versions, the same helper function should work
+- If additional fields are added to `auth_id_characteristics` in future versions, the same helper function should work for config transformation
 - The `jwt` type value added in v5 is backward compatible and doesn't require migration logic
 - Consider this migration as a template for other simple block→attribute conversions
+
+**State Migration Architecture (as of February 2026):**
+- tf-migrate handles **config** (HCL) transformations only (TransformConfig)
+- Provider handles **state** (JSON) transformations via StateUpgraders (UpgradeState)
+- This separation of concerns eliminates duplicate transformation logic
+- State transformation tests are in the provider, not tf-migrate
+- tf-migrate's TransformState is a no-op that passes state through unchanged
+- Provider upgrades state on first apply/refresh with TF_MIG_TEST=1
