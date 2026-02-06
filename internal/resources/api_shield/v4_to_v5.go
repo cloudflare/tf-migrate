@@ -3,7 +3,6 @@ package api_shield
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -55,14 +54,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
+// TransformState is a no-op for api_shield because state migration is handled by the provider.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
-
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		return result, nil
-	}
-
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+	return stateJSON.String(), nil
 }
