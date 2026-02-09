@@ -16,6 +16,7 @@ env:
   CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
   CLOUDFLARE_R2_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
   CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+  TF_MIG_TEST: true
 
 jobs:
   e2e-tests-provider:
@@ -24,17 +25,32 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout tf-migrate
+        uses: actions/checkout@v4
+        with:
+          path: tf-migrate
+
+      - name: Checkout cloudflare provider (next branch)
+        uses: actions/checkout@v4
+        with:
+          repository: cloudflare/terraform-provider-cloudflare
+          ref: next
+          path: provider
 
       - name: Setup go
         uses: actions/setup-go@v5
         with:
-          go-version-file: ./go.mod
+          go-version-file: ./tf-migrate/go.mod
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.9.8"
 
+      - name: Build provider
+        working-directory: ./provider
+        run: go build -o terraform-provider-cloudflare .
+
       - name: Run E2E Tests (provider state upgrader)
-        run: ./scripts/run-e2e-tests.sh --apply-exemptions --uses-provider-state-upgrader
+        working-directory: ./tf-migrate
+        run: ./scripts/run-e2e-tests.sh --apply-exemptions --uses-provider-state-upgrader --provider ../provider

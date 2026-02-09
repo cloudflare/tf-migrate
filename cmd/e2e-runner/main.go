@@ -97,7 +97,7 @@ func init() {
 	runCmd.Flags().Bool("skip-v4-test", false, "Skip v4 testing phase")
 	runCmd.Flags().Bool("apply-exemptions", false, "Apply drift exemptions from e2e/drift-exemptions.yaml")
 	runCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
-	runCmd.Flags().String("provider", "", "Use local provider from specified path")
+	runCmd.Flags().String("provider", "", "Path to provider source directory (will be built automatically)")
 	runCmd.Flags().Bool("uses-provider-state-upgrader", false, "Only test resources that use provider-based state migration")
 
 	// Clean command flags
