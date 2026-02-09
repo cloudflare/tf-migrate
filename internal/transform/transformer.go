@@ -68,6 +68,16 @@ type AttributeRenamer interface {
 	GetAttributeRenames() []AttributeRename
 }
 
+// ProviderStateUpgrader is an optional interface that migrators can implement
+// to indicate that state migration is handled by the provider's StateUpgrader
+// rather than by tf-migrate's TransformState. Resources implementing this interface
+// should have a stub TransformState that returns the state unchanged.
+type ProviderStateUpgrader interface {
+	// UsesProviderStateUpgrader returns true if this resource relies on the provider's
+	// UpgradeState implementation for state migration
+	UsesProviderStateUpgrader() bool
+}
+
 // MigrationProvider specifies the interface for a migrator provider
 // This is used to provide a way to get migrators for a given resource type
 // a migrator defines the strategy which a resource uses to migrate the resource

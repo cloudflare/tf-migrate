@@ -18,8 +18,8 @@ env:
   CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
 
 jobs:
-  e2e-tests:
-    name: E2E Migration Tests
+  e2e-tests-provider:
+    name: E2E Tests (provider state upgrader)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,5 +36,5 @@ jobs:
         with:
           terraform_version: "1.9.8"
 
-      - name: Run E2E Tests
-        run: ./scripts/run-e2e-tests.sh --apply-exemptions
+      - name: Run E2E Tests (provider state upgrader)
+        run: ./scripts/run-e2e-tests.sh --apply-exemptions --uses-provider-state-upgrader

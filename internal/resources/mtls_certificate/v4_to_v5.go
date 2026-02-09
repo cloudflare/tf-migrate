@@ -41,9 +41,9 @@ func (m *V4ToV5Migrator) Postprocess(content string) string {
 }
 
 // GetResourceRename implements the ResourceRenamer interface
-// This resource does not rename, so we return empty strings
+// cloudflare_mtls_certificate doesn't rename, so return the same name
 func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "", ""
+	return "cloudflare_mtls_certificate", "cloudflare_mtls_certificate"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
