@@ -35,11 +35,13 @@ const (
 	permSecretFile = 0600 // rw------- - sensitive files (state, secrets)
 )
 
-var registryInitOnce sync.Once
+var (
+	registryOnce sync.Once
+)
 
-// ensureRegistryInitialized ensures the migration registry is initialized exactly once
+// ensureRegistryInitialized ensures that all migrators are registered exactly once
 func ensureRegistryInitialized() {
-	registryInitOnce.Do(func() {
+	registryOnce.Do(func() {
 		registry.RegisterAllMigrations()
 	})
 }
@@ -302,12 +304,21 @@ func RunE2ETests(cfg *RunConfig) error {
 	printCyan("Step 3: Testing v5 configurations")
 	printYellow("Running terraform init in migrated-v4_to_v5/...")
 
-	// Clean .terraform if it exists
+	// Clean .terraform and .terraform.lock.hcl to ensure dev_overrides are used
 	v5TFDir := filepath.Join(v5Dir, ".terraform")
 	if _, err := os.Stat(v5TFDir); err == nil {
 		printYellow("Cleaning v5 .terraform directory for fresh init...")
 		if err := os.RemoveAll(v5TFDir); err != nil {
 			return fmt.Errorf("failed to remove v5 .terraform directory %s: %w", v5TFDir, err)
+		}
+	}
+
+	// Remove lock file so dev_overrides work correctly
+	v5LockFile := filepath.Join(v5Dir, ".terraform.lock.hcl")
+	if _, err := os.Stat(v5LockFile); err == nil {
+		printYellow("Removing .terraform.lock.hcl to allow dev_overrides...")
+		if err := os.Remove(v5LockFile); err != nil {
+			return fmt.Errorf("failed to remove lock file %s: %w", v5LockFile, err)
 		}
 	}
 
@@ -1054,14 +1065,11 @@ func discoverProviderStateUpgraderResources() ([]string, error) {
 		}
 
 		resourceType := entry.Name()
-		fmt.Printf("DEBUG: Checking resource %s\n", resourceType)
 		if hasProviderStateUpgrader(resourceType) {
-			fmt.Printf("DEBUG: Resource %s has provider state upgrader\n", resourceType)
 			providerResources = append(providerResources, resourceType)
 		}
 	}
 
-	fmt.Printf("DEBUG: Found %d provider resources: %v\n", len(providerResources), providerResources)
 	return providerResources, nil
 }
 
@@ -1083,21 +1091,14 @@ func hasProviderStateUpgrader(resourceType string) bool {
 	for _, fullResourceType := range lookupNames {
 		migrator := internal.GetMigrator(fullResourceType, "v4", "v5")
 		if migrator == nil {
-			fmt.Printf("DEBUG:   GetMigrator returned nil for %s\n", fullResourceType)
 			continue
 		}
 
-		fmt.Printf("DEBUG:   Found migrator for %s\n", fullResourceType)
 		// Check if the migrator implements the ProviderStateUpgrader interface
 		if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
-			fmt.Printf("DEBUG:   Migrator implements ProviderStateUpgrader\n")
 			if psu.UsesProviderStateUpgrader() {
-				fmt.Printf("DEBUG:   UsesProviderStateUpgrader() returned true\n")
 				return true
 			}
-			fmt.Printf("DEBUG:   UsesProviderStateUpgrader() returned false\n")
-		} else {
-			fmt.Printf("DEBUG:   Migrator does NOT implement ProviderStateUpgrader\n")
 		}
 	}
 

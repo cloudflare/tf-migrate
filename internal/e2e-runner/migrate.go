@@ -20,6 +20,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/cloudflare/tf-migrate/internal"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 // RunMigrate copies v4/ to migrated-v4_to_v5/ and runs migration
@@ -101,16 +104,27 @@ func RunMigrate(resources string) error {
 	fmt.Println()
 
 	// Run migration
-	printYellow("Migrating all files (including modules and state)...")
-	cmd := exec.Command(binary,
+	// For resources using provider state upgraders, we only migrate config (not state)
+	// The provider's MoveState/UpgradeState handlers will transform the state during terraform apply
+	printYellow("Migrating configuration files...")
+	args := []string{
 		"--config-dir", generatedDir,
-		"--state-file", filepath.Join(generatedDir, "terraform.tfstate"),
 		"--source-version", "v4",
 		"--target-version", "v5",
 		"migrate",
 		"--backup=false",
 		"--recursive",
-	)
+	}
+
+	// Only include --state-file if there are resources that need tf-migrate state transformation
+	// Resources with UsesProviderStateUpgrader() rely on provider's state upgraders instead
+	if !allResourcesUseProviderStateUpgrader(resources) {
+		args = append([]string{args[0], args[1], "--state-file", filepath.Join(generatedDir, "terraform.tfstate")}, args[2:]...)
+	} else {
+		printYellow("Skipping state transformation - using provider's state upgrader")
+	}
+
+	cmd := exec.Command(binary, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -119,7 +133,7 @@ func RunMigrate(resources string) error {
 		return err
 	}
 
-	printSuccess("Migration complete (includes state and cross-module reference updates)")
+	printSuccess("Migration complete (config transformed, state will be upgraded by provider)")
 
 	// Clean up backup files
 	if err := filepath.Walk(generatedDir, func(path string, info os.FileInfo, err error) error {
@@ -430,6 +444,65 @@ func filterStateFile(dir string, resources []string) error {
 
 	// Use restrictive permissions for state files (contain sensitive data)
 	return os.WriteFile(stateFile, filteredData, permSecretFile)
+}
+
+// allResourcesUseProviderStateUpgrader checks if all resources in the list use provider state upgraders
+func allResourcesUseProviderStateUpgrader(resources string) bool {
+	if resources == "" {
+		return false // If no specific resources, assume we need state transformation
+	}
+
+	// Ensure registry is initialized
+	ensureRegistryInitializedInMigrate()
+
+	resourceList := strings.Split(resources, ",")
+	for _, resource := range resourceList {
+		resource = strings.TrimSpace(resource)
+		if !hasProviderStateUpgraderInMigrate(resource) {
+			return false
+		}
+	}
+	return true
+}
+
+// ensureRegistryInitializedInMigrate ensures the migration registry is initialized
+func ensureRegistryInitializedInMigrate() {
+	// The registry should already be initialized by main.go, but call again to be safe
+	// (RegisterAllMigrations is idempotent via sync.Once)
+	ensureRegistryInitialized()
+}
+
+// hasProviderStateUpgraderInMigrate checks if a resource implements UsesProviderStateUpgrader
+// This is a copy of the function from runner.go to avoid circular imports
+func hasProviderStateUpgraderInMigrate(resourceType string) bool {
+	// Some resources use different names in testdata vs their registered name
+	// For example, dns_record testdata but registered as cloudflare_record
+	var lookupNames []string
+
+	if resourceType == "dns_record" {
+		// dns_record is registered as cloudflare_record (v4 name)
+		lookupNames = []string{"cloudflare_record", "cloudflare_dns_record"}
+	} else {
+		// Default: use cloudflare_ + resourceType
+		lookupNames = []string{"cloudflare_" + resourceType}
+	}
+
+	// Try each possible name
+	for _, fullResourceType := range lookupNames {
+		migrator := internal.GetMigrator(fullResourceType, "v4", "v5")
+		if migrator == nil {
+			continue
+		}
+
+		// Check if the migrator implements the ProviderStateUpgrader interface
+		if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
+			if psu.UsesProviderStateUpgrader() {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // buildBinary builds the tf-migrate binary
