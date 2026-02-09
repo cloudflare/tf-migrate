@@ -109,6 +109,9 @@ func RunE2ETests(cfg *RunConfig) error {
 		fmt.Println()
 	} else if cfg.Resources == "" {
 		// If no specific resources requested and flag not set, run all resources EXCEPT those using provider state upgrader
+		// Ensure registry is initialized before checking migrators
+		ensureRegistryInitialized()
+
 		allResources, err := discoverAllResources()
 		if err != nil {
 			return fmt.Errorf("failed to discover all resources: %w", err)
