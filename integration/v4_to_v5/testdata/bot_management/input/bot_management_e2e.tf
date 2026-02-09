@@ -21,6 +21,10 @@ variable "cloudflare_domain" {
 resource "cloudflare_bot_management" "test" {
   zone_id                         = var.cloudflare_zone_id
   enable_js                       = true
+  sbfm_definitely_automated       = "block"
+  sbfm_likely_automated           = "managed_challenge"
+  sbfm_verified_bots              = "allow"
+  sbfm_static_resource_protection = true
   optimize_wordpress              = false
   suppress_session_score          = false
   auto_update_model               = true

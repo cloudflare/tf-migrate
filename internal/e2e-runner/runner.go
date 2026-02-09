@@ -21,10 +21,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/cloudflare/tf-migrate/internal"
-	"github.com/cloudflare/tf-migrate/internal/registry"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
@@ -35,16 +33,6 @@ const (
 	permSecretFile = 0600 // rw------- - sensitive files (state, secrets)
 )
 
-var (
-	registryOnce sync.Once
-)
-
-// ensureRegistryInitialized ensures that all migrators are registered exactly once
-func ensureRegistryInitialized() {
-	registryOnce.Do(func() {
-		registry.RegisterAllMigrations()
-	})
-}
 
 // RunConfig holds configuration for e2e test run
 type RunConfig struct {
@@ -122,9 +110,6 @@ func RunE2ETests(cfg *RunConfig) error {
 		fmt.Println()
 	} else if cfg.Resources == "" {
 		// If no specific resources requested and flag not set, run all resources EXCEPT those using provider state upgrader
-		// Ensure registry is initialized before checking migrators
-		ensureRegistryInitialized()
-
 		allResources, err := discoverAllResources()
 		if err != nil {
 			return fmt.Errorf("failed to discover all resources: %w", err)
@@ -163,9 +148,6 @@ func RunE2ETests(cfg *RunConfig) error {
 		}
 	} else {
 		// Resources explicitly specified - show which method they use
-		// Ensure registry is initialized before checking migrators
-		ensureRegistryInitialized()
-
 		resourceList := strings.Split(cfg.Resources, ",")
 		var providerUpgraderResources []string
 		var tfMigrateResources []string
@@ -1101,9 +1083,6 @@ func discoverAllResources() ([]string, error) {
 // discoverProviderStateUpgraderResources finds all resources that implement
 // UsesProviderStateUpgrader and return true
 func discoverProviderStateUpgraderResources() ([]string, error) {
-	// Ensure registry is initialized
-	ensureRegistryInitialized()
-
 	repoRoot := getRepoRoot()
 	testdataRoot := filepath.Join(repoRoot, "integration", "v4_to_v5", "testdata")
 
@@ -1130,29 +1109,36 @@ func discoverProviderStateUpgraderResources() ([]string, error) {
 
 // hasProviderStateUpgrader checks if a resource implements UsesProviderStateUpgrader
 func hasProviderStateUpgrader(resourceType string) bool {
-	// Some resources use different names in testdata vs their registered name
-	// For example, dns_record testdata but registered as cloudflare_record
-	var lookupNames []string
-
-	if resourceType == "dns_record" {
-		// dns_record is registered as cloudflare_record (v4 name)
-		lookupNames = []string{"cloudflare_record", "cloudflare_dns_record"}
-	} else {
-		// Default: use cloudflare_ + resourceType
-		lookupNames = []string{"cloudflare_" + resourceType}
-	}
-
-	// Try each possible name
-	for _, fullResourceType := range lookupNames {
-		migrator := internal.GetMigrator(fullResourceType, "v4", "v5")
-		if migrator == nil {
-			continue
-		}
-
-		// Check if the migrator implements the ProviderStateUpgrader interface
+	// Strategy 1: Try direct lookup with cloudflare_ prefix
+	fullResourceType := "cloudflare_" + resourceType
+	if migrator := internal.GetMigrator(fullResourceType, "v4", "v5"); migrator != nil {
 		if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
 			if psu.UsesProviderStateUpgrader() {
 				return true
+			}
+		}
+	}
+
+	// Strategy 2: Search through all registered migrators
+	// This handles cases where the testdata name doesn't match the registered name
+	// (e.g., dns_record testdata but registered as cloudflare_record)
+	allMigrators := internal.GetAllMigrators("v4", "v5")
+	for _, migrator := range allMigrators {
+		// Check if this migrator's resource type matches what we're looking for
+		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
+			oldType, newType := renamer.GetResourceRename()
+
+			// Check if either the old or new resource type (without cloudflare_ prefix) matches
+			oldTypeShort := strings.TrimPrefix(oldType, "cloudflare_")
+			newTypeShort := strings.TrimPrefix(newType, "cloudflare_")
+
+			if oldTypeShort == resourceType || newTypeShort == resourceType {
+				// Found a match - check if it uses provider state upgrader
+				if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
+					if psu.UsesProviderStateUpgrader() {
+						return true
+					}
+				}
 			}
 		}
 	}

@@ -446,58 +446,55 @@ func filterStateFile(dir string, resources []string) error {
 	return os.WriteFile(stateFile, filteredData, permSecretFile)
 }
 
-// allResourcesUseProviderStateUpgrader checks if all resources in the list use provider state upgraders
+// allResourcesUseProviderStateUpgrader checks if resources use provider state upgraders
+// In practice, either ALL resources in the list use provider state upgrader (when discovered
+// via --uses-provider-state-upgrader), or NONE of them do (when filtered to exclude provider
+// state upgrader resources). So we only need to check the first resource.
 func allResourcesUseProviderStateUpgrader(resources string) bool {
 	if resources == "" {
 		return false // If no specific resources, assume we need state transformation
 	}
 
-	// Ensure registry is initialized
-	ensureRegistryInitializedInMigrate()
-
+	// Check only the first resource in the comma-separated list
+	// If it uses provider state upgrader, they all do (by discovery logic)
 	resourceList := strings.Split(resources, ",")
-	for _, resource := range resourceList {
-		resource = strings.TrimSpace(resource)
-		if !hasProviderStateUpgraderInMigrate(resource) {
-			return false
-		}
-	}
-	return true
-}
-
-// ensureRegistryInitializedInMigrate ensures the migration registry is initialized
-func ensureRegistryInitializedInMigrate() {
-	// The registry should already be initialized by main.go, but call again to be safe
-	// (RegisterAllMigrations is idempotent via sync.Once)
-	ensureRegistryInitialized()
+	firstResource := strings.TrimSpace(resourceList[0])
+	return hasProviderStateUpgraderInMigrate(firstResource)
 }
 
 // hasProviderStateUpgraderInMigrate checks if a resource implements UsesProviderStateUpgrader
 // This is a copy of the function from runner.go to avoid circular imports
 func hasProviderStateUpgraderInMigrate(resourceType string) bool {
-	// Some resources use different names in testdata vs their registered name
-	// For example, dns_record testdata but registered as cloudflare_record
-	var lookupNames []string
-
-	if resourceType == "dns_record" {
-		// dns_record is registered as cloudflare_record (v4 name)
-		lookupNames = []string{"cloudflare_record", "cloudflare_dns_record"}
-	} else {
-		// Default: use cloudflare_ + resourceType
-		lookupNames = []string{"cloudflare_" + resourceType}
-	}
-
-	// Try each possible name
-	for _, fullResourceType := range lookupNames {
-		migrator := internal.GetMigrator(fullResourceType, "v4", "v5")
-		if migrator == nil {
-			continue
-		}
-
-		// Check if the migrator implements the ProviderStateUpgrader interface
+	// Strategy 1: Try direct lookup with cloudflare_ prefix
+	fullResourceType := "cloudflare_" + resourceType
+	if migrator := internal.GetMigrator(fullResourceType, "v4", "v5"); migrator != nil {
 		if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
 			if psu.UsesProviderStateUpgrader() {
 				return true
+			}
+		}
+	}
+
+	// Strategy 2: Search through all registered migrators
+	// This handles cases where the testdata name doesn't match the registered name
+	// (e.g., dns_record testdata but registered as cloudflare_record)
+	allMigrators := internal.GetAllMigrators("v4", "v5")
+	for _, migrator := range allMigrators {
+		// Check if this migrator's resource type matches what we're looking for
+		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
+			oldType, newType := renamer.GetResourceRename()
+
+			// Check if either the old or new resource type (without cloudflare_ prefix) matches
+			oldTypeShort := strings.TrimPrefix(oldType, "cloudflare_")
+			newTypeShort := strings.TrimPrefix(newType, "cloudflare_")
+
+			if oldTypeShort == resourceType || newTypeShort == resourceType {
+				// Found a match - check if it uses provider state upgrader
+				if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
+					if psu.UsesProviderStateUpgrader() {
+						return true
+					}
+				}
 			}
 		}
 	}

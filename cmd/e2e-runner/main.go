@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	e2e "github.com/cloudflare/tf-migrate/internal/e2e-runner"
+	"github.com/cloudflare/tf-migrate/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -110,6 +111,9 @@ func init() {
 }
 
 func main() {
+	// Initialize the migration registry once at startup
+	registry.RegisterAllMigrations()
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
