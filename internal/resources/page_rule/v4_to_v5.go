@@ -207,3 +207,8 @@ func (m *V4ToV5Migrator) transformCacheTTLByStatus(body *hclwrite.Body) {
 	}
 }
 
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
+}
+
