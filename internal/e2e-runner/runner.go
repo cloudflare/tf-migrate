@@ -110,30 +110,85 @@ func RunE2ETests(cfg *RunConfig) error {
 		}
 		// Override Resources with discovered list
 		cfg.Resources = strings.Join(providerResources, ",")
-		printCyan("Discovered %d resource(s) with provider-based state migration:", len(providerResources))
+
+		printHeader("State Migration Method: Provider State Upgrader")
+		printCyan("These resources use the provider's built-in state migration:")
+		printCyan("  • State migration: Provider's UpgradeState/MoveState methods")
+		printCyan("  • Config migration: tf-migrate TransformConfig only")
+		printCyan("  • tf-migrate is called WITHOUT --state-file flag")
+		fmt.Println()
+		printCyan("Discovered %d resource(s):", len(providerResources))
 		printCyan("  %s", cfg.Resources)
 		fmt.Println()
 	} else if cfg.Resources == "" {
 		// If no specific resources requested and flag not set, run all resources EXCEPT those using provider state upgrader
+		// Ensure registry is initialized before checking migrators
+		ensureRegistryInitialized()
+
 		allResources, err := discoverAllResources()
 		if err != nil {
 			return fmt.Errorf("failed to discover all resources: %w", err)
 		}
 
-		// Filter out resources that use provider state upgrader
+		// Separate resources by state upgrade method
 		var nonProviderResources []string
+		var providerResources []string
 		for _, resource := range allResources {
-			if !hasProviderStateUpgrader(resource) {
+			if hasProviderStateUpgrader(resource) {
+				providerResources = append(providerResources, resource)
+			} else {
 				nonProviderResources = append(nonProviderResources, resource)
 			}
 		}
 
 		if len(nonProviderResources) > 0 {
 			cfg.Resources = strings.Join(nonProviderResources, ",")
-			printCyan("Running %d resource(s) that use tf-migrate state transformation:", len(nonProviderResources))
+
+			printHeader("State Migration Method: tf-migrate State Transformation")
+			printCyan("These resources use tf-migrate for state migration:")
+			printCyan("  • State migration: tf-migrate TransformState function")
+			printCyan("  • Config migration: tf-migrate TransformConfig")
+			printCyan("  • tf-migrate is called WITH --state-file flag")
+			fmt.Println()
+			printCyan("Running %d resource(s):", len(nonProviderResources))
 			printCyan("  %s", cfg.Resources)
 			fmt.Println()
+
+			if len(providerResources) > 0 {
+				printYellow("Excluded %d resource(s) that use provider state upgrader:", len(providerResources))
+				printYellow("  %s", strings.Join(providerResources, ", "))
+				printYellow("  (Use --uses-provider-state-upgrader to test these)")
+				fmt.Println()
+			}
 		}
+	} else {
+		// Resources explicitly specified - show which method they use
+		// Ensure registry is initialized before checking migrators
+		ensureRegistryInitialized()
+
+		resourceList := strings.Split(cfg.Resources, ",")
+		var providerUpgraderResources []string
+		var tfMigrateResources []string
+
+		for _, resource := range resourceList {
+			resource = strings.TrimSpace(resource)
+			if hasProviderStateUpgrader(resource) {
+				providerUpgraderResources = append(providerUpgraderResources, resource)
+			} else {
+				tfMigrateResources = append(tfMigrateResources, resource)
+			}
+		}
+
+		printHeader("State Migration Methods for Specified Resources")
+		if len(providerUpgraderResources) > 0 {
+			printCyan("Resources using provider's UpgradeState/MoveState:")
+			printCyan("  %s", strings.Join(providerUpgraderResources, ", "))
+		}
+		if len(tfMigrateResources) > 0 {
+			printCyan("Resources using tf-migrate TransformState:")
+			printCyan("  %s", strings.Join(tfMigrateResources, ", "))
+		}
+		fmt.Println()
 	}
 
 	// Build target arguments if resources specified
