@@ -21,7 +21,7 @@ env:
 jobs:
   e2e-tests-provider:
     name: E2E Tests (provider state upgrader)
-    runs-on: ubuntu-latest
+    runs-on: large-runner
     permissions:
       contents: read
     steps:
