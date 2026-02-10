@@ -7,14 +7,11 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
-	"github.com/cloudflare/tf-migrate/internal/resources/list_item"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 type V4ToV5Migrator struct{}
@@ -34,12 +31,6 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
-	// Check if this is JSON state content (starts with '{')
-	trimmed := strings.TrimSpace(content)
-	if strings.HasPrefix(trimmed, "{") {
-		// Process cross-resource state migrations (merge list_item into list, remove list_items)
-		return list_item.ProcessCrossResourceStateMigration(content)
-	}
 	return content
 }
 
@@ -51,12 +42,6 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
-
-	// Process cross-resource migrations (merge list_item resources into this list)
-	// This is idempotent - if called multiple times, subsequent calls are no-ops
-	if ctx.CFGFile != nil {
-		list_item.ProcessCrossResourceConfigMigration(ctx.CFGFile)
-	}
 
 	kind := tfhcl.ExtractStringFromAttribute(body.GetAttribute("kind"))
 	if kind == "" {
@@ -82,41 +67,15 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
-	attrs := stateJSON.Get("attributes")
+	// State transformation is handled by the provider's StateUpgraders (UpgradeState)
+	// The moved block generated in TransformConfig triggers the provider's migration logic
+	// This function is a no-op for list migration
+	return stateJSON.String(), nil
+}
 
-	if !attrs.Exists() {
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	kind := attrs.Get("kind").String()
-
-	if itemsField := attrs.Get("item"); itemsField.Exists() && itemsField.IsArray() {
-		var transformedItems []map[string]interface{}
-
-		for _, item := range itemsField.Array() {
-			transformedItem := transformStateItem(item, kind)
-			if transformedItem != nil {
-				transformedItems = append(transformedItems, transformedItem)
-			}
-		}
-
-		if len(transformedItems) > 0 {
-			result, _ = sjson.Set(result, "attributes.items", transformedItems)
-		}
-
-		result, _ = sjson.Delete(result, "attributes.item")
-	}
-
-	if numItems := attrs.Get("num_items"); numItems.Exists() {
-		floatVal := state.ConvertToFloat64(numItems)
-		result, _ = sjson.Set(result, "attributes.num_items", floatVal)
-	}
-
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
 
 func findDynamicItemBlocks(body *hclwrite.Body) []*hclwrite.Block {
@@ -599,117 +558,6 @@ func setItemsAttributeFromString(body *hclwrite.Body, exprStr string) {
 	}
 }
 
-func transformStateItem(item gjson.Result, kind string) map[string]interface{} {
-	result := make(map[string]interface{})
-
-	if comment := item.Get("comment"); comment.Exists() && comment.String() != "" {
-		result["comment"] = comment.String()
-	}
-
-	valueObj := item.Get("value")
-	if !valueObj.Exists() {
-		return nil
-	}
-
-	var value gjson.Result
-	if valueObj.IsArray() && len(valueObj.Array()) > 0 {
-		value = valueObj.Array()[0]
-	} else if valueObj.IsObject() {
-		value = valueObj
-	} else {
-		return nil
-	}
-
-	switch kind {
-	case "ip":
-		if ip := value.Get("ip"); ip.Exists() && ip.String() != "" {
-			result["ip"] = normalizeIPAddress(ip.String())
-		}
-
-	case "asn":
-		if asn := value.Get("asn"); asn.Exists() {
-			result["asn"] = state.ConvertToInt64(asn)
-		}
-
-	case "hostname":
-		if hostname := value.Get("hostname"); hostname.Exists() {
-			var hostnameObj map[string]interface{}
-
-			if hostname.IsArray() && len(hostname.Array()) > 0 {
-				hostnameData := hostname.Array()[0]
-				hostnameObj = make(map[string]interface{})
-				if urlHostname := hostnameData.Get("url_hostname"); urlHostname.Exists() {
-					hostnameObj["url_hostname"] = urlHostname.String()
-				}
-			} else if hostname.IsObject() {
-				hostnameObj = make(map[string]interface{})
-				if urlHostname := hostname.Get("url_hostname"); urlHostname.Exists() {
-					hostnameObj["url_hostname"] = urlHostname.String()
-				}
-			}
-
-			if hostnameObj != nil && len(hostnameObj) > 0 {
-				result["hostname"] = hostnameObj
-			}
-		}
-
-	case "redirect":
-		if redirect := value.Get("redirect"); redirect.Exists() {
-			var redirectObj map[string]interface{}
-
-			if redirect.IsArray() && len(redirect.Array()) > 0 {
-				redirectData := redirect.Array()[0]
-				redirectObj = transformRedirectData(redirectData)
-			} else if redirect.IsObject() {
-				redirectObj = transformRedirectData(redirect)
-			}
-
-			if redirectObj != nil && len(redirectObj) > 0 {
-				result["redirect"] = redirectObj
-			}
-		}
-	}
-
-	if len(result) == 0 {
-		return nil
-	}
-
-	return result
-}
-
-func transformRedirectData(data gjson.Result) map[string]interface{} {
-	redirectObj := make(map[string]interface{})
-
-	if sourceURL := data.Get("source_url"); sourceURL.Exists() {
-		redirectObj["source_url"] = ensureSourceURLHasPath(sourceURL.String())
-	}
-	if targetURL := data.Get("target_url"); targetURL.Exists() {
-		redirectObj["target_url"] = targetURL.String()
-	}
-	if statusCode := data.Get("status_code"); statusCode.Exists() {
-		redirectObj["status_code"] = state.ConvertToInt64(statusCode)
-	}
-
-	// Boolean fields that need "enabled"/"disabled" to true/false conversion
-	boolFields := []string{
-		"include_subdomains",
-		"subpath_matching",
-		"preserve_query_string",
-		"preserve_path_suffix",
-	}
-
-	for _, field := range boolFields {
-		if fieldVal := data.Get(field); fieldVal.Exists() {
-			// Use the utility function for conversion
-			if converted := state.ConvertEnabledDisabledToBool(fieldVal); converted != nil {
-				redirectObj[field] = converted
-			}
-		}
-	}
-
-	return redirectObj
-}
-
 func parseNumber(s string) int64 {
 	var n int64
 	for _, c := range s {
@@ -965,9 +813,10 @@ func ensureSourceURLHasPathInExpr(expr string) string {
 // normalizeIPAddress normalizes an IP address by removing CIDR notation.
 // The v5 provider requires IP addresses to be normalized without CIDR suffix.
 // Examples:
-//   "10.0.0.0/8" -> "10.0.0.0"
-//   "192.168.1.0/24" -> "192.168.1.0"
-//   "1.1.1.1" -> "1.1.1.1" (no change)
+//
+//	"10.0.0.0/8" -> "10.0.0.0"
+//	"192.168.1.0/24" -> "192.168.1.0"
+//	"1.1.1.1" -> "1.1.1.1" (no change)
 func normalizeIPAddress(ip string) string {
 	if ip == "" {
 		return ip

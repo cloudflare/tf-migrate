@@ -47,18 +47,123 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	body := block.Body()
+
+	// Transform hostname block to hostname = { ... } attribute
+	transformHostnameBlock(body)
+
+	// Transform redirect block to redirect = { ... } attribute with boolean conversion
+	transformRedirectBlock(body)
+
 	return &transform.TransformResult{
-		Blocks:         nil,
-		RemoveOriginal: true,
+		Blocks:         []*hclwrite.Block{block},
+		RemoveOriginal: false,
 	}, nil
 }
 
+// transformHostnameBlock converts a hostname block to a hostname = { ... } attribute.
+// v4: hostname { url_hostname = "example.com" }
+// v5: hostname = { url_hostname = "example.com" }
+func transformHostnameBlock(body *hclwrite.Body) {
+	for _, block := range body.Blocks() {
+		if block.Type() == "hostname" {
+			hostnameBody := block.Body()
+			var fields []string
+
+			if urlAttr := hostnameBody.GetAttribute("url_hostname"); urlAttr != nil {
+				exprStr := strings.TrimSpace(string(urlAttr.Expr().BuildTokens(nil).Bytes()))
+				fields = append(fields, fmt.Sprintf("url_hostname = %s", exprStr))
+			}
+
+			if exclAttr := hostnameBody.GetAttribute("exclude_exact_hostname"); exclAttr != nil {
+				exprStr := strings.TrimSpace(string(exclAttr.Expr().BuildTokens(nil).Bytes()))
+				fields = append(fields, fmt.Sprintf("exclude_exact_hostname = %s", exprStr))
+			}
+
+			body.RemoveBlock(block)
+
+			if len(fields) > 0 {
+				objExpr := fmt.Sprintf("{\n    %s\n  }", strings.Join(fields, "\n    "))
+				if err := tfhcl.SetAttributeFromExpressionString(body, "hostname", objExpr); err != nil {
+					tfhcl.AppendWarningComment(body, fmt.Sprintf("Could not set hostname attribute: %s", objExpr))
+				}
+			}
+			break
+		}
+	}
+}
+
+// transformRedirectBlock converts a redirect block to a redirect = { ... } attribute
+// with "enabled"/"disabled" string to boolean conversion.
+// v4: redirect { source_url = "..." include_subdomains = "enabled" }
+// v5: redirect = { source_url = "..." include_subdomains = true }
+func transformRedirectBlock(body *hclwrite.Body) {
+	for _, block := range body.Blocks() {
+		if block.Type() == "redirect" {
+			redirectBody := block.Body()
+			var fields []string
+
+			if sourceAttr := redirectBody.GetAttribute("source_url"); sourceAttr != nil {
+				exprStr := strings.TrimSpace(string(sourceAttr.Expr().BuildTokens(nil).Bytes()))
+				fields = append(fields, fmt.Sprintf("source_url = %s", exprStr))
+			}
+
+			if targetAttr := redirectBody.GetAttribute("target_url"); targetAttr != nil {
+				exprStr := strings.TrimSpace(string(targetAttr.Expr().BuildTokens(nil).Bytes()))
+				fields = append(fields, fmt.Sprintf("target_url = %s", exprStr))
+			}
+
+			boolFields := []string{
+				"include_subdomains",
+				"subpath_matching",
+				"preserve_query_string",
+				"preserve_path_suffix",
+			}
+			for _, field := range boolFields {
+				if attr := redirectBody.GetAttribute(field); attr != nil {
+					value := tfhcl.ExtractStringFromAttribute(attr)
+					if value == "enabled" {
+						fields = append(fields, fmt.Sprintf("%s = true", field))
+					} else if value == "disabled" {
+						fields = append(fields, fmt.Sprintf("%s = false", field))
+					} else {
+						exprStr := strings.TrimSpace(string(attr.Expr().BuildTokens(nil).Bytes()))
+						fields = append(fields, fmt.Sprintf("%s = %s", field, exprStr))
+					}
+				}
+			}
+
+			if statusAttr := redirectBody.GetAttribute("status_code"); statusAttr != nil {
+				exprStr := strings.TrimSpace(string(statusAttr.Expr().BuildTokens(nil).Bytes()))
+				fields = append(fields, fmt.Sprintf("status_code = %s", exprStr))
+			}
+
+			body.RemoveBlock(block)
+
+			if len(fields) > 0 {
+				objExpr := fmt.Sprintf("{\n    %s\n  }", strings.Join(fields, "\n    "))
+				if err := tfhcl.SetAttributeFromExpressionString(body, "redirect", objExpr); err != nil {
+					tfhcl.AppendWarningComment(body, fmt.Sprintf("Could not set redirect attribute: %s", objExpr))
+				}
+			}
+			break
+		}
+	}
+}
+
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	return "", nil
+	// State transformation is handled by the provider's StateUpgraders
+	// list_item resources are merged into parent list by cross-resource migration
+	return stateJSON.String(), nil
+}
+
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
 
 func (m *V4ToV5Migrator) GetCrossResourceDependency() string {
-	return "cloudflare_list"
+	return ""
 }
 
 // ProcessCrossResourceConfigMigration merges list_item resources into their parent cloudflare_list resources.
