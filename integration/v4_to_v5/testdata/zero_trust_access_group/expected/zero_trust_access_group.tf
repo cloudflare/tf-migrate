@@ -13,8 +13,28 @@ variable "cloudflare_domain" {
 }
 
 locals {
-  name_prefix           = "cftftest"
+  name_prefix = "cftftest"
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Pattern 1: Simple email selector
 resource "cloudflare_zero_trust_access_group" "simple_email" {
@@ -28,6 +48,11 @@ resource "cloudflare_zero_trust_access_group" "simple_email" {
       }
     },
   ]
+}
+
+moved {
+  from = cloudflare_access_group.simple_email
+  to   = cloudflare_zero_trust_access_group.simple_email
 }
 
 # Pattern 2: Multiple selector types
@@ -59,6 +84,11 @@ resource "cloudflare_zero_trust_access_group" "multiple_selectors" {
   ]
 }
 
+moved {
+  from = cloudflare_access_group.multiple_selectors
+  to   = cloudflare_zero_trust_access_group.multiple_selectors
+}
+
 # Pattern 3: for_each with map
 resource "cloudflare_zero_trust_access_group" "foreach_map" {
   for_each = {
@@ -79,6 +109,11 @@ resource "cloudflare_zero_trust_access_group" "foreach_map" {
   ]
 }
 
+moved {
+  from = cloudflare_access_group.foreach_map
+  to   = cloudflare_zero_trust_access_group.foreach_map
+}
+
 # Pattern 4: for_each with set
 resource "cloudflare_zero_trust_access_group" "foreach_set" {
   for_each = toset(["contractors", "vendors", "partners"])
@@ -93,6 +128,11 @@ resource "cloudflare_zero_trust_access_group" "foreach_set" {
       }
     },
   ]
+}
+
+moved {
+  from = cloudflare_access_group.foreach_set
+  to   = cloudflare_zero_trust_access_group.foreach_set
 }
 
 # Pattern 5: count-based resources
@@ -111,6 +151,11 @@ resource "cloudflare_zero_trust_access_group" "count_based" {
   ]
 }
 
+moved {
+  from = cloudflare_access_group.count_based
+  to   = cloudflare_zero_trust_access_group.count_based
+}
+
 # Pattern 6: Conditional resource
 resource "cloudflare_zero_trust_access_group" "conditional" {
   count = var.cloudflare_account_id != "" ? 1 : 0
@@ -123,6 +168,11 @@ resource "cloudflare_zero_trust_access_group" "conditional" {
       everyone = {}
     },
   ]
+}
+
+moved {
+  from = cloudflare_access_group.conditional
+  to   = cloudflare_zero_trust_access_group.conditional
 }
 
 # Pattern 7: Boolean selectors
@@ -141,6 +191,11 @@ resource "cloudflare_zero_trust_access_group" "booleans" {
       certificate = {}
     },
   ]
+}
+
+moved {
+  from = cloudflare_access_group.booleans
+  to   = cloudflare_zero_trust_access_group.booleans
 }
 
 # Pattern 8: Email domain selector
@@ -167,6 +222,11 @@ resource "cloudflare_zero_trust_access_group" "email_domains" {
   ]
 }
 
+moved {
+  from = cloudflare_access_group.email_domains
+  to   = cloudflare_zero_trust_access_group.email_domains
+}
+
 # Pattern 9: Geo selector
 resource "cloudflare_zero_trust_access_group" "geo" {
   account_id = var.cloudflare_account_id
@@ -189,6 +249,11 @@ resource "cloudflare_zero_trust_access_group" "geo" {
       }
     },
   ]
+}
+
+moved {
+  from = cloudflare_access_group.geo
+  to   = cloudflare_zero_trust_access_group.geo
 }
 
 # Pattern 10: All three rule types
@@ -219,6 +284,11 @@ resource "cloudflare_zero_trust_access_group" "all_rules" {
       }
     },
   ]
+}
+
+moved {
+  from = cloudflare_access_group.all_rules
+  to   = cloudflare_zero_trust_access_group.all_rules
 }
 
 # Pattern 11: Multiple selectors in each rule
@@ -268,6 +338,11 @@ resource "cloudflare_zero_trust_access_group" "complex" {
   ]
 }
 
+moved {
+  from = cloudflare_access_group.complex
+  to   = cloudflare_zero_trust_access_group.complex
+}
+
 # Pattern 12: Service token selector
 resource "cloudflare_zero_trust_access_group" "service_tokens" {
   account_id = var.cloudflare_account_id
@@ -278,6 +353,11 @@ resource "cloudflare_zero_trust_access_group" "service_tokens" {
       any_valid_service_token = {}
     },
   ]
+}
+
+moved {
+  from = cloudflare_access_group.service_tokens
+  to   = cloudflare_zero_trust_access_group.service_tokens
 }
 
 # Pattern 13: Group and email list selectors
@@ -319,6 +399,11 @@ resource "cloudflare_zero_trust_access_group" "lists" {
   ]
 }
 
+moved {
+  from = cloudflare_access_group.lists
+  to   = cloudflare_zero_trust_access_group.lists
+}
+
 # Pattern 14: Login method and device posture
 resource "cloudflare_zero_trust_access_group" "auth_methods" {
   account_id = var.cloudflare_account_id
@@ -343,6 +428,11 @@ resource "cloudflare_zero_trust_access_group" "auth_methods" {
   ]
 }
 
+moved {
+  from = cloudflare_access_group.auth_methods
+  to   = cloudflare_zero_trust_access_group.auth_methods
+}
+
 # Pattern 15: Common name selector
 resource "cloudflare_zero_trust_access_group" "common_name" {
   account_id = var.cloudflare_account_id
@@ -357,6 +447,11 @@ resource "cloudflare_zero_trust_access_group" "common_name" {
   ]
 }
 
+moved {
+  from = cloudflare_access_group.common_name
+  to   = cloudflare_zero_trust_access_group.common_name
+}
+
 # Pattern 16: Auth method selector
 resource "cloudflare_zero_trust_access_group" "auth_method_selector" {
   account_id = var.cloudflare_account_id
@@ -369,6 +464,11 @@ resource "cloudflare_zero_trust_access_group" "auth_method_selector" {
       }
     },
   ]
+}
+
+moved {
+  from = cloudflare_access_group.auth_method_selector
+  to   = cloudflare_zero_trust_access_group.auth_method_selector
 }
 
 # Pattern 17: Lifecycle meta-arguments
@@ -389,6 +489,11 @@ resource "cloudflare_zero_trust_access_group" "lifecycle_test" {
   }
 }
 
+moved {
+  from = cloudflare_access_group.lifecycle_test
+  to   = cloudflare_zero_trust_access_group.lifecycle_test
+}
+
 # Pattern 18: Terraform functions
 resource "cloudflare_zero_trust_access_group" "functions" {
   account_id = var.cloudflare_account_id
@@ -399,6 +504,11 @@ resource "cloudflare_zero_trust_access_group" "functions" {
       email = "user${i}@example.com"
     }
   }]
+}
+
+moved {
+  from = cloudflare_access_group.functions
+  to   = cloudflare_zero_trust_access_group.functions
 }
 
 # Pattern 20: Cross-resource references
@@ -415,6 +525,11 @@ resource "cloudflare_zero_trust_access_group" "parent" {
   ]
 }
 
+moved {
+  from = cloudflare_access_group.parent
+  to   = cloudflare_zero_trust_access_group.parent
+}
+
 resource "cloudflare_zero_trust_access_group" "child" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix} Child Group - References ${cloudflare_zero_trust_access_group.parent.name}"
@@ -428,4 +543,9 @@ resource "cloudflare_zero_trust_access_group" "child" {
   ]
 
   depends_on = [cloudflare_zero_trust_access_group.parent]
+}
+
+moved {
+  from = cloudflare_access_group.child
+  to   = cloudflare_zero_trust_access_group.child
 }
