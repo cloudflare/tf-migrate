@@ -42,7 +42,7 @@ variable "advertisement_status" {
 }
 
 locals {
-  name_prefix = "tf-acc-test"
+  name_prefix = "cftftest"
   environment = "integration-test"
   description_template = "BYO IP Prefix for ${local.environment}"
 
