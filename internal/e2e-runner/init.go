@@ -195,7 +195,11 @@ crowdstrike_client_id     = "%s"
 crowdstrike_client_secret = "%s"
 crowdstrike_api_url       = "%s"
 crowdstrike_customer_id   = "%s"
-`, env.AccountID, env.ZoneID, env.Domain, env.CrowdstrikeClientID, env.CrowdstrikeClientSecret, env.CrowdstrikeAPIURL, env.CrowdstrikeCustomerID)
+byo_ip_cidr               = "%s"
+byo_ip_asn                = "%s"
+byo_ip_loa_document_id    = "%s"
+byo_ip_prefix_id          = "%s"
+`, env.AccountID, env.ZoneID, env.Domain, env.CrowdstrikeClientID, env.CrowdstrikeClientSecret, env.CrowdstrikeAPIURL, env.CrowdstrikeCustomerID, env.BYOIPCidr, env.BYOIPASN, env.BYOIPLOADocumentID, env.BYOIPPrefixID)
 
 	tfvarsPath := filepath.Join(v4Dir, "terraform.tfvars")
 	if err := os.WriteFile(tfvarsPath, []byte(tfvarsContent), permFile); err != nil {
@@ -273,6 +277,18 @@ crowdstrike_customer_id   = "%s"
 		}
 		if moduleVars["crowdstrike_customer_id"] {
 			mainTfContent += "\n  crowdstrike_customer_id   = var.crowdstrike_customer_id"
+		}
+		if moduleVars["byo_ip_cidr"] {
+			mainTfContent += "\n  byo_ip_cidr               = var.byo_ip_cidr"
+		}
+		if moduleVars["byo_ip_asn"] {
+			mainTfContent += "\n  byo_ip_asn                = var.byo_ip_asn"
+		}
+		if moduleVars["byo_ip_loa_document_id"] {
+			mainTfContent += "\n  byo_ip_loa_document_id    = var.byo_ip_loa_document_id"
+		}
+		if moduleVars["byo_ip_prefix_id"] {
+			mainTfContent += "\n  byo_ip_prefix_id          = var.byo_ip_prefix_id"
 		}
 
 		mainTfContent += "\n}\n"
