@@ -193,8 +193,8 @@ resource "cloudflare_origin_ca_certificate" "mixed_hostnames" {
   csr          = local.default_csr
   request_type = "origin-rsa"
   hostnames = [
-    local.test_domain,
     local.wildcard_domain,
+    local.test_domain,
     "cftftest-subdomain.${var.cloudflare_domain}",
   ]
   requested_validity = 730
@@ -332,7 +332,7 @@ HQbz7GoyzUHbssJAq1unWphMHf5RQo9SFu/EMA==
 -----END CERTIFICATE REQUEST-----
 EOT
   request_type         = "origin-rsa"
-  hostnames            = ["cftftest-maximal.${var.cloudflare_domain}", "*.cftftest-maximal.${var.cloudflare_domain}"]
+  hostnames            = ["*.cftftest-maximal.${var.cloudflare_domain}", "cftftest-maximal.${var.cloudflare_domain}"]
   requested_validity   = 5475
   min_days_for_renewal = 90
 }
