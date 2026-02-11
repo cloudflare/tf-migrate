@@ -32,6 +32,14 @@ type E2EEnv struct {
 
 // LoadEnv loads environment variables and validates required ones
 func LoadEnv(required []string) (*E2EEnv, error) {
+	// Helper function to get environment variable with default value
+	getEnvWithDefault := func(key, defaultValue string) string {
+		if value := os.Getenv(key); value != "" {
+			return value
+		}
+		return defaultValue
+	}
+
 	env := &E2EEnv{
 		AccountID:              os.Getenv("CLOUDFLARE_ACCOUNT_ID"),
 		ZoneID:                 os.Getenv("CLOUDFLARE_ZONE_ID"),
@@ -44,10 +52,10 @@ func LoadEnv(required []string) (*E2EEnv, error) {
 		CrowdstrikeClientSecret: os.Getenv("CLOUDFLARE_CROWDSTRIKE_CLIENT_SECRET"),
 		CrowdstrikeAPIURL:      os.Getenv("CLOUDFLARE_CROWDSTRIKE_API_URL"),
 		CrowdstrikeCustomerID:  os.Getenv("CLOUDFLARE_CROWDSTRIKE_CUSTOMER_ID"),
-		BYOIPCidr:              os.Getenv("CLOUDFLARE_BYO_IP_CIDR"),
-		BYOIPASN:               os.Getenv("CLOUDFLARE_BYO_IP_ASN"),
-		BYOIPLOADocumentID:     os.Getenv("CLOUDFLARE_BYO_IP_LOA_DOCUMENT_ID"),
-		BYOIPPrefixID:          os.Getenv("CLOUDFLARE_BYO_IP_PREFIX_ID"),
+		BYOIPCidr:              getEnvWithDefault("CLOUDFLARE_BYO_IP_CIDR", "2606:54c2:2::/48"),
+		BYOIPASN:               getEnvWithDefault("CLOUDFLARE_BYO_IP_ASN", "13335"),
+		BYOIPLOADocumentID:     getEnvWithDefault("CLOUDFLARE_BYO_IP_LOA_DOCUMENT_ID", "c8af01b0dd8f4779980824d9a8c84136"),
+		BYOIPPrefixID:          getEnvWithDefault("CLOUDFLARE_BYO_IP_PREFIX_ID", "e71bfbf3fdc740aa8b90a61e9dfffe79"),
 	}
 
 	// Validate required variables
