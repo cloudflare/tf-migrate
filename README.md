@@ -11,6 +11,10 @@ A powerful CLI tool for automatically migrating Terraform configurations and sta
 Currently supports migrations:
 - **v4 → v5**: Cloudflare Provider v4 to v5
 
+## Documentation
+
+For comprehensive documentation including architecture, testing, drift exemptions, and development guide, see **[CLAUDE.md](./CLAUDE.md)** - designed to give AI agents (and humans!) complete project context.
+
 ## Installation
 
 ### Building from Source
@@ -206,7 +210,7 @@ E2E tests validate the complete migration workflow with real Cloudflare resource
 
 **Key Features:**
 - ✅ **Credential sanitization** - Prevents API keys/secrets from leaking in logs
-- ✅ **Drift detection** - Configurable exemptions via `e2e/drift-exemptions.yaml`
+- ✅ **Drift detection** - Hierarchical exemptions via global + resource-specific configs
 - ✅ **Colored output** - Clear success/failure indicators
 - ✅ **Resource filtering** - Test specific resources: `--resources custom_pages,load_balancer_monitor`
 - ✅ **88 unit tests** - Comprehensive coverage of the e2e-runner itself
@@ -277,16 +281,12 @@ make test
 
 **Drift Exemptions:**
 
-Configure acceptable drift in `e2e/drift-exemptions.yaml`:
+Configure acceptable drift patterns using hierarchical YAML configuration:
 
-```yaml
-dns_record:
-  - "created_on"      # API-computed timestamp
-  - "modified_on"     # API-computed timestamp
-  - "metadata"        # Provider-managed field
-```
+- `e2e/global-drift-exemptions.yaml` - Global exemptions for all resources
+- `e2e/drift-exemptions/{resource}.yaml` - Resource-specific exemptions
 
-Use `--apply-exemptions` to ignore these known drifts during testing.
+Use `--apply-exemptions` to apply exemptions during testing. See **[CLAUDE.md](./CLAUDE.md#drift-exemptions-system)** for complete documentation.
 
 **Import Annotations (Import-Only Resources):**
 
@@ -337,7 +337,8 @@ internal/
 ├── resources/        # Migration implementations
 └── e2e-runner/       # E2E runner implementation (88 unit tests)
 e2e/
-├── drift-exemptions.yaml
+├── global-drift-exemptions.yaml
+├── drift-exemptions/
 ├── tf/v4/           # Test fixtures
 └── migrated-v4_to_v5/  # Migration output
 bin/                 # Built binaries
