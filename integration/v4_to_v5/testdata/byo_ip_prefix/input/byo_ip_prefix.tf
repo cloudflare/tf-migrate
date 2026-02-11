@@ -26,7 +26,7 @@ variable "cloudflare_domain" {
 variable "prefix_base" {
   description = "Base prefix ID for testing"
   type        = string
-  default     = "prefix-test"
+  default     = "cftftest"
 }
 
 variable "enable_optional" {
@@ -47,16 +47,16 @@ locals {
   description_template = "BYO IP Prefix for ${local.environment}"
 
   prefix_map = {
-    prod    = "prefix-prod-001"
-    staging = "prefix-staging-001"
-    dev     = "prefix-dev-001"
-    test    = "prefix-test-001"
+    prod    = "cftftest-prod-001"
+    staging = "cftftest-staging-001"
+    dev     = "cftftest-dev-001"
+    test    = "cftftest-test-001"
   }
 
   prefix_list = [
-    "prefix-list-001",
-    "prefix-list-002",
-    "prefix-list-003"
+    "cftftest-list-001",
+    "cftftest-list-002",
+    "cftftest-list-003"
   ]
 }
 
@@ -67,13 +67,13 @@ locals {
 # Instance 1: Minimal resource (only required fields)
 resource "cloudflare_byo_ip_prefix" "minimal" {
   account_id = var.cloudflare_account_id
-  prefix_id  = "prefix-minimal-001"
+  prefix_id  = "cftftest-minimal-001"
 }
 
 # Instance 2: Full resource with all optional fields
 resource "cloudflare_byo_ip_prefix" "full" {
   account_id    = var.cloudflare_account_id
-  prefix_id     = "prefix-full-001"
+  prefix_id     = "cftftest-full-001"
   description   = "Full BYO IP prefix with all fields"
   advertisement = "on"
 }
@@ -119,7 +119,7 @@ resource "cloudflare_byo_ip_prefix" "with_count" {
   count = 3
 
   account_id    = var.cloudflare_account_id
-  prefix_id     = "prefix-count-${count.index}"
+  prefix_id     = "cftftest-count-${count.index}"
   description   = "Prefix number ${count.index + 1}"
   advertisement = count.index % 2 == 0 ? "on" : "off"
 }
@@ -132,7 +132,7 @@ resource "cloudflare_byo_ip_prefix" "conditional" {
   count = var.enable_optional ? 1 : 0
 
   account_id    = var.cloudflare_account_id
-  prefix_id     = "prefix-conditional-001"
+  prefix_id     = "cftftest-conditional-001"
   description   = "Conditional prefix"
   advertisement = "off"
 }
@@ -141,7 +141,7 @@ resource "cloudflare_byo_ip_prefix" "conditional_ternary" {
   count = var.enable_optional ? 2 : 0
 
   account_id  = var.cloudflare_account_id
-  prefix_id   = "prefix-conditional-${count.index + 1}"
+  prefix_id   = "cftftest-conditional-${count.index + 1}"
   description = var.enable_optional ? "Enabled prefix ${count.index}" : null
 }
 
@@ -153,7 +153,7 @@ resource "cloudflare_byo_ip_prefix" "conditional_ternary" {
 # But we can reference other instances
 resource "cloudflare_byo_ip_prefix" "reference" {
   account_id  = cloudflare_byo_ip_prefix.minimal.account_id
-  prefix_id   = "prefix-reference-001"
+  prefix_id   = "cftftest-reference-001"
   description = "References minimal: ${cloudflare_byo_ip_prefix.minimal.prefix_id}"
 }
 
@@ -163,7 +163,7 @@ resource "cloudflare_byo_ip_prefix" "reference" {
 
 resource "cloudflare_byo_ip_prefix" "with_lifecycle" {
   account_id    = var.cloudflare_account_id
-  prefix_id     = "prefix-lifecycle-001"
+  prefix_id     = "cftftest-lifecycle-001"
   description   = "Prefix with lifecycle rules"
   advertisement = "on"
 
@@ -175,7 +175,7 @@ resource "cloudflare_byo_ip_prefix" "with_lifecycle" {
 
 resource "cloudflare_byo_ip_prefix" "prevent_destroy" {
   account_id  = var.cloudflare_account_id
-  prefix_id   = "prefix-prevent-001"
+  prefix_id   = "cftftest-prevent-001"
   description = "Protected prefix"
 
   lifecycle {
@@ -189,13 +189,13 @@ resource "cloudflare_byo_ip_prefix" "prevent_destroy" {
 
 resource "cloudflare_byo_ip_prefix" "with_join" {
   account_id  = var.cloudflare_account_id
-  prefix_id   = "prefix-join-001"
+  prefix_id   = "cftftest-join-001"
   description = join(" - ", ["BYO IP", local.environment, "test"])
 }
 
 resource "cloudflare_byo_ip_prefix" "with_format" {
   account_id    = var.cloudflare_account_id
-  prefix_id     = "prefix-format-001"
+  prefix_id     = "cftftest-format-001"
   description   = format("Prefix for %s environment", local.environment)
   advertisement = "on"
 }
@@ -213,14 +213,14 @@ resource "cloudflare_byo_ip_prefix" "with_interpolation" {
 # Edge case 1: Empty string description (vs null)
 resource "cloudflare_byo_ip_prefix" "empty_description" {
   account_id  = var.cloudflare_account_id
-  prefix_id   = "prefix-empty-desc-001"
+  prefix_id   = "${local.name_prefix}-empty-desc-001"
   description = ""
 }
 
 # Edge case 2: Advertisement off
 resource "cloudflare_byo_ip_prefix" "advertisement_off" {
   account_id    = var.cloudflare_account_id
-  prefix_id     = "prefix-adv-off-001"
+  prefix_id     = "${local.name_prefix}-adv-off-001"
   description   = "Prefix with advertisement disabled"
   advertisement = "off"
 }
