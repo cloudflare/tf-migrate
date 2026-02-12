@@ -274,98 +274,11 @@ resource "cloudflare_regional_hostname" "test" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	t.Run("StateTransformation", func(t *testing.T) {
-		tests := []testhelpers.StateTestCase{
-			{
-				Name: "basic state with schema_version",
-				Input: `{
-					"attributes": {
-						"id": "example.com",
-						"zone_id": "abc123",
-						"hostname": "example.com",
-						"region_key": "us"
-					}
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "example.com",
-						"zone_id": "abc123",
-						"hostname": "example.com",
-						"region_key": "us"
-					},
-					"schema_version": 0
-				}`,
-			},
-			{
-				Name: "state with routing attribute",
-				Input: `{
-					"attributes": {
-						"id": "foo.example.com",
-						"zone_id": "abc123",
-						"hostname": "foo.example.com",
-						"region_key": "ca",
-						"routing": "dns"
-					}
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "foo.example.com",
-						"zone_id": "abc123",
-						"hostname": "foo.example.com",
-						"region_key": "ca",
-						"routing": "dns"
-					},
-					"schema_version": 0
-				}`,
-			},
-			{
-				Name: "state with created_on",
-				Input: `{
-					"attributes": {
-						"id": "example.com",
-						"zone_id": "abc123",
-						"hostname": "example.com",
-						"region_key": "us",
-						"created_on": "2025-03-13T18:58:17.806723Z"
-					}
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "example.com",
-						"zone_id": "abc123",
-						"hostname": "example.com",
-						"region_key": "us",
-						"created_on": "2025-03-13T18:58:17.806723Z"
-					},
-					"schema_version": 0
-				}`,
-			},
-			{
-				Name: "state with all fields",
-				Input: `{
-					"attributes": {
-						"id": "foo.example.com",
-						"zone_id": "abc123",
-						"hostname": "foo.example.com",
-						"region_key": "eu",
-						"routing": "dns",
-						"created_on": "2025-03-13T18:58:17.806723Z"
-					}
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "foo.example.com",
-						"zone_id": "abc123",
-						"hostname": "foo.example.com",
-						"region_key": "eu",
-						"routing": "dns",
-						"created_on": "2025-03-13T18:58:17.806723Z"
-					},
-					"schema_version": 0
-				}`,
-			},
-		}
+}
 
-		testhelpers.RunStateTransformTests(t, tests, migrator)
-	})
+func TestUsesProviderStateUpgrader(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+	if got := migrator.(*V4ToV5Migrator).UsesProviderStateUpgrader(); !got {
+		t.Errorf("UsesProviderStateUpgrader() = %v, want true", got)
+	}
 }
