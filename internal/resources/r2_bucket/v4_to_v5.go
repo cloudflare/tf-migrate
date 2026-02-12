@@ -3,7 +3,6 @@ package r2_bucket
 import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 )
@@ -47,26 +46,17 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState transforms the JSON state from v4 to v5.
-// For r2_bucket, we need to add the new v5 fields with their default values
-// to prevent plan changes after migration.
+// TransformState is a no-op for r2_bucket.
+// State transformation is handled by the provider's StateUpgraders (UpgradeState).
+// The provider automatically adds new fields (jurisdiction, storage_class, creation_date)
+// with appropriate defaults when it detects the state version upgrade.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is handled by the provider's StateUpgraders
+	// This function is a no-op for r2_bucket migration
+	return stateJSON.String(), nil
+}
 
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		return result, nil
-	}
-
-	instance := stateJSON.Get("attributes")
-
-	// Add new v5 fields with their default values to match the schema
-	// jurisdiction: default is "default"
-	result = state.EnsureField(result, "attributes", instance, "jurisdiction", "default")
-
-	// storage_class: default is "Standard"
-	result = state.EnsureField(result, "attributes", instance, "storage_class", "Standard")
-
-	// Note: creation_date is not added here as it's purely computed and will be set by the API
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
