@@ -9,7 +9,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -314,11 +313,12 @@ func (m *V4ToV5Migrator) parseGitHubSelector(blockContent string) []string {
 		name := nameMatch[1]
 
 		// Extract identity_provider_id (optional)
-		idpPattern := regexp.MustCompile(`identity_provider_id\s*=\s*"([^"]*)"`)
+		// Matches both quoted strings and unquoted references (e.g., cloudflare_access_identity_provider.foo.id)
+		idpPattern := regexp.MustCompile(`identity_provider_id\s*=\s*(.+?)(?:\n|\})`)
 		idpMatch := idpPattern.FindStringSubmatch(githubContent)
 		idp := ""
 		if len(idpMatch) >= 2 {
-			idp = idpMatch[1]
+			idp = strings.TrimSpace(idpMatch[1])
 		}
 
 		// Extract teams array
@@ -344,7 +344,7 @@ func (m *V4ToV5Migrator) parseGitHubSelector(blockContent string) []string {
         name = "%s"`, name)
 			if idp != "" {
 				selector += fmt.Sprintf(`
-        identity_provider_id = "%s"`, idp)
+        identity_provider_id = %s`, idp)
 			}
 			selector += `
       }
@@ -359,7 +359,7 @@ func (m *V4ToV5Migrator) parseGitHubSelector(blockContent string) []string {
         team = "%s"`, name, team)
 				if idp != "" {
 					selector += fmt.Sprintf(`
-        identity_provider_id = "%s"`, idp)
+        identity_provider_id = %s`, idp)
 				}
 				selector += `
       }
@@ -790,443 +790,37 @@ func (m *V4ToV5Migrator) transformForExpressionRegex(forExpr, selectorName, inne
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	// Get the resource name before renaming (for moved block generation)
+	resourceName := tfhcl.GetResourceName(block)
+
 	// Rename resource type: cloudflare_access_group → cloudflare_zero_trust_access_group
 	tfhcl.RenameResourceType(block, m.oldType, m.newType)
 
-	// Note: Most transformation happens in Preprocess() due to complexity
-	// This function handles any remaining HCL-level transformations
+	// Generate moved block for resource rename
+	// This triggers the provider's MoveState handler which calls the StateUpgrader
+	oldType, newType := m.GetResourceRename()
+	from := oldType + "." + resourceName
+	to := newType + "." + resourceName
+	movedBlock := tfhcl.CreateMovedBlock(from, to)
+
+	// Note: Most config transformation happens in Preprocess() due to complexity
+	// This function handles resource renaming and moved block generation
 
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         []*hclwrite.Block{block, movedBlock},
+		RemoveOriginal: true, // Remove original block since we're renaming
 	}, nil
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// This function receives a single instance and returns the transformed instance JSON
-	result := stateJSON.String()
-
-	// Transform the instance attributes
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Exists() {
-		// Set schema_version even for instances without attributes
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// Transform include rules
-	result = m.transformRule(result, attrs, "include")
-
-	// Transform exclude rules
-	result = m.transformRule(result, attrs, "exclude")
-
-	// Transform require rules
-	result = m.transformRule(result, attrs, "require")
-
-	// Ensure schema_version is 0 (MANDATORY for v5)
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+	// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState)
+	// The moved block generated in TransformConfig triggers the provider's migration logic
+	// This function is a no-op for zero_trust_access_group migration
+	return stateJSON.String(), nil
 }
 
-// transformRule transforms a single rule (include, exclude, or require) from v4 to v5 format
-func (m *V4ToV5Migrator) transformRule(result string, attrs gjson.Result, ruleName string) string {
-	ruleField := attrs.Get(ruleName)
-	if !ruleField.Exists() || !ruleField.IsArray() {
-		return result
-	}
-
-	// v4 has a single rule object containing arrays
-	// v5 needs multiple rule objects, each containing one selector
-	var v5Selectors []interface{}
-
-	ruleField.ForEach(func(_, v4Rule gjson.Result) bool {
-		// Explode this v4 rule into multiple v5 selectors
-		selectors := m.explodeRuleSelectors(v4Rule)
-		v5Selectors = append(v5Selectors, selectors...)
-		return true
-	})
-
-	// Set or delete based on whether we have selectors
-	rulePath := "attributes." + ruleName
-	if len(v5Selectors) > 0 {
-		result, _ = sjson.Set(result, rulePath, v5Selectors)
-	} else {
-		result, _ = sjson.Delete(result, rulePath)
-	}
-
-	return result
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
 
-// explodeRuleSelectors takes a v4 rule object and returns a slice of v5 selector objects
-// This is the core transformation logic for state
-func (m *V4ToV5Migrator) explodeRuleSelectors(v4Rule gjson.Result) []interface{} {
-	var selectors []interface{}
-
-	// Phase 1: Simple string array selectors (no field rename)
-	// Note: Parse email_list and ip_list before email and ip to match expected ordering
-	selectors = append(selectors, m.explodeStringArrayState(v4Rule, "email", "email")...)
-	selectors = append(selectors, m.explodeStringArrayState(v4Rule, "email_list", "id")...)
-	selectors = append(selectors, m.explodeStringArrayState(v4Rule, "ip_list", "id")...)
-	selectors = append(selectors, m.explodeStringArrayState(v4Rule, "ip", "ip")...)
-	selectors = append(selectors, m.explodeStringArrayState(v4Rule, "group", "id")...)
-	selectors = append(selectors, m.explodeStringArrayState(v4Rule, "login_method", "id")...)
-
-	// Phase 2: String array selectors WITH field rename
-	selectors = append(selectors, m.explodeStringArrayState(v4Rule, "email_domain", "domain")...)
-	selectors = append(selectors, m.explodeStringArrayState(v4Rule, "geo", "country_code")...)
-	selectors = append(selectors, m.explodeStringArrayState(v4Rule, "device_posture", "integration_uid")...)
-	selectors = append(selectors, m.explodeStringArrayState(v4Rule, "service_token", "token_id")...)
-
-	// Phase 3: String scalar selectors
-	selectors = append(selectors, m.explodeStringScalarState(v4Rule, "common_name", "common_name")...)
-	selectors = append(selectors, m.explodeStringScalarState(v4Rule, "auth_method", "auth_method")...)
-
-	// Phase 4: Boolean selectors
-	selectors = append(selectors, m.explodeBooleanState(v4Rule, "everyone")...)
-	selectors = append(selectors, m.explodeBooleanState(v4Rule, "certificate")...)
-	selectors = append(selectors, m.explodeBooleanState(v4Rule, "any_valid_service_token")...)
-
-	// Phase 5: common_names overflow
-	selectors = append(selectors, m.explodeCommonNamesState(v4Rule)...)
-
-	// Phase 6: Complex nested selectors
-	selectors = append(selectors, m.explodeGitHubState(v4Rule)...)
-	selectors = append(selectors, m.explodeGSuiteState(v4Rule)...)
-	selectors = append(selectors, m.explodeAzureState(v4Rule)...)
-	selectors = append(selectors, m.explodeOktaState(v4Rule)...)
-	selectors = append(selectors, m.explodeSAMLState(v4Rule)...)
-	selectors = append(selectors, m.explodeExternalEvaluationState(v4Rule)...)
-	selectors = append(selectors, m.explodeAuthContextState(v4Rule)...)
-
-	return selectors
-}
-
-// explodeStringArrayState explodes a string array into multiple wrapped selectors
-func (m *V4ToV5Migrator) explodeStringArrayState(v4Rule gjson.Result, selectorName, innerFieldName string) []interface{} {
-	var selectors []interface{}
-
-	arr := v4Rule.Get(selectorName)
-	if !arr.Exists() || !arr.IsArray() {
-		return selectors
-	}
-
-	arr.ForEach(func(_, value gjson.Result) bool {
-		selectors = append(selectors, map[string]interface{}{
-			selectorName: map[string]interface{}{
-				innerFieldName: value.String(),
-			},
-		})
-		return true
-	})
-
-	return selectors
-}
-
-// explodeStringScalarState wraps a scalar string value
-func (m *V4ToV5Migrator) explodeStringScalarState(v4Rule gjson.Result, selectorName, innerFieldName string) []interface{} {
-	var selectors []interface{}
-
-	value := v4Rule.Get(selectorName)
-	if !value.Exists() || value.String() == "" {
-		return selectors
-	}
-
-	selectors = append(selectors, map[string]interface{}{
-		selectorName: map[string]interface{}{
-			innerFieldName: value.String(),
-		},
-	})
-
-	return selectors
-}
-
-// explodeBooleanState converts boolean true to empty object
-func (m *V4ToV5Migrator) explodeBooleanState(v4Rule gjson.Result, selectorName string) []interface{} {
-	var selectors []interface{}
-
-	value := v4Rule.Get(selectorName)
-	if !value.Exists() || !value.Bool() {
-		return selectors
-	}
-
-	selectors = append(selectors, map[string]interface{}{
-		selectorName: map[string]interface{}{},
-	})
-
-	return selectors
-}
-
-// explodeCommonNamesState handles common_names overflow array
-func (m *V4ToV5Migrator) explodeCommonNamesState(v4Rule gjson.Result) []interface{} {
-	var selectors []interface{}
-
-	arr := v4Rule.Get("common_names")
-	if !arr.Exists() || !arr.IsArray() {
-		return selectors
-	}
-
-	arr.ForEach(func(_, value gjson.Result) bool {
-		selectors = append(selectors, map[string]interface{}{
-			"common_name": map[string]interface{}{
-				"common_name": value.String(),
-			},
-		})
-		return true
-	})
-
-	return selectors
-}
-
-// explodeGitHubState handles github → github_organization with teams explosion
-func (m *V4ToV5Migrator) explodeGitHubState(v4Rule gjson.Result) []interface{} {
-	var selectors []interface{}
-
-	githubArr := v4Rule.Get("github")
-	if !githubArr.Exists() || !githubArr.IsArray() {
-		return selectors
-	}
-
-	githubArr.ForEach(func(_, github gjson.Result) bool {
-		name := github.Get("name").String()
-		if name == "" {
-			return true
-		}
-
-		idp := github.Get("identity_provider_id").String()
-
-		// Check for teams array
-		teams := github.Get("teams")
-		if teams.Exists() && teams.IsArray() && len(teams.Array()) > 0 {
-			// Create one selector per team
-			teams.ForEach(func(_, team gjson.Result) bool {
-				selector := map[string]interface{}{
-					"github_organization": map[string]interface{}{
-						"name": name,
-						"team": team.String(),
-					},
-				}
-				if idp != "" {
-					selector["github_organization"].(map[string]interface{})["identity_provider_id"] = idp
-				}
-				selectors = append(selectors, selector)
-				return true
-			})
-		} else {
-			// No teams, create single selector
-			selector := map[string]interface{}{
-				"github_organization": map[string]interface{}{
-					"name": name,
-				},
-			}
-			if idp != "" {
-				selector["github_organization"].(map[string]interface{})["identity_provider_id"] = idp
-			}
-			selectors = append(selectors, selector)
-		}
-
-		return true
-	})
-
-	return selectors
-}
-
-// explodeGSuiteState handles gsuite (take first email only)
-func (m *V4ToV5Migrator) explodeGSuiteState(v4Rule gjson.Result) []interface{} {
-	var selectors []interface{}
-
-	gsuiteArr := v4Rule.Get("gsuite")
-	if !gsuiteArr.Exists() || !gsuiteArr.IsArray() {
-		return selectors
-	}
-
-	gsuiteArr.ForEach(func(_, gsuite gjson.Result) bool {
-		emailArr := gsuite.Get("email")
-		if !emailArr.Exists() || !emailArr.IsArray() || len(emailArr.Array()) == 0 {
-			return true
-		}
-
-		// Take first email only
-		email := emailArr.Array()[0].String()
-		idp := gsuite.Get("identity_provider_id").String()
-
-		selector := map[string]interface{}{
-			"gsuite": map[string]interface{}{
-				"email": email,
-			},
-		}
-		if idp != "" {
-			selector["gsuite"].(map[string]interface{})["identity_provider_id"] = idp
-		}
-		selectors = append(selectors, selector)
-
-		return true
-	})
-
-	return selectors
-}
-
-// explodeAzureState handles azure → azure_ad (take first id only)
-func (m *V4ToV5Migrator) explodeAzureState(v4Rule gjson.Result) []interface{} {
-	var selectors []interface{}
-
-	azureArr := v4Rule.Get("azure")
-	if !azureArr.Exists() || !azureArr.IsArray() {
-		return selectors
-	}
-
-	azureArr.ForEach(func(_, azure gjson.Result) bool {
-		idArr := azure.Get("id")
-		if !idArr.Exists() || !idArr.IsArray() || len(idArr.Array()) == 0 {
-			return true
-		}
-
-		// Take first id only
-		id := idArr.Array()[0].String()
-		idp := azure.Get("identity_provider_id").String()
-
-		selector := map[string]interface{}{
-			"azure_ad": map[string]interface{}{
-				"id": id,
-			},
-		}
-		if idp != "" {
-			selector["azure_ad"].(map[string]interface{})["identity_provider_id"] = idp
-		}
-		selectors = append(selectors, selector)
-
-		return true
-	})
-
-	return selectors
-}
-
-// explodeOktaState handles okta (take first name only)
-func (m *V4ToV5Migrator) explodeOktaState(v4Rule gjson.Result) []interface{} {
-	var selectors []interface{}
-
-	oktaArr := v4Rule.Get("okta")
-	if !oktaArr.Exists() || !oktaArr.IsArray() {
-		return selectors
-	}
-
-	oktaArr.ForEach(func(_, okta gjson.Result) bool {
-		nameArr := okta.Get("name")
-		if !nameArr.Exists() || !nameArr.IsArray() || len(nameArr.Array()) == 0 {
-			return true
-		}
-
-		// Take first name only
-		name := nameArr.Array()[0].String()
-		idp := okta.Get("identity_provider_id").String()
-
-		selector := map[string]interface{}{
-			"okta": map[string]interface{}{
-				"name": name,
-			},
-		}
-		if idp != "" {
-			selector["okta"].(map[string]interface{})["identity_provider_id"] = idp
-		}
-		selectors = append(selectors, selector)
-
-		return true
-	})
-
-	return selectors
-}
-
-// explodeSAMLState handles saml (no structural changes)
-func (m *V4ToV5Migrator) explodeSAMLState(v4Rule gjson.Result) []interface{} {
-	var selectors []interface{}
-
-	samlArr := v4Rule.Get("saml")
-	if !samlArr.Exists() || !samlArr.IsArray() {
-		return selectors
-	}
-
-	samlArr.ForEach(func(_, saml gjson.Result) bool {
-		attrName := saml.Get("attribute_name").String()
-		attrValue := saml.Get("attribute_value").String()
-		if attrName == "" || attrValue == "" {
-			return true
-		}
-
-		idp := saml.Get("identity_provider_id").String()
-
-		selector := map[string]interface{}{
-			"saml": map[string]interface{}{
-				"attribute_name":  attrName,
-				"attribute_value": attrValue,
-			},
-		}
-		if idp != "" {
-			selector["saml"].(map[string]interface{})["identity_provider_id"] = idp
-		}
-		selectors = append(selectors, selector)
-
-		return true
-	})
-
-	return selectors
-}
-
-// explodeExternalEvaluationState handles external_evaluation (no structural changes)
-func (m *V4ToV5Migrator) explodeExternalEvaluationState(v4Rule gjson.Result) []interface{} {
-	var selectors []interface{}
-
-	extEvalArr := v4Rule.Get("external_evaluation")
-	if !extEvalArr.Exists() || !extEvalArr.IsArray() {
-		return selectors
-	}
-
-	extEvalArr.ForEach(func(_, extEval gjson.Result) bool {
-		evaluateURL := extEval.Get("evaluate_url").String()
-		keysURL := extEval.Get("keys_url").String()
-		if evaluateURL == "" || keysURL == "" {
-			return true
-		}
-
-		selectors = append(selectors, map[string]interface{}{
-			"external_evaluation": map[string]interface{}{
-				"evaluate_url": evaluateURL,
-				"keys_url":     keysURL,
-			},
-		})
-
-		return true
-	})
-
-	return selectors
-}
-
-// explodeAuthContextState handles auth_context (no structural changes)
-func (m *V4ToV5Migrator) explodeAuthContextState(v4Rule gjson.Result) []interface{} {
-	var selectors []interface{}
-
-	authArr := v4Rule.Get("auth_context")
-	if !authArr.Exists() || !authArr.IsArray() {
-		return selectors
-	}
-
-	authArr.ForEach(func(_, auth gjson.Result) bool {
-		acID := auth.Get("ac_id").String()
-		id := auth.Get("id").String()
-		idp := auth.Get("identity_provider_id").String()
-		if acID == "" || id == "" || idp == "" {
-			return true
-		}
-
-		selectors = append(selectors, map[string]interface{}{
-			"auth_context": map[string]interface{}{
-				"ac_id":                acID,
-				"id":                   id,
-				"identity_provider_id": idp,
-			},
-		})
-
-		return true
-	})
-
-	return selectors
-}
