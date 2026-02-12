@@ -13,12 +13,17 @@ func TestV4ToV5Transformation(t *testing.T) {
 		t.Run("EdgeCases", testConfigEdgeCases)
 		t.Run("MultipleResources", testMultipleResources)
 	})
+}
 
-	t.Run("StateTransformation", func(t *testing.T) {
-		t.Run("NullHandling", testStateNullHandling)
-		t.Run("DataPreservation", testStateDataPreservation)
-		t.Run("EdgeCases", testStateEdgeCases)
-	})
+func TestV4ToV5TransformationState_Removed(t *testing.T) {
+	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
+}
+
+func TestUsesProviderStateUpgrader(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+	if got := migrator.(*V4ToV5Migrator).UsesProviderStateUpgrader(); !got {
+		t.Errorf("UsesProviderStateUpgrader() = %v, want true", got)
+	}
 }
 
 func testBasicConfig(t *testing.T) {
@@ -34,6 +39,11 @@ func testBasicConfig(t *testing.T) {
   zone_id                  = "abc123"
   managed_request_headers  = []
   managed_response_headers = []
+}
+
+moved {
+  from = cloudflare_managed_headers.example
+  to   = cloudflare_managed_transforms.example
 }`,
 		},
 		{
@@ -54,6 +64,11 @@ func testBasicConfig(t *testing.T) {
     enabled = true
   }]
   managed_response_headers = []
+}
+
+moved {
+  from = cloudflare_managed_headers.example
+  to   = cloudflare_managed_transforms.example
 }`,
 		},
 		{
@@ -74,6 +89,11 @@ func testBasicConfig(t *testing.T) {
     id      = "remove_x-powered-by_header"
     enabled = true
   }]
+}
+
+moved {
+  from = cloudflare_managed_headers.example
+  to   = cloudflare_managed_transforms.example
 }`,
 		},
 		{
@@ -102,6 +122,11 @@ func testBasicConfig(t *testing.T) {
     id      = "add_security_headers"
     enabled = false
   }]
+}
+
+moved {
+  from = cloudflare_managed_headers.example
+  to   = cloudflare_managed_transforms.example
 }`,
 		},
 	}
@@ -147,6 +172,11 @@ func testMultipleBlocks(t *testing.T) {
     enabled = true
   }]
   managed_response_headers = []
+}
+
+moved {
+  from = cloudflare_managed_headers.example
+  to   = cloudflare_managed_transforms.example
 }`,
 		},
 		{
@@ -175,6 +205,11 @@ func testMultipleBlocks(t *testing.T) {
     id      = "add_security_headers"
     enabled = false
   }]
+}
+
+moved {
+  from = cloudflare_managed_headers.example
+  to   = cloudflare_managed_transforms.example
 }`,
 		},
 		{
@@ -227,6 +262,11 @@ func testMultipleBlocks(t *testing.T) {
     id      = "remove_server_header"
     enabled = true
   }]
+}
+
+moved {
+  from = cloudflare_managed_headers.example
+  to   = cloudflare_managed_transforms.example
 }`,
 		},
 	}
@@ -264,6 +304,11 @@ func testConfigEdgeCases(t *testing.T) {
     enabled = false
   }]
   managed_response_headers = []
+}
+
+moved {
+  from = cloudflare_managed_headers.example
+  to   = cloudflare_managed_transforms.example
 }`,
 		},
 		{
@@ -284,6 +329,11 @@ func testConfigEdgeCases(t *testing.T) {
     enabled = true
   }]
   managed_response_headers = []
+}
+
+moved {
+  from = cloudflare_managed_headers.example
+  to   = cloudflare_managed_transforms.example
 }`,
 		},
 	}
@@ -324,6 +374,11 @@ resource "cloudflare_managed_headers" "zone2" {
   managed_response_headers = []
 }
 
+moved {
+  from = cloudflare_managed_headers.zone1
+  to   = cloudflare_managed_transforms.zone1
+}
+
 resource "cloudflare_managed_transforms" "zone2" {
   zone_id = "zone-2"
 
@@ -332,6 +387,11 @@ resource "cloudflare_managed_transforms" "zone2" {
     id      = "remove_x-powered-by_header"
     enabled = true
   }]
+}
+
+moved {
+  from = cloudflare_managed_headers.zone2
+  to   = cloudflare_managed_transforms.zone2
 }`,
 		},
 	}
@@ -339,179 +399,3 @@ resource "cloudflare_managed_transforms" "zone2" {
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
 
-func testStateNullHandling(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
-
-	tests := []testhelpers.StateTestCase{
-		{
-			Name: "Null headers become empty arrays",
-			Input: `{
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "abc123",
-    "managed_request_headers": null,
-    "managed_response_headers": null
-  }
-}`,
-			Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "abc123",
-    "managed_request_headers": [],
-    "managed_response_headers": []
-  }
-}`,
-		},
-		{
-			Name: "One null, one with data",
-			Input: `{
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "abc123",
-    "managed_request_headers": [{
-      "id": "add_true_client_ip_headers",
-      "enabled": true
-    }],
-    "managed_response_headers": null
-  }
-}`,
-			Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "abc123",
-    "managed_request_headers": [{
-      "id": "add_true_client_ip_headers",
-      "enabled": true
-    }],
-    "managed_response_headers": []
-  }
-}`,
-		},
-	}
-
-	testhelpers.RunStateTransformTests(t, tests, migrator)
-}
-
-func testStateDataPreservation(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
-
-	tests := []testhelpers.StateTestCase{
-		{
-			Name: "Existing data preserved",
-			Input: `{
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "abc123",
-    "managed_request_headers": [{
-      "id": "add_true_client_ip_headers",
-      "enabled": true
-    }, {
-      "id": "add_visitor_location_headers",
-      "enabled": false
-    }],
-    "managed_response_headers": [{
-      "id": "remove_x-powered-by_header",
-      "enabled": true
-    }]
-  }
-}`,
-			Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "abc123",
-    "managed_request_headers": [{
-      "id": "add_true_client_ip_headers",
-      "enabled": true
-    }, {
-      "id": "add_visitor_location_headers",
-      "enabled": false
-    }],
-    "managed_response_headers": [{
-      "id": "remove_x-powered-by_header",
-      "enabled": true
-    }]
-  }
-}`,
-		},
-		{
-			Name: "Empty arrays preserved",
-			Input: `{
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "abc123",
-    "managed_request_headers": [],
-    "managed_response_headers": []
-  }
-}`,
-			Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "abc123",
-    "managed_request_headers": [],
-    "managed_response_headers": []
-  }
-}`,
-		},
-	}
-
-	testhelpers.RunStateTransformTests(t, tests, migrator)
-}
-
-func testStateEdgeCases(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
-
-	tests := []testhelpers.StateTestCase{
-		{
-			Name: "Boolean false values preserved in state",
-			Input: `{
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "abc123",
-    "managed_request_headers": [{
-      "id": "header_1",
-      "enabled": false
-    }, {
-      "id": "header_2",
-      "enabled": false
-    }],
-    "managed_response_headers": []
-  }
-}`,
-			Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "abc123",
-    "managed_request_headers": [{
-      "id": "header_1",
-      "enabled": false
-    }, {
-      "id": "header_2",
-      "enabled": false
-    }],
-    "managed_response_headers": []
-  }
-}`,
-		},
-		{
-			Name: "Schema version set correctly",
-			Input: `{
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "abc123",
-    "managed_request_headers": [],
-    "managed_response_headers": []
-  }
-}`,
-			Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "abc123",
-    "managed_request_headers": [],
-    "managed_response_headers": []
-  }
-}`,
-		},
-	}
-
-	testhelpers.RunStateTransformTests(t, tests, migrator)
-}
