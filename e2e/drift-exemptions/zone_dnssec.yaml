@@ -1,0 +1,17 @@
+# Drift Exemptions for zone_dnssec resource
+#
+# Resource-specific exemptions for cloudflare_zone_dnssec
+
+version: 1
+
+exemptions:
+  # DNSSEC status transitions from pending/disabled to active
+  - name: "status_to_active"
+    description: "Status changes from pending/disabled to active during DNSSEC activation"
+    patterns:
+      - 'status.*->.*"active"'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

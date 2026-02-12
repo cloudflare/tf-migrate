@@ -1,0 +1,20 @@
+# Drift Exemptions for zone_setting resource
+#
+# Resource-specific exemptions for cloudflare_zone_setting
+#
+# The v4 cloudflare_zone_settings_override resource is deleted from state and splits
+# into multiple v5 cloudflare_zone_setting resources. This causes expected initial
+# drift where all v5 resources need to be created via terraform apply.
+
+version: 1
+
+exemptions:
+  # One-to-many transformation: v4 zone_settings_override -> multiple v5 zone_setting
+  - name: "zone_setting_migration_drift"
+    description: "Allow zone_setting resources to be created after migration (one-to-many transformation)"
+    allow_resource_creation: true
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

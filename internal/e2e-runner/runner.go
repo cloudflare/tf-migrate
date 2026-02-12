@@ -395,7 +395,7 @@ func RunE2ETests(cfg *RunConfig) error {
 	}
 
 	// Check if plan shows changes
-	driftResult := checkAndDisplayDrift(ctx.v5PlanOutput, cfg, "initial")
+	driftResult := checkAndDisplayDrift(ctx.v5PlanOutput, cfg, "initial", ctx.resourceList)
 	ctx.hasChanges = driftResult.hasDrift
 	ctx.v5InitialDrift = driftResult.driftLines
 	ctx.v5InitialExempted = driftResult.exemptedCount
@@ -456,7 +456,7 @@ func RunE2ETests(cfg *RunConfig) error {
 	}
 
 	// Check for ongoing drift
-	postDriftResult := checkAndDisplayDrift(ctx.v5PostPlanOutput, cfg, "post-apply")
+	postDriftResult := checkAndDisplayDrift(ctx.v5PostPlanOutput, cfg, "post-apply", ctx.resourceList)
 	ctx.hasPostApplyChanges = postDriftResult.hasDrift
 	ctx.v5PostApplyDrift = postDriftResult.driftLines
 	ctx.v5PostApplyExempted = postDriftResult.exemptedCount
@@ -613,7 +613,7 @@ type driftCheckResult struct {
 
 // checkAndDisplayDrift checks for drift in plan output and displays results
 // Returns true if real drift was detected (excluding exemptions)
-func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string) driftCheckResult {
+func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string, resourceFilter []string) driftCheckResult {
 	result := driftCheckResult{}
 
 	if strings.Contains(planOutput, "No changes") {
@@ -627,7 +627,7 @@ func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string) drift
 
 	// Check if only computed changes when --apply-exemptions is set
 	if cfg.ApplyExemptions {
-		driftResult := checkDrift(planOutput)
+		driftResult := checkDrift(planOutput, resourceFilter)
 
 		// Calculate total exempted count
 		totalExempted := 0

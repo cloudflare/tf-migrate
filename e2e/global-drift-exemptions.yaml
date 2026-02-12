@@ -1,0 +1,26 @@
+# Global Drift Exemptions
+#
+# These exemptions apply to ALL resources unless overridden by resource-specific configs.
+# Use for common patterns: computed fields, known provider behaviors, etc.
+
+version: 1
+
+exemptions:
+  # Standard computed field exemptions
+  - name: "computed_value_refreshes"
+    description: "Ignore attributes that refresh to 'known after apply'"
+    patterns:
+      - '\(known after apply\)'
+      - '= \{\} -> null'
+    enabled: true
+
+# Global settings
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false
+
+  # Warn if exemption doesn't match anything (helps catch stale exemptions)
+  warn_unused_exemptions: false
+
+  # Load resource-specific exemption configs
+  load_resource_exemptions: true

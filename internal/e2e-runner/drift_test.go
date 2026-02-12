@@ -239,11 +239,12 @@ settings:
   verbose_exemptions: false
 `,
 			setupFunc: func(dir string) string {
-				// Create e2e/drift-exemptions.yaml
+				// Create e2e/global-drift-exemptions.yaml
 				e2eDir := filepath.Join(dir, "e2e")
 				os.MkdirAll(e2eDir, 0755)
-				configPath := filepath.Join(e2eDir, "drift-exemptions.yaml")
+				configPath := filepath.Join(e2eDir, "global-drift-exemptions.yaml")
 				os.WriteFile(configPath, []byte(`
+version: 1
 exemptions:
   - name: "test-exemption"
     description: "Test exemption"
@@ -253,6 +254,7 @@ exemptions:
 settings:
   apply_exemptions: true
   verbose_exemptions: false
+  load_resource_exemptions: true
 `), 0644)
 				// Create go.mod to mark as repo root
 				os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module test\n"), 0644)
@@ -305,7 +307,7 @@ settings:
 				defer os.Chdir(oldWd)
 			}
 
-			config, err := loadDriftExemptions()
+			config, err := loadDriftExemptions([]string{})
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("loadDriftExemptions() error = %v, wantErr %v", err, tt.wantErr)
@@ -321,6 +323,7 @@ settings:
 
 func TestHasOnlyComputedChangesWithExemptions(t *testing.T) {
 	config := &DriftExemptionsConfig{
+		Version: 1,
 		Exemptions: []DriftExemption{
 			{
 				Name:        "computed-fields",
@@ -342,12 +345,11 @@ func TestHasOnlyComputedChangesWithExemptions(t *testing.T) {
 				Enabled:     false,
 			},
 		},
-		Settings: struct {
-			ApplyExemptions   bool `yaml:"apply_exemptions"`
-			VerboseExemptions bool `yaml:"verbose_exemptions"`
-		}{
-			ApplyExemptions:   true,
-			VerboseExemptions: false,
+		Settings: ExemptionSettings{
+			ApplyExemptions:        true,
+			VerboseExemptions:      false,
+			WarnUnusedExemptions:   false,
+			LoadResourceExemptions: false,
 		},
 	}
 
@@ -460,8 +462,9 @@ func TestCheckDrift(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, "e2e"), 0755)
 	os.WriteFile(filepath.Join(tmpDir, "go.mod"), []byte("module test\n"), 0644)
 
-	configPath := filepath.Join(tmpDir, "e2e", "drift-exemptions.yaml")
+	configPath := filepath.Join(tmpDir, "e2e", "global-drift-exemptions.yaml")
 	configYAML := `
+version: 1
 exemptions:
   - name: "test-exemption"
     description: "Test"
@@ -471,6 +474,7 @@ exemptions:
 settings:
   apply_exemptions: true
   verbose_exemptions: false
+  load_resource_exemptions: false
 `
 	os.WriteFile(configPath, []byte(configYAML), 0644)
 
@@ -484,7 +488,7 @@ settings:
     }
 `
 
-	result := checkDrift(planOutput)
+	result := checkDrift(planOutput, []string{})
 
 	if !result.OnlyComputedChanges {
 		t.Error("Expected OnlyComputedChanges to be true with exemption")
@@ -745,7 +749,7 @@ Terraform will perform the following actions:
 Plan: 0 to add, 1 to change, 0 to destroy.
 `
 
-	result := hasOnlyComputedChanges(planOutput)
+	result := hasOnlyComputedChanges(planOutput, []string{})
 
 	// Should return true for computed-only changes
 	if !result {
@@ -763,7 +767,7 @@ Terraform will perform the following actions:
 Plan: 0 to add, 1 to change, 0 to destroy.
 `
 
-	result = hasOnlyComputedChanges(realChangePlan)
+	result = hasOnlyComputedChanges(realChangePlan, []string{})
 
 	// Should return false for real changes
 	if result {
@@ -790,7 +794,7 @@ Terraform will perform the following actions:
 Plan: 1 to add, 1 to change, 0 to destroy.
 `
 
-	result := checkDrift(planOutput)
+	result := checkDrift(planOutput, []string{})
 
 	// Check that drift lines don't contain resource declarations
 	for _, line := range result.RealDriftLines {
