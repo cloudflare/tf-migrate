@@ -276,10 +276,6 @@ resource "cloudflare_regional_hostname" "test" {
 
 }
 
-func TestV4ToV5TransformationState_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}
-
 func TestUsesProviderStateUpgrader(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 	if got := migrator.(*V4ToV5Migrator).UsesProviderStateUpgrader(); !got {
