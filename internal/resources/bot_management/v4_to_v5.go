@@ -50,22 +50,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 }
 
 // TransformState handles state file transformations.
-// For bot_management, no state transformations are needed because:
-// - All v4 fields exist in v5 with the same names and types
-// - No fields were deprecated or renamed
-// - No type conversions are required
-// - New v5 fields are optional/computed and should not be added during migration
+// State transformation is handled by the provider's StateUpgraders (UpgradeState).
+// This function is a no-op for bot_management migration.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	return stateJSON.String(), nil
+}
 
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		return result, nil
-	}
-
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Get("zone_id").Exists() {
-		return result, nil
-	}
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
