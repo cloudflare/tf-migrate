@@ -46,20 +46,19 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState transforms the JSON state from v4 to v5.
-// For workers_kv_namespace, the state is identical between v4 and v5.
-// The id field exists in both v4 (implicit) and v5 (explicit in schema).
-// The supports_url_encoding field is new in v5 and will be populated by the provider on first refresh.
+// TransformState is now delegated to provider StateUpgraders
+// This function is a no-op as the provider handles all state transformations
+// The provider's StateUpgraders will:
+// 1. Read v4 state using v4 schema definition
+// 2. Transform to v5 state (pass-through for this resource)
+// 3. Provider will populate supports_url_encoding on first refresh
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// Pass through state unchanged - provider StateUpgraders handle migration
+	return stateJSON.String(), nil
+}
 
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		return result, nil
-	}
-
-	// No transformations needed - state structure is identical
-	// The id field already exists in v4 state and will continue to exist in v5
-	// The supports_url_encoding field (new in v5) will be added by the provider on first refresh
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+// This tells tf-migrate that the provider handles state transformation via StateUpgraders
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
