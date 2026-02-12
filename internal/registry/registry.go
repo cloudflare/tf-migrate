@@ -30,6 +30,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/mtls_certificate"
 	"github.com/cloudflare/tf-migrate/internal/resources/notification_policy"
 	"github.com/cloudflare/tf-migrate/internal/resources/notification_policy_webhooks"
+	"github.com/cloudflare/tf-migrate/internal/resources/origin_ca_certificate"
 	"github.com/cloudflare/tf-migrate/internal/resources/page_rule"
 	"github.com/cloudflare/tf-migrate/internal/resources/pages_project"
 	"github.com/cloudflare/tf-migrate/internal/resources/queue"
@@ -115,6 +116,7 @@ func RegisterAllMigrations() {
 	mtls_certificate.NewV4ToV5Migrator()
 	notification_policy.NewV4ToV5Migrator()
 	notification_policy_webhooks.NewV4ToV5Migrator()
+	origin_ca_certificate.NewV4ToV5Migrator()
 	page_rule.NewV4ToV5Migrator()
 	pages_project.NewV4ToV5Migrator()
 	queue.NewV4ToV5Migrator()
