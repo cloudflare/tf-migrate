@@ -3,7 +3,6 @@ package zone_dnssec
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -104,57 +103,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 }
 
 // TransformState handles state file transformations.
-// This function receives a single resource instance and returns the transformed instance JSON.
-// Converts flags and key_tag from TypeInt (v4) to Float64 (v5).
+// NOTE: State migration is now delegated to provider StateUpgraders.
+// This function is a passthrough - it returns the state unchanged.
+// The provider's UpgradeState mechanism will handle all state transformations:
+// - Type conversions (Int → Float64 for flags, key_tag)
+// - Date format conversion (RFC1123Z → RFC3339 for modified_on)
+// - Status normalization (pending → active, pending-disabled → disabled)
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
-
-	// Check if it's a valid zone_dnssec instance
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		return result, nil
-	}
-
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Get("zone_id").Exists() {
-		return result, nil
-	}
-
-	// Convert flags from int to float64 if it exists
-	flags := attrs.Get("flags")
-	if flags.Exists() && flags.Type == gjson.Number {
-		result, _ = sjson.Set(result, "attributes.flags", flags.Float())
-	}
-
-	// Convert key_tag from int to float64 if it exists
-	keyTag := attrs.Get("key_tag")
-	if keyTag.Exists() && keyTag.Type == gjson.Number {
-		result, _ = sjson.Set(result, "attributes.key_tag", keyTag.Float())
-	}
-
-	// Convert modified_on from v4 format to RFC3339 if it exists
-	// v4 format: "Tue, 04 Nov 2025 21:52:44 +0000"
-	// v5 format (RFC3339): "2025-11-04T21:52:44Z"
-	modifiedOn := attrs.Get("modified_on")
-	if modifiedOn.Exists() && modifiedOn.Type == gjson.String && modifiedOn.String() != "" {
-		result = transform.ConvertDateToRFC3339(result, "attributes.modified_on", modifiedOn.String())
-	}
-	// Handle status field: v5 only accepts "active" or "disabled"
-	// If status is "pending" or any other invalid value, set it to null
-	status := attrs.Get("status")
-	if status.Exists() && status.Type == gjson.String {
-		statusValue := status.String()
-		if statusValue != "" && statusValue != "active" && statusValue != "disabled" {
-			if statusValue == "pending" {
-				result, _ = sjson.Set(result, "attributes.status", "active")
-			} else if statusValue == "pending-disabled" {
-				result, _ = sjson.Set(result, "attributes.status", "disabled")
-			} else {
-				// Set to null for invalid values
-				// Use sjson.SetRaw to explicitly set JSON null
-				result, _ = sjson.SetRaw(result, "attributes.status", "null")
-			}
-		}
-	}
-
-	return result, nil
+	// Return state unchanged - provider StateUpgraders will handle migration
+	return stateJSON.String(), nil
 }

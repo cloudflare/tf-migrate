@@ -10,6 +10,7 @@ exemptions:
     description: "Status changes from pending/disabled to active during DNSSEC activation"
     patterns:
       - 'status.*->.*"active"'
+      - '\+ status\s*=\s*"active"'  # Allow adding status = "active"
     enabled: true
 
 settings:
