@@ -3,7 +3,6 @@ package managed_transforms
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -31,17 +30,18 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
-	// No preprocessing needed - block to attribute conversion handled in TransformConfig
 	return content
 }
 
 // GetResourceRename implements the ResourceRenamer interface
-// Returns rename from cloudflare_managed_headers to cloudflare_managed_transforms
 func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 	return "cloudflare_managed_headers", "cloudflare_managed_transforms"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	// Get resource name before renaming (for moved block generation)
+	resourceName := tfhcl.GetResourceName(block)
+
 	// Rename resource type
 	tfhcl.RenameResourceType(block, "cloudflare_managed_headers", "cloudflare_managed_transforms")
 
@@ -55,35 +55,24 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Set empty array if no blocks found (since v5 requires this field)
 	tfhcl.ConvertBlocksToArrayAttribute(body, "managed_response_headers", true)
 
+	// Generate moved block for state migration
+	oldType, newType := m.GetResourceRename()
+	from := oldType + "." + resourceName
+	to := newType + "." + resourceName
+	movedBlock := tfhcl.CreateMovedBlock(from, to)
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         []*hclwrite.Block{block, movedBlock},
+		RemoveOriginal: true,
 	}, nil
 }
 
+// TransformState is a no-op - state transformation is handled by the provider's StateUpgraders
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string, resourceName string) (string, error) {
-	result := stateJSON.String()
+	return stateJSON.String(), nil
+}
 
-	// Get the attributes
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Exists() {
-		return result, nil
-	}
-
-	// Handle managed_request_headers - ensure it's an array (even if empty)
-	// v5 requires this field, v4 allowed null
-	if !attrs.Get("managed_request_headers").Exists() || attrs.Get("managed_request_headers").Raw == "null" {
-		result, _ = sjson.Set(result, "attributes.managed_request_headers", []interface{}{})
-	}
-
-	// Handle managed_response_headers - ensure it's an array (even if empty)
-	// v5 requires this field, v4 allowed null
-	if !attrs.Get("managed_response_headers").Exists() || attrs.Get("managed_response_headers").Raw == "null" {
-		result, _ = sjson.Set(result, "attributes.managed_response_headers", []interface{}{})
-	}
-
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }

@@ -13,6 +13,7 @@ variable "cloudflare_domain" {
   type        = string
 }
 
+
 # Single comprehensive test covering all valid header types
 resource "cloudflare_managed_transforms" "test" {
   zone_id = var.cloudflare_zone_id
@@ -34,4 +35,9 @@ resource "cloudflare_managed_transforms" "test" {
     id      = "remove_x-powered-by_header"
     enabled = false
   }]
+}
+
+moved {
+  from = cloudflare_managed_headers.test
+  to   = cloudflare_managed_transforms.test
 }
