@@ -1,17 +1,14 @@
 package api_token
 
 import (
-	"fmt"
 	"regexp"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -206,84 +203,13 @@ func (m *V4ToV5Migrator) transformConditionBlock(body *hclwrite.Body) {
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is handled by the provider's StateUpgraders (UpgradeState)
+	// The provider automatically migrates state when users run terraform apply
+	// This function is a no-op for api_token migration
+	return stateJSON.String(), nil
+}
 
-	attributesPath := "attributes"
-	attributes := stateJSON.Get(attributesPath)
-	result = state.RenameField(result, attributesPath, attributes, "policy", "policies")
-
-	// Transform condition from array to object (v4 has array with one element, v5 has object)
-	conditionPath := "attributes.condition"
-	conditionData := gjson.Get(result, conditionPath)
-
-	if conditionData.Exists() && conditionData.IsArray() {
-		conditionArray := conditionData.Array()
-		if len(conditionArray) > 0 {
-			result, _ = sjson.SetRaw(result, conditionPath, conditionArray[0].Raw)
-
-			// Transform condition.request_ip from array to object
-			// v4: condition = [{ request_ip = [{ in = [...], not_in = [...] }] }]
-			// v5: condition = { request_ip = { in = [...], not_in = [...] } }
-			requestIPPath := "attributes.condition.request_ip"
-			requestIPData := gjson.Get(result, requestIPPath)
-
-			if requestIPData.Exists() && requestIPData.IsArray() {
-				requestIPArray := requestIPData.Array()
-				if len(requestIPArray) > 0 {
-					result, _ = sjson.SetRaw(result, requestIPPath, requestIPArray[0].Raw)
-				}
-			}
-		} else {
-			// Remove empty condition array
-			result, _ = sjson.Delete(result, conditionPath)
-		}
-	}
-
-	// Transform permission_groups from array of strings to array of objects
-	// and transform resources from map to JSON string
-	// v4: permission_groups = ["id1", "id2"]
-	// v5: permission_groups = [{ id = "id1" }, { id = "id2" }]
-	// v4: resources = { "com.cloudflare.api.account.*": "*" }
-	// v5: resources = "{\"com.cloudflare.api.account.*\": \"*\"}" (JSON string)
-	policiesPath := "attributes.policies"
-	policies := gjson.Get(result, policiesPath)
-	if policies.Exists() && policies.IsArray() {
-		for i, policy := range policies.Array() {
-			// Transform permission_groups
-			permGroupsPath := fmt.Sprintf("%s.%d.permission_groups", policiesPath, i)
-			permGroups := policy.Get("permission_groups")
-
-			if permGroups.Exists() && permGroups.IsArray() {
-				var transformedGroups []map[string]interface{}
-				for _, groupID := range permGroups.Array() {
-					if groupID.Type == gjson.String {
-						transformedGroups = append(transformedGroups, map[string]interface{}{
-							"id": groupID.String(),
-						})
-					}
-				}
-				if len(transformedGroups) > 0 {
-					result, _ = sjson.Set(result, permGroupsPath, transformedGroups)
-				}
-			}
-
-			// Transform resources from map to JSON string
-			// v4 stores resources as a map object: { "key": "value" }
-			// v5 stores resources as a JSON string: "{\"key\": \"value\"}"
-			resourcesPath := fmt.Sprintf("%s.%d.resources", policiesPath, i)
-			resourcesData := policy.Get("resources")
-
-			if resourcesData.Exists() && resourcesData.IsObject() {
-				// Convert the map to a JSON string
-				jsonStr := resourcesData.Raw
-				result, _ = sjson.Set(result, resourcesPath, jsonStr)
-			}
-		}
-	}
-
-	attributes = gjson.Get(result, attributesPath)
-	result = state.EnsureField(result, attributesPath, attributes, "last_used_on", nil)
-	result, _ = sjson.Set(result, "schema_version", 1)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }

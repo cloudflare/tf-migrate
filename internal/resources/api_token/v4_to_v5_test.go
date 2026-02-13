@@ -35,9 +35,9 @@ func TestV4ToV5Migration(t *testing.T) {
 	// Test config transformations
 	t.Run("ConfigTransformation", func(t *testing.T) {
 		tests := []testhelpers.ConfigTestCase{
-		{
-			Name: "basic api token with single policy",
-			Input: `
+			{
+				Name: "basic api token with single policy",
+				Input: `
 resource "cloudflare_api_token" "example" {
   name = "terraform-example-token"
 
@@ -53,7 +53,7 @@ resource "cloudflare_api_token" "example" {
     }]
   }
 }`,
-			Expected: `
+				Expected: `
 resource "cloudflare_api_token" "example" {
   name = "terraform-example-token"
 
@@ -69,10 +69,10 @@ resource "cloudflare_api_token" "example" {
     }]
   }]
 }`,
-		},
-		{
-			Name: "api token with multiple policies",
-			Input: `
+			},
+			{
+				Name: "api token with multiple policies",
+				Input: `
 resource "cloudflare_api_token" "multi_policy" {
 		 name = "multi-policy-token"
 
@@ -96,7 +96,7 @@ resource "cloudflare_api_token" "multi_policy" {
 		   }
 		 }
 		}`,
-			Expected: `
+				Expected: `
 resource "cloudflare_api_token" "multi_policy" {
   name = "multi-policy-token"
 
@@ -119,10 +119,10 @@ resource "cloudflare_api_token" "multi_policy" {
     }]
   }]
 }`,
-		},
-		{
-			Name: "api token with condition block",
-			Input: `
+			},
+			{
+				Name: "api token with condition block",
+				Input: `
 resource "cloudflare_api_token" "with_condition" {
   name = "conditional-token"
 
@@ -145,7 +145,7 @@ resource "cloudflare_api_token" "with_condition" {
     }
   }
 }`,
-			Expected: `
+				Expected: `
 resource "cloudflare_api_token" "with_condition" {
   name = "conditional-token"
 
@@ -168,10 +168,10 @@ resource "cloudflare_api_token" "with_condition" {
     }
   }
 }`,
-		},
-		{
-			Name: "api token with condition including not_in",
-			Input: `
+			},
+			{
+				Name: "api token with condition including not_in",
+				Input: `
 		resource "cloudflare_api_token" "with_not_in_condition" {
 		 name = "restricted-token"
 
@@ -196,7 +196,7 @@ resource "cloudflare_api_token" "with_condition" {
 		   }
 		 }
 		}`,
-			Expected: `
+				Expected: `
 resource "cloudflare_api_token" "with_not_in_condition" {
   name = "restricted-token"
 
@@ -221,10 +221,10 @@ resource "cloudflare_api_token" "with_not_in_condition" {
     }
   }
 }`,
-		},
-		{
-			Name: "api token with expires_on and not_before",
-			Input: `
+			},
+			{
+				Name: "api token with expires_on and not_before",
+				Input: `
 		resource "cloudflare_api_token" "time_limited" {
 		 name       = "time-limited-token"
 		 expires_on = "2025-01-01T00:00:00Z"
@@ -240,7 +240,7 @@ resource "cloudflare_api_token" "with_not_in_condition" {
 		   }
 		 }
 		}`,
-			Expected: `
+				Expected: `
 resource "cloudflare_api_token" "time_limited" {
   name       = "time-limited-token"
   expires_on = "2025-01-01T00:00:00Z"
@@ -256,10 +256,10 @@ resource "cloudflare_api_token" "time_limited" {
     }]
   }]
 }`,
-		},
-		{
-			Name: "api token with status field",
-			Input: `
+			},
+			{
+				Name: "api token with status field",
+				Input: `
 		resource "cloudflare_api_token" "with_status" {
 		 name   = "status-token"
 		 status = "active"
@@ -274,7 +274,7 @@ resource "cloudflare_api_token" "time_limited" {
 		   }
 		 }
 		}`,
-			Expected: `
+				Expected: `
 resource "cloudflare_api_token" "with_status" {
   name   = "status-token"
   status = "active"
@@ -289,10 +289,10 @@ resource "cloudflare_api_token" "with_status" {
     }]
   }]
 }`,
-		},
-		{
-			Name: "api token with complex resources mapping",
-			Input: `
+			},
+			{
+				Name: "api token with complex resources mapping",
+				Input: `
 		resource "cloudflare_api_token" "complex_resources" {
 		 name = "complex-resources-token"
 
@@ -308,7 +308,7 @@ resource "cloudflare_api_token" "with_status" {
 		   }
 		 }
 		}`,
-			Expected: `
+				Expected: `
 resource "cloudflare_api_token" "complex_resources" {
   name = "complex-resources-token"
 
@@ -324,10 +324,10 @@ resource "cloudflare_api_token" "complex_resources" {
     }]
   }]
 }`,
-		},
-		{
-			Name: "api token with deny effect",
-			Input: `
+			},
+			{
+				Name: "api token with deny effect",
+				Input: `
 		resource "cloudflare_api_token" "deny_policy" {
 		 name = "deny-policy-token"
 
@@ -351,7 +351,7 @@ resource "cloudflare_api_token" "complex_resources" {
 		   }
 		 }
 		}`,
-			Expected: `
+				Expected: `
 resource "cloudflare_api_token" "deny_policy" {
   name = "deny-policy-token"
 
@@ -374,10 +374,10 @@ resource "cloudflare_api_token" "deny_policy" {
     }]
   }]
 }`,
-		},
-		{
-			Name: "api token with empty permission groups",
-			Input: `
+			},
+			{
+				Name: "api token with empty permission groups",
+				Input: `
 		resource "cloudflare_api_token" "empty_perms" {
 		 name = "empty-perms-token"
 
@@ -389,7 +389,7 @@ resource "cloudflare_api_token" "deny_policy" {
 		   }
 		 }
 		}`,
-			Expected: `
+				Expected: `
 resource "cloudflare_api_token" "empty_perms" {
   name = "empty-perms-token"
 
@@ -401,10 +401,10 @@ resource "cloudflare_api_token" "empty_perms" {
     })
   }]
 }`,
-		},
-		{
-			Name: "api token with all optional fields",
-			Input: `
+			},
+			{
+				Name: "api token with all optional fields",
+				Input: `
 		resource "cloudflare_api_token" "full_example" {
 		 name       = "full-example-token"
 		 status     = "active"
@@ -448,7 +448,7 @@ resource "cloudflare_api_token" "empty_perms" {
 		   }
 		 }
 		}`,
-			Expected: `
+				Expected: `
 resource "cloudflare_api_token" "full_example" {
   name       = "full-example-token"
   status     = "active"
@@ -492,10 +492,10 @@ resource "cloudflare_api_token" "full_example" {
     }
   }
 }`,
-		},
-		{
-			Name: "api token with data reference and timestamps",
-			Input: `
+			},
+			{
+				Name: "api token with data reference and timestamps",
+				Input: `
 resource "cloudflare_api_token" "api_token_create" {
   name = "api_token_create"
 
@@ -518,7 +518,7 @@ resource "cloudflare_api_token" "api_token_create" {
     }
   }
 }`,
-			Expected: `
+				Expected: `
 resource "cloudflare_api_token" "api_token_create" {
   name = "api_token_create"
 
@@ -542,210 +542,9 @@ resource "cloudflare_api_token" "api_token_create" {
     }
   }
 }`,
-		},
-	}
-
-		testhelpers.RunConfigTransformTests(t, tests, migrator)
-	})
-
-	// Test state transformations
-	t.Run("StateTransformation", func(t *testing.T) {
-		stateTests := []testhelpers.StateTestCase{
-			{
-				Name: "basic api token state transformation",
-				Input: `{
-					"attributes": {
-						"id": "token-id-1",
-						"name": "Basic API Token",
-						"policy": [{
-							"effect": "allow",
-							"id": "policy1",
-							"permission_groups": ["c8fed203ed3043cba015a93ad1616f1f", "82e64a83756745bbbb1c9c2701bf816b"],
-							"resources": {
-								"com.cloudflare.api.account.*": "*"
-							}
-						}],
-						"status": "active"
-					},
-					"schema_version": 0
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "token-id-1",
-						"name": "Basic API Token",
-						"policies": [{
-							"effect": "allow",
-							"id": "policy1",
-							"permission_groups": [{"id": "c8fed203ed3043cba015a93ad1616f1f"}, {"id": "82e64a83756745bbbb1c9c2701bf816b"}],
-							"resources": "{\"com.cloudflare.api.account.*\":\"*\"}"
-						}],
-						"status": "active",
-						"last_used_on": null
-					},
-					"schema_version": 1
-				}`,
-			},
-			{
-				Name: "api token with condition array to object",
-				Input: `{
-					"attributes": {
-						"id": "token-id-2",
-						"name": "Conditional Token",
-						"condition": [{
-							"request_ip": [{
-								"in": ["192.168.1.0/24", "10.0.0.0/8"]
-							}]
-						}],
-						"policy": [{
-							"effect": "allow",
-							"id": "policy2",
-							"permission_groups": ["c8fed203ed3043cba015a93ad1616f1f"],
-							"resources": {
-								"com.cloudflare.api.account.*": "*"
-							}
-						}],
-						"status": "active"
-					},
-					"schema_version": 0
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "token-id-2",
-						"name": "Conditional Token",
-						"condition": {
-							"request_ip": {
-								"in": ["192.168.1.0/24", "10.0.0.0/8"]
-							}
-						},
-						"policies": [{
-							"effect": "allow",
-							"id": "policy2",
-							"permission_groups": [{"id": "c8fed203ed3043cba015a93ad1616f1f"}],
-							"resources": "{\"com.cloudflare.api.account.*\":\"*\"}"
-						}],
-						"status": "active",
-						"last_used_on": null
-					},
-					"schema_version": 1
-				}`,
-			},
-			{
-				Name: "api token with multiple policies",
-				Input: `{
-					"attributes": {
-						"id": "token-id-3",
-						"name": "Multi Policy Token",
-						"policy": [{
-							"effect": "allow",
-							"id": "policy3a",
-							"permission_groups": ["c8fed203ed3043cba015a93ad1616f1f"],
-							"resources": {
-								"com.cloudflare.api.account.*": "*"
-							}
-						}, {
-							"effect": "deny",
-							"id": "policy3b",
-							"permission_groups": ["82e64a83756745bbbb1c9c2701bf816b"],
-							"resources": {
-								"com.cloudflare.api.account.billing.*": "*"
-							}
-						}],
-						"status": "active"
-					},
-					"schema_version": 0
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "token-id-3",
-						"name": "Multi Policy Token",
-						"policies": [{
-							"effect": "allow",
-							"id": "policy3a",
-							"permission_groups": [{"id": "c8fed203ed3043cba015a93ad1616f1f"}],
-							"resources": "{\"com.cloudflare.api.account.*\":\"*\"}"
-						}, {
-							"effect": "deny",
-							"id": "policy3b",
-							"permission_groups": [{"id": "82e64a83756745bbbb1c9c2701bf816b"}],
-							"resources": "{\"com.cloudflare.api.account.billing.*\":\"*\"}"
-						}],
-						"status": "active",
-						"last_used_on": null
-					},
-					"schema_version": 1
-				}`,
-			},
-			{
-				Name: "api token with empty condition array",
-				Input: `{
-					"attributes": {
-						"id": "token-id-4",
-						"name": "No Condition Token",
-						"condition": [],
-						"policy": [{
-							"effect": "allow",
-							"id": "policy4",
-							"permission_groups": ["c8fed203ed3043cba015a93ad1616f1f"],
-							"resources": {
-								"com.cloudflare.api.account.*": "*"
-							}
-						}],
-						"status": "active"
-					},
-					"schema_version": 0
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "token-id-4",
-						"name": "No Condition Token",
-						"policies": [{
-							"effect": "allow",
-							"id": "policy4",
-							"permission_groups": [{"id": "c8fed203ed3043cba015a93ad1616f1f"}],
-							"resources": "{\"com.cloudflare.api.account.*\":\"*\"}"
-						}],
-						"status": "active",
-						"last_used_on": null
-					},
-					"schema_version": 1
-				}`,
-			},
-			{
-				Name: "api token with permission_groups already as objects",
-				Input: `{
-					"attributes": {
-						"id": "token-id-5",
-						"name": "Already Objects Token",
-						"policy": [{
-							"effect": "allow",
-							"id": "policy5",
-							"permission_groups": [{"id": "c8fed203ed3043cba015a93ad1616f1f"}],
-							"resources": {
-								"com.cloudflare.api.account.*": "*"
-							}
-						}],
-						"status": "active"
-					},
-					"schema_version": 0
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "token-id-5",
-						"name": "Already Objects Token",
-						"policies": [{
-							"effect": "allow",
-							"id": "policy5",
-							"permission_groups": [{"id": "c8fed203ed3043cba015a93ad1616f1f"}],
-							"resources": "{\"com.cloudflare.api.account.*\":\"*\"}"
-						}],
-						"status": "active",
-						"last_used_on": null
-					},
-					"schema_version": 1
-				}`,
 			},
 		}
 
-		testhelpers.RunStateTransformTests(t, stateTests, migrator)
+		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 }
