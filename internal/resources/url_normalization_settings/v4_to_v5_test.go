@@ -154,133 +154,10 @@ resource "cloudflare_url_normalization_settings" "test3" {
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
+}
 
-	t.Run("StateTransformation", func(t *testing.T) {
-		tests := []testhelpers.StateTestCase{
-			{
-				Name: "basic state with schema_version - cloudflare type, incoming scope",
-				Input: `{
-  "schema_version": 1,
-  "attributes": {
-    "id": "abc123",
-    "zone_id": "abc123",
-    "type": "cloudflare",
-    "scope": "incoming"
-  }
-}`,
-				Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "abc123",
-    "zone_id": "abc123",
-    "type": "cloudflare",
-    "scope": "incoming"
-  }
-}`,
-			},
-			{
-				Name: "rfc3986 type with both scope",
-				Input: `{
-  "schema_version": 1,
-  "attributes": {
-    "id": "def456",
-    "zone_id": "def456",
-    "type": "rfc3986",
-    "scope": "both"
-  }
-}`,
-				Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "def456",
-    "zone_id": "def456",
-    "type": "rfc3986",
-    "scope": "both"
-  }
-}`,
-			},
-			{
-				Name: "cloudflare type with none scope",
-				Input: `{
-  "schema_version": 1,
-  "attributes": {
-    "id": "ghi789",
-    "zone_id": "ghi789",
-    "type": "cloudflare",
-    "scope": "none"
-  }
-}`,
-				Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "ghi789",
-    "zone_id": "ghi789",
-    "type": "cloudflare",
-    "scope": "none"
-  }
-}`,
-			},
-			{
-				Name: "rfc3986 type with incoming scope",
-				Input: `{
-  "schema_version": 1,
-  "attributes": {
-    "id": "jkl012",
-    "zone_id": "jkl012",
-    "type": "rfc3986",
-    "scope": "incoming"
-  }
-}`,
-				Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "jkl012",
-    "zone_id": "jkl012",
-    "type": "rfc3986",
-    "scope": "incoming"
-  }
-}`,
-			},
-			{
-				Name: "state without schema_version field",
-				Input: `{
-  "attributes": {
-    "id": "mno345",
-    "zone_id": "mno345",
-    "type": "cloudflare",
-    "scope": "both"
-  }
-}`,
-				Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "mno345",
-    "zone_id": "mno345",
-    "type": "cloudflare",
-    "scope": "both"
-  }
-}`,
-			},
-			{
-				Name: "invalid instance without attributes",
-				Input: `{
-  "schema_version": 1
-}`,
-				Expected: `{
-  "schema_version": 0
-}`,
-			},
-			{
-				Name: "empty instance",
-				Input: `{}`,
-				Expected: `{
-  "schema_version": 0
-}`,
-			},
-		}
-
-		testhelpers.RunStateTransformTests(t, tests, migrator)
-	})
+func TestV4ToV5TransformationState_Removed(t *testing.T) {
+	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
 }
 
 func TestMigratorInterface(t *testing.T) {
@@ -333,6 +210,12 @@ func TestMigratorInterface(t *testing.T) {
 		// Preprocess should return content unchanged
 		if got := migrator.Preprocess(input); got != input {
 			t.Errorf("Preprocess() modified content, want unchanged")
+		}
+	})
+
+	t.Run("UsesProviderStateUpgrader", func(t *testing.T) {
+		if got := migrator.(*V4ToV5Migrator).UsesProviderStateUpgrader(); !got {
+			t.Errorf("UsesProviderStateUpgrader() = %v, want true", got)
 		}
 	})
 }
