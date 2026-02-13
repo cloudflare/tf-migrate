@@ -41,6 +41,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/regional_tiered_cache"
 	"github.com/cloudflare/tf-migrate/internal/resources/ruleset"
 	"github.com/cloudflare/tf-migrate/internal/resources/snippet"
+	"github.com/cloudflare/tf-migrate/internal/resources/snippet_rules"
 	"github.com/cloudflare/tf-migrate/internal/resources/spectrum_application"
 	"github.com/cloudflare/tf-migrate/internal/resources/tiered_cache"
 	"github.com/cloudflare/tf-migrate/internal/resources/turnstile_widget"
@@ -129,6 +130,7 @@ func RegisterAllMigrations() {
 	regional_tiered_cache.NewV4ToV5Migrator()
 	ruleset.NewV4ToV5Migrator()
 	snippet.NewV4ToV5Migrator()
+	snippet_rules.NewV4ToV5Migrator()
 	tiered_cache.NewV4ToV5Migrator()
 	spectrum_application.NewV4ToV5Migrator()
 	turnstile_widget.NewV4ToV5Migrator()
