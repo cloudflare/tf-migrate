@@ -102,9 +102,6 @@ resource "cloudflare_certificate_pack" "computed" {
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
-
-	// Note: State transformation tests removed since the provider handles all state migrations
-	// via StateUpgraders. The TransformState function in v4_to_v5.go is a no-op.
 }
 
 func TestMigratorInterface(t *testing.T) {

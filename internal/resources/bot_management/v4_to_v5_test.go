@@ -132,9 +132,4 @@ resource "cloudflare_bot_management" "with_computed" {
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
-
-	// State transformation tests removed - state migration is now handled by provider's StateUpgraders
-	t.Run("StateTransformation_Removed", func(t *testing.T) {
-		t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-	})
 }

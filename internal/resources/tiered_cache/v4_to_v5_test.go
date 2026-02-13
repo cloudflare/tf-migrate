@@ -135,10 +135,3 @@ resource "cloudflare_argo_tiered_caching" "example" {
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
-
-// TestStateTransformation_Removed documents that state transformation tests were removed.
-// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
-// The provider transforms cache_type to value when it sees schema_version=0.
-func TestStateTransformation_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}
