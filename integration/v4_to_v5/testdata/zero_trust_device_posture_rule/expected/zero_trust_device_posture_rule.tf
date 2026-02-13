@@ -74,6 +74,7 @@ locals {
 
 
 
+
 resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
   for_each = {
     "prod" = {
@@ -87,7 +88,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
     "staging" = {
       account_id = var.cloudflare_account_id
       name       = "${local.name_prefix}-staging-posture-rule"
-      type       = "firewall"
+      type       = "os_version"
       schedule   = "12h"
       platform   = "windows"
       version    = "10.0.0"
@@ -103,7 +104,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
     "qa" = {
       account_id = var.cloudflare_account_id
       name       = "${local.name_prefix}-qa-posture-rule"
-      type       = "firewall"
+      type       = "os_version"
       schedule   = "12h"
       platform   = "linux"
       version    = "1.0.0"
@@ -363,7 +364,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "maximal" {
   type        = "os_version"
   description = "All fields populated"
   schedule    = "24h"
-  expiration  = "24h"
+  expiration  = "25h"
 
 
   input = {
@@ -413,7 +414,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "basic" {
   type        = "os_version"
   description = "Device posture rule for corporate devices."
   schedule    = "24h"
-  expiration  = "24h"
+  expiration  = "25h"
 
 
   input = {
@@ -523,4 +524,25 @@ resource "cloudflare_zero_trust_device_posture_rule" "application" {
 moved {
   from = cloudflare_device_posture_rule.application
   to   = cloudflare_zero_trust_device_posture_rule.application
+}
+
+# Test case 6: Domain joined rule
+resource "cloudflare_zero_trust_device_posture_rule" "domain_joined" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-tf-test-domain-joined"
+  type       = "domain_joined"
+  schedule   = "5m"
+
+
+  input = {
+    domain = "example.com"
+  }
+  match = [{
+    platform = "windows"
+  }]
+}
+
+moved {
+  from = cloudflare_device_posture_rule.domain_joined
+  to   = cloudflare_zero_trust_device_posture_rule.domain_joined
 }
