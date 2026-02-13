@@ -3,12 +3,10 @@ package zero_trust_device_posture_rule
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of device posture rule resources from v4 to v5
@@ -87,108 +85,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
+// TransformState is a no-op - state transformation is handled by the provider's StateUpgraders.
+// The moved block generated in TransformConfig triggers the provider's migration logic.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
-
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Exists() {
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	inputField := attrs.Get("input")
-	if inputField.Exists() {
-		result = m.transformInputArrayToObject(result, attrs)
-	}
-
-	// Re-parse attrs after transformation to get updated structure
-	updatedAttrs := gjson.Parse(result).Get("attributes")
-
-	result = m.convertNumericFields(result, updatedAttrs)
-
-	inputField = updatedAttrs.Get("input")
-	if inputField.Exists() {
-		// Remove input.enabled if explicitly false BEFORE transforming to null
-		// This must be done before transforming empty values
-		if enabled := inputField.Get("enabled"); enabled.Exists() && enabled.Type == gjson.False {
-			result, _ = sjson.Delete(result, "attributes.input.enabled")
-			// Re-parse updatedAttrs after deletion so transform doesn't re-add it
-			updatedAttrs = gjson.Parse(result).Get("attributes")
-			inputField = updatedAttrs.Get("input")
-		}
-
-		// Transform empty values to null for fields not explicitly set in config
-		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
-			Ctx:              ctx,
-			Result:           result,
-			FieldPath:        "attributes.input",
-			FieldResult:      inputField,
-			ResourceName:     resourceName,
-			HCLAttributePath: "input",
-			CanHandle:        m.CanHandle,
-		})
-
-		if inputField.Get("running").Exists() {
-			result, _ = sjson.Delete(result, "attributes.input.running")
-		}
-	}
-
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+	return stateJSON.String(), nil
 }
 
-// transformInputArrayToObject converts input field from array to object
-func (m *V4ToV5Migrator) transformInputArrayToObject(stateJSON string, attrs gjson.Result) string {
-	inputField := attrs.Get("input")
-
-	if !inputField.Exists() {
-		return stateJSON
-	}
-
-	if inputField.IsArray() && len(inputField.Array()) > 0 {
-		inputObj := inputField.Array()[0]
-
-		// First, transform nested locations if it exists and is an array
-		if locationsField := inputObj.Get("locations"); locationsField.Exists() {
-			if locationsField.IsArray() && len(locationsField.Array()) > 0 {
-				locationsObj := locationsField.Array()[0]
-				inputObjMap := inputObj.Value().(map[string]interface{})
-				inputObjMap["locations"] = locationsObj.Value()
-				stateJSON, _ = sjson.Set(stateJSON, "attributes.input", inputObjMap)
-				return stateJSON
-			}
-		}
-
-		stateJSON, _ = sjson.Set(stateJSON, "attributes.input", inputObj.Value())
-	} else if inputField.IsArray() && len(inputField.Array()) == 0 {
-		stateJSON, _ = sjson.Delete(stateJSON, "attributes.input")
-	}
-
-	return stateJSON
-}
-
-// convertNumericFields converts TypeInt fields to Float64Attribute
-func (m *V4ToV5Migrator) convertNumericFields(stateJSON string, attrs gjson.Result) string {
-	inputField := attrs.Get("input")
-	if !inputField.Exists() || !inputField.IsObject() {
-		return stateJSON
-	}
-
-	if activeThreats := inputField.Get("active_threats"); activeThreats.Exists() {
-		floatVal := state.ConvertToFloat64(activeThreats)
-		stateJSON, _ = sjson.Set(stateJSON, "attributes.input.active_threats", floatVal)
-	}
-
-	if totalScore := inputField.Get("total_score"); totalScore.Exists() {
-		floatVal := state.ConvertToFloat64(totalScore)
-		stateJSON, _ = sjson.Set(stateJSON, "attributes.input.total_score", floatVal)
-	}
-
-	if score := inputField.Get("score"); score.Exists() {
-		floatVal := state.ConvertToFloat64(score)
-		stateJSON, _ = sjson.Set(stateJSON, "attributes.input.score", floatVal)
-	}
-
-	return stateJSON
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
