@@ -71,6 +71,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 // transformBindings converts v4 binding blocks and dispatch_namespace attribute to v5 unified bindings list
 func (m *V4ToV5Migrator) transformBindings(body *hclwrite.Body) {
 	var bindingObjects []string
+	var dynamicExprs []string
 
 	// Map of v4 block types to v5 binding types
 	bindingTypeMap := map[string]string{
@@ -88,7 +89,18 @@ func (m *V4ToV5Migrator) transformBindings(body *hclwrite.Body) {
 
 	// Process blocks in document order to preserve binding order
 	for _, block := range body.Blocks() {
-		if v5BindingType, ok := bindingTypeMap[block.Type()]; ok {
+		// Handle dynamic blocks
+		if block.Type() == "dynamic" {
+			labels := block.Labels()
+			if len(labels) > 0 {
+				if v5BindingType, ok := bindingTypeMap[labels[0]]; ok {
+					dynamicExpr := m.convertDynamicBindingToExpr(block, v5BindingType)
+					if dynamicExpr != "" {
+						dynamicExprs = append(dynamicExprs, dynamicExpr)
+					}
+				}
+			}
+		} else if v5BindingType, ok := bindingTypeMap[block.Type()]; ok {
 			bindingObj := m.convertBindingBlockToObject(block, v5BindingType)
 			if bindingObj != "" {
 				bindingObjects = append(bindingObjects, bindingObj)
@@ -107,8 +119,19 @@ func (m *V4ToV5Migrator) transformBindings(body *hclwrite.Body) {
 	}
 
 	// Create unified bindings list if we have any bindings
-	if len(bindingObjects) > 0 {
-		bindingsValue := "[\n  " + joinBindings(bindingObjects) + "\n]"
+	if len(bindingObjects) > 0 || len(dynamicExprs) > 0 {
+		var bindingsValue string
+		if len(dynamicExprs) > 0 {
+			// Use concat when there are dynamic expressions
+			staticPart := "[\n  " + joinBindings(bindingObjects) + "\n]"
+			bindingsValue = "concat(" + staticPart + ", " + dynamicExprs[0]
+			for i := 1; i < len(dynamicExprs); i++ {
+				bindingsValue += ", " + dynamicExprs[i]
+			}
+			bindingsValue += ")"
+		} else {
+			bindingsValue = "[\n  " + joinBindings(bindingObjects) + "\n]"
+		}
 		// Use SetAttributeFromExpressionString to set the bindings array
 		tfhcl.SetAttributeFromExpressionString(body, "bindings", bindingsValue)
 	}
@@ -117,6 +140,78 @@ func (m *V4ToV5Migrator) transformBindings(body *hclwrite.Body) {
 	for blockType := range bindingTypeMap {
 		removeBlocks(body, blockType)
 	}
+
+	// Remove dynamic binding blocks
+	removeDynamicBlocks(body, bindingTypeMap)
+}
+
+// convertDynamicBindingToExpr converts a dynamic binding block to a conditional expression
+// e.g., dynamic "queue_binding" { for_each = cond ? [1] : [] content { ... } }
+// becomes: cond ? [{ type = "queue" ... }] : []
+func (m *V4ToV5Migrator) convertDynamicBindingToExpr(block *hclwrite.Block, bindingType string) string {
+	blockBody := block.Body()
+
+	// Get the for_each attribute
+	forEachAttr := blockBody.GetAttribute("for_each")
+	if forEachAttr == nil {
+		return ""
+	}
+
+	forEachExpr := exprToString(forEachAttr.Expr())
+
+	// Find the content block
+	var contentBlock *hclwrite.Block
+	for _, b := range blockBody.Blocks() {
+		if b.Type() == "content" {
+			contentBlock = b
+			break
+		}
+	}
+
+	if contentBlock == nil {
+		return ""
+	}
+
+	// Convert the content block to a binding object
+	bindingObj := m.convertBindingBlockToObject(contentBlock, bindingType)
+	if bindingObj == "" {
+		return ""
+	}
+
+	// Extract condition from for_each expression if it's a ternary like "cond ? [1] : []"
+	condition := extractCondition(forEachExpr)
+	if condition != "" {
+		return condition + " ? [" + bindingObj + "] : []"
+	}
+
+	// Fallback: wrap in the for_each expression
+	return forEachExpr + " != [] ? [" + bindingObj + "] : []"
+}
+
+// extractCondition tries to extract the condition from a ternary for_each expression
+// e.g., "each.value.use_queue ? [1] : []" → "each.value.use_queue"
+func extractCondition(expr string) string {
+	// Look for pattern: "condition ? [...] : []"
+	if idx := -1; idx < len(expr) {
+		for i := 0; i < len(expr); i++ {
+			if expr[i] == '?' {
+				idx = i
+				break
+			}
+		}
+		if idx != -1 {
+			condition := expr[:idx]
+			// Trim whitespace
+			for len(condition) > 0 && (condition[0] == ' ' || condition[0] == '\t') {
+				condition = condition[1:]
+			}
+			for len(condition) > 0 && (condition[len(condition)-1] == ' ' || condition[len(condition)-1] == '\t') {
+				condition = condition[:len(condition)-1]
+			}
+			return condition
+		}
+	}
+	return ""
 }
 
 // convertBindingBlockToObject converts a v4 binding block to a v5 binding object string
@@ -138,12 +233,15 @@ func (m *V4ToV5Migrator) convertBindingBlockToObject(block *hclwrite.Block, bind
 			attrs = append(attrs, "part = "+exprToString(attr.Expr()))
 		}
 	case "queue":
-		// queue_binding: binding → name, queue → queue_name
+		// queue_binding: binding → name, queue → queue (but update references from .name to .queue_name)
 		if attr := blockBody.GetAttribute("binding"); attr != nil {
 			attrs = append(attrs, "name = "+exprToString(attr.Expr()))
 		}
 		if attr := blockBody.GetAttribute("queue"); attr != nil {
-			attrs = append(attrs, "queue_name = "+exprToString(attr.Expr()))
+			queueExpr := exprToString(attr.Expr())
+			// Replace cloudflare_queue.*.name with cloudflare_queue.*.queue_name
+			queueExpr = replaceQueueNameReference(queueExpr)
+			attrs = append(attrs, "queue = "+queueExpr)
 		}
 	case "d1":
 		// d1_database_binding: database_id → id
@@ -234,6 +332,56 @@ func (m *V4ToV5Migrator) transformPlacement(body *hclwrite.Body) {
 
 // Helper functions
 
+// replaceQueueNameReference replaces cloudflare_queue.*.name with cloudflare_queue.*.queue_name
+func replaceQueueNameReference(expr string) string {
+	// Simple string replacement for the common pattern
+	// Handles: cloudflare_queue.resource_name.name → cloudflare_queue.resource_name.queue_name
+	i := 0
+	result := ""
+	for i < len(expr) {
+		// Look for "cloudflare_queue."
+		if i+17 <= len(expr) && expr[i:i+17] == "cloudflare_queue." {
+			// Find the next dot or bracket
+			j := i + 17
+			for j < len(expr) && expr[j] != '.' && expr[j] != '[' {
+				j++
+			}
+			// Check for .name
+			if j < len(expr) && expr[j] == '.' && j+5 <= len(expr) && expr[j:j+5] == ".name" {
+				// Check it's not part of a longer identifier
+				if j+5 >= len(expr) || (expr[j+5] != '_' && !((expr[j+5] >= 'a' && expr[j+5] <= 'z') || (expr[j+5] >= 'A' && expr[j+5] <= 'Z') || (expr[j+5] >= '0' && expr[j+5] <= '9'))) {
+					result += expr[i:j] + ".queue_name"
+					i = j + 5
+					continue
+				}
+			}
+			// Check for [index].name
+			if j < len(expr) && expr[j] == '[' {
+				k := j + 1
+				depth := 1
+				for k < len(expr) && depth > 0 {
+					if expr[k] == '[' {
+						depth++
+					} else if expr[k] == ']' {
+						depth--
+					}
+					k++
+				}
+				if k < len(expr) && expr[k] == '.' && k+5 <= len(expr) && expr[k:k+5] == ".name" {
+					if k+5 >= len(expr) || (expr[k+5] != '_' && !((expr[k+5] >= 'a' && expr[k+5] <= 'z') || (expr[k+5] >= 'A' && expr[k+5] <= 'Z') || (expr[k+5] >= '0' && expr[k+5] <= '9'))) {
+						result += expr[i:k] + ".queue_name"
+						i = k + 5
+						continue
+					}
+				}
+			}
+		}
+		result += string(expr[i])
+		i++
+	}
+	return result
+}
+
 // exprToString converts an HCL expression to its string representation
 func exprToString(expr *hclwrite.Expression) string {
 	if expr == nil {
@@ -255,6 +403,24 @@ func removeBlocks(body *hclwrite.Body, blockType string) {
 	for _, block := range body.Blocks() {
 		if block.Type() == blockType {
 			blocksToRemove = append(blocksToRemove, block)
+		}
+	}
+	for _, block := range blocksToRemove {
+		body.RemoveBlock(block)
+	}
+}
+
+// removeDynamicBlocks removes dynamic blocks that wrap binding blocks
+func removeDynamicBlocks(body *hclwrite.Body, bindingTypeMap map[string]string) {
+	var blocksToRemove []*hclwrite.Block
+	for _, block := range body.Blocks() {
+		if block.Type() == "dynamic" {
+			labels := block.Labels()
+			if len(labels) > 0 {
+				if _, ok := bindingTypeMap[labels[0]]; ok {
+					blocksToRemove = append(blocksToRemove, block)
+				}
+			}
 		}
 	}
 	for _, block := range blocksToRemove {
@@ -408,12 +574,12 @@ func (m *V4ToV5Migrator) convertStateBindingToObject(bindingItem gjson.Result, b
 			binding["part"] = module.Value()
 		}
 	case "queue":
-		// queue_binding: binding → name, queue → queue_name
+		// queue_binding: binding → name, queue stays as queue
 		if bindingName := bindingItem.Get("binding"); bindingName.Exists() {
 			binding["name"] = bindingName.Value()
 		}
 		if queueName := bindingItem.Get("queue"); queueName.Exists() {
-			binding["queue_name"] = queueName.Value()
+			binding["queue"] = queueName.Value()
 		}
 	case "d1":
 		// d1_database_binding: database_id → id
