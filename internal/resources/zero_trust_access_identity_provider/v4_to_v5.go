@@ -3,12 +3,10 @@ package zero_trust_access_identity_provider
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of Zero Trust Access Identity Provider resources from v4 to v5
@@ -22,8 +20,9 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 		oldType: "cloudflare_access_identity_provider",
 		newType: "cloudflare_zero_trust_access_identity_provider",
 	}
-	// Register with OLD resource name (v4 name)
+	// Register BOTH v4 resource names (deprecated and current)
 	internal.RegisterMigrator("cloudflare_access_identity_provider", "v4", "v5", migrator)
+	internal.RegisterMigrator("cloudflare_zero_trust_access_identity_provider", "v4", "v5", migrator)
 	return migrator
 }
 
@@ -32,7 +31,7 @@ func (m *V4ToV5Migrator) GetResourceType() string {
 }
 
 func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
-	return resourceType == m.oldType
+	return resourceType == m.oldType || resourceType == m.newType
 }
 
 // Preprocess - no preprocessing needed, transformation happens in TransformConfig
@@ -47,8 +46,14 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	// CRITICAL: Capture resource name and original type BEFORE any modifications
+	// This is required for correct moved block generation
+	resourceName := tfhcl.GetResourceName(block)
+	originalType := block.Labels()[0]
+	needsMovedBlock := originalType == m.oldType
+
 	// Rename cloudflare_access_identity_provider to cloudflare_zero_trust_access_identity_provider
-	tfhcl.RenameResourceType(block, "cloudflare_access_identity_provider", "cloudflare_zero_trust_access_identity_provider")
+	tfhcl.RenameResourceType(block, m.oldType, m.newType)
 
 	body := block.Body()
 
@@ -75,91 +80,35 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	})
 
 	// 3. Ensure config attribute exists (required in v5)
-	// Create empty config object if it doesn't exist (EnsureAttribute doesn't work for objects)
 	if body.GetAttribute("config") == nil {
 		body.SetAttributeRaw("config", hclwrite.TokensForObject([]hclwrite.ObjectAttrTokens{}))
 	}
 
+	// Build result blocks
+	resultBlocks := []*hclwrite.Block{block}
+
+	// Generate moved block for state migration (only when renaming from old type)
+	if needsMovedBlock {
+		oldType, newType := m.GetResourceRename()
+		from := oldType + "." + resourceName
+		to := newType + "." + resourceName
+		movedBlock := tfhcl.CreateMovedBlock(from, to)
+		resultBlocks = append(resultBlocks, movedBlock)
+	}
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         resultBlocks,
+		RemoveOriginal: true,
 	}, nil
 }
 
+// TransformState is a no-op - state transformation is handled by the provider's StateUpgraders.
+// The moved block generated in TransformConfig triggers the provider's migration logic.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// This function receives a single instance and needs to return the transformed instance JSON
-	result := stateJSON.String()
-
-	// Get attributes from the instance
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Exists() {
-		// Set schema_version even for instances without attributes
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// 1. Transform config array to object
-	result = m.transformConfigField(result, attrs)
-
-	// 2. Transform empty values to null for config fields not explicitly set in user's HCL
-	// Re-parse attrs after config transformation
-	attrs = gjson.Parse(result).Get("attributes")
-	configField := attrs.Get("config")
-	if configField.Exists() && configField.IsObject() {
-		result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
-			Ctx:              ctx,
-			Result:           result,
-			FieldPath:        "attributes.config",
-			FieldResult:      configField,
-			ResourceName:     resourceName,
-			HCLAttributePath: "config",
-			CanHandle:        m.CanHandle,
-		})
-	}
-
-	// 3. Transform scim_config array to object
-	result = m.transformScimConfigField(result, attrs)
-
-	// Always set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+	return stateJSON.String(), nil
 }
 
-// transformConfigField unwraps the config array and handles field transformations
-func (m *V4ToV5Migrator) transformConfigField(result string, attrs gjson.Result) string {
-	// Use TransformFieldArrayToObject helper to handle the array-to-object transformation
-	options := state.ArrayToObjectOptions{
-		SkipFields: []string{"api_token"}, // Remove deprecated field
-		RenameFields: map[string]string{
-			"idp_public_cert": "idp_public_certs", // Rename field
-		},
-		FieldTransforms: map[string]func(gjson.Result) interface{}{
-			// Note: FieldTransforms uses the NEW field name (after renaming)
-			"idp_public_certs": func(value gjson.Result) interface{} {
-				// Transform string to array
-				if value.Type == gjson.String && value.String() != "" {
-					return []string{value.String()}
-				}
-				return []string{}
-			},
-		},
-		EnsureObjectExists: true, // Config is required in v5, ensure it exists as an object
-	}
-
-	result = state.TransformFieldArrayToObject(result, "attributes", attrs, "config", options)
-
-	return result
-}
-
-// transformScimConfigField unwraps the scim_config array and handles field transformations
-func (m *V4ToV5Migrator) transformScimConfigField(result string, attrs gjson.Result) string {
-	// Use TransformFieldArrayToObject helper to handle the array-to-object transformation
-	options := state.ArrayToObjectOptions{
-		SkipFields: []string{"group_member_deprovision"}, // Remove deprecated field
-	}
-
-	result = state.TransformFieldArrayToObject(result, "attributes", attrs, "scim_config", options)
-
-	return result
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }

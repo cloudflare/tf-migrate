@@ -375,10 +375,6 @@ resource "cloudflare_load_balancer_pool" "example" {
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
-
-	t.Run("StateTransformation_Removed", func(t *testing.T) {
-		t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-	})
 }
 
 // TestDynamicOriginsBlockTransformation tests the transformation of dynamic origins blocks

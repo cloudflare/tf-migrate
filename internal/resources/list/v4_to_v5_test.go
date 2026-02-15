@@ -15,10 +15,6 @@ func TestV4ToV5Transformation(t *testing.T) {
 		t.Run("DynamicBlockTransformations", testDynamicBlockConfig)
 		t.Run("EdgeCases", testConfigEdgeCases)
 	})
-
-	t.Run("StateTransformation_Removed", func(t *testing.T) {
-		t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-	})
 }
 
 func testIPListConfig(t *testing.T) {
