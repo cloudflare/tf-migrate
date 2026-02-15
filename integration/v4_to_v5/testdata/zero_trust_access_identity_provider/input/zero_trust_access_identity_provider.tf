@@ -102,6 +102,7 @@ resource "cloudflare_access_identity_provider" "saml" {
     issuer_url      = "https://saml.example.com/issuer"
     sso_target_url  = "https://saml.example.com/sso"
     sign_request    = true
+    attributes      = ["email", "username"]
     idp_public_cert = "MIIDpDCCAoygAwIBAgIGAV2ka+55MA0GCSqGSIb3DQEBCwUAMIGSMQswCQYDVQQGEwJVUzETMBEG"
   }
 }
@@ -183,7 +184,11 @@ resource "cloudflare_access_identity_provider" "conditional" {
 resource "cloudflare_access_identity_provider" "with_reference" {
   account_id = var.cloudflare_account_id
   name       = format("%s Referenced Provider - %s", local.name_prefix, cloudflare_access_identity_provider.otp.id)
-  type       = "onetimepin"
+  type       = "github"
+  config {
+    client_id     = "ref-client-id"
+    client_secret = "ref-client-secret"
+  }
 }
 
 # Test 18: using Terraform functions (base64encode, concat)
