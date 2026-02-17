@@ -41,6 +41,82 @@ locals {
 # 1. BASIC RESOURCES
 ##########################
 
+
+
+
+
+
+
+##########################
+# 2. FOR_EACH PATTERNS
+##########################
+
+
+
+
+##########################
+# 3. COUNT PATTERN
+##########################
+
+
+##########################
+# 4. CONDITIONAL RESOURCES
+##########################
+
+variable "enable_backup_cert" {
+  type    = bool
+  default = true
+}
+
+
+##########################
+# 5. VARIABLE REFERENCES
+##########################
+
+
+##########################
+# 6. TERRAFORM FUNCTIONS
+##########################
+
+
+
+##########################
+# 7. CROSS-RESOURCE REFERENCES
+##########################
+
+
+
+##########################
+# 8. EDGE CASES
+##########################
+
+
+
+
+##########################
+# 9. LIFECYCLE META-ARGUMENTS
+##########################
+
+
+
+##########################
+# 10. DEPENDS_ON
+##########################
+
+
+# Summary: This file contains 30+ resource instances covering:
+# - Basic configurations (6 resources)
+# - for_each patterns with maps and sets (9 resources)
+# - count patterns (3 resources)
+# - Conditional resources (1 resource)
+# - Variable references (1 resource)
+# - Terraform functions (2 resources)
+# - Cross-resource references (2 resources)
+# - Edge cases (3 resources)
+# - Lifecycle meta-arguments (2 resources)
+# - Dependencies (1 resource)
+# Total: 30 resource instances
+
 # Basic certificate with account_id and all fields
 resource "cloudflare_zero_trust_access_mtls_certificate" "basic_account" {
   account_id  = var.cloudflare_account_id
@@ -50,6 +126,11 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "basic_account" {
     "basic.cf-tf-test.com",
     "www.basic.cf-tf-test.com"
   ]
+}
+
+moved {
+  from = cloudflare_access_mutual_tls_certificate.basic_account
+  to   = cloudflare_zero_trust_access_mtls_certificate.basic_account
 }
 
 # Basic certificate with zone_id
@@ -62,11 +143,21 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "basic_zone" {
   ]
 }
 
+moved {
+  from = cloudflare_access_mutual_tls_certificate.basic_zone
+  to   = cloudflare_zero_trust_access_mtls_certificate.basic_zone
+}
+
 # Minimal certificate - only required fields
 resource "cloudflare_zero_trust_access_mtls_certificate" "minimal" {
   account_id  = var.cloudflare_account_id
   name        = "${local.name_prefix}-minimal"
   certificate = local.test_cert
+}
+
+moved {
+  from = cloudflare_access_mutual_tls_certificate.minimal
+  to   = cloudflare_zero_trust_access_mtls_certificate.minimal
 }
 
 # Certificate with empty associated_hostnames
@@ -77,12 +168,22 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "empty_hostnames" {
   associated_hostnames = []
 }
 
+moved {
+  from = cloudflare_access_mutual_tls_certificate.empty_hostnames
+  to   = cloudflare_zero_trust_access_mtls_certificate.empty_hostnames
+}
+
 # Certificate with single hostname
 resource "cloudflare_zero_trust_access_mtls_certificate" "single_hostname" {
   account_id           = var.cloudflare_account_id
   name                 = "${local.name_prefix}-single"
   certificate          = local.test_cert
   associated_hostnames = ["single.cf-tf-test.com"]
+}
+
+moved {
+  from = cloudflare_access_mutual_tls_certificate.single_hostname
+  to   = cloudflare_zero_trust_access_mtls_certificate.single_hostname
 }
 
 # Certificate with many hostnames
@@ -99,9 +200,10 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "many_hostnames" {
   ]
 }
 
-##########################
-# 2. FOR_EACH PATTERNS
-##########################
+moved {
+  from = cloudflare_access_mutual_tls_certificate.many_hostnames
+  to   = cloudflare_zero_trust_access_mtls_certificate.many_hostnames
+}
 
 # for_each with map - different environments
 resource "cloudflare_zero_trust_access_mtls_certificate" "environments" {
@@ -113,6 +215,11 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "environments" {
   associated_hostnames = ["${each.key}.cf-tf-test.com"]
 }
 
+moved {
+  from = cloudflare_access_mutual_tls_certificate.environments
+  to   = cloudflare_zero_trust_access_mtls_certificate.environments
+}
+
 # for_each with set - application hostnames
 resource "cloudflare_zero_trust_access_mtls_certificate" "apps" {
   for_each = local.app_hostnames
@@ -121,6 +228,11 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "apps" {
   name                 = "${local.name_prefix}-${replace(each.value, ".", "-")}"
   certificate          = local.test_cert
   associated_hostnames = [each.value]
+}
+
+moved {
+  from = cloudflare_access_mutual_tls_certificate.apps
+  to   = cloudflare_zero_trust_access_mtls_certificate.apps
 }
 
 # for_each with explicit map
@@ -137,9 +249,10 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "regions" {
   associated_hostnames = ["${each.value}.cf-tf-test.com"]
 }
 
-##########################
-# 3. COUNT PATTERN
-##########################
+moved {
+  from = cloudflare_access_mutual_tls_certificate.regions
+  to   = cloudflare_zero_trust_access_mtls_certificate.regions
+}
 
 # count-based resources
 resource "cloudflare_zero_trust_access_mtls_certificate" "counted" {
@@ -153,13 +266,9 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "counted" {
   ]
 }
 
-##########################
-# 4. CONDITIONAL RESOURCES
-##########################
-
-variable "enable_backup_cert" {
-  type    = bool
-  default = true
+moved {
+  from = cloudflare_access_mutual_tls_certificate.counted
+  to   = cloudflare_zero_trust_access_mtls_certificate.counted
 }
 
 # Conditional resource using count
@@ -172,9 +281,10 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "conditional" {
   associated_hostnames = ["conditional.cf-tf-test.com"]
 }
 
-##########################
-# 5. VARIABLE REFERENCES
-##########################
+moved {
+  from = cloudflare_access_mutual_tls_certificate.conditional
+  to   = cloudflare_zero_trust_access_mtls_certificate.conditional
+}
 
 # Using variables for all values
 resource "cloudflare_zero_trust_access_mtls_certificate" "variable_ref" {
@@ -184,9 +294,10 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "variable_ref" {
   associated_hostnames = ["${local.name_prefix}.cf-tf-test.com"]
 }
 
-##########################
-# 6. TERRAFORM FUNCTIONS
-##########################
+moved {
+  from = cloudflare_access_mutual_tls_certificate.variable_ref
+  to   = cloudflare_zero_trust_access_mtls_certificate.variable_ref
+}
 
 # Using join() function
 resource "cloudflare_zero_trust_access_mtls_certificate" "with_join" {
@@ -198,6 +309,11 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "with_join" {
   ]
 }
 
+moved {
+  from = cloudflare_access_mutual_tls_certificate.with_join
+  to   = cloudflare_zero_trust_access_mtls_certificate.with_join
+}
+
 # Using format() function
 resource "cloudflare_zero_trust_access_mtls_certificate" "with_format" {
   account_id           = var.cloudflare_account_id
@@ -206,9 +322,10 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "with_format" {
   associated_hostnames = [format("app%02d.cf-tf-test.com", 1)]
 }
 
-##########################
-# 7. CROSS-RESOURCE REFERENCES
-##########################
+moved {
+  from = cloudflare_access_mutual_tls_certificate.with_format
+  to   = cloudflare_zero_trust_access_mtls_certificate.with_format
+}
 
 # These would reference other resources in real scenarios
 # For integration tests, we use hardcoded values
@@ -219,6 +336,11 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "app_cert" {
   associated_hostnames = ["app.cf-tf-test.com", "api.cf-tf-test.com"]
 }
 
+moved {
+  from = cloudflare_access_mutual_tls_certificate.app_cert
+  to   = cloudflare_zero_trust_access_mtls_certificate.app_cert
+}
+
 resource "cloudflare_zero_trust_access_mtls_certificate" "backend_cert" {
   account_id  = var.cloudflare_account_id
   name        = "${local.name_prefix}-backend-cert"
@@ -227,15 +349,21 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "backend_cert" {
   associated_hostnames = ["backend.cf-tf-test.com"]
 }
 
-##########################
-# 8. EDGE CASES
-##########################
+moved {
+  from = cloudflare_access_mutual_tls_certificate.backend_cert
+  to   = cloudflare_zero_trust_access_mtls_certificate.backend_cert
+}
 
 # Very long certificate name
 resource "cloudflare_zero_trust_access_mtls_certificate" "long_name" {
   account_id  = var.cloudflare_account_id
   name        = "${local.name_prefix}-very-long-descriptive-certificate-name-for-testing-limits"
   certificate = local.test_cert
+}
+
+moved {
+  from = cloudflare_access_mutual_tls_certificate.long_name
+  to   = cloudflare_zero_trust_access_mtls_certificate.long_name
 }
 
 # Special characters in name
@@ -246,6 +374,11 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "special_chars" {
   associated_hostnames = ["special-chars.cf-tf-test.com"]
 }
 
+moved {
+  from = cloudflare_access_mutual_tls_certificate.special_chars
+  to   = cloudflare_zero_trust_access_mtls_certificate.special_chars
+}
+
 # Using zone_id for variety
 resource "cloudflare_zero_trust_access_mtls_certificate" "zone_scoped" {
   zone_id              = var.cloudflare_zone_id
@@ -254,9 +387,10 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "zone_scoped" {
   associated_hostnames = ["zone-scoped.cf-tf-test.com"]
 }
 
-##########################
-# 9. LIFECYCLE META-ARGUMENTS
-##########################
+moved {
+  from = cloudflare_access_mutual_tls_certificate.zone_scoped
+  to   = cloudflare_zero_trust_access_mtls_certificate.zone_scoped
+}
 
 # Certificate with create_before_destroy
 resource "cloudflare_zero_trust_access_mtls_certificate" "with_lifecycle" {
@@ -267,6 +401,11 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "with_lifecycle" {
   lifecycle {
     create_before_destroy = true
   }
+}
+
+moved {
+  from = cloudflare_access_mutual_tls_certificate.with_lifecycle
+  to   = cloudflare_zero_trust_access_mtls_certificate.with_lifecycle
 }
 
 # Certificate with ignore_changes
@@ -281,9 +420,10 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "ignore_changes" {
   }
 }
 
-##########################
-# 10. DEPENDS_ON
-##########################
+moved {
+  from = cloudflare_access_mutual_tls_certificate.ignore_changes
+  to   = cloudflare_zero_trust_access_mtls_certificate.ignore_changes
+}
 
 # Certificate with explicit dependency
 resource "cloudflare_zero_trust_access_mtls_certificate" "dependent" {
@@ -297,15 +437,7 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "dependent" {
   ]
 }
 
-# Summary: This file contains 30+ resource instances covering:
-# - Basic configurations (6 resources)
-# - for_each patterns with maps and sets (9 resources)
-# - count patterns (3 resources)
-# - Conditional resources (1 resource)
-# - Variable references (1 resource)
-# - Terraform functions (2 resources)
-# - Cross-resource references (2 resources)
-# - Edge cases (3 resources)
-# - Lifecycle meta-arguments (2 resources)
-# - Dependencies (1 resource)
-# Total: 30 resource instances
+moved {
+  from = cloudflare_access_mutual_tls_certificate.dependent
+  to   = cloudflare_zero_trust_access_mtls_certificate.dependent
+}
