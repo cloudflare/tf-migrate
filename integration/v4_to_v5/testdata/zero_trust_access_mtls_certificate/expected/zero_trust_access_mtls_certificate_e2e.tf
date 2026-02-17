@@ -105,6 +105,9 @@ EOT
 # MINIMAL E2E TEST RESOURCES
 ##########################
 
+
+
+
 # 1. Basic account-scoped certificate
 resource "cloudflare_zero_trust_access_mtls_certificate" "e2e_basic" {
   account_id  = var.cloudflare_account_id
@@ -112,11 +115,21 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "e2e_basic" {
   certificate = local.cert1
 }
 
+moved {
+  from = cloudflare_access_mutual_tls_certificate.e2e_basic
+  to   = cloudflare_zero_trust_access_mtls_certificate.e2e_basic
+}
+
 # 2. Zone-scoped certificate
 resource "cloudflare_zero_trust_access_mtls_certificate" "e2e_zone" {
   zone_id     = var.cloudflare_zone_id
   name        = "${local.name_prefix}-zone"
   certificate = local.cert2
+}
+
+moved {
+  from = cloudflare_access_mutual_tls_certificate.e2e_zone
+  to   = cloudflare_zero_trust_access_mtls_certificate.e2e_zone
 }
 
 # 3. for_each pattern with unique certificates
@@ -128,4 +141,9 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "e2e_foreach" {
   account_id  = var.cloudflare_account_id
   name        = "${local.name_prefix}-foreach-${each.key}"
   certificate = each.value
+}
+
+moved {
+  from = cloudflare_access_mutual_tls_certificate.e2e_foreach
+  to   = cloudflare_zero_trust_access_mtls_certificate.e2e_foreach
 }
