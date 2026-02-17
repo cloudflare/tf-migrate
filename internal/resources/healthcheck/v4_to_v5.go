@@ -5,12 +5,10 @@ import (
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	"github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles the migration of cloudflare_healthcheck from v4 to v5
@@ -48,6 +46,11 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 
 // TransformConfig handles HCL configuration transformations
 // Major transformation: Flat structure → Nested http_config/tcp_config based on type
+//
+// Since cloudflare_healthcheck is NOT renamed, this follows Path B:
+// - Transform config in-place (flat → nested structure)
+// - Return the modified block (no moved block needed)
+// - RemoveOriginal: false (keep the transformed resource)
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
 
@@ -55,7 +58,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	typeAttr := body.GetAttribute("type")
 	if typeAttr == nil {
 		// If no type specified, v5 defaults to "HTTP", so treat as HTTP
-		return m.transformToHTTPConfig(body)
+		return m.transformToHTTPConfig(block)
 	}
 
 	// Extract the type value
@@ -63,15 +66,17 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	// Transform based on type
 	if strings.ToUpper(healthcheckType) == "TCP" {
-		return m.transformToTCPConfig(body)
+		return m.transformToTCPConfig(block)
 	} else {
 		// HTTP or HTTPS both use http_config
-		return m.transformToHTTPConfig(body)
+		return m.transformToHTTPConfig(block)
 	}
 }
 
 // transformToHTTPConfig creates http_config nested attribute and moves HTTP fields into it
-func (m *V4ToV5Migrator) transformToHTTPConfig(body *hclwrite.Body) (*transform.TransformResult, error) {
+func (m *V4ToV5Migrator) transformToHTTPConfig(block *hclwrite.Block) (*transform.TransformResult, error) {
+	body := block.Body()
+
 	// List of fields that should move into http_config
 	httpFields := []string{
 		"method", "port", "path", "expected_codes", "expected_body",
@@ -110,14 +115,18 @@ func (m *V4ToV5Migrator) transformToHTTPConfig(body *hclwrite.Body) (*transform.
 		hcl.RemoveBlocksByType(body, "header")
 	}
 
+	// Path B: Resource NOT renamed
+	// Return the modified block, no moved block needed
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{},
+		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
 }
 
 // transformToTCPConfig creates tcp_config nested attribute and moves TCP fields into it
-func (m *V4ToV5Migrator) transformToTCPConfig(body *hclwrite.Body) (*transform.TransformResult, error) {
+func (m *V4ToV5Migrator) transformToTCPConfig(block *hclwrite.Block) (*transform.TransformResult, error) {
+	body := block.Body()
+
 	// TCP config only has method and port
 	// method should be "connection_established"
 	// port defaults to 80
@@ -131,8 +140,10 @@ func (m *V4ToV5Migrator) transformToTCPConfig(body *hclwrite.Body) (*transform.T
 	// Even if no fields were moved, return success
 	_ = moved
 
+	// Path B: Resource NOT renamed
+	// Return the modified block, no moved block needed
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{},
+		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
 }
@@ -183,161 +194,28 @@ func (m *V4ToV5Migrator) buildHeaderMapTokens(body *hclwrite.Body) (hclwrite.Tok
 	return hclwrite.TokensForObject(headerAttrs), nil
 }
 
-// TransformState handles JSON state transformations
-// Major transformation: Restructure based on type field + type conversions
+// TransformState is a no-op for healthcheck migration.
+// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
+// The moved block generated in TransformConfig triggers the provider's migration logic.
+//
+// Provider StateUpgraders handle:
+// - Flat structure → Nested http_config/tcp_config based on type
+// - Header Set → Map transformation
+// - CheckRegions List conversion
+// - All field transformations
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := instance.String()
-	attrs := instance.Get("attributes")
-
-	if !attrs.Exists() {
-		// Set schema_version even for invalid instances
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// Convert numeric fields (Int → Float64)
-	numericFields := []string{
-		"consecutive_fails", "consecutive_successes", "retries",
-		"timeout", "interval", "port",
-	}
-
-	for _, field := range numericFields {
-		if fieldVal := attrs.Get(field); fieldVal.Exists() {
-			floatVal := state.ConvertGjsonValue(fieldVal)
-			result, _ = sjson.Set(result, "attributes."+field, floatVal)
-		}
-	}
-
-	// Get the type to determine HTTP vs TCP
-	healthcheckType := attrs.Get("type").String()
-
-	if strings.ToUpper(healthcheckType) == "TCP" {
-		// Create tcp_config object
-		result = m.createTCPConfig(result, attrs)
-	} else {
-		// Create http_config object (for HTTP and HTTPS)
-		result = m.createHTTPConfig(result, attrs)
-	}
-
-	// Remove computed fields that don't exist in v5 state or exist but shouldn't be touched
-	// Note: created_on, modified_on, id, status, failure_reason are all computed
-	// We should NOT remove them, just leave them as-is for provider to handle
-
-	// Set schema_version
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+	// State transformation is handled by the provider's StateUpgraders (UpgradeState)
+	// The moved block generated in TransformConfig triggers the provider's migration logic
+	// This function is a no-op for healthcheck migration
+	return instance.String(), nil
 }
 
-// createHTTPConfig creates the http_config nested object in state
-func (m *V4ToV5Migrator) createHTTPConfig(stateJSON string, attrs gjson.Result) string {
-	httpConfig := make(map[string]interface{})
-
-	// Move HTTP-specific fields into http_config
-	httpFields := map[string]string{
-		"method":           "method",
-		"port":             "port",
-		"path":             "path",
-		"expected_codes":   "expected_codes",
-		"expected_body":    "expected_body",
-		"follow_redirects": "follow_redirects",
-		"allow_insecure":   "allow_insecure",
-	}
-
-	for oldField, newField := range httpFields {
-		if val := attrs.Get(oldField); val.Exists() {
-			httpConfig[newField] = state.ConvertGjsonValue(val)
-		}
-	}
-
-	// Handle header transformation (Set → Map)
-	if header := attrs.Get("header"); header.Exists() && header.IsArray() {
-		headerMap := m.transformHeaderSetToMap(header)
-		if len(headerMap) > 0 {
-			httpConfig["header"] = headerMap
-		}
-	}
-
-	// Set the http_config if we have any fields
-	if len(httpConfig) > 0 {
-		stateJSON, _ = sjson.Set(stateJSON, "attributes.http_config", httpConfig)
-
-		// Remove the root-level fields that moved into http_config
-		for oldField := range httpFields {
-			if attrs.Get(oldField).Exists() {
-				stateJSON, _ = sjson.Delete(stateJSON, "attributes."+oldField)
-			}
-		}
-		// Remove header from root if it exists
-		if attrs.Get("header").Exists() {
-			stateJSON, _ = sjson.Delete(stateJSON, "attributes.header")
-		}
-	}
-
-	return stateJSON
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+// This tells tf-migrate that the provider handles state transformation, not tf-migrate.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
 
-// createTCPConfig creates the tcp_config nested object in state
-func (m *V4ToV5Migrator) createTCPConfig(stateJSON string, attrs gjson.Result) string {
-	tcpConfig := make(map[string]interface{})
-
-	// Move TCP-specific fields into tcp_config
-	if method := attrs.Get("method"); method.Exists() {
-		tcpConfig["method"] = method.String()
-	}
-	if port := attrs.Get("port"); port.Exists() {
-		tcpConfig["port"] = state.ConvertGjsonValue(port)
-	}
-
-	// Set the tcp_config if we have any fields
-	if len(tcpConfig) > 0 {
-		stateJSON, _ = sjson.Set(stateJSON, "attributes.tcp_config", tcpConfig)
-
-		// Remove the root-level fields that moved into tcp_config
-		if attrs.Get("method").Exists() {
-			stateJSON, _ = sjson.Delete(stateJSON, "attributes.method")
-		}
-		if attrs.Get("port").Exists() {
-			stateJSON, _ = sjson.Delete(stateJSON, "attributes.port")
-		}
-	}
-
-	return stateJSON
-}
-
-// transformHeaderSetToMap converts v4 header Set structure to v5 Map structure
-// v4: [{"header": "Host", "values": ["example.com"]}, {"header": "User-Agent", "values": ["Bot"]}]
-// v5: {"Host": ["example.com"], "User-Agent": ["Bot"]}
-func (m *V4ToV5Migrator) transformHeaderSetToMap(headerSet gjson.Result) map[string][]string {
-	headerMap := make(map[string][]string)
-
-	if !headerSet.IsArray() {
-		return headerMap
-	}
-
-	for _, item := range headerSet.Array() {
-		headerName := item.Get("header").String()
-		values := item.Get("values")
-
-		if headerName == "" || !values.Exists() {
-			continue
-		}
-
-		// Extract values array
-		var valuesList []string
-		if values.IsArray() {
-			for _, val := range values.Array() {
-				valuesList = append(valuesList, val.String())
-			}
-		}
-
-		if len(valuesList) > 0 {
-			headerMap[headerName] = valuesList
-		}
-	}
-
-	return headerMap
-}
 
 func init() {
 	// Register the migrator when the package is imported
