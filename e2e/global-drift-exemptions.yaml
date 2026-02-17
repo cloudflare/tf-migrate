@@ -14,6 +14,18 @@ exemptions:
       - '= \{\} -> null'
     enabled: true
 
+  # HTML entity encoding differences between v4 and v5 providers
+  - name: "html_entity_encoding"
+    description: "V4 and V5 providers handle HTML entities differently in string fields"
+    patterns:
+      - '&#39;.*->.*\x27'     # &#39; -> ' (single quote)
+      - '&#34;.*->.*"'        # &#34; -> " (double quote)
+      - '&amp;.*->.*&'        # &amp; -> & (ampersand)
+      - '\x27.*->.*&#39;'     # ' -> &#39; (reverse direction)
+      - '".*->.*&#34;'        # " -> &#34; (reverse direction)
+      - '&.*->.*&amp;'        # & -> &amp; (reverse direction)
+    enabled: true
+
 # Global settings
 settings:
   apply_exemptions: true
