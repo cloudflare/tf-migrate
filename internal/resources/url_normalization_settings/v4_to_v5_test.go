@@ -156,10 +156,6 @@ resource "cloudflare_url_normalization_settings" "test3" {
 	})
 }
 
-func TestV4ToV5TransformationState_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}
-
 func TestMigratorInterface(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 
