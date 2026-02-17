@@ -3,12 +3,10 @@ package access_rule
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 type V4ToV5Migrator struct {
@@ -57,38 +55,17 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState transforms the JSON state from v4 to v5.
+// TransformState is a no-op for access_rule migration.
+// State transformation is handled by the provider's StateUpgraders (UpgradeState).
+// The provider will migrate:
+// - configuration: array[0] → object (v4 SDKv2 TypeList MaxItems:1 → v5 SingleNestedAttribute)
+// - schema_version: 1 → 500 (with controlled rollout via TF_MIG_TEST flag)
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	return stateJSON.String(), nil
+}
 
-	// Get attributes
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Exists() {
-		// Even for invalid instances, set schema_version
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// Ensure mutual exclusivity of account_id and zone_id
-	// v5 requires that only one is set, the other must be null
-	accountID := attrs.Get("account_id")
-	zoneID := attrs.Get("zone_id")
-
-	if accountID.Exists() && accountID.String() != "" {
-		// This is an account-level rule, ensure zone_id is null
-		result, _ = sjson.Delete(result, "attributes.zone_id")
-	} else if zoneID.Exists() && zoneID.String() != "" {
-		// This is a zone-level rule, ensure account_id is null
-		result, _ = sjson.Delete(result, "attributes.account_id")
-	}
-
-	// Convert configuration array to object (MaxItems:1 → SingleNestedAttribute)
-	// v4 state: "configuration": [{"target": "ip", "value": "1.2.3.4"}]
-	// v5 state: "configuration": {"target": "ip", "value": "1.2.3.4"}
-	result = state.ConvertMaxItemsOneArrayToObject(result, "attributes", attrs, "configuration")
-
-	// Set schema_version to 0 for v5 (ALWAYS required!)
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+// This tells tf-migrate that the provider handles state transformation, not tf-migrate.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
