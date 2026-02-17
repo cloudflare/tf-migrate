@@ -4,11 +4,9 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 type V4ToV5Migrator struct {
@@ -45,6 +43,8 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	resourceType := tfhcl.GetResourceType(block)
+	resourceName := tfhcl.GetResourceName(block)
+
 	if resourceType == "cloudflare_access_service_token" {
 		tfhcl.RenameResourceType(block, "cloudflare_access_service_token", "cloudflare_zero_trust_access_service_token")
 	}
@@ -54,81 +54,33 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Remove deprecated field: min_days_for_renewal
 	tfhcl.RemoveAttributes(body, "min_days_for_renewal")
 
+	// Generate moved block for resource rename
+	// This triggers the provider's MoveState handler (Terraform 1.8+)
+	oldType, newType := m.GetResourceRename()
+	from := oldType + "." + resourceName
+	to := newType + "." + resourceName
+	movedBlock := tfhcl.CreateMovedBlock(from, to)
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         []*hclwrite.Block{block, movedBlock},
+		RemoveOriginal: true,
 	}, nil
 }
 
+// TransformState is a no-op for this resource.
+// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState).
+// The moved block generated in TransformConfig triggers the provider's migration logic.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
-
-	if stateJSON.Get("resources").Exists() {
-		return m.transformFullState(result, stateJSON)
-	}
-
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		return result, nil
-	}
-
-	result = m.transformSingleInstance(result, stateJSON)
-
-	return result, nil
+	// State transformation is handled by the provider's StateUpgraders
+	// The provider will handle:
+	// - Resource rename (cloudflare_access_service_token → cloudflare_zero_trust_access_service_token)
+	// - Field removal (min_days_for_renewal)
+	// - Type conversion (client_secret_version: int → float64)
+	return stateJSON.String(), nil
 }
 
-func (m *V4ToV5Migrator) transformFullState(result string, stateJSON gjson.Result) (string, error) {
-	resources := stateJSON.Get("resources")
-	if !resources.Exists() {
-		return result, nil
-	}
-
-	resources.ForEach(func(key, resource gjson.Result) bool {
-		resourceType := resource.Get("type").String()
-
-		if !m.CanHandle(resourceType) {
-			return true // continue
-		}
-
-		// Rename cloudflare_access_service_token to cloudflare_zero_trust_access_service_token
-		if resourceType == "cloudflare_access_service_token" {
-			resourcePath := "resources." + key.String() + ".type"
-			result, _ = sjson.Set(result, resourcePath, "cloudflare_zero_trust_access_service_token")
-		}
-
-		instances := resource.Get("instances")
-		instances.ForEach(func(instKey, instance gjson.Result) bool {
-			instPath := "resources." + key.String() + ".instances." + instKey.String()
-
-			attrs := instance.Get("attributes")
-			if attrs.Exists() {
-				instJSON := instance.String()
-				transformedInst := m.transformSingleInstance(instJSON, instance)
-				transformedInstParsed := gjson.Parse(transformedInst)
-				result, _ = sjson.SetRaw(result, instPath, transformedInstParsed.Raw)
-			}
-			return true
-		})
-
-		return true
-	})
-
-	return result, nil
-}
-
-func (m *V4ToV5Migrator) transformSingleInstance(result string, instance gjson.Result) string {
-	attrs := instance.Get("attributes")
-
-	// Remove deprecated field: min_days_for_renewal
-	result = state.RemoveFields(result, "attributes", attrs, "min_days_for_renewal")
-
-	// Convert client_secret_version from int to float64
-	clientSecretVersion := instance.Get("attributes.client_secret_version")
-	if clientSecretVersion.Exists() && clientSecretVersion.Type == gjson.Number {
-		result, _ = sjson.Set(result, "attributes.client_secret_version", clientSecretVersion.Float())
-	} else {
-		// Set default 1.0
-		result, _ = sjson.Set(result, "attributes.client_secret_version", 1.0)
-	}
-
-	return result
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+// This tells tf-migrate that the provider handles all state transformations via StateUpgraders.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
