@@ -21,7 +21,6 @@ variable "cloudflare_domain" {
 # Pattern 1: Basic predefined profile with entries
 resource "cloudflare_zero_trust_dlp_predefined_profile" "aws_keys" {
   account_id          = var.cloudflare_account_id
-  name                = "AWS Keys"
   allowed_match_count = 3
 
 
@@ -37,7 +36,6 @@ moved {
 # Pattern 2: Predefined profile with zero_trust name
 resource "cloudflare_zero_trust_dlp_predefined_profile" "gcp_keys" {
   account_id          = var.cloudflare_account_id
-  name                = "GCP Keys"
   allowed_match_count = 0
 
   enabled_entries = ["gcp-api-key-id"]
@@ -51,7 +49,6 @@ moved {
 # Pattern 3: Predefined profile with ocr_enabled
 resource "cloudflare_zero_trust_dlp_predefined_profile" "secrets_with_ocr" {
   account_id          = var.cloudflare_account_id
-  name                = "Secrets with OCR"
   allowed_match_count = 5
   ocr_enabled         = true
 
@@ -67,7 +64,6 @@ moved {
 # Pattern 4: Predefined profile with no enabled entries
 resource "cloudflare_zero_trust_dlp_predefined_profile" "all_disabled" {
   account_id          = var.cloudflare_account_id
-  name                = "All Disabled"
   allowed_match_count = 0
 
 
