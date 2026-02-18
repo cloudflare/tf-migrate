@@ -163,6 +163,11 @@ func transformHeaderBlock(body *hclwrite.Body) {
 	}
 }
 
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
+}
+
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
 	// State transformation is now handled by the provider's StateUpgraders (UpgradeState)
 	// The provider's migration/v500 package handles all state transformations:
