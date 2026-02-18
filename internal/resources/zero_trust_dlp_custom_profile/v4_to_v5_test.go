@@ -240,7 +240,6 @@ moved {
 }`,
 				Expected: `resource "cloudflare_zero_trust_dlp_predefined_profile" "predefined" {
   account_id          = "123456789"
-  name                = "AWS Keys"
   allowed_match_count = 3
 
   enabled_entries = ["aws-access-key", "aws-secret-key"]

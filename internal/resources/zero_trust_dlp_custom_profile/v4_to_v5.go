@@ -22,6 +22,10 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 	migrator := &V4ToV5Migrator{}
 	internal.RegisterMigrator("cloudflare_dlp_profile", "v4", "v5", migrator)
 	internal.RegisterMigrator("cloudflare_zero_trust_dlp_profile", "v4", "v5", migrator)
+	// Register under the predefined profile name so the e2e runner can find this migrator
+	// when looking up by testdata resource name (zero_trust_dlp_predefined_profile).
+	// This is needed because GetResourceRename only returns the custom profile mapping.
+	internal.RegisterMigrator("cloudflare_zero_trust_dlp_predefined_profile", "v4", "v5", migrator)
 	return migrator
 }
 
@@ -44,7 +48,6 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 	// Return both old types that map to this migrator
 	// The global postprocessing will handle both cloudflare_dlp_profile and cloudflare_zero_trust_dlp_profile
-	
 	return "cloudflare_dlp_profile", "cloudflare_zero_trust_dlp_custom_profile"
 }
 
@@ -78,6 +81,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		newType = "cloudflare_zero_trust_dlp_predefined_profile"
 		tfhcl.RenameResourceType(block, currentType, newType)
 		tfhcl.RemoveAttributes(body, "type")
+		tfhcl.RemoveAttributes(body, "name") // name is read-only (Computed) in v5 predefined profiles
 		m.transformPredefinedEntryBlocks(body)
 
 	default:

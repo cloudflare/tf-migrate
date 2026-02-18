@@ -135,6 +135,12 @@ func RunMigrate(resources string) error {
 
 	printSuccess("Migration complete (config transformed, state will be upgraded by provider)")
 
+	// Apply post-migration patches (e.g., adding required fields that tf-migrate can't auto-generate)
+	// Looks for integration/v4_to_v5/testdata/<resource>/postmigrate/ directories
+	if err := applyPostMigrationPatches(repoRoot, generatedDir, resourceList); err != nil {
+		printYellow("Warning: Failed to apply post-migration patches: %v", err)
+	}
+
 	// Clean up backup files
 	if err := filepath.Walk(generatedDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -163,6 +169,74 @@ func RunMigrate(resources string) error {
 	printYellow("  terraform init")
 	printYellow("  terraform plan")
 	fmt.Println()
+
+	return nil
+}
+
+// applyPostMigrationPatches applies patches from testdata/<resource>/postmigrate/ to
+// migrated config files. Each patch file contains lines to inject (one attribute per line)
+// and targets the .tf file matching the resource name in the migrated module directory.
+// This supports resources that need manual config additions after tf-migrate runs
+// (e.g., predefined profiles needing profile_id).
+func applyPostMigrationPatches(repoRoot, generatedDir string, resources []string) error {
+	testdataDir := filepath.Join(repoRoot, "integration", "v4_to_v5", "testdata")
+
+	for _, resource := range resources {
+		patchDir := filepath.Join(testdataDir, resource, "postmigrate")
+		if _, err := os.Stat(patchDir); os.IsNotExist(err) {
+			continue
+		}
+
+		entries, err := os.ReadDir(patchDir)
+		if err != nil {
+			return fmt.Errorf("failed to read postmigrate dir for %s: %w", resource, err)
+		}
+
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".patch") {
+				continue
+			}
+
+			patchFile := filepath.Join(patchDir, entry.Name())
+			patchData, err := os.ReadFile(patchFile)
+			if err != nil {
+				return fmt.Errorf("failed to read patch %s: %w", patchFile, err)
+			}
+
+			// Parse patch: first line is target resource type.name, rest are lines to inject
+			lines := strings.Split(strings.TrimSpace(string(patchData)), "\n")
+			if len(lines) < 2 {
+				continue
+			}
+			targetResource := strings.TrimSpace(lines[0])
+			patchLines := strings.Join(lines[1:], "\n")
+
+			// Find and patch the migrated .tf file
+			moduleDir := filepath.Join(generatedDir, resource)
+			tfFiles, _ := filepath.Glob(filepath.Join(moduleDir, "*.tf"))
+			for _, tfFile := range tfFiles {
+				content, err := os.ReadFile(tfFile)
+				if err != nil {
+					continue
+				}
+				fileContent := string(content)
+				// Find the resource block and inject after the opening brace
+				marker := fmt.Sprintf("resource \"%s\"", targetResource)
+				if idx := strings.Index(fileContent, marker); idx >= 0 {
+					// Find the opening brace after the resource declaration
+					braceIdx := strings.Index(fileContent[idx:], "{")
+					if braceIdx >= 0 {
+						insertPos := idx + braceIdx + 1
+						patched := fileContent[:insertPos] + "\n" + patchLines + fileContent[insertPos:]
+						if err := os.WriteFile(tfFile, []byte(patched), permFile); err != nil {
+							return fmt.Errorf("failed to write patched file %s: %w", tfFile, err)
+						}
+						printBlue("  ✓ Applied post-migration patch to %s/%s", resource, filepath.Base(tfFile))
+					}
+				}
+			}
+		}
+	}
 
 	return nil
 }
@@ -494,6 +568,17 @@ func hasProviderStateUpgraderInMigrate(resourceType string) bool {
 					if psu.UsesProviderStateUpgrader() {
 						return true
 					}
+				}
+			}
+		}
+
+		// Strategy 3: Check CanHandle for split-resource cases
+		// (e.g., cloudflare_dlp_profile migrator handles both custom and predefined profiles,
+		// but GetResourceRename only returns the custom mapping)
+		if migrator.CanHandle(fullResourceType) {
+			if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
+				if psu.UsesProviderStateUpgrader() {
+					return true
 				}
 			}
 		}
