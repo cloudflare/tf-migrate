@@ -154,6 +154,11 @@ func (r *TestRunner) compareDirectories(expectedDir, actualDir string) error {
 			continue
 		}
 
+		// Skip e2e-only test files — these are used by the e2e runner, not config comparison
+		if strings.HasSuffix(entry.Name(), "_e2e.tf") {
+			continue
+		}
+
 		expectedFile := filepath.Join(expectedDir, entry.Name())
 		actualFile := filepath.Join(actualDir, entry.Name())
 

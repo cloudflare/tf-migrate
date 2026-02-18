@@ -447,7 +447,7 @@ func TestGenerateImportBlocks(t *testing.T) {
 				"to = module.zero_trust_organization.cloudflare_access_organization.test",
 				"id = var.cloudflare_account_id",
 				"to = module.waf.cloudflare_waf_package.test",
-				"id = zones/var.cloudflare_zone_id/settings/waf", // Mixed literal and variable
+				`id = "zones/${var.cloudflare_zone_id}/settings/waf"`, // Mixed literal and variable — needs string interpolation
 			},
 		},
 	}
