@@ -5,7 +5,6 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 type V4ToV5Migrator struct {
@@ -46,17 +45,5 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
-
-	if !stateJSON.Exists() {
-		return result, nil
-	}
-
-	// Set schema_version to 0 for v5
-	// Note: We assume all v4 states have the url field. While it was optional in v4,
-	// the Cloudflare API requires it, so all real resources should have it.
-	// If url is missing, the v5 provider will catch it during the next apply.
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+	return stateJSON.String(), nil
 }
