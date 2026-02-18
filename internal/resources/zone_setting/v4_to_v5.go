@@ -281,22 +281,30 @@ func (m *V4ToV5Migrator) createImportBlock(resourceName, settingID string, zoneI
 	return block
 }
 
-// TransformState is a no-op for zone_setting migration.
-// State transformation is handled by Terraform itself during terraform apply.
-// This is a special one-to-many case: one cloudflare_zone_settings_override splits
-// into N cloudflare_zone_setting resources (one per setting). Since moved blocks
-// only support 1:1 moves, no state migration path exists. Instead:
-// - The old v4 cloudflare_zone_settings_override is orphaned (not in migrated config)
-// - Terraform removes orphaned resources from state automatically
+// TransformState removes cloudflare_zone_settings_override instances from state.
+// This is a one-to-many migration: one v4 resource splits into N v5 cloudflare_zone_setting
+// resources. The v5 provider has no schema for cloudflare_zone_settings_override, so any
+// state entry with that type would cause Terraform to error with "no schema available".
+//
+// Returning "" signals tf-migrate to delete this state instance. After migration:
+// - cloudflare_zone_settings_override entries are removed from state
 // - New cloudflare_zone_setting resources are created fresh via terraform apply
+// - The provider's UpgradeState handles future v5 internal schema bumps independently
+//
+// NOTE: This migrator intentionally does NOT implement UsesProviderStateUpgrader.
+// UsesProviderStateUpgrader is designed for resources where the v4 and v5 resource
+// types are the same (e.g. cloudflare_access_rule → cloudflare_access_rule) and the
+// provider's UpgradeState bumps the schema version while keeping attributes intact.
+// That mechanism skips --state-file entirely, so TransformState is never called.
+//
+// For zone_setting, skipping --state-file would leave cloudflare_zone_settings_override
+// in the state file untouched. The v5 provider has no schema for that type, so Terraform
+// would fail with "no schema available" when loading the state. The provider's UpgradeState
+// only handles cloudflare_zone_setting resources that already exist within v5; it cannot
+// bridge the type change from cloudflare_zone_settings_override → cloudflare_zone_setting.
+// Therefore state cleanup must happen here in tf-migrate via TransformState returning "".
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
-// This tells tf-migrate that the provider handles state transformation, not tf-migrate.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
+	return "", nil
 }
 
 // isDeprecatedSetting checks if a setting should be skipped during migration
@@ -367,12 +375,12 @@ func buildTemplateStringTokens(zoneIDTokens hclwrite.Tokens, suffix string) hclw
 
 // metaArguments holds meta-arguments extracted from a resource block
 type metaArguments struct {
-	count      *hclwrite.Attribute
-	forEach    *hclwrite.Attribute
-	lifecycle  *hclwrite.Block
-	dependsOn  *hclwrite.Attribute
-	provider   *hclwrite.Attribute
-	timeouts   *hclwrite.Block
+	count     *hclwrite.Attribute
+	forEach   *hclwrite.Attribute
+	lifecycle *hclwrite.Block
+	dependsOn *hclwrite.Attribute
+	provider  *hclwrite.Attribute
+	timeouts  *hclwrite.Block
 }
 
 // extractMetaArguments extracts meta-arguments from the original resource block
