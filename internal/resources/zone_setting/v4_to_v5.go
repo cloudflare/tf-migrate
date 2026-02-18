@@ -281,23 +281,22 @@ func (m *V4ToV5Migrator) createImportBlock(resourceName, settingID string, zoneI
 	return block
 }
 
-// TransformState handles state transformation
-// For zone_settings_override, this is a complex one-to-many transformation
-// Each v4 instance needs to be split into multiple v5 instances
-//
-// Since import blocks can't be used in modules or with count/for_each,
-// we mark the resource for deletion and rely on a manual import process or
-// a fresh terraform apply to recreate the state
+// TransformState is a no-op for zone_setting migration.
+// State transformation is handled by Terraform itself during terraform apply.
+// This is a special one-to-many case: one cloudflare_zone_settings_override splits
+// into N cloudflare_zone_setting resources (one per setting). Since moved blocks
+// only support 1:1 moves, no state migration path exists. Instead:
+// - The old v4 cloudflare_zone_settings_override is orphaned (not in migrated config)
+// - Terraform removes orphaned resources from state automatically
+// - New cloudflare_zone_setting resources are created fresh via terraform apply
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// For zone_setting migration, we can't programmatically transform the state
-	// because it's a one-to-many transformation (1 v4 resource → N v5 resources)
-	// and we don't know the resource addresses of the generated v5 resources during state transformation
-	//
-	// The user will need to run `terraform apply` after migration to let Terraform
-	// create the new resources based on the migrated configuration
-	//
-	// Return empty string to delete this instance from state
-	return "", nil
+	return stateJSON.String(), nil
+}
+
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+// This tells tf-migrate that the provider handles state transformation, not tf-migrate.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
 
 // isDeprecatedSetting checks if a setting should be skipped during migration
