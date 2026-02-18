@@ -1,0 +1,20 @@
+# Drift Exemptions for zero_trust_dlp_predefined_profile resource
+#
+# Resource-specific exemptions for cloudflare_zero_trust_dlp_predefined_profile
+
+version: 1
+
+exemptions:
+  # The API returns enabled_entries as [] (empty list) but the config uses null (not set).
+  # This causes perpetual [] -> null drift that cannot be fixed without breaking the API
+  # contract (API rejects having both entries and enabled_entries fields).
+  - name: "enabled_entries_empty_to_null"
+    description: "enabled_entries changes from [] to null when not set in config"
+    patterns:
+      - 'enabled_entries.*\[\].*null'
+      - 'enabled_entries.*->.*null'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false
