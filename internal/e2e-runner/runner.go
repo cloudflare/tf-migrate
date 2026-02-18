@@ -33,7 +33,6 @@ const (
 	permSecretFile = 0600 // rw------- - sensitive files (state, secrets)
 )
 
-
 // RunConfig holds configuration for e2e test run
 type RunConfig struct {
 	SkipV4Test                bool
@@ -605,10 +604,10 @@ func RunE2ETests(cfg *RunConfig) error {
 
 // driftCheckResult holds the result of checking and displaying drift
 type driftCheckResult struct {
-	hasDrift        bool
-	driftLines      []string
-	exemptedCount   int
-	exemptedLines   []string
+	hasDrift      bool
+	driftLines    []string
+	exemptedCount int
+	exemptedLines []string
 }
 
 // checkAndDisplayDrift checks for drift in plan output and displays results
@@ -848,7 +847,6 @@ func runV4Tests(ctx *testContext) error {
 	}
 	printSuccess("Terraform init successful (remote state loaded from R2)")
 
-
 	// Run terraform plan
 	printYellow("Running terraform plan in v4/...")
 	planArgs := append([]string{"plan", "-no-color", "-out=" + filepath.Join(ctx.tmpDir, "v4.tfplan"), "-input=false"}, ctx.targetArgs...)
@@ -971,8 +969,8 @@ func displayGroupedDrift(driftLines []string) {
 		pattern  string
 	}
 
-	patternCounts := make(map[string]int)          // pattern -> count
-	patternResources := make(map[string][]string)  // pattern -> list of resources
+	patternCounts := make(map[string]int)         // pattern -> count
+	patternResources := make(map[string][]string) // pattern -> list of resources
 
 	for _, line := range driftLines {
 		// Try to extract resource name and pattern
