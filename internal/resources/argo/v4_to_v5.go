@@ -5,12 +5,10 @@ import (
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of Argo resources from v4 to v5
@@ -124,61 +122,21 @@ func (m *V4ToV5Migrator) createMovedBlock(fromName, toName, fromType, toType str
 	return tfhcl.CreateMovedBlock(from, to)
 }
 
+// TransformState is a no-op for argo migration
+// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState)
+// The moved blocks generated in TransformConfig trigger the provider's migration logic
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is delegated to the provider
+	// Provider handles:
+	// - Resource type change (cloudflare_argo → cloudflare_argo_smart_routing or cloudflare_argo_tiered_caching)
+	// - Field transformations (smart_routing/tiered_caching → value)
+	// - ID transformation (checksum → zone_id)
+	// - Computed field initialization (editable, modified_on)
+	return stateJSON.String(), nil
+}
 
-	attrs := stateJSON.Get("attributes")
-
-	// Determine which resource type this stateJSON should become based on the presence of attributes
-	// Note: When both attributes exist, this is called once and we transform to smart_routing
-	// The tiered_caching resource would need to be created separately (managed by the HCL transformation)
-	var targetType string
-
-	if !attrs.Exists() {
-		// No attributes block - default to smart_routing
-		targetType = "cloudflare_argo_smart_routing"
-	} else {
-		// Check if attributes exist AND are not null (null attributes in state should be treated as not present)
-		hasSmartRouting := attrs.Get("smart_routing").Exists() && attrs.Get("smart_routing").Type != gjson.Null && attrs.Get("smart_routing").String() != ""
-		hasTieredCaching := attrs.Get("tiered_caching").Exists() && attrs.Get("tiered_caching").Type != gjson.Null && attrs.Get("tiered_caching").String() != ""
-
-		if hasTieredCaching && !hasSmartRouting {
-			// Transform to tiered_caching ONLY if tiered_caching exists and smart_routing does NOT
-			targetType = "cloudflare_argo_tiered_caching"
-
-			result = state.RenameField(result, "attributes", attrs, "tiered_caching", "value")
-			result = state.RemoveFields(result, "attributes", attrs, "smart_routing")
-		} else {
-			// Transform to smart_routing (either it exists, or neither attribute exists)
-			targetType = "cloudflare_argo_smart_routing"
-
-			if attrs.Get("smart_routing").Exists() {
-				result = state.RenameField(result, "attributes", attrs, "smart_routing", "value")
-			} else {
-				result, _ = sjson.Set(result, "attributes.value", "off")
-			}
-
-			// Remove tiered_caching field
-			result = state.RemoveFields(result, "attributes", attrs, "tiered_caching")
-		}
-
-		// Common transformations for both resource types (only when attributes exist)
-
-		// Update ID to be zone_id instead of checksum
-		if attrs.Get("zone_id").Exists() {
-			zoneID := attrs.Get("zone_id").String()
-			result, _ = sjson.Set(result, "attributes.id", zoneID)
-		}
-
-		// Add computed fields with reasonable defaults
-		result, _ = sjson.Set(result, "attributes.editable", true)
-		result, _ = sjson.Set(result, "attributes.modified_on", nil)
-	}
-
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	transform.SetStateTypeRename(ctx, resourceName, "cloudflare_argo", targetType)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+// When true, tf-migrate will not perform state transformation - the provider handles it
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
