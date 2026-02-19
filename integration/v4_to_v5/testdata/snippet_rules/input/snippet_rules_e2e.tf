@@ -8,7 +8,7 @@ resource "cloudflare_snippet_rules" "basic" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/api\""
-    snippet_name = "basic_snippet"
+    snippet_name = "${local.name_prefix}-basic-snippet"
     description  = "Basic test rule"
   }
 }
@@ -20,20 +20,20 @@ resource "cloudflare_snippet_rules" "multiple_rules" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/v1\""
-    snippet_name = "v1_snippet"
+    snippet_name = "${local.name_prefix}-v1-snippet"
     description  = "Version 1 API"
   }
 
   rules {
     enabled      = false
     expression   = "http.request.uri.path eq \"/v2\""
-    snippet_name = "v2_snippet"
+    snippet_name = "${local.name_prefix}-v2-snippet"
     description  = "Version 2 API"
   }
 
   rules {
     expression   = "http.request.uri.path eq \"/v3\""
-    snippet_name = "v3_snippet"
+    snippet_name = "${local.name_prefix}-v3-snippet"
   }
 }
 
@@ -45,7 +45,7 @@ variable "zone_id" {
 
 variable "snippet_name" {
   type    = string
-  default = "var_snippet"
+  default = "cftftest-var-snippet"
 }
 
 resource "cloudflare_snippet_rules" "with_variables" {
@@ -72,7 +72,7 @@ resource "cloudflare_snippet_rules" "for_each_map" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/${each.key}\""
-    snippet_name = "${each.key}_snippet"
+    snippet_name = "${local.name_prefix}-${each.key}-snippet"
     description  = "Rule for ${each.key} environment"
   }
 }
@@ -86,7 +86,7 @@ resource "cloudflare_snippet_rules" "for_each_set" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/${each.key}\""
-    snippet_name = "${each.key}_snippet"
+    snippet_name = "${local.name_prefix}-${each.key}-snippet"
   }
 }
 
@@ -99,7 +99,7 @@ resource "cloudflare_snippet_rules" "count_based" {
   rules {
     enabled      = count.index == 0
     expression   = "http.request.uri.path eq \"/count/${count.index}\""
-    snippet_name = "count_${count.index}_snippet"
+    snippet_name = "${local.name_prefix}-count-${count.index}-snippet"
     description  = "Count-based rule ${count.index}"
   }
 }
@@ -113,7 +113,7 @@ resource "cloudflare_snippet_rules" "conditional" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/conditional\""
-    snippet_name = "conditional_snippet"
+    snippet_name = "${local.name_prefix}-conditional-snippet"
   }
 }
 
@@ -124,14 +124,14 @@ resource "cloudflare_snippet_rules" "complex_expressions" {
   rules {
     enabled      = true
     expression   = "(http.request.uri.path eq \"/api\") and (http.request.method eq \"POST\")"
-    snippet_name = "complex_snippet_1"
+    snippet_name = "${local.name_prefix}-complex-snippet-1"
     description  = "Complex expression with AND"
   }
 
   rules {
     enabled      = true
     expression   = "(http.host eq \"example.com\") or (http.host eq \"www.example.com\")"
-    snippet_name = "complex_snippet_2"
+    snippet_name = "${local.name_prefix}-complex-snippet-2"
     description  = "Complex expression with OR"
   }
 }
@@ -143,13 +143,14 @@ resource "cloudflare_snippet_rules" "referenced" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/referenced\""
-    snippet_name = "ref_snippet"
+    snippet_name = "${local.name_prefix}-ref-snippet"
     description  = "References another snippet_rules resource"
   }
 }
 
 # Test 10: Dynamic rules using locals
 locals {
+  name_prefix  = "cftftest"
   environments = ["dev", "test", "prod"]
   base_zone_id = "zone-local-base"
 }
@@ -160,7 +161,7 @@ resource "cloudflare_snippet_rules" "with_locals" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/local\""
-    snippet_name = "local_snippet"
+    snippet_name = "${local.name_prefix}-local-snippet"
     description  = "Using locals: ${join(", ", local.environments)}"
   }
 }
@@ -172,14 +173,14 @@ resource "cloudflare_snippet_rules" "special_chars" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path matches \"^/api/v[0-9]+/.*$\""
-    snippet_name = "regex_snippet"
+    snippet_name = "${local.name_prefix}-regex-snippet"
     description  = "Rule with regex pattern"
   }
 
   rules {
     enabled      = true
     expression   = "http.request.uri.query contains \"token=\""
-    snippet_name = "query_snippet"
+    snippet_name = "${local.name_prefix}-query-snippet"
     description  = "Rule checking query parameters"
   }
 }
@@ -190,7 +191,7 @@ resource "cloudflare_snippet_rules" "minimal" {
 
   rules {
     expression   = "http.request.uri.path eq \"/minimal\""
-    snippet_name = "minimal_snippet"
+    snippet_name = "${local.name_prefix}-minimal-snippet"
   }
 }
 
@@ -201,7 +202,7 @@ resource "cloudflare_snippet_rules" "all_fields" {
   rules {
     enabled      = false
     expression   = "http.request.uri.path eq \"/all\""
-    snippet_name = "all_fields_snippet"
+    snippet_name = "${local.name_prefix}-all-fields-snippet"
     description  = "Rule with all optional fields set"
   }
 }
@@ -213,19 +214,19 @@ resource "cloudflare_snippet_rules" "mixed_enabled" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/enabled\""
-    snippet_name = "enabled_snippet"
+    snippet_name = "${local.name_prefix}-enabled-snippet"
   }
 
   rules {
     enabled      = false
     expression   = "http.request.uri.path eq \"/disabled\""
-    snippet_name = "disabled_snippet"
+    snippet_name = "${local.name_prefix}-disabled-snippet"
   }
 
   rules {
     # Implicit enabled (uses default)
     expression   = "http.request.uri.path eq \"/default\""
-    snippet_name = "default_snippet"
+    snippet_name = "${local.name_prefix}-default-snippet"
   }
 }
 
@@ -238,7 +239,7 @@ resource "cloudflare_snippet_rules" "depends" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/depends\""
-    snippet_name = "depends_snippet"
+    snippet_name = "${local.name_prefix}-depends-snippet"
   }
 }
 
@@ -249,7 +250,7 @@ resource "cloudflare_snippet_rules" "with_functions" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/${lower("UPPERCASE")}\""
-    snippet_name = "${format("func_%s_snippet", "test")}"
+    snippet_name = "${local.name_prefix}-${format("func-%s-snippet", "test")}"
     description  = "${title("function-based description")}"
   }
 }
@@ -261,33 +262,33 @@ resource "cloudflare_snippet_rules" "comprehensive" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/rule1\""
-    snippet_name = "rule1_snippet"
+    snippet_name = "${local.name_prefix}-rule1-snippet"
     description  = "First rule"
   }
 
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/rule2\""
-    snippet_name = "rule2_snippet"
+    snippet_name = "${local.name_prefix}-rule2-snippet"
     description  = "Second rule"
   }
 
   rules {
     enabled      = false
     expression   = "http.request.uri.path eq \"/rule3\""
-    snippet_name = "rule3_snippet"
+    snippet_name = "${local.name_prefix}-rule3-snippet"
     description  = "Third rule"
   }
 
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/rule4\""
-    snippet_name = "rule4_snippet"
+    snippet_name = "${local.name_prefix}-rule4-snippet"
   }
 
   rules {
     expression   = "http.request.uri.path eq \"/rule5\""
-    snippet_name = "rule5_snippet"
+    snippet_name = "${local.name_prefix}-rule5-snippet"
     description  = "Fifth rule without explicit enabled"
   }
 }

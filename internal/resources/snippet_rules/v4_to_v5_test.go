@@ -19,7 +19,7 @@ resource "cloudflare_snippet_rules" "example" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/test\""
-    snippet_name = "example_snippet"
+    snippet_name = "cftftest-example-snippet"
     description  = "Test rule"
   }
 }`,
@@ -31,7 +31,7 @@ resource "cloudflare_snippet_rules" "example" {
     {
       enabled      = true
       expression   = "http.request.uri.path eq \"/test\""
-      snippet_name = "example_snippet"
+      snippet_name = "cftftest-example-snippet"
       description  = "Test rule"
     }
   ]
@@ -46,13 +46,13 @@ resource "cloudflare_snippet_rules" "example" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/api\""
-    snippet_name = "api_snippet"
+    snippet_name = "cftftest-api-snippet"
   }
 
   rules {
     enabled      = false
     expression   = "http.request.uri.path eq \"/admin\""
-    snippet_name = "admin_snippet"
+    snippet_name = "cftftest-admin-snippet"
     description  = "Admin rule"
   }
 }`,
@@ -64,12 +64,12 @@ resource "cloudflare_snippet_rules" "example" {
     {
       enabled      = true
       expression   = "http.request.uri.path eq \"/api\""
-      snippet_name = "api_snippet"
+      snippet_name = "cftftest-api-snippet"
     },
     {
       enabled      = false
       expression   = "http.request.uri.path eq \"/admin\""
-      snippet_name = "admin_snippet"
+      snippet_name = "cftftest-admin-snippet"
       description  = "Admin rule"
     }
   ]
@@ -83,7 +83,7 @@ resource "cloudflare_snippet_rules" "example" {
 
   rules {
     expression   = "http.request.uri.path eq \"/test\""
-    snippet_name = "test_snippet"
+    snippet_name = "cftftest-test-snippet"
   }
 }`,
 			Expected: `
@@ -93,7 +93,7 @@ resource "cloudflare_snippet_rules" "example" {
   rules = [
     {
       expression   = "http.request.uri.path eq \"/test\""
-      snippet_name = "test_snippet"
+      snippet_name = "cftftest-test-snippet"
       enabled      = true
     }
   ]
@@ -117,7 +117,7 @@ resource "cloudflare_snippet_rules" "first" {
   rules {
     enabled      = true
     expression   = "http.request.uri.path eq \"/first\""
-    snippet_name = "first_snippet"
+    snippet_name = "cftftest-first-snippet"
   }
 }
 
@@ -127,7 +127,7 @@ resource "cloudflare_snippet_rules" "second" {
   rules {
     enabled      = false
     expression   = "http.request.uri.path eq \"/second\""
-    snippet_name = "second_snippet"
+    snippet_name = "cftftest-second-snippet"
   }
 }`,
 			Expected: `
@@ -138,7 +138,7 @@ resource "cloudflare_snippet_rules" "first" {
     {
       enabled      = true
       expression   = "http.request.uri.path eq \"/first\""
-      snippet_name = "first_snippet"
+      snippet_name = "cftftest-first-snippet"
     }
   ]
 }
@@ -150,7 +150,7 @@ resource "cloudflare_snippet_rules" "second" {
     {
       enabled      = false
       expression   = "http.request.uri.path eq \"/second\""
-      snippet_name = "second_snippet"
+      snippet_name = "cftftest-second-snippet"
     }
   ]
 }`,
