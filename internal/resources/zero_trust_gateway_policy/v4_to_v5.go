@@ -3,12 +3,10 @@ package zero_trust_gateway_policy
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of Zero Trust Gateway Policy resources from v4 to v5
@@ -43,6 +41,9 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	// Get resource name before transformation for moved block
+	resourceName := tfhcl.GetResourceName(block)
+
 	// Rename resource type: cloudflare_teams_rule → cloudflare_zero_trust_gateway_policy
 	tfhcl.RenameResourceType(block, "cloudflare_teams_rule", "cloudflare_zero_trust_gateway_policy")
 
@@ -57,9 +58,15 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// This must be done AFTER processing nested blocks
 	tfhcl.ConvertSingleBlockToAttribute(body, "rule_settings", "rule_settings")
 
+	// Generate moved block for resource rename
+	oldType, newType := m.GetResourceRename()
+	from := oldType + "." + resourceName
+	to := newType + "." + resourceName
+	movedBlock := tfhcl.CreateMovedBlock(from, to)
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         []*hclwrite.Block{block, movedBlock},
+		RemoveOriginal: true,
 	}, nil
 }
 
@@ -93,210 +100,35 @@ func (m *V4ToV5Migrator) processRuleSettingsBlock(ruleSettingsBlock *hclwrite.Bl
 			}
 		}
 
+		// For biso_admin_controls, rename v1 fields BEFORE converting
+		// v1 fields were renamed from disable_* to shortened versions (dp, dd, dcp, dk, du)
+		if blockName == "biso_admin_controls" {
+			if bisoBlock := tfhcl.FindBlockByType(ruleSettingsBody, "biso_admin_controls"); bisoBlock != nil {
+				bisoBody := bisoBlock.Body()
+				// Rename v1 fields to shortened versions
+				tfhcl.RenameAttribute(bisoBody, "disable_printing", "dp")
+				tfhcl.RenameAttribute(bisoBody, "disable_copy_paste", "dcp")
+				tfhcl.RenameAttribute(bisoBody, "disable_download", "dd")
+				tfhcl.RenameAttribute(bisoBody, "disable_keyboard", "dk")
+				tfhcl.RenameAttribute(bisoBody, "disable_upload", "du")
+				// Remove disable_clipboard_redirection (no v5 equivalent)
+				tfhcl.RemoveAttributes(bisoBody, "disable_clipboard_redirection")
+			}
+		}
+
 		// Convert block to attribute syntax
 		tfhcl.ConvertSingleBlockToAttribute(ruleSettingsBody, blockName, blockName)
 	}
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// This function receives a single instance and needs to return the transformed instance JSON
-	result := stateJSON.String()
-	// Get attributes
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Exists() {
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// Convert precedence from int to float64
-	if precedence := attrs.Get("precedence"); precedence.Exists() {
-		floatVal := state.ConvertToFloat64(precedence)
-		result, _ = sjson.Set(result, "attributes.precedence", floatVal)
-	}
-
-	// Convert version from int to float64
-	if version := attrs.Get("version"); version.Exists() {
-		floatVal := state.ConvertToFloat64(version)
-		result, _ = sjson.Set(result, "attributes.version", floatVal)
-	}
-
-	// Transform rule_settings if it exists
-	ruleSettings := attrs.Get("rule_settings")
-	if ruleSettings.Exists() {
-		result = m.transformRuleSettings(result, ruleSettings)
-	}
-
-	// Always set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+	// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState)
+	// The moved block generated in TransformConfig triggers the provider's migration logic
+	// This function is a no-op for zero_trust_gateway_policy migration
+	return stateJSON.String(), nil
 }
 
-// transformRuleSettings handles the transformation of rule_settings from array to object
-func (m *V4ToV5Migrator) transformRuleSettings(result string, ruleSettings gjson.Result) string {
-	// Check if rule_settings is an array (v4 format: [{...}])
-	if ruleSettings.IsArray() {
-		// Get the first element of the array (v4 always has exactly one element)
-		arr := ruleSettings.Array()
-		if len(arr) > 0 {
-			settingsObj := arr[0]
-
-			// Convert the settings object
-			transformedSettings := m.transformRuleSettingsObject(settingsObj)
-
-			// Set as object (not array)
-			result, _ = sjson.SetRaw(result, "attributes.rule_settings", transformedSettings)
-		}
-	} else if ruleSettings.IsObject() {
-		// Already an object, just transform it
-		transformedSettings := m.transformRuleSettingsObject(ruleSettings)
-		result, _ = sjson.SetRaw(result, "attributes.rule_settings", transformedSettings)
-	}
-
-	return result
-}
-
-// transformRuleSettingsObject transforms a single rule_settings object
-func (m *V4ToV5Migrator) transformRuleSettingsObject(settings gjson.Result) string {
-	result := settings.String()
-
-	// Rename block_page_reason → block_reason
-	if settings.Get("block_page_reason").Exists() {
-		value := settings.Get("block_page_reason").Value()
-		result, _ = sjson.Set(result, "block_reason", value)
-		result, _ = sjson.Delete(result, "block_page_reason")
-	}
-
-	// Remove empty add_headers map
-	if addHeaders := settings.Get("add_headers"); addHeaders.Exists() {
-		if addHeaders.IsObject() && len(addHeaders.Map()) == 0 {
-			result, _ = sjson.Delete(result, "add_headers")
-		}
-	}
-
-	// Transform nested structures (convert arrays to objects)
-	nestedStructures := []string{
-		"audit_ssh",
-		"l4override",
-		"biso_admin_controls",
-		"check_session",
-		"egress",
-		"untrusted_cert",
-		"payload_log",
-		"notification_settings",
-		"dns_resolvers",
-		"resolve_dns_internally",
-	}
-
-	for _, structName := range nestedStructures {
-		nested := settings.Get(structName)
-
-		// Skip if field doesn't exist or is not an array
-		if !nested.Exists() || !nested.IsArray() {
-			continue
-		}
-
-		// Handle empty array - remove it (v5 uses optional SingleNestedAttribute, so null is correct)
-		arr := nested.Array()
-		if len(arr) == 0 {
-			result, _ = sjson.Delete(result, structName)
-			continue
-		}
-
-		// Convert from array to object (get first element)
-		nestedObj := arr[0]
-
-		// Special handling for specific structures
-		if structName == "notification_settings" {
-			// Rename message → msg
-			nestedResult := nestedObj.String()
-			if nestedObj.Get("message").Exists() {
-				value := nestedObj.Get("message").Value()
-				nestedResult, _ = sjson.Set(nestedResult, "msg", value)
-				nestedResult, _ = sjson.Delete(nestedResult, "message")
-			}
-			result, _ = sjson.SetRaw(result, structName, nestedResult)
-		} else if structName == "l4override" {
-			// Convert port to float64
-			nestedResult := nestedObj.String()
-			if port := nestedObj.Get("port"); port.Exists() {
-				nestedResult, _ = sjson.Set(nestedResult, "port", state.ConvertToFloat64(port))
-			}
-			result, _ = sjson.SetRaw(result, structName, nestedResult)
-		} else if structName == "dns_resolvers" {
-			// Handle dns_resolvers specially - it has ipv4/ipv6 arrays with port fields
-			result = m.transformDnsResolvers(result, nestedObj)
-		} else if structName == "biso_admin_controls" {
-			// Remove deprecated v1-only disable_* attributes that were removed in v5
-			// These were replaced with new attributes (e.g., disable_printing → printing with values "enabled"/"disabled")
-			nestedResult := nestedObj.String()
-			nestedResult, _ = sjson.Delete(nestedResult, "disable_clipboard_redirection")
-			nestedResult, _ = sjson.Delete(nestedResult, "disable_printing")
-			nestedResult, _ = sjson.Delete(nestedResult, "disable_copy_paste")
-			nestedResult, _ = sjson.Delete(nestedResult, "disable_download")
-			nestedResult, _ = sjson.Delete(nestedResult, "disable_keyboard")
-			nestedResult, _ = sjson.Delete(nestedResult, "disable_upload")
-			// Remove deprecated dp and dd fields
-			nestedResult, _ = sjson.Delete(nestedResult, "dp")
-			nestedResult, _ = sjson.Delete(nestedResult, "dd")
-			result, _ = sjson.SetRaw(result, structName, nestedResult)
-		} else if structName == "check_session" {
-			// Normalize duration format (e.g., "24h0m0s" -> "24h")
-			nestedResult := nestedObj.String()
-			if duration := nestedObj.Get("duration"); duration.Exists() && duration.Type == gjson.String {
-				normalizedDuration := normalizeDuration(duration.String())
-				nestedResult, _ = sjson.Set(nestedResult, "duration", normalizedDuration)
-			}
-			result, _ = sjson.SetRaw(result, structName, nestedResult)
-		} else {
-			// Just convert array to object
-			result, _ = sjson.SetRaw(result, structName, nestedObj.String())
-		}
-	}
-
-	return result
-}
-
-// transformDnsResolvers handles the transformation of dns_resolvers with port conversions
-func (m *V4ToV5Migrator) transformDnsResolvers(result string, dnsResolvers gjson.Result) string {
-	resolversResult := dnsResolvers.String()
-
-	// Transform ipv4 array - convert each port to float64
-	if ipv4 := dnsResolvers.Get("ipv4"); ipv4.Exists() && ipv4.IsArray() {
-		ipv4.ForEach(func(key, value gjson.Result) bool {
-			if port := value.Get("port"); port.Exists() {
-				resolversResult, _ = sjson.Set(resolversResult, "ipv4."+key.String()+".port", state.ConvertToFloat64(port))
-			}
-			return true
-		})
-	}
-
-	// Transform ipv6 array - convert each port to float64
-	if ipv6 := dnsResolvers.Get("ipv6"); ipv6.Exists() && ipv6.IsArray() {
-		ipv6.ForEach(func(key, value gjson.Result) bool {
-			if port := value.Get("port"); port.Exists() {
-				resolversResult, _ = sjson.Set(resolversResult, "ipv6."+key.String()+".port", state.ConvertToFloat64(port))
-			}
-			return true
-		})
-	}
-
-	result, _ = sjson.SetRaw(result, "dns_resolvers", resolversResult)
-	return result
-}
-
-// normalizeDuration normalizes Go duration format strings
-// Converts "24h0m0s" -> "24h", "12h0m0s" -> "12h", etc.
-func normalizeDuration(duration string) string {
-	// Remove trailing "0m0s" or "0s" patterns
-	if len(duration) > 4 && duration[len(duration)-4:] == "0m0s" {
-		return duration[:len(duration)-4]
-	}
-	if len(duration) > 2 && duration[len(duration)-2:] == "0s" {
-		return duration[:len(duration)-2]
-	}
-	if len(duration) > 2 && duration[len(duration)-2:] == "0m" {
-		return duration[:len(duration)-2]
-	}
-	return duration
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }

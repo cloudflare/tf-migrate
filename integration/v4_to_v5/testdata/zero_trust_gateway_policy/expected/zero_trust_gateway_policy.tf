@@ -65,6 +65,57 @@ locals {
 # Pattern Group 1: Basic Resources (Edge Cases)
 # ============================================================================
 
+
+
+
+
+
+
+# ============================================================================
+# Pattern Group 2: for_each with Maps
+# ============================================================================
+
+
+# ============================================================================
+# Pattern Group 3: for_each with Sets
+# ============================================================================
+
+
+# ============================================================================
+# Pattern Group 4: count-based Resources
+# ============================================================================
+
+
+# ============================================================================
+# Pattern Group 5: Conditional Creation
+# ============================================================================
+
+
+
+# ============================================================================
+# Pattern Group 6: Terraform Functions
+# ============================================================================
+
+
+
+# ============================================================================
+# Pattern Group 7: Lifecycle Meta-Arguments
+# ============================================================================
+
+
+
+# ============================================================================
+# Pattern Group 8: Additional Edge Cases & Action Types
+# ============================================================================
+
+
+
+
+
+
+
+# Total: 28 base resources + 3 from for_each map + 4 from for_each set + 3 from count = 38 instances
+
 # 1. Minimal gateway policy
 resource "cloudflare_zero_trust_gateway_policy" "minimal" {
   account_id  = local.common_account_id
@@ -76,42 +127,51 @@ resource "cloudflare_zero_trust_gateway_policy" "minimal" {
   traffic     = local.common_traffic_expression
 }
 
+moved {
+  from = cloudflare_teams_rule.minimal
+  to   = cloudflare_zero_trust_gateway_policy.minimal
+}
+
 # 2. Maximal policy with all settings
 resource "cloudflare_zero_trust_gateway_policy" "maximal" {
   account_id  = var.cloudflare_account_id
   name        = "${local.policy_name_prefix}-maximal"
-  description = "Policy with all possible settings"
+  description = "Policy with DNS override settings"
   precedence  = 150
-  action      = "block"
+  action      = "override"
   enabled     = true
   filters     = local.dns_filter
-  traffic     = "any(dns.domains[*] in {\"blocked.cf-tf-test.com\" \"malware.cf-tf-test.com\"})"
+  traffic     = "any(dns.domains[*] in {\"example.com\" \"test.com\"})"
 
   rule_settings = {
-    block_page_enabled = true
     override_ips       = ["1.1.1.1", "1.0.0.1"]
-    ip_categories      = true
-    block_reason       = local.block_reason
   }
+}
+
+moved {
+  from = cloudflare_teams_rule.maximal
+  to   = cloudflare_zero_trust_gateway_policy.maximal
 }
 
 # 3. Policy with rule_settings and field renames
 resource "cloudflare_zero_trust_gateway_policy" "with_settings" {
   account_id  = var.cloudflare_account_id
-  name        = "${local.name_prefix} Block Policy with Settings"
-  description = "Policy with custom block page"
+  name        = "${local.name_prefix} Override Policy with Settings"
+  description = "Policy with DNS override settings"
   precedence  = 200
-  action      = "block"
+  action      = "override"
   enabled     = true
   filters     = ["dns"]
-  traffic     = "any(dns.domains[*] in {\"blocked.cf-tf-test.com\" \"malware.cf-tf-test.com\"})"
+  traffic     = "any(dns.domains[*] in {\"example.com\" \"test.com\"})"
 
   rule_settings = {
-    block_page_enabled = true
     override_ips       = ["1.1.1.1", "1.0.0.1"]
-    ip_categories      = true
-    block_reason       = "Access to this site is blocked by company policy"
   }
+}
+
+moved {
+  from = cloudflare_teams_rule.with_settings
+  to   = cloudflare_zero_trust_gateway_policy.with_settings
 }
 
 # 4. Policy with nested blocks requiring transformation
@@ -133,6 +193,11 @@ resource "cloudflare_zero_trust_gateway_policy" "with_nested_blocks" {
   }
 }
 
+moved {
+  from = cloudflare_teams_rule.with_nested_blocks
+  to   = cloudflare_zero_trust_gateway_policy.with_nested_blocks
+}
+
 # 5. Complex policy with multiple nested structures
 resource "cloudflare_zero_trust_gateway_policy" "complex" {
   account_id  = var.cloudflare_account_id
@@ -149,9 +214,9 @@ resource "cloudflare_zero_trust_gateway_policy" "complex" {
       command_logging = true
     }
     biso_admin_controls = {
-      version          = "v1"
-      disable_printing = true
-      disable_download = false
+      version = "v1"
+      dp      = true
+      dd      = true
     }
     check_session = {
       enforce  = true
@@ -161,6 +226,11 @@ resource "cloudflare_zero_trust_gateway_policy" "complex" {
       enabled = true
     }
   }
+}
+
+moved {
+  from = cloudflare_teams_rule.complex
+  to   = cloudflare_zero_trust_gateway_policy.complex
 }
 
 # 6. Simple allow policy for testing rule_settings
@@ -179,9 +249,10 @@ resource "cloudflare_zero_trust_gateway_policy" "simple_resolver" {
   }
 }
 
-# ============================================================================
-# Pattern Group 2: for_each with Maps
-# ============================================================================
+moved {
+  from = cloudflare_teams_rule.simple_resolver
+  to   = cloudflare_zero_trust_gateway_policy.simple_resolver
+}
 
 # 7-9. Resources created with for_each over map
 resource "cloudflare_zero_trust_gateway_policy" "policy_configs" {
@@ -197,9 +268,10 @@ resource "cloudflare_zero_trust_gateway_policy" "policy_configs" {
   traffic     = "any(dns.domains[*] == \"${each.key}.cf-tf-test.com\")"
 }
 
-# ============================================================================
-# Pattern Group 3: for_each with Sets
-# ============================================================================
+moved {
+  from = cloudflare_teams_rule.policy_configs
+  to   = cloudflare_zero_trust_gateway_policy.policy_configs
+}
 
 # 10-13. Resources created with for_each over set
 resource "cloudflare_zero_trust_gateway_policy" "environment_policies" {
@@ -215,9 +287,10 @@ resource "cloudflare_zero_trust_gateway_policy" "environment_policies" {
   traffic     = "any(dns.domains[*] == \"${each.value}.cf-tf-test.com\")"
 }
 
-# ============================================================================
-# Pattern Group 4: count-based Resources
-# ============================================================================
+moved {
+  from = cloudflare_teams_rule.environment_policies
+  to   = cloudflare_zero_trust_gateway_policy.environment_policies
+}
 
 # 14-16. Resources created with count
 resource "cloudflare_zero_trust_gateway_policy" "tiered_policies" {
@@ -233,9 +306,10 @@ resource "cloudflare_zero_trust_gateway_policy" "tiered_policies" {
   traffic     = "any(dns.domains[*] == \"tier${count.index}.cf-tf-test.com\")"
 }
 
-# ============================================================================
-# Pattern Group 5: Conditional Creation
-# ============================================================================
+moved {
+  from = cloudflare_teams_rule.tiered_policies
+  to   = cloudflare_zero_trust_gateway_policy.tiered_policies
+}
 
 # 17. Conditionally created policy
 resource "cloudflare_zero_trust_gateway_policy" "conditional_enabled" {
@@ -256,6 +330,11 @@ resource "cloudflare_zero_trust_gateway_policy" "conditional_enabled" {
   }
 }
 
+moved {
+  from = cloudflare_teams_rule.conditional_enabled
+  to   = cloudflare_zero_trust_gateway_policy.conditional_enabled
+}
+
 # 18. Conditionally not created policy
 resource "cloudflare_zero_trust_gateway_policy" "conditional_disabled" {
   count = var.enable_security_policies ? 0 : 1
@@ -270,9 +349,10 @@ resource "cloudflare_zero_trust_gateway_policy" "conditional_disabled" {
   traffic     = "any(dns.domains[*] == \"insecure.cf-tf-test.com\")"
 }
 
-# ============================================================================
-# Pattern Group 6: Terraform Functions
-# ============================================================================
+moved {
+  from = cloudflare_teams_rule.conditional_disabled
+  to   = cloudflare_zero_trust_gateway_policy.conditional_disabled
+}
 
 # 19. Policy using join() function
 resource "cloudflare_zero_trust_gateway_policy" "with_join" {
@@ -284,6 +364,11 @@ resource "cloudflare_zero_trust_gateway_policy" "with_join" {
   enabled     = true
   filters     = ["dns"]
   traffic     = "any(dns.domains[*] == \"${join(".", ["subdomain", "example", "com"])}\")"
+}
+
+moved {
+  from = cloudflare_teams_rule.with_join
+  to   = cloudflare_zero_trust_gateway_policy.with_join
 }
 
 # 20. Policy using string interpolation
@@ -298,16 +383,17 @@ resource "cloudflare_zero_trust_gateway_policy" "with_interpolation" {
   traffic     = "http.request.host == \"${var.policy_prefix}.cf-tf-test.com\""
 }
 
-# ============================================================================
-# Pattern Group 7: Lifecycle Meta-Arguments
-# ============================================================================
+moved {
+  from = cloudflare_teams_rule.with_interpolation
+  to   = cloudflare_zero_trust_gateway_policy.with_interpolation
+}
 
 # 21. Policy with lifecycle block
 resource "cloudflare_zero_trust_gateway_policy" "with_lifecycle" {
   account_id  = var.cloudflare_account_id
   name        = "${local.name_prefix} Protected Policy"
   description = "Policy with lifecycle settings"
-  precedence  = 1200
+  precedence  = 1210
   action      = "block"
   enabled     = true
   filters     = ["dns"]
@@ -317,6 +403,11 @@ resource "cloudflare_zero_trust_gateway_policy" "with_lifecycle" {
     create_before_destroy = true
     ignore_changes        = [description]
   }
+}
+
+moved {
+  from = cloudflare_teams_rule.with_lifecycle
+  to   = cloudflare_zero_trust_gateway_policy.with_lifecycle
 }
 
 # 22. Policy with prevent_destroy (set to false for testing)
@@ -340,9 +431,10 @@ resource "cloudflare_zero_trust_gateway_policy" "with_prevent_destroy" {
   }
 }
 
-# ============================================================================
-# Pattern Group 8: Additional Edge Cases & Action Types
-# ============================================================================
+moved {
+  from = cloudflare_teams_rule.with_prevent_destroy
+  to   = cloudflare_zero_trust_gateway_policy.with_prevent_destroy
+}
 
 # 23. L4 Override policy with specific settings
 resource "cloudflare_zero_trust_gateway_policy" "l4_override_detailed" {
@@ -363,6 +455,11 @@ resource "cloudflare_zero_trust_gateway_policy" "l4_override_detailed" {
   }
 }
 
+moved {
+  from = cloudflare_teams_rule.l4_override_detailed
+  to   = cloudflare_zero_trust_gateway_policy.l4_override_detailed
+}
+
 # 24. Policy with audit SSH settings
 resource "cloudflare_zero_trust_gateway_policy" "with_audit_ssh" {
   account_id  = var.cloudflare_account_id
@@ -379,6 +476,11 @@ resource "cloudflare_zero_trust_gateway_policy" "with_audit_ssh" {
       command_logging = true
     }
   }
+}
+
+moved {
+  from = cloudflare_teams_rule.with_audit_ssh
+  to   = cloudflare_zero_trust_gateway_policy.with_audit_ssh
 }
 
 # 25. Policy with check_session settings
@@ -400,6 +502,11 @@ resource "cloudflare_zero_trust_gateway_policy" "with_check_session" {
   }
 }
 
+moved {
+  from = cloudflare_teams_rule.with_check_session
+  to   = cloudflare_zero_trust_gateway_policy.with_check_session
+}
+
 # 26. Policy with BISO admin controls
 resource "cloudflare_zero_trust_gateway_policy" "with_biso" {
   account_id  = var.cloudflare_account_id
@@ -413,11 +520,16 @@ resource "cloudflare_zero_trust_gateway_policy" "with_biso" {
 
   rule_settings = {
     biso_admin_controls = {
-      version          = "v2"
-      disable_printing = true
-      disable_download = true
+      version = "v2"
+      dp      = true
+      dd      = true
     }
   }
+}
+
+moved {
+  from = cloudflare_teams_rule.with_biso
+  to   = cloudflare_zero_trust_gateway_policy.with_biso
 }
 
 # 27. Policy with payload logging
@@ -438,13 +550,18 @@ resource "cloudflare_zero_trust_gateway_policy" "with_payload_log" {
   }
 }
 
+moved {
+  from = cloudflare_teams_rule.with_payload_log
+  to   = cloudflare_zero_trust_gateway_policy.with_payload_log
+}
+
 # 28. Policy with override IPs
 resource "cloudflare_zero_trust_gateway_policy" "with_override_ips" {
   account_id  = var.cloudflare_account_id
   name        = "${local.name_prefix} DNS Override Policy"
   description = "Policy with custom DNS servers"
   precedence  = 1900
-  action      = "allow"
+  action      = "override"
   enabled     = true
   filters     = ["dns"]
   traffic     = "any(dns.domains[*] == \"override.cf-tf-test.com\")"
@@ -455,4 +572,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_override_ips" {
   }
 }
 
-# Total: 28 base resources + 3 from for_each map + 4 from for_each set + 3 from count = 38 instances
+moved {
+  from = cloudflare_teams_rule.with_override_ips
+  to   = cloudflare_zero_trust_gateway_policy.with_override_ips
+}
