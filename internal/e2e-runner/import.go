@@ -27,6 +27,9 @@ import (
 	"strings"
 )
 
+// varRefRegex matches bare variable references like var.cloudflare_account_id
+var varRefRegex = regexp.MustCompile(`(var\.\w+)`)
+
 // ImportSpec represents a resource that needs to be imported
 type ImportSpec struct {
 	ResourceType    string // e.g., "cloudflare_access_organization"
@@ -190,8 +193,16 @@ func generateImportBlocks(specs []ImportSpec) string {
 
 		// Check if importID looks like a variable reference (starts with var.)
 		if strings.HasPrefix(importID, "var.") || strings.Contains(importID, "var.") {
-			// Don't quote variable references
-			blocks.WriteString(fmt.Sprintf("  id = %s\n", importID))
+			if strings.Contains(importID, "/") {
+				// Composite ID with variable(s) and literal parts needs string interpolation.
+				// Wrap all var.X references in ${...} and quote the whole string.
+				// e.g. "var.account_id/c8932cc4-..." → "${var.account_id}/c8932cc4-..."
+				interpolated := varRefRegex.ReplaceAllString(importID, "${${1}}")
+				blocks.WriteString(fmt.Sprintf("  id = \"%s\"\n", interpolated))
+			} else {
+				// Pure variable reference — no quotes needed
+				blocks.WriteString(fmt.Sprintf("  id = %s\n", importID))
+			}
 		} else {
 			// Quote literal strings
 			blocks.WriteString(fmt.Sprintf("  id = %q\n", importID))

@@ -69,6 +69,17 @@ locals {
   ])
 }
 
+
+
+
+
+
+
+
+
+
+
+
 # Pattern 1: Basic profiles with entries
 resource "cloudflare_zero_trust_dlp_custom_profile" "credit_cards_basic" {
   account_id          = local.common_account
@@ -94,6 +105,11 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "credit_cards_basic" {
   }]
 }
 
+moved {
+  from = cloudflare_dlp_profile.credit_cards_basic
+  to   = cloudflare_zero_trust_dlp_custom_profile.credit_cards_basic
+}
+
 resource "cloudflare_zero_trust_dlp_custom_profile" "ssn_detection" {
   account_id          = var.cloudflare_account_id
   name                = join("-", [local.name_prefix, "ssn", "detection"])
@@ -106,6 +122,11 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "ssn_detection" {
       regex = "[0-9]{3}-[0-9]{2}-[0-9]{4}"
     }
   }]
+}
+
+moved {
+  from = cloudflare_dlp_profile.ssn_detection
+  to   = cloudflare_zero_trust_dlp_custom_profile.ssn_detection
 }
 
 resource "cloudflare_zero_trust_dlp_custom_profile" "minimal" {
@@ -121,6 +142,11 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "minimal" {
       regex = "test[0-9]{1,10}"
     }
   }]
+}
+
+moved {
+  from = cloudflare_dlp_profile.minimal
+  to   = cloudflare_zero_trust_dlp_custom_profile.minimal
 }
 
 # Pattern 2: for_each with maps (4 instances)
@@ -142,6 +168,11 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "card_profiles_map" {
   }]
 }
 
+moved {
+  from = cloudflare_dlp_profile.card_profiles_map
+  to   = cloudflare_zero_trust_dlp_custom_profile.card_profiles_map
+}
+
 # Pattern 3: for_each with sets (4 instances)
 resource "cloudflare_zero_trust_dlp_custom_profile" "pii_profiles_set" {
   for_each = local.pii_types
@@ -157,6 +188,11 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "pii_profiles_set" {
       regex = "[A-Z0-9]{8,15}"
     }
   }]
+}
+
+moved {
+  from = cloudflare_dlp_profile.pii_profiles_set
+  to   = cloudflare_zero_trust_dlp_custom_profile.pii_profiles_set
 }
 
 # Pattern 4: count-based resources (3 instances)
@@ -175,6 +211,11 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "counted_profiles" {
       regex = "pattern-${count.index}-[0-9]{1,4}"
     }
   }]
+}
+
+moved {
+  from = cloudflare_dlp_profile.counted_profiles
+  to   = cloudflare_zero_trust_dlp_custom_profile.counted_profiles
 }
 
 # Pattern 5: Conditional creation (1 instance when enabled)
@@ -196,6 +237,11 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "conditional_credit" {
   }]
 }
 
+moved {
+  from = cloudflare_dlp_profile.conditional_credit
+  to   = cloudflare_zero_trust_dlp_custom_profile.conditional_credit
+}
+
 resource "cloudflare_zero_trust_dlp_custom_profile" "conditional_pii" {
   count = var.enable_pii_detection ? 1 : 0
 
@@ -210,6 +256,11 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "conditional_pii" {
       regex = "[A-Z]{2}[0-9]{6}"
     }
   }]
+}
+
+moved {
+  from = cloudflare_dlp_profile.conditional_pii
+  to   = cloudflare_zero_trust_dlp_custom_profile.conditional_pii
 }
 
 # Pattern 6: Multiple entries
@@ -242,6 +293,11 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "dynamic_entries" {
   }]
 }
 
+moved {
+  from = cloudflare_dlp_profile.dynamic_entries
+  to   = cloudflare_zero_trust_dlp_custom_profile.dynamic_entries
+}
+
 # Pattern 7: Profile with null values
 resource "cloudflare_zero_trust_dlp_custom_profile" "with_nulls" {
   account_id          = var.cloudflare_account_id
@@ -257,6 +313,11 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "with_nulls" {
       validation = null
     }
   }]
+}
+
+moved {
+  from = cloudflare_dlp_profile.with_nulls
+  to   = cloudflare_zero_trust_dlp_custom_profile.with_nulls
 }
 
 # Pattern 8: Profile with lifecycle meta-arguments
@@ -277,4 +338,9 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "prevent_destroy" {
       regex = "PROTECTED[0-9]{1,4}"
     }
   }]
+}
+
+moved {
+  from = cloudflare_dlp_profile.prevent_destroy
+  to   = cloudflare_zero_trust_dlp_custom_profile.prevent_destroy
 }

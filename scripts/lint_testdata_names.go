@@ -77,6 +77,7 @@ func shouldCheckField(resourceType, fieldName string) bool {
 		"cloudflare_dlp_profile":                   {"name"},
 		"cloudflare_device_posture_rule":           {"name"},
 		"cloudflare_access_service_token":          {"name"},
+		"cloudflare_snippet_rules":                 {"snippet_name"},
 	}
 
 	fields, ok := checkFields[resourceType]
@@ -189,6 +190,13 @@ func (l *Linter) lintBlock(file string, block *hclsyntax.Block) {
 
 		resourceType := block.Labels[0]
 		resourceName := block.Labels[1]
+
+		// Skip predefined profiles — they have fixed API names that can't be prefixed
+		if typeAttr, ok := block.Body.Attributes["type"]; ok {
+			if typeVal, ok := extractStringValue(typeAttr.Expr); ok && typeVal == "predefined" {
+				return
+			}
+		}
 
 		// Check each attribute in the resource
 		for _, attr := range block.Body.Attributes {

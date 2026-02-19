@@ -63,6 +63,11 @@ resource "cloudflare_healthcheck" "minimal_http" {
   name    = "${local.name_prefix}-minimal-http"
   address = local.test_hostname
   type    = "HTTP"
+
+  check_regions = ["WNAM"]
+  http_config = {
+    expected_codes = ["200"]
+  }
 }
 
 # ==============================================================================
@@ -113,6 +118,8 @@ resource "cloudflare_healthcheck" "https_with_ssl" {
   type    = "HTTPS"
 
 
+  check_regions = ["WNAM"]
+
 
   consecutive_fails = 2
   timeout           = 10
@@ -138,6 +145,8 @@ resource "cloudflare_healthcheck" "tcp_basic" {
   address = local.resolved_ip
   type    = "TCP"
 
+
+  check_regions = ["WNAM"]
 
   consecutive_fails = 2
   timeout           = 10
@@ -177,12 +186,15 @@ resource "cloudflare_healthcheck" "http_map" {
   type    = "HTTP"
 
 
+  check_regions = ["WNAM"]
+
   consecutive_fails = 3
   interval          = 60
   http_config = {
-    method = "GET"
-    path   = each.value.path
-    port   = each.value.port
+    expected_codes = ["200"]
+    method         = "GET"
+    path           = each.value.path
+    port           = each.value.port
   }
 }
 
@@ -202,6 +214,8 @@ resource "cloudflare_healthcheck" "tcp_set" {
   address = local.test_hostname
   type    = "TCP"
 
+
+  check_regions = ["WNAM"]
 
   timeout  = 5
   interval = 30
@@ -224,12 +238,15 @@ resource "cloudflare_healthcheck" "counted" {
   type    = "HTTP"
 
 
+  check_regions = ["WNAM"]
+
   description = "Health check for server ${count.index}"
   interval    = 60 + (count.index * 10)
   http_config = {
-    method = "GET"
-    path   = "/health/${count.index}"
-    port   = 80 + count.index
+    expected_codes = ["200"]
+    method         = "GET"
+    path           = "/health/${count.index}"
+    port           = 80 + count.index
   }
 }
 
@@ -250,10 +267,13 @@ resource "cloudflare_healthcheck" "conditional_enabled" {
   address = local.test_hostname
   type    = "HTTP"
 
+
+  check_regions = ["WNAM"]
   http_config = {
-    method = "GET"
-    path   = "/health"
-    port   = 80
+    expected_codes = ["200"]
+    method         = "GET"
+    path           = "/health"
+    port           = 80
   }
 }
 
@@ -307,14 +327,17 @@ resource "cloudflare_healthcheck" "with_lifecycle" {
   type    = "HTTP"
 
 
+  check_regions = ["WNAM"]
+
   lifecycle {
     create_before_destroy = true
     ignore_changes        = [description]
   }
   http_config = {
-    method = "GET"
-    path   = "/health"
-    port   = 80
+    expected_codes = ["200"]
+    method         = "GET"
+    path           = "/health"
+    port           = 80
   }
 }
 
@@ -326,13 +349,16 @@ resource "cloudflare_healthcheck" "prevent_destroy" {
   type    = "HTTPS"
 
 
+  check_regions = ["WNAM"]
+
   lifecycle {
     prevent_destroy = false # Set to false for testing
   }
   http_config = {
-    method = "GET"
-    path   = "/"
-    port   = 443
+    expected_codes = ["200"]
+    method         = "GET"
+    path           = "/"
+    port           = 443
   }
 }
 
@@ -347,9 +373,12 @@ resource "cloudflare_healthcheck" "multiple_headers" {
   type    = "HTTP"
 
 
+  check_regions = ["WNAM"]
+
 
 
   http_config = {
+    expected_codes = ["200"]
     header = {
       "Accept"          = ["application/json", "text/plain"]
       "X-API-Key"       = ["test-api-key-123"]
@@ -371,9 +400,10 @@ resource "cloudflare_healthcheck" "empty_fields" {
   address = local.test_hostname
   type    = "HTTP"
 
-  check_regions = []
+  # API converts empty lists to defaults, so specify them explicitly
+  check_regions = ["WNAM"]
   http_config = {
-    expected_codes = []
+    expected_codes = ["200"]
     path           = "/"
   }
 }
@@ -388,6 +418,11 @@ resource "cloudflare_healthcheck" "null_description" {
   address     = local.test_hostname
   type        = "HTTP"
   description = null
+
+  check_regions = ["WNAM"]
+  http_config = {
+    expected_codes = ["200"]
+  }
 }
 
 # ==============================================================================
@@ -401,9 +436,12 @@ resource "cloudflare_healthcheck" "suspended" {
   type      = "HTTP"
   suspended = true
 
+
+  check_regions = ["WNAM"]
   http_config = {
-    method = "GET"
-    path   = "/health"
+    expected_codes = ["200"]
+    method         = "GET"
+    path           = "/health"
   }
 }
 
@@ -423,10 +461,13 @@ resource "cloudflare_healthcheck" "http_methods" {
   address = local.test_hostname
   type    = "HTTP"
 
+
+  check_regions = ["WNAM"]
   http_config = {
-    method = each.value
-    path   = "/health"
-    port   = 80
+    expected_codes = ["200"]
+    method         = each.value
+    path           = "/health"
+    port           = 80
   }
 }
 
@@ -440,6 +481,10 @@ resource "cloudflare_healthcheck" "regions_wnam" {
   address       = local.test_hostname
   type          = "HTTP"
   check_regions = ["WNAM"]
+
+  http_config = {
+    expected_codes = ["200"]
+  }
 }
 
 resource "cloudflare_healthcheck" "regions_multi" {
@@ -449,6 +494,10 @@ resource "cloudflare_healthcheck" "regions_multi" {
   address       = local.test_hostname
   type          = "HTTP"
   check_regions = ["WNAM", "ENAM", "WEU", "EEU", "SEAS"]
+
+  http_config = {
+    expected_codes = ["200"]
+  }
 }
 
 # ==============================================================================
@@ -462,9 +511,12 @@ resource "cloudflare_healthcheck" "interpolation" {
   type        = "HTTP"
   description = "Health check for ${local.real_domain} in zone ${local.zone_id}"
 
+
+  check_regions = ["WNAM"]
   http_config = {
-    method = "GET"
-    path   = "/health"
+    expected_codes = ["200"]
+    method         = "GET"
+    path           = "/health"
   }
 }
 
@@ -484,9 +536,12 @@ resource "cloudflare_healthcheck" "numeric_edges" {
   timeout               = 15  # Maximum value
   interval              = 300 # Higher value
 
+
+  check_regions = ["WNAM"]
   http_config = {
-    method = "GET"
-    port   = 8443
+    expected_codes = ["200"]
+    method         = "GET"
+    port           = 8443
   }
 }
 
@@ -509,9 +564,12 @@ resource "cloudflare_healthcheck" "dynamic_headers" {
   type    = "HTTP"
 
 
+  check_regions = ["WNAM"]
+
 
 
   http_config = {
+    expected_codes = ["200"]
     header = {
       "X-Environment" = ["production"]
       "X-Region"      = ["us-west"]

@@ -44,6 +44,11 @@ func TestV4ToV5Transformation(t *testing.T) {
       validation = "luhn"
     }
   }]
+}
+
+moved {
+  from = cloudflare_dlp_profile.example
+  to   = cloudflare_zero_trust_dlp_custom_profile.example
 }`,
 			},
 			{
@@ -91,6 +96,11 @@ func TestV4ToV5Transformation(t *testing.T) {
       validation = "luhn"
     }
   }]
+}
+
+moved {
+  from = cloudflare_dlp_profile.multi
+  to   = cloudflare_zero_trust_dlp_custom_profile.multi
 }`,
 			},
 			{
@@ -121,6 +131,11 @@ func TestV4ToV5Transformation(t *testing.T) {
       regex = "[0-9]{4}"
     }
   }]
+}
+
+moved {
+  from = cloudflare_dlp_profile.minimal
+  to   = cloudflare_zero_trust_dlp_custom_profile.minimal
 }`,
 			},
 			{
@@ -151,6 +166,11 @@ func TestV4ToV5Transformation(t *testing.T) {
       regex = "test"
     }
   }]
+}
+
+moved {
+  from = cloudflare_dlp_profile.no_desc
+  to   = cloudflare_zero_trust_dlp_custom_profile.no_desc
 }`,
 			},
 			{
@@ -184,6 +204,11 @@ func TestV4ToV5Transformation(t *testing.T) {
       regex = "test[0-9]+"
     }
   }]
+}
+
+moved {
+  from = cloudflare_zero_trust_dlp_profile.example
+  to   = cloudflare_zero_trust_dlp_custom_profile.example
 }`,
 			},
 			{
@@ -215,11 +240,15 @@ func TestV4ToV5Transformation(t *testing.T) {
 }`,
 				Expected: `resource "cloudflare_zero_trust_dlp_predefined_profile" "predefined" {
   account_id          = "123456789"
-  name                = "AWS Keys"
   allowed_match_count = 3
 
   enabled_entries = ["aws-access-key", "aws-secret-key"]
   profile_id      = "aws-keys-uuid"
+}
+
+moved {
+  from = cloudflare_dlp_profile.predefined
+  to   = cloudflare_zero_trust_dlp_predefined_profile.predefined
 }`,
 			},
 		}
@@ -227,349 +256,8 @@ func TestV4ToV5Transformation(t *testing.T) {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	t.Run("StateTransformation", func(t *testing.T) {
-		tests := []testhelpers.StateTestCase{
-			{
-				Name: "Basic state with single entry",
-				Input: `{
-  "type": "cloudflare_dlp_profile",
-  "name": "example",
-  "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
-  "instances": [{
-    "attributes": {
-      "account_id": "123456789",
-      "name": "Credit Card Profile",
-      "description": "Profile for detecting credit cards",
-      "type": "custom",
-      "allowed_match_count": 5,
-      "entry": [
-        {
-          "id": "abc123",
-          "name": "Visa Card",
-          "enabled": true,
-          "pattern": [
-            {
-              "regex": "4[0-9]{12}(?:[0-9]{3})?",
-              "validation": "luhn"
-            }
-          ]
-        }
-      ]
-    }
-  }]
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_dlp_custom_profile",
-  "name": "example",
-  "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
-  "instances": [{
-    "attributes": {
-      "account_id": "123456789",
-      "name": "Credit Card Profile",
-      "description": "Profile for detecting credit cards",
-      "allowed_match_count": 5,
-      "entries": [
-        {
-          "name": "Visa Card",
-          "enabled": true,
-          "pattern": {
-            "regex": "4[0-9]{12}(?:[0-9]{3})?",
-            "validation": "luhn"
-          }
-        }
-      ]
-    },
-    "schema_version": 0
-  }]
-}`,
-			},
-			{
-				Name: "Multiple entries state",
-				Input: `{
-  "type": "cloudflare_dlp_profile",
-  "name": "multi",
-  "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
-  "instances": [{
-    "attributes": {
-      "account_id": "123",
-      "name": "Multi",
-      "type": "custom",
-      "allowed_match_count": 10,
-      "entry": [
-        {
-          "id": "e1",
-          "name": "Entry 1",
-          "enabled": true,
-          "pattern": [{"regex": "test1"}]
-        },
-        {
-          "name": "Entry 2",
-          "enabled": false,
-          "pattern": [{"regex": "test2", "validation": "luhn"}]
-        }
-      ]
-    }
-  }]
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_dlp_custom_profile",
-  "name": "multi",
-  "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
-  "instances": [{
-    "attributes": {
-      "account_id": "123",
-      "name": "Multi",
-      "allowed_match_count": 10,
-      "entries": [
-        {
-          "name": "Entry 1",
-          "enabled": true,
-          "pattern": {
-            "regex": "test1"
-          }
-        },
-        {
-          "name": "Entry 2",
-          "enabled": false,
-          "pattern": {
-            "regex": "test2",
-            "validation": "luhn"
-          }
-        }
-      ]
-    },
-    "schema_version": 0
-  }]
-}`,
-			},
-			{
-				Name: "Minimal state",
-				Input: `{
-  "type": "cloudflare_dlp_profile",
-  "name": "minimal",
-  "instances": [{
-    "attributes": {
-      "account_id": "123",
-      "name": "Min",
-      "type": "custom",
-      "allowed_match_count": 0,
-      "entry": [
-        {
-          "name": "Test",
-          "enabled": true,
-          "pattern": [{"regex": ".*"}]
-        }
-      ]
-    }
-  }]
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_dlp_custom_profile",
-  "name": "minimal",
-  "instances": [{
-    "attributes": {
-      "account_id": "123",
-      "name": "Min",
-      "allowed_match_count": 0,
-      "entries": [
-        {
-          "name": "Test",
-          "enabled": true,
-          "pattern": {
-            "regex": ".*"
-          }
-        }
-      ]
-    },
-    "schema_version": 0
-  }]
-}`,
-			},
-			{
-				Name: "Predefined profile state transformation",
-				Input: `{
-  "type": "cloudflare_dlp_profile",
-  "name": "predefined",
-  "instances": [{
-    "attributes": {
-      "id": "aws-keys-uuid",
-      "account_id": "123456789",
-      "name": "AWS Keys",
-      "type": "predefined",
-      "allowed_match_count": 3,
-      "entry": [
-        {
-          "id": "aws-access-key",
-          "name": "AWS Access Key ID",
-          "enabled": true
-        },
-        {
-          "id": "aws-secret-key",
-          "name": "AWS Secret Access Key",
-          "enabled": true
-        },
-        {
-          "id": "aws-session-token",
-          "name": "AWS Session Token",
-          "enabled": false
-        }
-      ]
-    }
-  }]
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_dlp_predefined_profile",
-  "name": "predefined",
-  "instances": [{
-    "attributes": {
-      "id": "aws-keys-uuid",
-      "profile_id": "aws-keys-uuid",
-      "account_id": "123456789",
-      "name": "AWS Keys",
-      "allowed_match_count": 3,
-      "enabled_entries": ["aws-access-key", "aws-secret-key"]
-    },
-    "schema_version": 0
-  }]
-}`,
-			},
-			{
-				Name: "Zero Trust DLP profile v4 name state",
-				Input: `{
-  "type": "cloudflare_zero_trust_dlp_profile",
-  "name": "zerotrust",
-  "instances": [{
-    "attributes": {
-      "account_id": "123",
-      "name": "ZT Test",
-      "type": "custom",
-      "allowed_match_count": 2,
-      "entry": [
-        {
-          "id": "zt1",
-          "name": "ZT Entry",
-          "enabled": true,
-          "pattern": [{"regex": "zt[0-9]+"}]
-        }
-      ]
-    }
-  }]
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_dlp_custom_profile",
-  "name": "zerotrust",
-  "instances": [{
-    "attributes": {
-      "account_id": "123",
-      "name": "ZT Test",
-      "allowed_match_count": 2,
-      "entries": [
-        {
-          "name": "ZT Entry",
-          "enabled": true,
-          "pattern": {
-            "regex": "zt[0-9]+"
-          }
-        }
-      ]
-    },
-    "schema_version": 0
-  }]
-}`,
-			},
-			{
-				Name: "State with context_awareness.skip empty array",
-				Input: `{
-  "type": "cloudflare_dlp_profile",
-  "name": "context_skip_test",
-  "instances": [{
-    "attributes": {
-      "account_id": "123",
-      "name": "Test",
-      "type": "custom",
-      "allowed_match_count": 1,
-      "context_awareness": {
-        "skip": []
-      },
-      "entry": [
-        {
-          "name": "Test",
-          "enabled": true,
-          "pattern": [{"regex": "test"}]
-        }
-      ]
-    }
-  }]
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_dlp_custom_profile",
-  "name": "context_skip_test",
-  "instances": [{
-    "attributes": {
-      "account_id": "123",
-      "name": "Test",
-      "allowed_match_count": 1,
-      "entries": [
-        {
-          "name": "Test",
-          "enabled": true,
-          "pattern": {
-            "regex": "test"
-          }
-        }
-      ]
-    },
-    "schema_version": 0
-  }]
-}`,
-			},
-			{
-				Name: "State with context_awareness empty array",
-				Input: `{
-  "type": "cloudflare_dlp_profile",
-  "name": "context_test",
-  "instances": [{
-    "attributes": {
-      "account_id": "123",
-      "name": "Test",
-      "type": "custom",
-      "allowed_match_count": 1,
-      "context_awareness": [],
-      "entry": [
-        {
-          "name": "Test",
-          "enabled": true,
-          "pattern": [{"regex": "test"}]
-        }
-      ]
-    }
-  }]
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_dlp_custom_profile",
-  "name": "context_test",
-  "instances": [{
-    "attributes": {
-      "account_id": "123",
-      "name": "Test",
-      "allowed_match_count": 1,
-      "entries": [
-        {
-          "name": "Test",
-          "enabled": true,
-          "pattern": {
-            "regex": "test"
-          }
-        }
-      ]
-    },
-    "schema_version": 0
-  }]
-}`,
-			},
-		}
-
-		testhelpers.RunStateTransformTests(t, tests, migrator)
+	t.Run("StateTransformation_Removed", func(t *testing.T) {
+		t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
 	})
 }
 

@@ -6,12 +6,11 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
+	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles the migration of DLP profiles from v4 to v5.
@@ -23,6 +22,10 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 	migrator := &V4ToV5Migrator{}
 	internal.RegisterMigrator("cloudflare_dlp_profile", "v4", "v5", migrator)
 	internal.RegisterMigrator("cloudflare_zero_trust_dlp_profile", "v4", "v5", migrator)
+	// Register under the predefined profile name so the e2e runner can find this migrator
+	// when looking up by testdata resource name (zero_trust_dlp_predefined_profile).
+	// This is needed because GetResourceRename only returns the custom profile mapping.
+	internal.RegisterMigrator("cloudflare_zero_trust_dlp_predefined_profile", "v4", "v5", migrator)
 	return migrator
 }
 
@@ -50,6 +53,7 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
+	resourceName := tfhcl.GetResourceName(block)
 
 	typeAttr := body.GetAttribute("type")
 	profileType := "custom"
@@ -58,18 +62,26 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}
 
 	currentType := block.Labels()[0]
+	needsMovedBlock := currentType != "cloudflare_zero_trust_dlp_custom_profile" &&
+		currentType != "cloudflare_zero_trust_dlp_predefined_profile"
+
+	var newType string
 
 	switch profileType {
 	case "custom":
-		if currentType != "cloudflare_zero_trust_dlp_custom_profile" {
-			tfhcl.RenameResourceType(block, currentType, "cloudflare_zero_trust_dlp_custom_profile")
+		newType = "cloudflare_zero_trust_dlp_custom_profile"
+		if currentType != newType {
+			tfhcl.RenameResourceType(block, currentType, newType)
 		}
 		tfhcl.RemoveAttributes(body, "type")
+		//m.ensureContextAwareness(body)
 		m.transformCustomEntryBlocks(body)
 
 	case "predefined":
-		tfhcl.RenameResourceType(block, currentType, "cloudflare_zero_trust_dlp_predefined_profile")
+		newType = "cloudflare_zero_trust_dlp_predefined_profile"
+		tfhcl.RenameResourceType(block, currentType, newType)
 		tfhcl.RemoveAttributes(body, "type")
+		tfhcl.RemoveAttributes(body, "name") // name is read-only (Computed) in v5 predefined profiles
 		m.transformPredefinedEntryBlocks(body)
 
 	default:
@@ -79,9 +91,19 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		}, fmt.Errorf("unknown DLP profile type: %s", profileType)
 	}
 
+	resultBlocks := []*hclwrite.Block{block}
+
+	// Generate moved block for state migration (only when renaming from old type)
+	if needsMovedBlock && resourceName != "" {
+		from := currentType + "." + resourceName
+		to := newType + "." + resourceName
+		movedBlock := tfhcl.CreateMovedBlock(from, to)
+		resultBlocks = append(resultBlocks, movedBlock)
+	}
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         resultBlocks,
+		RemoveOriginal: true,
 	}, nil
 }
 
@@ -129,6 +151,32 @@ func (m *V4ToV5Migrator) transformCustomEntryBlocks(body *hclwrite.Body) {
 			body.AppendUnstructuredTokens(hclwrite.Tokens{token})
 		}
 	}
+}
+
+// ensureContextAwareness ensures the v5 config has context_awareness.
+// In v4, context_awareness was Computed — the API always returns a default even if
+// the user didn't set it. The state migrator preserves this value. To keep state
+// and config aligned (avoiding a plan diff that sends null to the API), we add the
+// API default to the config when it's not already present.
+func (m *V4ToV5Migrator) ensureContextAwareness(body *hclwrite.Body) {
+	// Already present as a block
+	if blocks := tfhcl.FindBlocksByType(body, "context_awareness"); len(blocks) > 0 {
+		return
+	}
+	// Already present as an attribute
+	if body.GetAttribute("context_awareness") != nil {
+		return
+	}
+
+	// Build context_awareness as an object attribute using a temporary block,
+	// then convert to attribute syntax via BuildObjectFromBlock.
+	tmpBlock := hclwrite.NewBlock("context_awareness", nil)
+	tmpBody := tmpBlock.Body()
+	tmpBody.SetAttributeValue("enabled", cty.False)
+	skipTmpBlock := tmpBody.AppendNewBlock("skip", nil)
+	skipTmpBlock.Body().SetAttributeValue("files", cty.False)
+	objTokens := tfhcl.BuildObjectFromBlock(tmpBlock)
+	body.SetAttributeRaw("context_awareness", objTokens)
 }
 
 func (m *V4ToV5Migrator) transformPatternBlock(entryBody *hclwrite.Body) {
@@ -192,139 +240,14 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(body *hclwrite.Body) {
 	}
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
-
-	if stateJSON.Get("instances").Exists() {
-		profileType := "custom"
-		instances := stateJSON.Get("instances")
-		if instances.IsArray() && len(instances.Array()) > 0 {
-			typeField := instances.Array()[0].Get("attributes.type")
-			if typeField.Exists() {
-				profileType = typeField.String()
-			}
-		}
-
-		resourceType := stateJSON.Get("type").String()
-		if resourceType == "cloudflare_dlp_profile" || resourceType == "cloudflare_zero_trust_dlp_profile" {
-			switch profileType {
-			case "custom":
-				result, _ = sjson.Set(result, "type", "cloudflare_zero_trust_dlp_custom_profile")
-			case "predefined":
-				result, _ = sjson.Set(result, "type", "cloudflare_zero_trust_dlp_predefined_profile")
-			}
-		}
-
-		instances = gjson.Get(result, "instances")
-		if instances.IsArray() {
-			for i, instance := range instances.Array() {
-				transformedInstance := m.transformInstance(instance)
-				transformedJSON := transformedInstance.String()
-				result, _ = sjson.SetRaw(result, fmt.Sprintf("instances.%d", i), transformedJSON)
-			}
-		}
-
-		return result, nil
-	}
-
-	transformedInstance := m.transformInstance(stateJSON)
-	return transformedInstance.String(), nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+// via StateUpgraders (MoveState/UpgradeState) rather than tf-migrate state transformation.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
 
-func (m *V4ToV5Migrator) transformInstance(instance gjson.Result) gjson.Result {
-	result := instance.String()
-
-	profileType := "custom"
-	typeField := gjson.Get(result, "attributes.type")
-	if typeField.Exists() {
-		profileType = typeField.String()
-	}
-
-	result, _ = sjson.Delete(result, "attributes.type")
-
-	switch profileType {
-	case "custom":
-		entryData := gjson.Get(result, "attributes.entry")
-		if entryData.Exists() && entryData.IsArray() {
-			var transformedEntries []interface{}
-
-			entryData.ForEach(func(key, value gjson.Result) bool {
-				entry := make(map[string]interface{})
-
-				if name := value.Get("name"); name.Exists() {
-					entry["name"] = name.String()
-				}
-				if enabled := value.Get("enabled"); enabled.Exists() {
-					entry["enabled"] = enabled.Bool()
-				}
-
-				patternArray := value.Get("pattern")
-				if patternArray.Exists() && patternArray.IsArray() {
-					patternData := patternArray.Array()
-					if len(patternData) > 0 {
-						pattern := make(map[string]interface{})
-						if regex := patternData[0].Get("regex"); regex.Exists() {
-							pattern["regex"] = regex.String()
-						}
-						if validation := patternData[0].Get("validation"); validation.Exists() && validation.String() != "" {
-							pattern["validation"] = validation.String()
-						}
-						entry["pattern"] = pattern
-					}
-				}
-
-				transformedEntries = append(transformedEntries, entry)
-				return true
-			})
-
-			result, _ = sjson.Set(result, "attributes.entries", transformedEntries)
-			result, _ = sjson.Delete(result, "attributes.entry")
-		}
-
-	case "predefined":
-		entryData := gjson.Get(result, "attributes.entry")
-		if entryData.Exists() && entryData.IsArray() {
-			var enabledEntryIDs []string
-
-			entryData.ForEach(func(key, value gjson.Result) bool {
-				if enabled := value.Get("enabled"); enabled.Exists() && enabled.Bool() {
-					if id := value.Get("id"); id.Exists() {
-						enabledEntryIDs = append(enabledEntryIDs, id.String())
-					}
-				}
-				return true
-			})
-
-			if len(enabledEntryIDs) > 0 {
-				result, _ = sjson.Set(result, "attributes.enabled_entries", enabledEntryIDs)
-			}
-
-			result, _ = sjson.Delete(result, "attributes.entry")
-		}
-
-		if id := gjson.Get(result, "attributes.id"); id.Exists() {
-			result, _ = sjson.Set(result, "attributes.profile_id", id.String())
-		}
-	}
-
-	if allowedCount := gjson.Get(result, "attributes.allowed_match_count"); allowedCount.Exists() {
-		convertedValue := state.ConvertToFloat64(allowedCount)
-		result, _ = sjson.Set(result, "attributes.allowed_match_count", convertedValue)
-	}
-
-	contextAwareness := gjson.Get(result, "attributes.context_awareness")
-	if contextAwareness.Exists() {
-		if contextAwareness.IsArray() {
-			result, _ = sjson.Delete(result, "attributes.context_awareness")
-		} else if contextAwareness.IsObject() {
-			skipField := contextAwareness.Get("skip")
-			if skipField.Exists() && skipField.IsArray() {
-				result, _ = sjson.Delete(result, "attributes.context_awareness")
-			}
-		}
-	}
-
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return gjson.Parse(result)
+// TransformState is a no-op - state transformation is handled by the provider's StateUpgraders.
+// The moved block generated in TransformConfig triggers the provider's migration logic.
+func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
+	return stateJSON.String(), nil
 }
