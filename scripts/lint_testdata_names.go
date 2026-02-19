@@ -190,6 +190,13 @@ func (l *Linter) lintBlock(file string, block *hclsyntax.Block) {
 		resourceType := block.Labels[0]
 		resourceName := block.Labels[1]
 
+		// Skip predefined profiles — they have fixed API names that can't be prefixed
+		if typeAttr, ok := block.Body.Attributes["type"]; ok {
+			if typeVal, ok := extractStringValue(typeAttr.Expr); ok && typeVal == "predefined" {
+				return
+			}
+		}
+
 		// Check each attribute in the resource
 		for _, attr := range block.Body.Attributes {
 			if shouldCheckField(resourceType, attr.Name) {
