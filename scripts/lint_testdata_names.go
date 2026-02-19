@@ -17,13 +17,13 @@ const (
 )
 
 type LintError struct {
-	File      string
-	Line      int
-	Column    int
-	Resource  string
-	Field     string
-	Value     string
-	Message   string
+	File     string
+	Line     int
+	Column   int
+	Resource string
+	Field    string
+	Value    string
+	Message  string
 }
 
 func (e LintError) String() string {
@@ -61,22 +61,23 @@ func (l *Linter) PrintErrors() {
 func shouldCheckField(resourceType, fieldName string) bool {
 	// Fields that should be checked for prefix
 	checkFields := map[string][]string{
-		"cloudflare_zone":                     {"zone", "name"},
-		"cloudflare_r2_bucket":                {"name"},
-		"cloudflare_workers_kv_namespace":     {"title"},
-		"cloudflare_pages_project":            {"name"},
-		"cloudflare_api_token":                {"name"},
-		"cloudflare_record":                   {"name"},
-		"cloudflare_dns_record":               {"name"},
-		"cloudflare_zero_trust_tunnel":        {"name"},
-		"cloudflare_tunnel":                   {"name"},
-		"cloudflare_notification_policy":      {"name"},
-		"cloudflare_logpush_job":              {"name"},
-		"cloudflare_zero_trust_list":          {"name"},
+		"cloudflare_zone":                      {"zone", "name"},
+		"cloudflare_r2_bucket":                 {"name"},
+		"cloudflare_workers_kv_namespace":      {"title"},
+		"cloudflare_pages_project":             {"name"},
+		"cloudflare_api_token":                 {"name"},
+		"cloudflare_record":                    {"name"},
+		"cloudflare_dns_record":                {"name"},
+		"cloudflare_zero_trust_tunnel":         {"name"},
+		"cloudflare_tunnel":                    {"name"},
+		"cloudflare_notification_policy":       {"name"},
+		"cloudflare_logpush_job":               {"name"},
+		"cloudflare_zero_trust_list":           {"name"},
 		"cloudflare_zero_trust_gateway_policy": {"name"},
-		"cloudflare_dlp_profile":              {"name"},
-		"cloudflare_device_posture_rule":      {"name"},
-		"cloudflare_access_service_token":     {"name"},
+		"cloudflare_dlp_profile":               {"name"},
+		"cloudflare_device_posture_rule":       {"name"},
+		"cloudflare_access_service_token":      {"name"},
+		"cloudflare_snippet_rules":             {"snippet_name"},
 	}
 
 	fields, ok := checkFields[resourceType]
@@ -119,20 +120,20 @@ func hasPrefix(value string) bool {
 
 	// Special cases that are allowed without prefix
 	allowedPatterns := []string{
-		"@",                    // Root domain in DNS
-		"^_",                   // DNS service records
-		"^\\$\\{",              // Pure interpolation (will get prefix from local)
-		"^join\\(",             // Function calls that might use locals
+		"@",        // Root domain in DNS
+		"^_",       // DNS service records
+		"^\\$\\{",  // Pure interpolation (will get prefix from local)
+		"^join\\(", // Function calls that might use locals
 		"^concat\\(",
 		"^format\\(",
-		"each\\.value",         // Dynamic values from for_each
+		"each\\.value", // Dynamic values from for_each
 		"each\\.key",
-		"count\\.index",        // Dynamic values from count
-		"var\\.",               // Variable references
-		"local\\.",             // Local references
-		"\\$\\{local",          // Template with local reference
-		"\\$\\{var",            // Template with variable reference
-		"\\$\\{each",           // Template with each reference
+		"count\\.index", // Dynamic values from count
+		"var\\.",        // Variable references
+		"local\\.",      // Local references
+		"\\$\\{local",   // Template with local reference
+		"\\$\\{var",     // Template with variable reference
+		"\\$\\{each",    // Template with each reference
 	}
 
 	for _, pattern := range allowedPatterns {
