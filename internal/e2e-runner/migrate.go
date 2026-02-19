@@ -20,9 +20,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/cloudflare/tf-migrate/internal"
-	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 // RunMigrate copies v4/ to migrated-v4_to_v5/ and runs migration
@@ -103,10 +100,25 @@ func RunMigrate(resources string) error {
 
 	fmt.Println()
 
-	// Run migration
-	// For resources using provider state upgraders, we only migrate config (not state)
-	// The provider's MoveState/UpgradeState handlers will transform the state during terraform apply
-	printYellow("Migrating configuration files...")
+	// Run migration.
+	//
+	// Why tf-migrate must rename resource types in the state even for provider state upgraders:
+	//
+	// Terraform reads and decodes every resource in the state file using the current provider's
+	// schema BEFORE it processes any `moved` blocks in the configuration. This means that even
+	// when a perfect `moved { from = cloudflare_tunnel.x, to = cloudflare_zero_trust_tunnel_cloudflared.x }`
+	// block exists in the transformed config, and even when the provider implements MoveState
+	// with a SourceSchema for the old type, Terraform will error with "no schema available for
+	// <old_type>" during the state read phase — before MoveState is ever called.
+	//
+	// The MoveState provider hook therefore cannot rescue resources whose old type has no schema
+	// in the new provider version. The state type rename MUST happen before `terraform apply`.
+	//
+	// For resources with UsesProviderStateUpgrader(), TransformState is a deliberate no-op:
+	// tf-migrate renames the resource type via CanHandle/GetResourceType (so Terraform can read
+	// the state), but leaves all attributes untouched. The provider's UpgradeState handler then
+	// transforms the attributes during terraform apply.
+	printYellow("Migrating configuration and state files...")
 	args := []string{
 		"--config-dir", generatedDir,
 		"--source-version", "v4",
@@ -116,12 +128,10 @@ func RunMigrate(resources string) error {
 		"--recursive",
 	}
 
-	// Only include --state-file if there are resources that need tf-migrate state transformation
-	// Resources with UsesProviderStateUpgrader() rely on provider's state upgraders instead
-	if !allResourcesUseProviderStateUpgrader(resources) {
-		args = append([]string{args[0], args[1], "--state-file", filepath.Join(generatedDir, "terraform.tfstate")}, args[2:]...)
-	} else {
-		printYellow("Skipping state transformation - using provider's state upgrader")
+	// Always include --state-file when the state file exists
+	stateFile := filepath.Join(generatedDir, "terraform.tfstate")
+	if _, err := os.Stat(stateFile); err == nil {
+		args = append([]string{args[0], args[1], "--state-file", stateFile}, args[2:]...)
 	}
 
 	cmd := exec.Command(binary, args...)
@@ -444,62 +454,6 @@ func filterStateFile(dir string, resources []string) error {
 
 	// Use restrictive permissions for state files (contain sensitive data)
 	return os.WriteFile(stateFile, filteredData, permSecretFile)
-}
-
-// allResourcesUseProviderStateUpgrader checks if resources use provider state upgraders
-// In practice, either ALL resources in the list use provider state upgrader (when discovered
-// via --uses-provider-state-upgrader), or NONE of them do (when filtered to exclude provider
-// state upgrader resources). So we only need to check the first resource.
-func allResourcesUseProviderStateUpgrader(resources string) bool {
-	if resources == "" {
-		return false // If no specific resources, assume we need state transformation
-	}
-
-	// Check only the first resource in the comma-separated list
-	// If it uses provider state upgrader, they all do (by discovery logic)
-	resourceList := strings.Split(resources, ",")
-	firstResource := strings.TrimSpace(resourceList[0])
-	return hasProviderStateUpgraderInMigrate(firstResource)
-}
-
-// hasProviderStateUpgraderInMigrate checks if a resource implements UsesProviderStateUpgrader
-// This is a copy of the function from runner.go to avoid circular imports
-func hasProviderStateUpgraderInMigrate(resourceType string) bool {
-	// Strategy 1: Try direct lookup with cloudflare_ prefix
-	fullResourceType := "cloudflare_" + resourceType
-	if migrator := internal.GetMigrator(fullResourceType, "v4", "v5"); migrator != nil {
-		if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
-			if psu.UsesProviderStateUpgrader() {
-				return true
-			}
-		}
-	}
-
-	// Strategy 2: Search through all registered migrators
-	// This handles cases where the testdata name doesn't match the registered name
-	// (e.g., dns_record testdata but registered as cloudflare_record)
-	allMigrators := internal.GetAllMigrators("v4", "v5")
-	for _, migrator := range allMigrators {
-		// Check if this migrator's resource type matches what we're looking for
-		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
-			oldType, newType := renamer.GetResourceRename()
-
-			// Check if either the old or new resource type (without cloudflare_ prefix) matches
-			oldTypeShort := strings.TrimPrefix(oldType, "cloudflare_")
-			newTypeShort := strings.TrimPrefix(newType, "cloudflare_")
-
-			if oldTypeShort == resourceType || newTypeShort == resourceType {
-				// Found a match - check if it uses provider state upgrader
-				if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
-					if psu.UsesProviderStateUpgrader() {
-						return true
-					}
-				}
-			}
-		}
-	}
-
-	return false
 }
 
 // buildBinary builds the tf-migrate binary

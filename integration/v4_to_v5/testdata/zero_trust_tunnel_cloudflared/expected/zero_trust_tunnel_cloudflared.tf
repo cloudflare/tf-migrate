@@ -17,29 +17,8 @@ variable "cloudflare_domain" {
 # Basic Tunnel Resources
 # ========================================
 
-# Basic tunnel with minimal configuration
-resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
-  account_id    = var.cloudflare_account_id
-  name          = "${local.name_prefix}-minimal-tunnel"
-  config_src    = "local"
-  tunnel_secret = base64encode("test-secret-that-is-at-least-32-bytes-long")
-}
 
-# Tunnel with local config source
-resource "cloudflare_zero_trust_tunnel_cloudflared" "local_config" {
-  account_id    = var.cloudflare_account_id
-  name          = "${local.name_prefix}-local-config-tunnel"
-  config_src    = "local"
-  tunnel_secret = base64encode("another-secret-32-bytes-or-longer-here")
-}
 
-# Tunnel with cloudflare config source
-resource "cloudflare_zero_trust_tunnel_cloudflared" "cloudflare_config" {
-  account_id    = var.cloudflare_account_id
-  name          = "${local.name_prefix}-cloudflare-config-tunnel"
-  config_src    = "cloudflare"
-  tunnel_secret = base64encode("remote-tunnel-secret-32-bytes-minimum")
-}
 
 # ========================================
 # Advanced Terraform Patterns for Testing
@@ -65,13 +44,6 @@ locals {
   full_tunnel_name   = "${local.name_prefix}-${var.tunnel_prefix}-${local.tunnel_suffix}"
 }
 
-# Tunnel using variables and locals
-resource "cloudflare_zero_trust_tunnel_cloudflared" "with_vars" {
-  account_id    = local.common_account_id
-  name          = local.full_tunnel_name
-  config_src    = var.config_source
-  tunnel_secret = base64encode(local.tunnel_secret_base)
-}
 
 # Pattern 3: for_each with map
 variable "application_tunnels" {
@@ -95,14 +67,6 @@ variable "application_tunnels" {
   }
 }
 
-resource "cloudflare_zero_trust_tunnel_cloudflared" "applications" {
-  for_each = var.application_tunnels
-
-  account_id    = var.cloudflare_account_id
-  name          = "${local.name_prefix}-${each.key}-tunnel"
-  config_src    = each.value.config_src
-  tunnel_secret = base64encode(each.value.secret)
-}
 
 # Pattern 4: for_each with list converted to set
 variable "environment_tunnels" {
@@ -130,6 +94,106 @@ variable "environment_tunnels" {
   ]
 }
 
+
+# Pattern 5: Count-based resources
+variable "replica_count" {
+  type    = number
+  default = 3
+}
+
+
+# Pattern 6: Conditional resource creation
+variable "enable_backup_tunnel" {
+  type    = bool
+  default = true
+}
+
+
+
+
+
+# Pattern 9: Using terraform expressions
+variable "use_cloudflare_config" {
+  type    = bool
+  default = false
+}
+
+
+
+
+# Pattern 12: Complex expression for config_src
+variable "is_production" {
+  type    = bool
+  default = true
+}
+
+
+# Basic tunnel with minimal configuration
+resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
+  account_id    = var.cloudflare_account_id
+  name          = "${local.name_prefix}-minimal-tunnel"
+  config_src    = "local"
+  tunnel_secret = base64encode("test-secret-that-is-at-least-32-bytes-long")
+}
+
+moved {
+  from = cloudflare_tunnel.minimal
+  to   = cloudflare_zero_trust_tunnel_cloudflared.minimal
+}
+
+# Tunnel with local config source
+resource "cloudflare_zero_trust_tunnel_cloudflared" "local_config" {
+  account_id    = var.cloudflare_account_id
+  name          = "${local.name_prefix}-local-config-tunnel"
+  config_src    = "local"
+  tunnel_secret = base64encode("another-secret-32-bytes-or-longer-here")
+}
+
+moved {
+  from = cloudflare_tunnel.local_config
+  to   = cloudflare_zero_trust_tunnel_cloudflared.local_config
+}
+
+# Tunnel with cloudflare config source
+resource "cloudflare_zero_trust_tunnel_cloudflared" "cloudflare_config" {
+  account_id    = var.cloudflare_account_id
+  name          = "${local.name_prefix}-cloudflare-config-tunnel"
+  config_src    = "cloudflare"
+  tunnel_secret = base64encode("remote-tunnel-secret-32-bytes-minimum")
+}
+
+moved {
+  from = cloudflare_tunnel.cloudflare_config
+  to   = cloudflare_zero_trust_tunnel_cloudflared.cloudflare_config
+}
+
+# Tunnel using variables and locals
+resource "cloudflare_zero_trust_tunnel_cloudflared" "with_vars" {
+  account_id    = local.common_account_id
+  name          = local.full_tunnel_name
+  config_src    = var.config_source
+  tunnel_secret = base64encode(local.tunnel_secret_base)
+}
+
+moved {
+  from = cloudflare_tunnel.with_vars
+  to   = cloudflare_zero_trust_tunnel_cloudflared.with_vars
+}
+
+resource "cloudflare_zero_trust_tunnel_cloudflared" "applications" {
+  for_each = var.application_tunnels
+
+  account_id    = var.cloudflare_account_id
+  name          = "${local.name_prefix}-${each.key}-tunnel"
+  config_src    = each.value.config_src
+  tunnel_secret = base64encode(each.value.secret)
+}
+
+moved {
+  from = cloudflare_tunnel.applications
+  to   = cloudflare_zero_trust_tunnel_cloudflared.applications
+}
+
 resource "cloudflare_zero_trust_tunnel_cloudflared" "environments" {
   for_each = { for idx, tunnel in var.environment_tunnels : tunnel.name => tunnel }
 
@@ -139,10 +203,9 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "environments" {
   tunnel_secret = base64encode(each.value.secret)
 }
 
-# Pattern 5: Count-based resources
-variable "replica_count" {
-  type    = number
-  default = 3
+moved {
+  from = cloudflare_tunnel.environments
+  to   = cloudflare_zero_trust_tunnel_cloudflared.environments
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "replicas" {
@@ -154,10 +217,9 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "replicas" {
   tunnel_secret = base64encode("replica-${count.index}-secret-32-bytes-long")
 }
 
-# Pattern 6: Conditional resource creation
-variable "enable_backup_tunnel" {
-  type    = bool
-  default = true
+moved {
+  from = cloudflare_tunnel.replicas
+  to   = cloudflare_zero_trust_tunnel_cloudflared.replicas
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "backup" {
@@ -169,6 +231,11 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "backup" {
   tunnel_secret = base64encode("backup-tunnel-secret-32-bytes-long")
 }
 
+moved {
+  from = cloudflare_tunnel.backup
+  to   = cloudflare_zero_trust_tunnel_cloudflared.backup
+}
+
 # Pattern 7: Cross-resource references
 resource "cloudflare_zero_trust_tunnel_cloudflared" "primary" {
   account_id    = var.cloudflare_account_id
@@ -177,12 +244,22 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "primary" {
   tunnel_secret = base64encode("primary-tunnel-secret-32-bytes-long")
 }
 
+moved {
+  from = cloudflare_tunnel.primary
+  to   = cloudflare_zero_trust_tunnel_cloudflared.primary
+}
+
 # Tunnel that references another tunnel in its name
 resource "cloudflare_zero_trust_tunnel_cloudflared" "secondary" {
   account_id    = var.cloudflare_account_id
   name          = "${cloudflare_zero_trust_tunnel_cloudflared.primary.name}-secondary"
   config_src    = "cloudflare"
   tunnel_secret = base64encode("secondary-tunnel-secret-32-bytes-ok")
+}
+
+moved {
+  from = cloudflare_tunnel.secondary
+  to   = cloudflare_zero_trust_tunnel_cloudflared.secondary
 }
 
 # Pattern 8: Resource with lifecycle meta-arguments
@@ -198,10 +275,9 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "protected" {
   tunnel_secret = base64encode("protected-tunnel-secret-32-bytes-ok")
 }
 
-# Pattern 9: Using terraform expressions
-variable "use_cloudflare_config" {
-  type    = bool
-  default = false
+moved {
+  from = cloudflare_tunnel.protected
+  to   = cloudflare_zero_trust_tunnel_cloudflared.protected
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "conditional_config" {
@@ -209,6 +285,11 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "conditional_config" {
   name          = "${local.name_prefix}-conditional-config-tunnel"
   config_src    = var.use_cloudflare_config ? "cloudflare" : "local"
   tunnel_secret = base64encode("conditional-secret-32-bytes-or-more")
+}
+
+moved {
+  from = cloudflare_tunnel.conditional_config
+  to   = cloudflare_zero_trust_tunnel_cloudflared.conditional_config
 }
 
 # Pattern 10: Tunnel with base64encode function
@@ -219,6 +300,11 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "encoded" {
   tunnel_secret = base64encode("this-secret-is-base64-encoded-32b")
 }
 
+moved {
+  from = cloudflare_tunnel.encoded
+  to   = cloudflare_zero_trust_tunnel_cloudflared.encoded
+}
+
 # Pattern 11: Tunnel using string interpolation
 resource "cloudflare_zero_trust_tunnel_cloudflared" "interpolated" {
   account_id    = var.cloudflare_account_id
@@ -227,10 +313,9 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "interpolated" {
   tunnel_secret = base64encode("interpolated-secret-32-bytes-or-more")
 }
 
-# Pattern 12: Complex expression for config_src
-variable "is_production" {
-  type    = bool
-  default = true
+moved {
+  from = cloudflare_tunnel.interpolated
+  to   = cloudflare_zero_trust_tunnel_cloudflared.interpolated
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared" "complex_config" {
@@ -238,4 +323,9 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "complex_config" {
   name          = "${local.name_prefix}-${var.is_production ? "prod" : "dev"}-complex-tunnel"
   config_src    = var.is_production ? "cloudflare" : "local"
   tunnel_secret = base64encode("complex-tunnel-secret-32-bytes-long")
+}
+
+moved {
+  from = cloudflare_tunnel.complex_config
+  to   = cloudflare_zero_trust_tunnel_cloudflared.complex_config
 }
