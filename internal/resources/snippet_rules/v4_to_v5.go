@@ -3,7 +3,6 @@ package snippet_rules
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -64,32 +63,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState transforms the JSON state from v4 to v5.
-// Rules structure remains the same (already an array), but we must:
-// 1. Set schema_version to 0
-// 2. NOT add computed fields (id, last_updated)
-// 3. Handle empty arrays correctly
+// TransformState is a no-op for snippet_rules migration.
+// State transformation is handled by the provider's StateUpgraders (UpgradeState).
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	return stateJSON.String(), nil
+}
 
-	// Get attributes
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Exists() {
-		// Even for invalid instances, set schema_version
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// Handle empty rules array - delete it rather than keeping []
-	rulesField := attrs.Get("rules")
-	if rulesField.Exists() && rulesField.IsArray() {
-		if len(rulesField.Array()) == 0 {
-			result, _ = sjson.Delete(result, "attributes.rules")
-		}
-	}
-
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
