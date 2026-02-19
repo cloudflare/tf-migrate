@@ -80,37 +80,31 @@ resource "cloudflare_teams_rule" "minimal" {
 resource "cloudflare_teams_rule" "maximal" {
   account_id  = var.cloudflare_account_id
   name        = "${local.policy_name_prefix}-maximal"
-  description = "Policy with all possible settings"
+  description = "Policy with DNS override settings"
   precedence  = 150
-  action      = "block"
+  action      = "override"
   enabled     = true
   filters     = local.dns_filter
-  traffic     = "any(dns.domains[*] in {\"blocked.cf-tf-test.com\" \"malware.cf-tf-test.com\"})"
+  traffic     = "any(dns.domains[*] in {\"example.com\" \"test.com\"})"
 
   rule_settings {
-    block_page_enabled = true
-    block_page_reason  = local.block_reason
     override_ips       = ["1.1.1.1", "1.0.0.1"]
-    ip_categories      = true
   }
 }
 
 # 3. Policy with rule_settings and field renames
 resource "cloudflare_teams_rule" "with_settings" {
   account_id = var.cloudflare_account_id
-  name = "${local.name_prefix} Block Policy with Settings"
-  description = "Policy with custom block page"
+  name = "${local.name_prefix} Override Policy with Settings"
+  description = "Policy with DNS override settings"
   precedence = 200
-  action     = "block"
+  action     = "override"
   enabled    = true
   filters    = ["dns"]
-  traffic    = "any(dns.domains[*] in {\"blocked.cf-tf-test.com\" \"malware.cf-tf-test.com\"})"
+  traffic    = "any(dns.domains[*] in {\"example.com\" \"test.com\"})"
 
   rule_settings {
-    block_page_enabled = true
-    block_page_reason  = "Access to this site is blocked by company policy"
     override_ips       = ["1.1.1.1", "1.0.0.1"]
-    ip_categories      = true
   }
 }
 
@@ -157,7 +151,7 @@ resource "cloudflare_teams_rule" "complex" {
     biso_admin_controls {
       version          = "v1"
       disable_printing = true
-      disable_download = false
+      disable_download = true
     }
 
     payload_log {
@@ -310,7 +304,7 @@ resource "cloudflare_teams_rule" "with_lifecycle" {
   account_id  = var.cloudflare_account_id
   name = "${local.name_prefix} Protected Policy"
   description = "Policy with lifecycle settings"
-  precedence  = 1200
+  precedence  = 1210
   action      = "block"
   enabled     = true
   filters     = ["dns"]
@@ -447,7 +441,7 @@ resource "cloudflare_teams_rule" "with_override_ips" {
   name = "${local.name_prefix} DNS Override Policy"
   description = "Policy with custom DNS servers"
   precedence  = 1900
-  action      = "allow"
+  action      = "override"
   enabled     = true
   filters     = ["dns"]
   traffic     = "any(dns.domains[*] == \"override.cf-tf-test.com\")"
