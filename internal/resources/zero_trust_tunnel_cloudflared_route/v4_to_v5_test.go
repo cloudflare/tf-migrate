@@ -27,7 +27,12 @@ resource "cloudflare_tunnel_route" "example" {
   network            = "10.0.0.0/16"
   comment            = "New tunnel route for documentation"
   virtual_network_id = "7f5a1a01-3e68-4e79-9f52-fe5a62b5e0f5"
-}`,
+}
+moved {
+  from = cloudflare_tunnel_route.example
+  to   = cloudflare_zero_trust_tunnel_cloudflared_route.example
+}
+`,
 			},
 			{
 				Name: "Minimal tunnel route - required fields only",
@@ -41,7 +46,12 @@ resource "cloudflare_tunnel_route" "minimal" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   tunnel_id  = "f70ff02e-f290-4a4e-bd8d-11477cf380d9"
   network    = "192.168.1.0/24"
-}`,
+}
+moved {
+  from = cloudflare_tunnel_route.minimal
+  to   = cloudflare_zero_trust_tunnel_cloudflared_route.minimal
+}
+`,
 			},
 			{
 				Name: "Tunnel route with IPv6 network",
@@ -57,7 +67,12 @@ resource "cloudflare_tunnel_route" "ipv6" {
   tunnel_id  = "f70ff02e-f290-4a4e-bd8d-11477cf380d9"
   network    = "2001:db8::/32"
   comment    = "IPv6 route"
-}`,
+}
+moved {
+  from = cloudflare_tunnel_route.ipv6
+  to   = cloudflare_zero_trust_tunnel_cloudflared_route.ipv6
+}
+`,
 			},
 			{
 				Name: "Tunnel route with empty comment",
@@ -73,7 +88,12 @@ resource "cloudflare_tunnel_route" "empty_comment" {
   tunnel_id  = "f70ff02e-f290-4a4e-bd8d-11477cf380d9"
   network    = "10.0.0.0/8"
   comment    = ""
-}`,
+}
+moved {
+  from = cloudflare_tunnel_route.empty_comment
+  to   = cloudflare_zero_trust_tunnel_cloudflared_route.empty_comment
+}
+`,
 			},
 			{
 				Name: "Multiple tunnel routes in one file",
@@ -97,13 +117,22 @@ resource "cloudflare_tunnel_route" "staging" {
   network    = "10.0.0.0/16"
   comment    = "Production"
 }
+moved {
+  from = cloudflare_tunnel_route.prod
+  to   = cloudflare_zero_trust_tunnel_cloudflared_route.prod
+}
 
 resource "cloudflare_zero_trust_tunnel_cloudflared_route" "staging" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   tunnel_id  = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
   network    = "192.168.0.0/16"
   comment    = "Staging"
-}`,
+}
+moved {
+  from = cloudflare_tunnel_route.staging
+  to   = cloudflare_zero_trust_tunnel_cloudflared_route.staging
+}
+`,
 			},
 			{
 				Name: "Alternative v4 name - cloudflare_zero_trust_tunnel_route with all fields",
@@ -121,7 +150,12 @@ resource "cloudflare_zero_trust_tunnel_route" "example" {
   network            = "10.0.0.0/16"
   comment            = "New tunnel route for documentation"
   virtual_network_id = "7f5a1a01-3e68-4e79-9f52-fe5a62b5e0f5"
-}`,
+}
+moved {
+  from = cloudflare_zero_trust_tunnel_route.example
+  to   = cloudflare_zero_trust_tunnel_cloudflared_route.example
+}
+`,
 			},
 			{
 				Name: "Alternative v4 name - cloudflare_zero_trust_tunnel_route minimal",
@@ -135,237 +169,15 @@ resource "cloudflare_zero_trust_tunnel_route" "minimal" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   tunnel_id  = "f70ff02e-f290-4a4e-bd8d-11477cf380d9"
   network    = "192.168.1.0/24"
-}`,
+}
+moved {
+  from = cloudflare_zero_trust_tunnel_route.minimal
+  to   = cloudflare_zero_trust_tunnel_cloudflared_route.minimal
+}
+`,
 			},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
-	})
-
-	t.Run("StateTransformation", func(t *testing.T) {
-		tests := []testhelpers.StateTestCase{
-			{
-				Name: "Complete state with all fields",
-				Input: `{
-  "type": "cloudflare_tunnel_route",
-  "name": "example",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "10.0.0.0/16",
-    "comment": "New tunnel route for documentation",
-    "virtual_network_id": "7f5a1a01-3e68-4e79-9f52-fe5a62b5e0f5"
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_tunnel_cloudflared_route",
-  "name": "example",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "10.0.0.0/16",
-    "comment": "New tunnel route for documentation",
-    "virtual_network_id": "7f5a1a01-3e68-4e79-9f52-fe5a62b5e0f5"
-  }
-}`,
-			},
-			{
-				Name: "Minimal state - required fields only",
-				Input: `{
-  "type": "cloudflare_tunnel_route",
-  "name": "minimal",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "192.168.1.0/24"
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_tunnel_cloudflared_route",
-  "name": "minimal",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "192.168.1.0/24"
-  }
-}`,
-			},
-			{
-				Name: "State with empty comment",
-				Input: `{
-  "type": "cloudflare_tunnel_route",
-  "name": "empty_comment",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "10.0.0.0/8",
-    "comment": ""
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_tunnel_cloudflared_route",
-  "name": "empty_comment",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "10.0.0.0/8",
-    "comment": ""
-  }
-}`,
-			},
-			{
-				Name: "State with missing optional fields (null values)",
-				Input: `{
-  "type": "cloudflare_tunnel_route",
-  "name": "no_optionals",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "172.16.0.0/12",
-    "comment": null,
-    "virtual_network_id": null
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_tunnel_cloudflared_route",
-  "name": "no_optionals",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "172.16.0.0/12",
-    "comment": null,
-    "virtual_network_id": null
-  }
-}`,
-			},
-			{
-				Name: "IPv6 network state",
-				Input: `{
-  "type": "cloudflare_tunnel_route",
-  "name": "ipv6",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "2001:db8::/32",
-    "comment": "IPv6 route"
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_tunnel_cloudflared_route",
-  "name": "ipv6",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "2001:db8::/32",
-    "comment": "IPv6 route"
-  }
-}`,
-			},
-			{
-				Name: "Alternative v4 name - cloudflare_zero_trust_tunnel_route with all fields",
-				Input: `{
-  "type": "cloudflare_zero_trust_tunnel_route",
-  "name": "example",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "10.0.0.0/16",
-    "comment": "New tunnel route for documentation",
-    "virtual_network_id": "7f5a1a01-3e68-4e79-9f52-fe5a62b5e0f5"
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_tunnel_cloudflared_route",
-  "name": "example",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "10.0.0.0/16",
-    "comment": "New tunnel route for documentation",
-    "virtual_network_id": "7f5a1a01-3e68-4e79-9f52-fe5a62b5e0f5"
-  }
-}`,
-			},
-			{
-				Name: "Alternative v4 name - cloudflare_zero_trust_tunnel_route minimal",
-				Input: `{
-  "type": "cloudflare_zero_trust_tunnel_route",
-  "name": "minimal",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "192.168.1.0/24"
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_tunnel_cloudflared_route",
-  "name": "minimal",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "192.168.1.0/24"
-  }
-}`,
-			},
-		}
-
-		testhelpers.RunStateTransformTests(t, tests, migrator)
-	})
-
-	t.Run("StateTransformationWithMockAPI", func(t *testing.T) {
-		// Create a mock API server
-		mockServer := testhelpers.NewMockAPIServer()
-		defer mockServer.Close()
-
-		// Mock the tunnel routes list endpoint
-		// The v6 SDK uses the path: /accounts/{account_id}/teamnet/routes
-		accountID := "f037e56e89293a057740de681ac9abbe"
-		mockServer.AddTunnelRoutesListHandler(accountID, []map[string]interface{}{
-			{
-				"id":        "550e8400-e29b-41d4-a716-446655440000",
-				"network":   "10.0.0.0/16",
-				"tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-				"comment":   "Test route",
-			},
-		})
-
-		tests := []testhelpers.StateTestCase{
-			{
-				Name: "State transformation with API lookup for UUID",
-				Input: `{
-  "type": "cloudflare_tunnel_route",
-  "name": "example",
-  "attributes": {
-    "id": "10.0.0.0/16",
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "10.0.0.0/16",
-    "comment": "Test route"
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_tunnel_cloudflared_route",
-  "name": "example",
-  "schema_version": 0,
-  "attributes": {
-    "id": "550e8400-e29b-41d4-a716-446655440000",
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "tunnel_id": "f70ff02e-f290-4a4e-bd8d-11477cf380d9",
-    "network": "10.0.0.0/16",
-    "comment": "Test route"
-  }
-}`,
-				APIClient: mockServer.Client,
-			},
-		}
-
-		testhelpers.RunStateTransformTests(t, tests, migrator)
 	})
 }

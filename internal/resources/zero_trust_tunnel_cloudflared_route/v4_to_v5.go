@@ -1,13 +1,8 @@
 package zero_trust_tunnel_cloudflared_route
 
 import (
-	"context"
-
-	"github.com/cloudflare/cloudflare-go/v6"
-	"github.com/cloudflare/cloudflare-go/v6/zero_trust"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -48,9 +43,10 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	resourceType := tfhcl.GetResourceType(block)
+	resourceName := tfhcl.GetResourceName(block)
 
-	// Only rename if it's the deprecated cloudflare_tunnel_route
-	// cloudflare_zero_trust_tunnel_route only needs the _cloudflared suffix added
+	// Capture original type before renaming, then rename
+	fromType := resourceType
 	if resourceType == "cloudflare_tunnel_route" {
 		tfhcl.RenameResourceType(block, "cloudflare_tunnel_route", "cloudflare_zero_trust_tunnel_cloudflared_route")
 	} else if resourceType == "cloudflare_zero_trust_tunnel_route" {
@@ -60,54 +56,24 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// All fields remain the same - no field renames or transformations needed
 	// Fields: account_id, tunnel_id, network, comment, virtual_network_id
 
+	// Generate moved block so Terraform knows to move state from the old resource type
+	from := fromType + "." + resourceName
+	to := "cloudflare_zero_trust_tunnel_cloudflared_route." + resourceName
+	movedBlock := tfhcl.CreateMovedBlock(from, to)
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         []*hclwrite.Block{block, movedBlock},
+		RemoveOriginal: true,
 	}, nil
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState).
+	// The moved block generated in TransformConfig triggers the provider's migration logic.
+	return stateJSON.String(), nil
+}
 
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	// Update the type field if it exists (for unit tests that pass instance-level type)
-	if stateJSON.Get("type").Exists() {
-		result, _ = sjson.Set(result, "type", "cloudflare_zero_trust_tunnel_cloudflared_route")
-	}
-
-	// Try to update the ID if API client is available
-	// In v4, the ID was the network CIDR (or a checksum of it)
-	// In v5, the ID is a UUID from the API
-	attrs := stateJSON.Get("attributes")
-	if attrs.Exists() && ctx.APIClient != nil {
-		accountID := attrs.Get("account_id").String()
-		tunnelID := attrs.Get("tunnel_id").String()
-		network := attrs.Get("network").String()
-		virtualNetworkID := attrs.Get("virtual_network_id").String()
-
-		// Query for the tunnel route using v6 API with pagination support
-		params := zero_trust.NetworkRouteListParams{
-			AccountID: cloudflare.F(accountID),
-			IsDeleted: cloudflare.F(false),
-			TunnelID:  cloudflare.F(tunnelID),
-		}
-		if virtualNetworkID != "" {
-			params.VirtualNetworkID = cloudflare.F(virtualNetworkID)
-		}
-
-		// Iterate through all pages using AutoPaging iterator
-		iter := ctx.APIClient.ZeroTrust.Networks.Routes.ListAutoPaging(context.Background(), params)
-		for iter.Next() {
-			route := iter.Current()
-			if route.Network == network {
-				// Update the ID to the UUID from the API
-				result, _ = sjson.Set(result, "attributes.id", route.ID)
-				break
-			}
-		}
-	}
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
