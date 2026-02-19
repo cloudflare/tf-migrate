@@ -299,10 +299,10 @@ func copyAllResources(srcDir, dstDir string) error {
 	}
 
 	excludes := map[string]bool{
-		".terraform":             true,
-		".terraform.lock.hcl":    true,
-		"backend.hcl":            true,
-		"backend.configured.hcl": true,
+		".terraform":              true,
+		".terraform.lock.hcl":     true,
+		"backend.hcl":             true,
+		"backend.configured.hcl":  true,
 	}
 
 	fileCount := 0
@@ -568,6 +568,17 @@ func hasProviderStateUpgraderInMigrate(resourceType string) bool {
 					if psu.UsesProviderStateUpgrader() {
 						return true
 					}
+				}
+			}
+		}
+
+		// Strategy 3: Check CanHandle for split-resource cases
+		// (e.g., cloudflare_dlp_profile migrator handles both custom and predefined profiles,
+		// but GetResourceRename only returns the custom mapping)
+		if migrator.CanHandle(fullResourceType) {
+			if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
+				if psu.UsesProviderStateUpgrader() {
+					return true
 				}
 			}
 		}
