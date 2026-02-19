@@ -20,29 +20,8 @@ locals {
 # Parent Tunnel Resources
 # ========================================
 
-# Tunnel for minimal config test
-resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
-  account_id    = var.cloudflare_account_id
-  name          = "${local.name_prefix}-minimal-tunnel-config"
-  config_src    = "cloudflare"
-  tunnel_secret = base64encode("test-secret-that-is-at-least-32-bytes-long")
-}
 
-# Tunnel for comprehensive config test
-resource "cloudflare_zero_trust_tunnel_cloudflared" "comprehensive" {
-  account_id    = var.cloudflare_account_id
-  name          = "${local.name_prefix}-comprehensive-tunnel-config"
-  config_src    = "cloudflare"
-  tunnel_secret = base64encode("another-secret-32-bytes-or-longer-here")
-}
 
-# Tunnel for testing deprecated resource name
-resource "cloudflare_zero_trust_tunnel_cloudflared" "deprecated_name" {
-  account_id    = var.cloudflare_account_id
-  name          = "${local.name_prefix}-deprecated-tunnel-config"
-  config_src    = "cloudflare"
-  tunnel_secret = base64encode("deprecated-tunnel-secret-32-bytes-minimum")
-}
 
 # ========================================
 # Tunnel Config Resources
@@ -130,4 +109,43 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "comprehensive" {
       }
     }
   }
+}
+
+# Tunnel for minimal config test
+resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
+  account_id    = var.cloudflare_account_id
+  name          = "${local.name_prefix}-minimal-tunnel-config"
+  config_src    = "cloudflare"
+  tunnel_secret = base64encode("test-secret-that-is-at-least-32-bytes-long")
+}
+
+moved {
+  from = cloudflare_tunnel.minimal
+  to   = cloudflare_zero_trust_tunnel_cloudflared.minimal
+}
+
+# Tunnel for comprehensive config test
+resource "cloudflare_zero_trust_tunnel_cloudflared" "comprehensive" {
+  account_id    = var.cloudflare_account_id
+  name          = "${local.name_prefix}-comprehensive-tunnel-config"
+  config_src    = "cloudflare"
+  tunnel_secret = base64encode("another-secret-32-bytes-or-longer-here")
+}
+
+moved {
+  from = cloudflare_tunnel.comprehensive
+  to   = cloudflare_zero_trust_tunnel_cloudflared.comprehensive
+}
+
+# Tunnel for testing deprecated resource name
+resource "cloudflare_zero_trust_tunnel_cloudflared" "deprecated_name" {
+  account_id    = var.cloudflare_account_id
+  name          = "${local.name_prefix}-deprecated-tunnel-config"
+  config_src    = "cloudflare"
+  tunnel_secret = base64encode("deprecated-tunnel-secret-32-bytes-minimum")
+}
+
+moved {
+  from = cloudflare_tunnel.deprecated_name
+  to   = cloudflare_zero_trust_tunnel_cloudflared.deprecated_name
 }
