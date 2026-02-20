@@ -21,6 +21,11 @@ func TestWorkerScriptConfigTransform_BasicRename(t *testing.T) {
   account_id  = "f037e56e89293a057740de681ac9abbe"
   content     = "addEventListener('fetch', event => { event.respondWith(new Response('Hello')); });"
   script_name = "my-worker"
+}
+
+moved {
+  from = cloudflare_worker_script.example
+  to   = cloudflare_workers_script.example
 }`,
 		},
 		{
@@ -55,55 +60,11 @@ func TestWorkerScriptConfigTransform_BasicRename(t *testing.T) {
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
 
-func TestWorkerScriptStateTransform_BasicRename(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
-
-	tests := []testhelpers.StateTestCase{
-		{
-			Name: "field rename - name to script_name",
-			Input: `{
-  "schema_version": 1,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "name": "my-worker",
-    "content": "addEventListener('fetch', event => { event.respondWith(new Response('Hello')); });"
-  }
-}`,
-			Expected: `{
-  "schema_version": 1,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "script_name": "my-worker",
-    "content": "addEventListener('fetch', event => { event.respondWith(new Response('Hello')); });"
-  }
-}`,
-		},
-		{
-			Name: "remove tags field",
-			Input: `{
-  "schema_version": 1,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "name": "my-worker",
-    "content": "addEventListener('fetch', event => { event.respondWith(new Response('Hello')); });",
-    "tags": ["production", "api"]
-  }
-}`,
-			Expected: `{
-  "schema_version": 1,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "script_name": "my-worker",
-    "content": "addEventListener('fetch', event => { event.respondWith(new Response('Hello')); });"
-  }
-}`,
-		},
-	}
-
-	testhelpers.RunStateTransformTests(t, tests, migrator)
+func TestWorkerScriptStateTransform_Removed(t *testing.T) {
+	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
 }
 
-func TestWorkerScriptStateTransform_Bindings(t *testing.T) {
+func _TestWorkerScriptStateTransform_Bindings(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 
 	tests := []testhelpers.StateTestCase{
@@ -384,7 +345,7 @@ func TestWorkerScriptStateTransform_Bindings(t *testing.T) {
 	testhelpers.RunStateTransformTests(t, tests, migrator)
 }
 
-func TestWorkerScriptStateTransform_Module(t *testing.T) {
+func _TestWorkerScriptStateTransform_Module(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 
 	tests := []testhelpers.StateTestCase{
@@ -435,7 +396,7 @@ func TestWorkerScriptStateTransform_Module(t *testing.T) {
 	testhelpers.RunStateTransformTests(t, tests, migrator)
 }
 
-func TestWorkerScriptStateTransform_Comprehensive(t *testing.T) {
+func _TestWorkerScriptStateTransform_Comprehensive(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 
 	tests := []testhelpers.StateTestCase{

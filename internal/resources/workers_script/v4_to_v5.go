@@ -3,12 +3,10 @@ package workers_script
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 type V4ToV5Migrator struct {
@@ -42,6 +40,10 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
+	resourceName := tfhcl.GetResourceName(block)
+
+	// Check if this is the singular form (needs rename + moved block)
+	wasSingular := block.Type() == "resource" && len(block.Labels()) > 0 && block.Labels()[0] == "cloudflare_worker_script"
 
 	// Handle resource rename: cloudflare_worker_script → cloudflare_workers_script
 	tfhcl.RenameResourceType(block, "cloudflare_worker_script", "cloudflare_workers_script")
@@ -61,6 +63,19 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	// Transform placement block → object attribute
 	m.transformPlacement(body)
+
+	// Generate moved block if the resource was renamed (singular → plural)
+	if wasSingular {
+		oldType, newType := m.GetResourceRename()
+		from := oldType + "." + resourceName
+		to := newType + "." + resourceName
+		movedBlock := tfhcl.CreateMovedBlock(from, to)
+
+		return &transform.TransformResult{
+			Blocks:         []*hclwrite.Block{block, movedBlock},
+			RemoveOriginal: true,
+		}, nil
+	}
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
@@ -298,190 +313,14 @@ func joinAttributes(attrs []string) string {
 	return result
 }
 
+// TransformState is a no-op for workers_script migration.
+// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState).
+// The moved block generated in TransformConfig triggers the provider's migration logic.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
-
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		return result, nil
-	}
-
-	attrs := stateJSON.Get("attributes")
-
-	// Rename field: name → script_name
-	result = state.RenameField(result, "attributes", attrs, "name", "script_name")
-
-	// Remove deprecated fields
-	// tags - not supported in v5
-	result = state.RemoveFields(result, "attributes", attrs, "tags")
-
-	// Transform bindings: Convert 10 different binding arrays + dispatch_namespace to unified bindings array
-	result = m.transformStateBindings(result, attrs)
-
-	// Transform module boolean → main_module/body_part string
-	result = m.transformStateModule(result, attrs)
-
-	// Transform placement if needed
-	result = m.transformStatePlacement(result, attrs)
-
-	// Set schema_version to 1 to match provider schema version
-	// This prevents the provider from running state upgraders since tf-migrate
-	// already produces the final v5 format
-	result, _ = sjson.Set(result, "schema_version", 1)
-
-	return result, nil
+	return stateJSON.String(), nil
 }
 
-// transformStateBindings converts v4 binding arrays and dispatch_namespace to v5 unified bindings array
-func (m *V4ToV5Migrator) transformStateBindings(result string, attrs gjson.Result) string {
-	var bindings []interface{}
-
-	// Array of binding types in consistent order (same as config)
-	bindingTypes := []struct {
-		v4ArrayName   string
-		v5BindingType string
-	}{
-		{"plain_text_binding", "plain_text"},
-		{"secret_text_binding", "secret_text"},
-		{"kv_namespace_binding", "kv_namespace"},
-		{"webassembly_binding", "wasm_module"},
-		{"service_binding", "service"},
-		{"r2_bucket_binding", "r2_bucket"},
-		{"analytics_engine_binding", "analytics_engine"},
-		{"queue_binding", "queue"},
-		{"d1_database_binding", "d1"},
-		{"hyperdrive_config_binding", "hyperdrive"},
-	}
-
-	// Process each binding array type in order
-	for _, bt := range bindingTypes {
-		bindingArray := attrs.Get(bt.v4ArrayName)
-		if bindingArray.Exists() && bindingArray.IsArray() {
-			for _, bindingItem := range bindingArray.Array() {
-				binding := m.convertStateBindingToObject(bindingItem, bt.v5BindingType)
-				if binding != nil {
-					bindings = append(bindings, binding)
-				}
-			}
-		}
-	}
-
-	// Handle dispatch_namespace attribute conversion
-	if dispatchNS := attrs.Get("dispatch_namespace"); dispatchNS.Exists() {
-		if dispatchNS.Type != gjson.Null && dispatchNS.String() != "" {
-			binding := map[string]interface{}{
-				"type":      "dispatch_namespace",
-				"namespace": dispatchNS.String(),
-			}
-			bindings = append(bindings, binding)
-		}
-		// Always delete the attribute whether it was null or had a value
-		result, _ = sjson.Delete(result, "attributes.dispatch_namespace")
-	}
-
-	// Set unified bindings array if we have any bindings
-	if len(bindings) > 0 {
-		result, _ = sjson.Set(result, "attributes.bindings", bindings)
-	}
-
-	// Remove all v4 binding arrays
-	for _, bt := range bindingTypes {
-		result, _ = sjson.Delete(result, "attributes."+bt.v4ArrayName)
-	}
-
-	return result
-}
-
-// convertStateBindingToObject converts a v4 binding object to v5 format with attribute renames
-func (m *V4ToV5Migrator) convertStateBindingToObject(bindingItem gjson.Result, bindingType string) map[string]interface{} {
-	binding := map[string]interface{}{
-		"type": bindingType,
-	}
-
-	// Handle attribute renames based on binding type
-	switch bindingType {
-	case "wasm_module":
-		// webassembly_binding: module → part
-		if name := bindingItem.Get("name"); name.Exists() {
-			binding["name"] = name.Value()
-		}
-		if module := bindingItem.Get("module"); module.Exists() {
-			binding["part"] = module.Value()
-		}
-	case "queue":
-		// queue_binding: binding → name, queue → queue_name
-		if bindingName := bindingItem.Get("binding"); bindingName.Exists() {
-			binding["name"] = bindingName.Value()
-		}
-		if queueName := bindingItem.Get("queue"); queueName.Exists() {
-			binding["queue_name"] = queueName.Value()
-		}
-	case "d1":
-		// d1_database_binding: database_id → id
-		if name := bindingItem.Get("name"); name.Exists() {
-			binding["name"] = name.Value()
-		}
-		if databaseID := bindingItem.Get("database_id"); databaseID.Exists() {
-			binding["id"] = databaseID.Value()
-		}
-	case "hyperdrive":
-		// hyperdrive_config_binding: binding → name
-		if bindingName := bindingItem.Get("binding"); bindingName.Exists() {
-			binding["name"] = bindingName.Value()
-		}
-		if id := bindingItem.Get("id"); id.Exists() {
-			binding["id"] = id.Value()
-		}
-	default:
-		// All other binding types: copy fields as-is
-		bindingItem.ForEach(func(key, value gjson.Result) bool {
-			binding[key.String()] = value.Value()
-			return true
-		})
-	}
-
-	return binding
-}
-
-// transformStateModule converts module boolean to main_module or body_part string
-func (m *V4ToV5Migrator) transformStateModule(result string, attrs gjson.Result) string {
-	moduleAttr := attrs.Get("module")
-	if !moduleAttr.Exists() {
-		return result
-	}
-
-	// Only process if not null
-	if moduleAttr.Type != gjson.Null {
-		// Get the boolean value
-		moduleBool := moduleAttr.Bool()
-
-		// Add main_module if true, body_part if false
-		// Use a default filename since we don't have the actual filename
-		if moduleBool {
-			result, _ = sjson.Set(result, "attributes.main_module", "worker.js")
-		} else {
-			result, _ = sjson.Set(result, "attributes.body_part", "worker.js")
-		}
-	}
-
-	// Always remove the module attribute whether it was null or had a value
-	result, _ = sjson.Delete(result, "attributes.module")
-
-	return result
-}
-
-// transformStatePlacement converts placement array to object if needed
-func (m *V4ToV5Migrator) transformStatePlacement(result string, attrs gjson.Result) string {
-	// Use helper to transform placement from array to object
-	// Empty arrays will be removed, non-empty arrays will be unwrapped to objects
-	result = state.TransformFieldArrayToObject(
-		result,
-		"attributes",
-		attrs,
-		"placement",
-		state.ArrayToObjectOptions{
-			EnsureObjectExists: false, // Remove empty arrays instead of creating empty objects
-		},
-	)
-
-	return result
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
