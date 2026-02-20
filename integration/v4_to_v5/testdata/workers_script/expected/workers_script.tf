@@ -516,19 +516,6 @@ resource "cloudflare_workers_script" "local_refs" {
 # Tests resource rename: cloudflare_worker_script → cloudflare_workers_script
 # ========================================
 
-resource "cloudflare_workers_script" "singular_name" {
-  account_id = var.cloudflare_account_id
-  content    = local.common_content
-
-  script_name = "cftftest-singular-resource"
-  bindings = [
-    {
-      type = "plain_text"
-      name = "SINGULAR"
-      text = "true"
-    }
-  ]
-}
 
 # ========================================
 # Pattern 27: Complex for_each with list transformation
@@ -587,4 +574,23 @@ resource "cloudflare_workers_script" "environment" {
       namespace_id = cloudflare_workers_kv_namespace.test_kv_multiple[each.value.kv_index].id
     }
   ]
+}
+
+resource "cloudflare_workers_script" "singular_name" {
+  account_id = var.cloudflare_account_id
+  content    = local.common_content
+
+  script_name = "cftftest-singular-resource"
+  bindings = [
+    {
+      type = "plain_text"
+      name = "SINGULAR"
+      text = "true"
+    }
+  ]
+}
+
+moved {
+  from = cloudflare_worker_script.singular_name
+  to   = cloudflare_workers_script.singular_name
 }
