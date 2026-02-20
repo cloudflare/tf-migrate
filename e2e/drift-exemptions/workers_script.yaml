@@ -1,0 +1,18 @@
+# Drift Exemptions for workers_script resource
+#
+# Resource-specific exemptions for cloudflare_workers_script
+
+version: 1
+
+exemptions:
+  # R2 bucket jurisdiction drift — the API returns jurisdiction="default" which
+  # is not in the v4 config. This is unrelated to the workers_script migration.
+  - name: "r2_bucket_jurisdiction_drift"
+    description: "Ignore R2 bucket jurisdiction field added by API"
+    patterns:
+      - 'jurisdiction.*default'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false
