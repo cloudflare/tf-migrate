@@ -1,0 +1,26 @@
+# Drift Exemptions for zero_trust_tunnel_cloudflared_route resource
+#
+# Resource-specific exemptions for cloudflare_zero_trust_tunnel_cloudflared_route
+#
+# The v4 cloudflare_tunnel_route resource used a CIDR string or MD5 checksum as
+# its state ID, while the v5 cloudflare_zero_trust_tunnel_cloudflared_route uses
+# a UUID. After migration, the provider's state upgrader copies the CIDR ID as-is,
+# then Read() calls GET /teamnet/routes/{cidr} which returns 404, causing the provider
+# to clear the resource from state. This produces expected initial drift where all
+# tunnel route resources need to be re-created via terraform apply.
+#
+# During apply, the Cloudflare API POST /teamnet/routes is idempotent: if the route
+# already exists, it returns the existing route with its UUID. This re-associates
+# the routes with correct UUIDs in state, and the post-apply plan shows no changes.
+
+version: 1
+
+exemptions:
+  - name: "tunnel_route_id_migration_drift"
+    description: "Allow tunnel route resources to be re-created after migration (CIDR ID -> UUID ID transition)"
+    allow_resource_creation: true
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false
