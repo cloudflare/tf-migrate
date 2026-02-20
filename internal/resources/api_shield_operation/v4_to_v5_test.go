@@ -130,9 +130,11 @@ resource "cloudflare_api_shield_operation" "v2_endpoint" {
 	})
 
 	t.Run("StateTransformation", func(t *testing.T) {
+		// State transformation is now handled by the provider's StateUpgraders
+		// tf-migrate TransformState is a no-op - it returns the input unchanged
 		tests := []testhelpers.StateTestCase{
 			{
-				Name: "Basic operation state",
+				Name: "Basic operation state - no transformation (provider handles it)",
 				Input: `{
   "resources": [{
     "type": "cloudflare_api_shield_operation",
@@ -153,10 +155,8 @@ resource "cloudflare_api_shield_operation" "v2_endpoint" {
     "type": "cloudflare_api_shield_operation",
     "name": "example",
     "instances": [{
-      "schema_version": 0,
       "attributes": {
         "id": "abc123def456",
-        "operation_id": "abc123def456",
         "zone_id": "023e105f4ecef8ad9ca31a8372d0c353",
         "method": "GET",
         "host": "api.example.com",
@@ -167,7 +167,7 @@ resource "cloudflare_api_shield_operation" "v2_endpoint" {
 }`,
 			},
 			{
-				Name: "Operation with parameterized endpoint",
+				Name: "Operation with parameterized endpoint - no transformation",
 				Input: `{
   "resources": [{
     "type": "cloudflare_api_shield_operation",
@@ -188,10 +188,8 @@ resource "cloudflare_api_shield_operation" "v2_endpoint" {
     "type": "cloudflare_api_shield_operation",
     "name": "parameterized",
     "instances": [{
-      "schema_version": 0,
       "attributes": {
         "id": "xyz789",
-        "operation_id": "xyz789",
         "zone_id": "023e105f4ecef8ad9ca31a8372d0c353",
         "method": "POST",
         "host": "api.example.com",
@@ -202,7 +200,7 @@ resource "cloudflare_api_shield_operation" "v2_endpoint" {
 }`,
 			},
 			{
-				Name: "Multiple instances",
+				Name: "Multiple instances - no transformation",
 				Input: `{
   "resources": [{
     "type": "cloudflare_api_shield_operation",
@@ -231,20 +229,16 @@ resource "cloudflare_api_shield_operation" "v2_endpoint" {
     "type": "cloudflare_api_shield_operation",
     "name": "multiple",
     "instances": [{
-      "schema_version": 0,
       "attributes": {
         "id": "op1",
-        "operation_id": "op1",
         "zone_id": "zone1",
         "method": "GET",
         "host": "api.example.com",
         "endpoint": "/api/v1"
       }
     }, {
-      "schema_version": 0,
       "attributes": {
         "id": "op2",
-        "operation_id": "op2",
         "zone_id": "zone1",
         "method": "POST",
         "host": "api.example.com",
