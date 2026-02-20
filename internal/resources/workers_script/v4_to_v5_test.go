@@ -60,10 +60,6 @@ moved {
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
 
-func TestWorkerScriptStateTransform_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}
-
 func _TestWorkerScriptStateTransform_Bindings(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 
