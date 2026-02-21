@@ -3,12 +3,10 @@ package queue
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of Queue resources from v4 to v5
@@ -55,29 +53,12 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is handled by the provider's StateUpgraders (UpgradeState).
+	// This function is a no-op for queue migration.
+	return stateJSON.String(), nil
+}
 
-	// Validate instance exists and has attributes
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		// Even for invalid instances, set schema_version to 0 for v5
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	attrs := stateJSON.Get("attributes")
-
-	// Transformation 1: rename name → queue_name
-	result = state.RenameField(result, "attributes", attrs, "name", "queue_name")
-
-	// Transformation 2: Copy id to queue_id
-	// v5 requires both id and queue_id fields (they should be equal)
-	// v4 only had id, so we copy it to queue_id for v5
-	if idValue := attrs.Get("id"); idValue.Exists() {
-		result, _ = sjson.Set(result, "attributes.queue_id", idValue.String())
-	}
-
-	// MANDATORY: Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
