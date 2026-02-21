@@ -8,6 +8,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/access_rule"
 	"github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_shield"
+	"github.com/cloudflare/tf-migrate/internal/resources/api_shield_operation"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_token"
 	"github.com/cloudflare/tf-migrate/internal/resources/argo"
 	"github.com/cloudflare/tf-migrate/internal/resources/authenticated_origin_pulls"
@@ -94,6 +95,7 @@ func RegisterAllMigrations() {
 	access_rule.NewV4ToV5Migrator()
 	account_member.NewV4ToV5Migrator()
 	api_shield.NewV4ToV5Migrator()
+	api_shield_operation.NewV4ToV5Migrator()
 	api_token.NewV4ToV5Migrator()
 	argo.NewV4ToV5Migrator()
 	authenticated_origin_pulls.NewV4ToV5Migrator()
