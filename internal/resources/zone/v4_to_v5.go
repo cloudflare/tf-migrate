@@ -4,7 +4,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -107,45 +106,14 @@ func (m *V4ToV5Migrator) setAccountNestedAttribute(body *hclwrite.Body, accountI
 }
 
 // TransformState handles state file transformations.
-// This function receives a single resource instance and returns the transformed instance JSON.
+// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState).
+// The moved block generated in TransformConfig triggers the provider's migration logic.
+// This function is a no-op for zone migration.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	return stateJSON.String(), nil
+}
 
-	// Check if it's a valid zone instance
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		// Even for invalid instances, set schema_version for v5
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	attrs := stateJSON.Get("attributes")
-
-	// 1. zone → name
-	if zoneField := attrs.Get("zone"); zoneField.Exists() {
-		result, _ = sjson.Set(result, "attributes.name", zoneField.Value())
-		result, _ = sjson.Delete(result, "attributes.zone")
-	}
-
-	// 2. account_id → account = { id = "..." }
-	if accountIdField := attrs.Get("account_id"); accountIdField.Exists() {
-		result, _ = sjson.Set(result, "attributes.account", map[string]interface{}{
-			"id": accountIdField.Value(),
-		})
-		result, _ = sjson.Delete(result, "attributes.account_id")
-	}
-
-	// 3. Remove jump_start
-	if attrs.Get("jump_start").Exists() {
-		result, _ = sjson.Delete(result, "attributes.jump_start")
-	}
-
-	// 4. Remove plan (v4 had it as optional string, v5 has it as computed-only nested object)
-	if attrs.Get("plan").Exists() {
-		result, _ = sjson.Delete(result, "attributes.plan")
-	}
-
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
