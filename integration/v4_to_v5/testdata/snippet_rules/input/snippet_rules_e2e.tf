@@ -48,6 +48,16 @@ variable "snippet_name" {
   default = "cftftest-var-snippet"
 }
 
+variable "enable_snippet" {
+  type    = bool
+  default = true
+}
+
+variable "create_conditional" {
+  type    = bool
+  default = true
+}
+
 resource "cloudflare_snippet_rules" "with_variables" {
   zone_id = var.zone_id
 
