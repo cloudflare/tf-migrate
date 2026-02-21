@@ -62,6 +62,55 @@ locals {
 # Pattern Group 1: Basic Resources (Edge Cases)
 # ============================================================================
 
+
+
+
+
+
+
+# ============================================================================
+# Pattern Group 2: for_each with Maps
+# ============================================================================
+
+
+# ============================================================================
+# Pattern Group 3: for_each with Sets
+# ============================================================================
+
+
+# ============================================================================
+# Pattern Group 4: count-based Resources
+# ============================================================================
+
+
+# ============================================================================
+# Pattern Group 5: Conditional Creation
+# ============================================================================
+
+
+
+# ============================================================================
+# Pattern Group 6: Terraform Functions
+# ============================================================================
+
+
+
+# ============================================================================
+# Pattern Group 7: Lifecycle Meta-Arguments
+# ============================================================================
+
+
+
+# ============================================================================
+# Pattern Group 8: Additional Edge Cases & Type Coverage
+# ============================================================================
+
+
+
+
+
+# Total: 26 base resources + 3 from for_each map + 4 from for_each set + 3 from count = 36 instances
+
 # 1. Minimal resource - only required fields
 resource "cloudflare_zero_trust_list" "minimal" {
   account_id = local.common_account_id
@@ -71,6 +120,11 @@ resource "cloudflare_zero_trust_list" "minimal" {
     description = null
     value       = "192.168.1.1"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.minimal
+  to   = cloudflare_zero_trust_list.minimal
 }
 
 # 2. Maximal resource - all fields populated
@@ -99,12 +153,22 @@ resource "cloudflare_zero_trust_list" "maximal" {
   }]
 }
 
+moved {
+  from = cloudflare_teams_list.maximal
+  to   = cloudflare_zero_trust_list.maximal
+}
+
 # 3. Empty list - edge case
 resource "cloudflare_zero_trust_list" "empty" {
   account_id  = var.cloudflare_account_id
   name        = "${local.name_prefix} Empty List"
   type        = "URL"
   description = "Empty list for testing"
+}
+
+moved {
+  from = cloudflare_teams_list.empty
+  to   = cloudflare_zero_trust_list.empty
 }
 
 # 4. Basic IP list with simple items array
@@ -122,6 +186,11 @@ resource "cloudflare_zero_trust_list" "ip_list" {
     description = null
     value       = "10.0.0.0/8"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.ip_list
+  to   = cloudflare_zero_trust_list.ip_list
 }
 
 # 5. Domain list with items_with_description blocks
@@ -143,6 +212,11 @@ resource "cloudflare_zero_trust_list" "domain_list" {
     description = "Testing environment"
     value       = "test.cf-tf-test.com"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.domain_list
+  to   = cloudflare_zero_trust_list.domain_list
 }
 
 # 6. Mixed list with both items and items_with_description
@@ -167,9 +241,10 @@ resource "cloudflare_zero_trust_list" "email_list" {
   }]
 }
 
-# ============================================================================
-# Pattern Group 2: for_each with Maps
-# ============================================================================
+moved {
+  from = cloudflare_teams_list.email_list
+  to   = cloudflare_zero_trust_list.email_list
+}
 
 # 7-9. Resources created with for_each over map
 resource "cloudflare_zero_trust_list" "security_domains" {
@@ -191,9 +266,10 @@ resource "cloudflare_zero_trust_list" "security_domains" {
   ]
 }
 
-# ============================================================================
-# Pattern Group 3: for_each with Sets
-# ============================================================================
+moved {
+  from = cloudflare_teams_list.security_domains
+  to   = cloudflare_zero_trust_list.security_domains
+}
 
 # 10-13. Resources created with for_each over set
 resource "cloudflare_zero_trust_list" "list_types" {
@@ -211,9 +287,10 @@ resource "cloudflare_zero_trust_list" "list_types" {
   ]
 }
 
-# ============================================================================
-# Pattern Group 4: count-based Resources
-# ============================================================================
+moved {
+  from = cloudflare_teams_list.list_types
+  to   = cloudflare_zero_trust_list.list_types
+}
 
 # 14-16. Resources created with count
 resource "cloudflare_zero_trust_list" "ip_ranges" {
@@ -231,9 +308,10 @@ resource "cloudflare_zero_trust_list" "ip_ranges" {
   ]
 }
 
-# ============================================================================
-# Pattern Group 5: Conditional Creation
-# ============================================================================
+moved {
+  from = cloudflare_teams_list.ip_ranges
+  to   = cloudflare_zero_trust_list.ip_ranges
+}
 
 # 17. Conditionally created resource
 resource "cloudflare_zero_trust_list" "conditional_enabled" {
@@ -252,6 +330,11 @@ resource "cloudflare_zero_trust_list" "conditional_enabled" {
   }]
 }
 
+moved {
+  from = cloudflare_teams_list.conditional_enabled
+  to   = cloudflare_zero_trust_list.conditional_enabled
+}
+
 # 18. Conditionally not created resource
 resource "cloudflare_zero_trust_list" "conditional_disabled" {
   count = var.enable_security_lists ? 0 : 1
@@ -266,9 +349,10 @@ resource "cloudflare_zero_trust_list" "conditional_disabled" {
   }]
 }
 
-# ============================================================================
-# Pattern Group 6: Terraform Functions
-# ============================================================================
+moved {
+  from = cloudflare_teams_list.conditional_disabled
+  to   = cloudflare_zero_trust_list.conditional_disabled
+}
 
 # 19. Resource using join() function
 resource "cloudflare_zero_trust_list" "with_join" {
@@ -282,6 +366,11 @@ resource "cloudflare_zero_trust_list" "with_join" {
       description = null
     }
   ]
+}
+
+moved {
+  from = cloudflare_teams_list.with_join
+  to   = cloudflare_zero_trust_list.with_join
 }
 
 # 20. Resource using string interpolation
@@ -298,9 +387,10 @@ resource "cloudflare_zero_trust_list" "with_interpolation" {
   ]
 }
 
-# ============================================================================
-# Pattern Group 7: Lifecycle Meta-Arguments
-# ============================================================================
+moved {
+  from = cloudflare_teams_list.with_interpolation
+  to   = cloudflare_zero_trust_list.with_interpolation
+}
 
 # 21. Resource with lifecycle block
 resource "cloudflare_zero_trust_list" "with_lifecycle" {
@@ -319,6 +409,11 @@ resource "cloudflare_zero_trust_list" "with_lifecycle" {
   }]
 }
 
+moved {
+  from = cloudflare_teams_list.with_lifecycle
+  to   = cloudflare_zero_trust_list.with_lifecycle
+}
+
 # 22. Resource with prevent_destroy (set to false for testing)
 resource "cloudflare_zero_trust_list" "with_prevent_destroy" {
   account_id  = var.cloudflare_account_id
@@ -335,9 +430,10 @@ resource "cloudflare_zero_trust_list" "with_prevent_destroy" {
   }]
 }
 
-# ============================================================================
-# Pattern Group 8: Additional Edge Cases & Type Coverage
-# ============================================================================
+moved {
+  from = cloudflare_teams_list.with_prevent_destroy
+  to   = cloudflare_zero_trust_list.with_prevent_destroy
+}
 
 # 23. URL list with only items_with_description
 resource "cloudflare_zero_trust_list" "url_list" {
@@ -353,6 +449,11 @@ resource "cloudflare_zero_trust_list" "url_list" {
     description = "Spam website"
     value       = "https://spam.example.org/ads"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.url_list
+  to   = cloudflare_zero_trust_list.url_list
 }
 
 # 24. SERIAL type list
@@ -372,6 +473,11 @@ resource "cloudflare_zero_trust_list" "serial_list" {
     description = null
     value       = "FEDCBA0987654321"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.serial_list
+  to   = cloudflare_zero_trust_list.serial_list
 }
 
 # 25. List with special characters and various IP formats
@@ -396,6 +502,11 @@ resource "cloudflare_zero_trust_list" "complex_ips" {
   }]
 }
 
+moved {
+  from = cloudflare_teams_list.complex_ips
+  to   = cloudflare_zero_trust_list.complex_ips
+}
+
 # 26. EMAIL type with complex addresses
 resource "cloudflare_zero_trust_list" "complex_emails" {
   account_id  = var.cloudflare_account_id
@@ -414,4 +525,7 @@ resource "cloudflare_zero_trust_list" "complex_emails" {
   }]
 }
 
-# Total: 26 base resources + 3 from for_each map + 4 from for_each set + 3 from count = 36 instances
+moved {
+  from = cloudflare_teams_list.complex_emails
+  to   = cloudflare_zero_trust_list.complex_emails
+}

@@ -32,6 +32,11 @@ resource "cloudflare_teams_list" "ip_list" {
     description = null
     value       = "10.0.0.0/8"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.ip_list
+  to   = cloudflare_zero_trust_list.ip_list
 }`,
 			},
 			{
@@ -64,6 +69,11 @@ resource "cloudflare_teams_list" "ip_list" {
     description = "Test network"
     value       = "203.0.113.0/24"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.ip_list
+  to   = cloudflare_zero_trust_list.ip_list
 }`,
 			},
 			{
@@ -95,6 +105,11 @@ resource "cloudflare_teams_list" "mixed_list" {
     description = null
     value       = "10.0.0.0/8"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.mixed_list
+  to   = cloudflare_zero_trust_list.mixed_list
 }`,
 			},
 			{
@@ -120,6 +135,11 @@ resource "cloudflare_teams_list" "domains" {
     description = null
     value       = "api.github.com"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.domains
+  to   = cloudflare_zero_trust_list.domains
 }`,
 			},
 			{
@@ -152,6 +172,11 @@ resource "cloudflare_teams_list" "urls" {
     description = "Suspicious site"
     value       = "http://phishing.site.com"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.urls
+  to   = cloudflare_zero_trust_list.urls
 }`,
 			},
 			{
@@ -176,6 +201,11 @@ resource "cloudflare_teams_list" "emails" {
     description = null
     value       = "security@cloudflare.com"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.emails
+  to   = cloudflare_zero_trust_list.emails
 }`,
 			},
 			{
@@ -198,6 +228,11 @@ resource "cloudflare_teams_list" "serials" {
     description = null
     value       = "AA:BB:CC:DD:EE:FF"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.serials
+  to   = cloudflare_zero_trust_list.serials
 }`,
 			},
 			{
@@ -213,6 +248,11 @@ resource "cloudflare_teams_list" "empty" {
   account_id = "abc123"
   name       = "Empty List"
   type       = "IP"
+}
+
+moved {
+  from = cloudflare_teams_list.empty
+  to   = cloudflare_zero_trust_list.empty
 }`,
 			},
 			{
@@ -246,6 +286,11 @@ resource "cloudflare_teams_list" "list2" {
   }]
 }
 
+moved {
+  from = cloudflare_teams_list.list1
+  to   = cloudflare_zero_trust_list.list1
+}
+
 resource "cloudflare_zero_trust_list" "list2" {
   account_id = "abc123"
   name       = "List 2"
@@ -258,6 +303,11 @@ resource "cloudflare_zero_trust_list" "list2" {
     description = null
     value       = "example.com"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.list2
+  to   = cloudflare_zero_trust_list.list2
 }`,
 			},
 		}
@@ -265,8 +315,8 @@ resource "cloudflare_zero_trust_list" "list2" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	// Test state transformations
 	t.Run("StateTransformation", func(t *testing.T) {
+		t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
 		tests := []testhelpers.StateTestCase{
 			{
 				Name: "Simple IP list state transformation",
