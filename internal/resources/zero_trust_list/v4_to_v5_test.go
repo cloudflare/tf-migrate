@@ -32,6 +32,11 @@ resource "cloudflare_teams_list" "ip_list" {
     description = null
     value       = "10.0.0.0/8"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.ip_list
+  to   = cloudflare_zero_trust_list.ip_list
 }`,
 			},
 			{
@@ -64,6 +69,11 @@ resource "cloudflare_teams_list" "ip_list" {
     description = "Test network"
     value       = "203.0.113.0/24"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.ip_list
+  to   = cloudflare_zero_trust_list.ip_list
 }`,
 			},
 			{
@@ -95,6 +105,11 @@ resource "cloudflare_teams_list" "mixed_list" {
     description = null
     value       = "10.0.0.0/8"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.mixed_list
+  to   = cloudflare_zero_trust_list.mixed_list
 }`,
 			},
 			{
@@ -120,6 +135,11 @@ resource "cloudflare_teams_list" "domains" {
     description = null
     value       = "api.github.com"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.domains
+  to   = cloudflare_zero_trust_list.domains
 }`,
 			},
 			{
@@ -152,6 +172,11 @@ resource "cloudflare_teams_list" "urls" {
     description = "Suspicious site"
     value       = "http://phishing.site.com"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.urls
+  to   = cloudflare_zero_trust_list.urls
 }`,
 			},
 			{
@@ -176,6 +201,11 @@ resource "cloudflare_teams_list" "emails" {
     description = null
     value       = "security@cloudflare.com"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.emails
+  to   = cloudflare_zero_trust_list.emails
 }`,
 			},
 			{
@@ -198,6 +228,11 @@ resource "cloudflare_teams_list" "serials" {
     description = null
     value       = "AA:BB:CC:DD:EE:FF"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.serials
+  to   = cloudflare_zero_trust_list.serials
 }`,
 			},
 			{
@@ -213,6 +248,11 @@ resource "cloudflare_teams_list" "empty" {
   account_id = "abc123"
   name       = "Empty List"
   type       = "IP"
+}
+
+moved {
+  from = cloudflare_teams_list.empty
+  to   = cloudflare_zero_trust_list.empty
 }`,
 			},
 			{
@@ -246,6 +286,11 @@ resource "cloudflare_teams_list" "list2" {
   }]
 }
 
+moved {
+  from = cloudflare_teams_list.list1
+  to   = cloudflare_zero_trust_list.list1
+}
+
 resource "cloudflare_zero_trust_list" "list2" {
   account_id = "abc123"
   name       = "List 2"
@@ -258,246 +303,15 @@ resource "cloudflare_zero_trust_list" "list2" {
     description = null
     value       = "example.com"
   }]
+}
+
+moved {
+  from = cloudflare_teams_list.list2
+  to   = cloudflare_zero_trust_list.list2
 }`,
 			},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
-	})
-
-	// Test state transformations
-	t.Run("StateTransformation", func(t *testing.T) {
-		tests := []testhelpers.StateTestCase{
-			{
-				Name: "Simple IP list state transformation",
-				Input: `{
-				"version": 4,
-				"terraform_version": "1.5.0",
-				"resources": [{
-					"type": "cloudflare_teams_list",
-					"name": "ip_list",
-					"instances": [{
-						"attributes": {
-							"account_id": "abc123",
-							"name": "IP Allowlist",
-							"type": "IP",
-							"items": ["192.168.1.1", "10.0.0.0/8"]
-						},
-						"schema_version": 0
-					}]
-				}]
-			}`,
-				Expected: `{
-				"version": 4,
-				"terraform_version": "1.5.0",
-				"resources": [{
-					"type": "cloudflare_zero_trust_list",
-					"name": "ip_list",
-					"instances": [{
-						"attributes": {
-							"account_id": "abc123",
-							"name": "IP Allowlist",
-							"type": "IP",
-							"items": [
-								{"value": "192.168.1.1"},
-								{"value": "10.0.0.0/8"}
-							]
-						},
-						"schema_version": 0
-					}]
-				}]
-			}`,
-			},
-			{
-				Name: "State with items_with_description",
-				Input: `{
-				"version": 4,
-				"terraform_version": "1.5.0",
-				"resources": [{
-					"type": "cloudflare_teams_list",
-					"name": "mixed",
-					"instances": [{
-						"attributes": {
-							"account_id": "abc123",
-							"name": "Mixed List",
-							"type": "IP",
-							"items": ["192.168.1.1"],
-							"items_with_description": [{
-								"value": "172.16.0.0/12",
-								"description": "Private network"
-							}]
-						},
-						"schema_version": 0
-					}]
-				}]
-			}`,
-				Expected: `{
-				"version": 4,
-				"terraform_version": "1.5.0",
-				"resources": [{
-					"type": "cloudflare_zero_trust_list",
-					"name": "mixed",
-					"instances": [{
-						"attributes": {
-							"account_id": "abc123",
-							"name": "Mixed List",
-							"type": "IP",
-							"items": [
-								{"value": "172.16.0.0/12", "description": "Private network"},
-								{"value": "192.168.1.1"}
-							]
-						},
-						"schema_version": 0
-					}]
-				}]
-			}`,
-			},
-			{
-				Name: "Empty items list in state",
-				Input: `{
-				"version": 4,
-				"terraform_version": "1.5.0",
-				"resources": [{
-					"type": "cloudflare_teams_list",
-					"name": "empty",
-					"instances": [{
-						"attributes": {
-							"account_id": "abc123",
-							"name": "Empty List",
-							"type": "IP",
-							"items": []
-						},
-						"schema_version": 0
-					}]
-				}]
-			}`,
-				Expected: `{
-				"version": 4,
-				"terraform_version": "1.5.0",
-				"resources": [{
-					"type": "cloudflare_zero_trust_list",
-					"name": "empty",
-					"instances": [{
-						"attributes": {
-							"account_id": "abc123",
-							"name": "Empty List",
-							"type": "IP"
-						},
-						"schema_version": 0
-					}]
-				}]
-			}`,
-			},
-			{
-				Name: "State with existing ID field",
-				Input: `{
-				"version": 4,
-				"terraform_version": "1.5.0",
-				"resources": [{
-					"type": "cloudflare_teams_list",
-					"name": "with_id",
-					"instances": [{
-						"attributes": {
-							"id": "existing-id-123",
-							"account_id": "abc123",
-							"name": "List with ID",
-							"type": "DOMAIN",
-							"items": ["example.com"],
-							"description": "Test list"
-						},
-						"schema_version": 0
-					}]
-				}]
-			}`,
-				Expected: `{
-				"version": 4,
-				"terraform_version": "1.5.0",
-				"resources": [{
-					"type": "cloudflare_zero_trust_list",
-					"name": "with_id",
-					"instances": [{
-						"attributes": {
-							"id": "existing-id-123",
-							"account_id": "abc123",
-							"name": "List with ID",
-							"type": "DOMAIN",
-							"items": [
-								{"value": "example.com"}
-							],
-							"description": "Test list"
-						},
-						"schema_version": 0
-					}]
-				}]
-			}`,
-			},
-			{
-				Name: "Multiple resources in state",
-				Input: `{
-				"version": 4,
-				"terraform_version": "1.5.0",
-				"resources": [{
-					"type": "cloudflare_teams_list",
-					"name": "list1",
-					"instances": [{
-						"attributes": {
-							"account_id": "abc123",
-							"name": "List 1",
-							"type": "IP",
-							"items": ["192.168.1.1"]
-						},
-						"schema_version": 0
-					}]
-				}, {
-					"type": "cloudflare_teams_list",
-					"name": "list2",
-					"instances": [{
-						"attributes": {
-							"account_id": "abc123",
-							"name": "List 2",
-							"type": "EMAIL",
-							"items": ["admin@example.com"]
-						},
-						"schema_version": 0
-					}]
-				}]
-			}`,
-				Expected: `{
-				"version": 4,
-				"terraform_version": "1.5.0",
-				"resources": [{
-					"type": "cloudflare_zero_trust_list",
-					"name": "list1",
-					"instances": [{
-						"attributes": {
-							"account_id": "abc123",
-							"name": "List 1",
-							"type": "IP",
-							"items": [
-								{"value": "192.168.1.1"}
-							]
-						},
-						"schema_version": 0
-					}]
-				}, {
-					"type": "cloudflare_zero_trust_list",
-					"name": "list2",
-					"instances": [{
-						"attributes": {
-							"account_id": "abc123",
-							"name": "List 2",
-							"type": "EMAIL",
-							"items": [
-								{"value": "admin@example.com"}
-							]
-						},
-						"schema_version": 0
-					}]
-				}]
-			}`,
-			},
-		}
-
-		testhelpers.RunStateTransformTests(t, tests, migrator)
 	})
 }
