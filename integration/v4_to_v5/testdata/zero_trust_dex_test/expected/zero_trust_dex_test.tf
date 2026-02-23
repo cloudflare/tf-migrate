@@ -17,78 +17,10 @@ locals {
   name_prefix = "cftftest"
 }
 
-# Test 1: Basic HTTP test
-resource "cloudflare_zero_trust_dex_test" "http_basic" {
-  account_id  = var.cloudflare_account_id
-  name        = "${local.name_prefix}-basic-http-test"
-  description = "Test HTTP connectivity to example.com"
-  interval    = "0h30m0s"
-  enabled     = true
 
-  data = {
-    kind   = "http"
-    host   = "https://example.com"
-    method = "GET"
-  }
-}
 
-# Test 2: Traceroute test (no method field)
-resource "cloudflare_zero_trust_dex_test" "traceroute" {
-  account_id  = var.cloudflare_account_id
-  name        = "${local.name_prefix}-traceroute-to-dns"
-  description = "Test network path to Google DNS"
-  interval    = "1h0m0s"
-  enabled     = true
 
-  data = {
-    kind = "traceroute"
-    host = "8.8.8.8"
-  }
-}
 
-# Test 3: Disabled test
-resource "cloudflare_zero_trust_dex_test" "disabled" {
-  account_id  = var.cloudflare_account_id
-  name        = "${local.name_prefix}-disabled-test"
-  description = "Currently disabled for maintenance"
-  interval    = "0h15m0s"
-  enabled     = false
-
-  data = {
-    kind   = "http"
-    host   = "https://internal.example.com"
-    method = "GET"
-  }
-}
-
-# Test 4: HTTP test with short interval
-resource "cloudflare_zero_trust_dex_test" "http_frequent" {
-  account_id  = var.cloudflare_account_id
-  name        = "${local.name_prefix}-frequent-http-test"
-  description = "High-frequency monitoring"
-  interval    = "0h5m0s"
-  enabled     = true
-
-  data = {
-    kind   = "http"
-    host   = "https://api.example.com/health"
-    method = "GET"
-  }
-}
-
-# Test 5: Traceroute to hostname
-resource "cloudflare_zero_trust_dex_test" "traceroute_hostname" {
-  account_id  = var.cloudflare_account_id
-  name        = "${local.name_prefix}-traceroute-to-hostname"
-  description = "Test path to cloudflare.com"
-  interval    = "2h0m0s"
-  enabled     = true
-
-  data = {
-    kind = "traceroute"
-    host = "cloudflare.com"
-  }
-}
 
 # Test 6: for_each with map
 locals {
@@ -111,6 +43,128 @@ locals {
   }
 }
 
+
+
+
+# Test 9: Conditional creation
+variable "enable_backup_tests" {
+  type    = bool
+  default = true
+}
+
+
+# Test 10: Using dynamic values
+locals {
+  monitoring_config = {
+    interval_minutes = 30
+    enabled          = true
+  }
+}
+
+
+
+
+
+
+
+# Test 1: Basic HTTP test
+resource "cloudflare_zero_trust_dex_test" "http_basic" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-basic-http-test"
+  description = "Test HTTP connectivity to example.com"
+  interval    = "0h30m0s"
+  enabled     = true
+
+  data = {
+    kind   = "http"
+    host   = "https://example.com"
+    method = "GET"
+  }
+}
+
+moved {
+  from = cloudflare_device_dex_test.http_basic
+  to   = cloudflare_zero_trust_dex_test.http_basic
+}
+
+# Test 2: Traceroute test (no method field)
+resource "cloudflare_zero_trust_dex_test" "traceroute" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-traceroute-to-dns"
+  description = "Test network path to Google DNS"
+  interval    = "1h0m0s"
+  enabled     = true
+
+  data = {
+    kind = "traceroute"
+    host = "8.8.8.8"
+  }
+}
+
+moved {
+  from = cloudflare_device_dex_test.traceroute
+  to   = cloudflare_zero_trust_dex_test.traceroute
+}
+
+# Test 3: Disabled test
+resource "cloudflare_zero_trust_dex_test" "disabled" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-disabled-test"
+  description = "Currently disabled for maintenance"
+  interval    = "0h15m0s"
+  enabled     = false
+
+  data = {
+    kind   = "http"
+    host   = "https://internal.example.com"
+    method = "GET"
+  }
+}
+
+moved {
+  from = cloudflare_device_dex_test.disabled
+  to   = cloudflare_zero_trust_dex_test.disabled
+}
+
+# Test 4: HTTP test with short interval
+resource "cloudflare_zero_trust_dex_test" "http_frequent" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-frequent-http-test"
+  description = "High-frequency monitoring"
+  interval    = "0h5m0s"
+  enabled     = true
+
+  data = {
+    kind   = "http"
+    host   = "https://api.example.com/health"
+    method = "GET"
+  }
+}
+
+moved {
+  from = cloudflare_device_dex_test.http_frequent
+  to   = cloudflare_zero_trust_dex_test.http_frequent
+}
+
+# Test 5: Traceroute to hostname
+resource "cloudflare_zero_trust_dex_test" "traceroute_hostname" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-traceroute-to-hostname"
+  description = "Test path to cloudflare.com"
+  interval    = "2h0m0s"
+  enabled     = true
+
+  data = {
+    kind = "traceroute"
+    host = "cloudflare.com"
+  }
+}
+
+moved {
+  from = cloudflare_device_dex_test.traceroute_hostname
+  to   = cloudflare_zero_trust_dex_test.traceroute_hostname
+}
+
 resource "cloudflare_zero_trust_dex_test" "api_tests" {
   for_each = local.dex_tests
 
@@ -127,6 +181,11 @@ resource "cloudflare_zero_trust_dex_test" "api_tests" {
   }
 }
 
+moved {
+  from = cloudflare_device_dex_test.api_tests
+  to   = cloudflare_zero_trust_dex_test.api_tests
+}
+
 # Test 7: for_each with set
 resource "cloudflare_zero_trust_dex_test" "dns_tests" {
   for_each = toset(["1.1.1.1", "8.8.8.8", "8.8.4.4"])
@@ -141,6 +200,11 @@ resource "cloudflare_zero_trust_dex_test" "dns_tests" {
     kind = "traceroute"
     host = each.value
   }
+}
+
+moved {
+  from = cloudflare_device_dex_test.dns_tests
+  to   = cloudflare_zero_trust_dex_test.dns_tests
 }
 
 # Test 8: count pattern
@@ -160,10 +224,9 @@ resource "cloudflare_zero_trust_dex_test" "regional_tests" {
   }
 }
 
-# Test 9: Conditional creation
-variable "enable_backup_tests" {
-  type    = bool
-  default = true
+moved {
+  from = cloudflare_device_dex_test.regional_tests
+  to   = cloudflare_zero_trust_dex_test.regional_tests
 }
 
 resource "cloudflare_zero_trust_dex_test" "backup_test" {
@@ -182,12 +245,9 @@ resource "cloudflare_zero_trust_dex_test" "backup_test" {
   }
 }
 
-# Test 10: Using dynamic values
-locals {
-  monitoring_config = {
-    interval_minutes = 30
-    enabled          = true
-  }
+moved {
+  from = cloudflare_device_dex_test.backup_test
+  to   = cloudflare_zero_trust_dex_test.backup_test
 }
 
 resource "cloudflare_zero_trust_dex_test" "dynamic_config" {
@@ -202,6 +262,11 @@ resource "cloudflare_zero_trust_dex_test" "dynamic_config" {
     host   = "https://metrics.example.com"
     method = "GET"
   }
+}
+
+moved {
+  from = cloudflare_device_dex_test.dynamic_config
+  to   = cloudflare_zero_trust_dex_test.dynamic_config
 }
 
 # Test 11: HTTP test with HTTPS URL
@@ -219,6 +284,11 @@ resource "cloudflare_zero_trust_dex_test" "https_test" {
   }
 }
 
+moved {
+  from = cloudflare_device_dex_test.https_test
+  to   = cloudflare_zero_trust_dex_test.https_test
+}
+
 # Test 12: Internal network test
 resource "cloudflare_zero_trust_dex_test" "internal" {
   account_id  = var.cloudflare_account_id
@@ -232,6 +302,11 @@ resource "cloudflare_zero_trust_dex_test" "internal" {
     host   = "https://internal.corp.example.com/healthcheck"
     method = "GET"
   }
+}
+
+moved {
+  from = cloudflare_device_dex_test.internal
+  to   = cloudflare_zero_trust_dex_test.internal
 }
 
 # Test 13: Long description
@@ -253,6 +328,11 @@ resource "cloudflare_zero_trust_dex_test" "long_description" {
   }
 }
 
+moved {
+  from = cloudflare_device_dex_test.long_description
+  to   = cloudflare_zero_trust_dex_test.long_description
+}
+
 # Test 14: IPv6 traceroute
 resource "cloudflare_zero_trust_dex_test" "ipv6_traceroute" {
   account_id  = var.cloudflare_account_id
@@ -265,6 +345,11 @@ resource "cloudflare_zero_trust_dex_test" "ipv6_traceroute" {
     kind = "traceroute"
     host = "2001:4860:4860::8888"
   }
+}
+
+moved {
+  from = cloudflare_device_dex_test.ipv6_traceroute
+  to   = cloudflare_zero_trust_dex_test.ipv6_traceroute
 }
 
 # Test 15: API endpoint with path
@@ -280,4 +365,9 @@ resource "cloudflare_zero_trust_dex_test" "api_with_path" {
     host   = "https://api.example.com/v1/status"
     method = "GET"
   }
+}
+
+moved {
+  from = cloudflare_device_dex_test.api_with_path
+  to   = cloudflare_zero_trust_dex_test.api_with_path
 }
