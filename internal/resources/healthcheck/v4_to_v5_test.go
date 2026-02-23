@@ -139,12 +139,6 @@ func TestV4ToV5ConfigTransformation(t *testing.T) {
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
 
-// TestV4ToV5StateTransformation_Removed is a skip marker indicating state tests were removed.
-// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
-func TestV4ToV5StateTransformation_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}
-
 // TestCanHandle verifies the migrator handles the correct resource type
 func TestCanHandle(t *testing.T) {
 	migrator := NewV4ToV5Migrator()

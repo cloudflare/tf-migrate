@@ -290,14 +290,4 @@ resource "cloudflare_argo_tiered_caching" "both_lifecycle_tiered" {
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
-
-	// State transformation tests removed - state migration is now handled by provider's StateUpgraders
-	// The provider's MoveState and UpgradeState interfaces handle all state transformations:
-	// - Resource type change (cloudflare_argo → cloudflare_argo_smart_routing/tiered_caching)
-	// - Field transformations (smart_routing/tiered_caching → value)
-	// - ID transformation (checksum → zone_id)
-	// - Computed field initialization (editable, modified_on)
-	t.Run("StateTransformation_Removed", func(t *testing.T) {
-		t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-	})
 }
