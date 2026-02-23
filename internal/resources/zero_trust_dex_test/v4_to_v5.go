@@ -3,12 +3,10 @@ package zero_trust_dex_test
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	tfstate "github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of Zero Trust DEX Test resources from v4 to v5
@@ -40,6 +38,8 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	resourceName := tfhcl.GetResourceName(block)
+
 	// rename cloudflare_device_dex_test → cloudflare_zero_trust_dex_test
 	tfhcl.RenameResourceType(block, "cloudflare_device_dex_test", "cloudflare_zero_trust_dex_test")
 
@@ -51,41 +51,26 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Remove computed timestamp fields if they exist in config (unlikely but possible)
 	tfhcl.RemoveAttributes(body, "updated", "created")
 
+	// Generate moved block for state migration
+	oldType, newType := m.GetResourceRename()
+	from := oldType + "." + resourceName
+	to := newType + "." + resourceName
+	movedBlock := tfhcl.CreateMovedBlock(from, to)
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         []*hclwrite.Block{block, movedBlock},
+		RemoveOriginal: true,
 	}, nil
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState)
+	// The moved block generated in TransformConfig triggers the provider's migration logic
+	// This function is a no-op for zero_trust_dex_test migration
+	return stateJSON.String(), nil
+}
 
-	attrs := stateJSON.Get("attributes")
-	if attrs.Exists() {
-		// Set test_id from id (v5 requires test_id as computed field)
-		idValue := attrs.Get("id")
-		if idValue.Exists() {
-			result, _ = sjson.Set(result, "attributes.test_id", idValue.String())
-		}
-
-		// Transform data field: TypeList MaxItems:1 → SingleNestedAttribute
-		result = tfstate.TransformFieldArrayToObject(result, "attributes", attrs, "data", tfstate.ArrayToObjectOptions{})
-
-		// Clean up empty method fields
-		dataObj := gjson.Parse(result).Get("attributes.data")
-		if dataObj.Exists() && dataObj.IsObject() {
-			methodField := dataObj.Get("method")
-			if methodField.Exists() && methodField.String() == "" {
-				result, _ = sjson.Delete(result, "attributes.data.method")
-			}
-		}
-
-		// Remove computed timestamp fields that don't exist in v5
-		result = tfstate.RemoveFields(result, "attributes", attrs, "updated", "created")
-	}
-
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }

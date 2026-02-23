@@ -41,6 +41,11 @@ resource "cloudflare_zero_trust_dex_test" "http_test" {
     method = "GET"
   }
 }
+
+moved {
+  from = cloudflare_device_dex_test.http_test
+  to   = cloudflare_zero_trust_dex_test.http_test
+}
 `,
 		},
 		{
@@ -71,6 +76,11 @@ resource "cloudflare_zero_trust_dex_test" "traceroute_test" {
     kind = "traceroute"
     host = "8.8.8.8"
   }
+}
+
+moved {
+  from = cloudflare_device_dex_test.traceroute_test
+  to   = cloudflare_zero_trust_dex_test.traceroute_test
 }
 `,
 		},
@@ -104,6 +114,11 @@ resource "cloudflare_zero_trust_dex_test" "disabled" {
     host   = "https://internal.example.com"
     method = "GET"
   }
+}
+
+moved {
+  from = cloudflare_device_dex_test.disabled
+  to   = cloudflare_zero_trust_dex_test.disabled
 }
 `,
 		},
@@ -138,6 +153,11 @@ resource "cloudflare_zero_trust_dex_test" "var_test" {
     method = var.test_method
   }
 }
+
+moved {
+  from = cloudflare_device_dex_test.var_test
+  to   = cloudflare_zero_trust_dex_test.var_test
+}
 `,
 		},
 		{
@@ -171,138 +191,16 @@ resource "cloudflare_zero_trust_dex_test" "renamed_test" {
     method = "GET"
   }
 }
+
+moved {
+  from = cloudflare_device_dex_test.renamed_test
+  to   = cloudflare_zero_trust_dex_test.renamed_test
+}
 `,
 		},
 	}
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
-}
-
-func TestStateTransformation(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
-
-	tests := []testhelpers.StateTestCase{
-		{
-			Name: "basic HTTP test",
-			Input: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "test-123",
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "name": "HTTP Test",
-    "description": "Test HTTP connectivity",
-    "interval": "0h30m0s",
-    "enabled": true,
-    "data": [
-      {
-        "kind": "http",
-        "host": "https://example.com",
-        "method": "GET"
-      }
-    ],
-    "updated": "2024-01-07T10:00:00Z",
-    "created": "2024-01-01T10:00:00Z"
-  }
-}`,
-			Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "test-123",
-    "test_id": "test-123",
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "name": "HTTP Test",
-    "description": "Test HTTP connectivity",
-    "interval": "0h30m0s",
-    "enabled": true,
-    "data": {
-      "kind": "http",
-      "host": "https://example.com",
-      "method": "GET"
-    }
-  }
-}`,
-		},
-		{
-			Name: "traceroute test",
-			Input: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "test-456",
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "name": "Traceroute Test",
-    "description": "Test network path",
-    "interval": "1h0m0s",
-    "enabled": true,
-    "data": [
-      {
-        "kind": "traceroute",
-        "host": "8.8.8.8"
-      }
-    ],
-    "updated": "2024-01-07T10:00:00Z",
-    "created": "2024-01-01T10:00:00Z"
-  }
-}`,
-			Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "test-456",
-    "test_id": "test-456",
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "name": "Traceroute Test",
-    "description": "Test network path",
-    "interval": "1h0m0s",
-    "enabled": true,
-    "data": {
-      "kind": "traceroute",
-      "host": "8.8.8.8"
-    }
-  }
-}`,
-		},
-		{
-			Name: "disabled test",
-			Input: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "test-disabled",
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "name": "Disabled Test",
-    "description": "Currently disabled",
-    "interval": "0h15m0s",
-    "enabled": false,
-    "data": [
-      {
-        "kind": "http",
-        "host": "https://internal.example.com",
-        "method": "GET"
-      }
-    ],
-    "updated": "2024-01-07T10:00:00Z",
-    "created": "2024-01-01T10:00:00Z"
-  }
-}`,
-			Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "test-disabled",
-    "test_id": "test-disabled",
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "name": "Disabled Test",
-    "description": "Currently disabled",
-    "interval": "0h15m0s",
-    "enabled": false,
-    "data": {
-      "kind": "http",
-      "host": "https://internal.example.com",
-      "method": "GET"
-    }
-  }
-}`,
-		},
-	}
-
-	testhelpers.RunStateTransformTests(t, tests, migrator)
 }
 
 func TestCanHandle(t *testing.T) {
