@@ -3,12 +3,10 @@ package load_balancer_monitor
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of load balancer monitor resources from v4 to v5
@@ -109,106 +107,36 @@ func (m *V4ToV5Migrator) buildHeaderMapTokens(body *hclwrite.Body) (hclwrite.Tok
 	return hclwrite.TokensForObject(headerAttrs), nil
 }
 
+// TransformState is a no-op for load_balancer_monitor migration.
+//
+// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
+// The provider's UpgradeState handlers perform the actual state migration when
+// Terraform detects a schema version mismatch.
+//
+// tf-migrate's role is limited to:
+// - Transforming HCL configuration syntax (handled by TransformConfig)
+// - Generating moved blocks for renamed resources (not applicable for this resource)
+//
+// This delegation to the provider is the correct architectural pattern because:
+// 1. The provider is the source of truth for state structure
+// 2. Provider has access to proper schema definitions for type-safe parsing
+// 3. Eliminates duplication of transformation logic
+// 4. Ensures migrations work correctly with Terraform's state upgrade mechanisms
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := instance.String()
-	attrs := instance.Get("attributes")
-
-	if !attrs.Exists() {
-		// Set schema_version even for invalid instances
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// Convert numeric fields (TypeInt → Int64Attribute)
-	numericFields := []string{
-		"interval", "port", "retries", "timeout",
-		"consecutive_down", "consecutive_up",
-	}
-
-	for _, field := range numericFields {
-		if fieldVal := attrs.Get(field); fieldVal.Exists() {
-			floatVal := state.ConvertToFloat64(fieldVal)
-			result, _ = sjson.Set(result, "attributes."+field, floatVal)
-		}
-	}
-
-	// Add v5 default values for fields that were optional without defaults in v4
-	// These defaults prevent PATCH operations when migrating
-	result = state.EnsureField(result, "attributes", attrs, "allow_insecure", false)
-	result = state.EnsureField(result, "attributes", attrs, "description", "")
-	result = state.EnsureField(result, "attributes", attrs, "expected_body", "")
-	result = state.EnsureField(result, "attributes", attrs, "expected_codes", "")
-	result = state.EnsureField(result, "attributes", attrs, "follow_redirects", false)
-	result = state.EnsureField(result, "attributes", attrs, "probe_zone", "")
-
-	// Transform header Set to Map
-	// v4: [{"header": "Host", "values": ["example.com"]}, ...]
-	// v5: {"Host": ["example.com"], ...}
-	if header := attrs.Get("header"); header.Exists() && header.IsArray() {
-		headerMap := m.transformHeaderSetToMap(header)
-		if len(headerMap) > 0 {
-			result, _ = sjson.Set(result, "attributes.header", headerMap)
-		} else {
-			// Remove empty header
-			result, _ = sjson.Delete(result, "attributes.header")
-		}
-	}
-
-	// Re-parse attrs after transformations to get updated structure
-	updatedAttrs := gjson.Parse(result).Get("attributes")
-
-	// Transform empty/zero values to null for fields not explicitly set in config
-	// This handles consecutive_down and consecutive_up which have Default: 0 in v4
-	// If they're 0 and not explicitly set in config, they should be removed from state
-	// because v5 treats absence as "use API default" (same as v4's Default: 0)
-	result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
-		Ctx:              ctx,
-		Result:           result,
-		FieldPath:        "attributes",
-		FieldResult:      updatedAttrs,
-		ResourceName:     resourceName,
-		HCLAttributePath: "",
-		CanHandle:        m.CanHandle,
-	})
-
-	// Set schema_version
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+	// Return state unchanged - provider handles all state transformations
+	return instance.String(), nil
 }
 
-// transformHeaderSetToMap converts v4 header Set structure to v5 Map structure
-// v4: [{"header": "Host", "values": ["example.com"]}, {"header": "User-Agent", "values": ["Bot"]}]
-// v5: {"Host": ["example.com"], "User-Agent": ["Bot"]}
-func (m *V4ToV5Migrator) transformHeaderSetToMap(headerSet gjson.Result) map[string][]string {
-	headerMap := make(map[string][]string)
-
-	if !headerSet.IsArray() {
-		return headerMap
-	}
-
-	for _, item := range headerSet.Array() {
-		headerName := item.Get("header").String()
-		values := item.Get("values")
-
-		if headerName == "" || !values.Exists() {
-			continue
-		}
-
-		// Extract values array
-		var valuesList []string
-		if values.IsArray() {
-			for _, val := range values.Array() {
-				valuesList = append(valuesList, val.String())
-			}
-		}
-
-		if len(valuesList) > 0 {
-			headerMap[headerName] = valuesList
-		}
-	}
-
-	return headerMap
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+//
+// When this returns true, tf-migrate knows that:
+// - State transformation is delegated to the provider's StateUpgraders
+// - The provider's UpgradeState handlers will perform the actual migration
+// - tf-migrate should only handle configuration transformation
+//
+// This is required for the migration to work correctly.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
 
 func init() {
