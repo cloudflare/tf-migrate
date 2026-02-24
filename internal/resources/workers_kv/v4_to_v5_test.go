@@ -80,77 +80,9 @@ resource "cloudflare_workers_kv" "encoded" {
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
+}
 
-	t.Run("StateTransformation", func(t *testing.T) {
-		tests := []testhelpers.StateTestCase{
-			{
-				Name: "basic state",
-				Input: `{
-					"attributes": {
-						"id": "test-id",
-						"account_id": "d41d8cd98f00b204e9800998ecf8427e",
-						"namespace_id": "f451d2e8c4a1b3d7e6f9c8a7b6d5e4f3",
-						"key": "my_key",
-						"value": "my_value"
-					}
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "test-id",
-						"account_id": "d41d8cd98f00b204e9800998ecf8427e",
-						"namespace_id": "f451d2e8c4a1b3d7e6f9c8a7b6d5e4f3",
-						"key_name": "my_key",
-						"value": "my_value"
-					},
-					"schema_version": 0
-				}`,
-			},
-			{
-				Name: "with special characters",
-				Input: `{
-					"attributes": {
-						"id": "test-id",
-						"account_id": "d41d8cd98f00b204e9800998ecf8427e",
-						"namespace_id": "f451d2e8c4a1b3d7e6f9c8a7b6d5e4f3",
-						"key": "my%20encoded%20key",
-						"value": "{\"test\": \"json\"}"
-					}
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "test-id",
-						"account_id": "d41d8cd98f00b204e9800998ecf8427e",
-						"namespace_id": "f451d2e8c4a1b3d7e6f9c8a7b6d5e4f3",
-						"key_name": "my%20encoded%20key",
-						"value": "{\"test\": \"json\"}"
-					},
-					"schema_version": 0
-				}`,
-			},
-			{
-				Name: "empty value",
-				Input: `{
-					"attributes": {
-						"id": "test-id",
-						"account_id": "d41d8cd98f00b204e9800998ecf8427e",
-						"namespace_id": "f451d2e8c4a1b3d7e6f9c8a7b6d5e4f3",
-						"key": "empty_key",
-						"value": ""
-					}
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "test-id",
-						"account_id": "d41d8cd98f00b204e9800998ecf8427e",
-						"namespace_id": "f451d2e8c4a1b3d7e6f9c8a7b6d5e4f3",
-						"key_name": "empty_key",
-						"value": ""
-					},
-					"schema_version": 0
-				}`,
-			},
-		}
-
-		testhelpers.RunStateTransformTests(t, tests, migrator)
-	})
+// State transformation tests removed - state migration is now handled by provider's StateUpgraders
+func TestV4ToV5StateTransformation_Removed(t *testing.T) {
+	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
 }
