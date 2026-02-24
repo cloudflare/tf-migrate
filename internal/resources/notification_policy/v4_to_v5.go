@@ -6,12 +6,10 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 type V4ToV5Migrator struct {
@@ -164,76 +162,21 @@ func (m *V4ToV5Migrator) buildIntegrationArray(blocks []*hclwrite.Block) hclwrit
 	return hclwrite.TokensForTuple(arrayElements)
 }
 
-// TransformState transforms the JSON state from v4 to v5.
+// TransformState is a no-op for notification_policy.
+// State transformation is handled by the provider's StateUpgraders (UpgradeState).
+// The provider's UpgradeFromV4 function handles:
+// - filters: MaxItems:1 array → SingleNestedAttribute object
+// - Three integration Sets → single mechanisms nested object
+// - Integration items: drop "name" field, keep only "id"
+// - Filter fields: Set → List conversion (~35 fields)
+// - Timestamps: String → RFC3339
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
-
-	// Get attributes from the instance
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Exists() {
-		// Even for invalid instances, set schema_version
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// 1. Convert filters array to object (MaxItems:1 → SingleNestedAttribute)
-	result = state.ConvertMaxItemsOneArrayToObject(result, "attributes", attrs, "filters")
-
-	// 2. Restructure integration fields in state
-	result = m.restructureIntegrationFieldsState(result, attrs)
-
-	// 3. Always set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+	// State transformation is handled by the provider's StateUpgraders
+	// This function is a no-op for notification_policy migration
+	return stateJSON.String(), nil
 }
 
-// restructureIntegrationFieldsState converts v4 integration fields to v5 mechanisms structure in state
-func (m *V4ToV5Migrator) restructureIntegrationFieldsState(result string, attrs gjson.Result) string {
-	// Define integration types to process
-	integrationTypes := []struct {
-		v4Field string
-		v5Key   string
-	}{
-		{v4Field: "email_integration", v5Key: "email"},
-		{v4Field: "webhooks_integration", v5Key: "webhooks"},
-		{v4Field: "pagerduty_integration", v5Key: "pagerduty"},
-	}
-
-	mechanisms := make(map[string]interface{})
-
-	// Process each integration type
-	for _, intType := range integrationTypes {
-		if integration := attrs.Get(intType.v4Field); integration.Exists() && integration.IsArray() {
-			transformedArray := m.transformIntegrationArray(integration)
-			if len(transformedArray) > 0 {
-				mechanisms[intType.v5Key] = transformedArray
-			}
-			// Remove old field
-			result, _ = sjson.Delete(result, "attributes."+intType.v4Field)
-		}
-	}
-
-	// Only add mechanisms if we have any integrations
-	if len(mechanisms) > 0 {
-		result, _ = sjson.Set(result, "attributes.mechanisms", mechanisms)
-	}
-
-	return result
-}
-
-// transformIntegrationArray converts integration array items, keeping only id field and dropping name field
-func (m *V4ToV5Migrator) transformIntegrationArray(integration gjson.Result) []map[string]interface{} {
-	result := make([]map[string]interface{}, 0, len(integration.Array()))
-
-	for _, item := range integration.Array() {
-		// Only keep id field, drop name field
-		if id := item.Get("id"); id.Exists() {
-			result = append(result, map[string]interface{}{
-				"id": id.Value(),
-			})
-		}
-	}
-
-	return result
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
