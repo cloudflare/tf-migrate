@@ -1,13 +1,11 @@
 package zero_trust_tunnel_cloudflared_config
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -65,7 +63,10 @@ func addOriginRequestDefaults(originReqBody *hclwrite.Body) {
 		{"ca_pool", "", false},
 		{"connect_timeout", int64(30), true}, // 30 seconds
 		{"disable_chunked_encoding", false, false},
+		{"http2_origin", false, false},
+		{"keep_alive_connections", int64(100), false},
 		{"keep_alive_timeout", int64(90), true}, // 90 seconds (1m30s)
+		{"no_happy_eyeballs", false, false},
 		{"no_tls_verify", false, false},
 		{"origin_server_name", "", false},
 		{"proxy_type", "", false},
@@ -84,6 +85,31 @@ func addOriginRequestDefaults(originReqBody *hclwrite.Body) {
 				tfhcl.SetAttributeValue(originReqBody, pair.field, seconds)
 			}
 			// If conversion fails, leave as-is (may already be an integer)
+		}
+	}
+}
+
+// removeIncompleteAccessBlocks removes access blocks that don't have both aud_tag and team_name.
+// In v4, access could have just "required", but v5 requires aud_tag and team_name when access block exists.
+//
+// Dropping the block is safe because aud_tag and team_name identify which Access app to validate against.
+// Without them, the API receives empty values and does not meaningfully enforce access regardless of the
+// required field value:
+//   - required = false (or omitted): soft enforcement — JWT is checked but traffic is not denied on failure.
+//     Dropping the block has no practical security impact.
+//   - required = true: hard enforcement is intended, but without aud_tag/team_name the Access app is
+//     unidentified and enforcement is ineffective in v4 as well. Dropping preserves that behavior.
+func removeIncompleteAccessBlocks(originReqBody *hclwrite.Body) {
+	accessBlocks := tfhcl.FindBlocksByType(originReqBody, "access")
+	for _, accessBlock := range accessBlocks {
+		accessBody := accessBlock.Body()
+		hasAudTag := accessBody.GetAttribute("aud_tag") != nil
+		hasTeamName := accessBody.GetAttribute("team_name") != nil
+
+		// If either aud_tag or team_name is missing, remove the entire access block
+		if !hasAudTag || !hasTeamName {
+			tfhcl.RemoveBlocksByType(originReqBody, "access")
+			break // Only one access block allowed (MaxItems:1)
 		}
 	}
 }
@@ -122,29 +148,19 @@ func tryConvertDurationAttribute(attr *hclwrite.Attribute) (int64, bool) {
 	return seconds, true
 }
 
-// removeIncompleteAccessBlocks removes access blocks that don't have both aud_tag and team_name
-// In v4, access could have just "required", but v5 requires aud_tag and team_name when access block exists
-func removeIncompleteAccessBlocks(originReqBody *hclwrite.Body) {
-	accessBlocks := tfhcl.FindBlocksByType(originReqBody, "access")
-	for _, accessBlock := range accessBlocks {
-		accessBody := accessBlock.Body()
-		hasAudTag := accessBody.GetAttribute("aud_tag") != nil
-		hasTeamName := accessBody.GetAttribute("team_name") != nil
-
-		// If either aud_tag or team_name is missing, remove the entire access block
-		if !hasAudTag || !hasTeamName {
-			tfhcl.RemoveBlocksByType(originReqBody, "access")
-			break // Only one access block allowed (MaxItems:1)
-		}
-	}
-}
-
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	resourceType := tfhcl.GetResourceType(block)
+	resourceName := tfhcl.GetResourceName(block)
 
-	// Rename resource type if using deprecated name
+	// When the deprecated name is used, rename the resource type AND generate a moved block.
+	// The moved block tells Terraform to invoke the provider's MoveState hook, which reads the
+	// old cloudflare_tunnel_config state using SourceV4TunnelConfigSchema and transforms it.
+	var movedBlock *hclwrite.Block
 	if resourceType == "cloudflare_tunnel_config" {
 		tfhcl.RenameResourceType(block, "cloudflare_tunnel_config", "cloudflare_zero_trust_tunnel_cloudflared_config")
+		from := "cloudflare_tunnel_config." + resourceName
+		to := "cloudflare_zero_trust_tunnel_cloudflared_config." + resourceName
+		movedBlock = tfhcl.CreateMovedBlock(from, to)
 	}
 
 	body := block.Body()
@@ -237,151 +253,20 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.ConvertBlockToAttributeWithNestedAndArrays(body, "config", alwaysArrayFields)
 	}
 
+	resultBlocks := []*hclwrite.Block{block}
+	if movedBlock != nil {
+		resultBlocks = append(resultBlocks, movedBlock)
+	}
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         resultBlocks,
+		RemoveOriginal: movedBlock != nil,
 	}, nil
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := instance.String()
-	attrs := instance.Get("attributes")
-
-	if !attrs.Exists() {
-		return result, nil
-	}
-
-	// Always use relative path within the instance JSON (not the full state path)
-	path := "attributes"
-
-	// 1. Transform config array [{}] → object {}
-	result = state.TransformFieldArrayToObject(result, path, attrs, "config", state.ArrayToObjectOptions{})
-
-	// Get the transformed config to work with (re-parse from root)
-	resultParsed := gjson.Parse(result)
-	attrs = resultParsed.Get(path)
-	configObj := attrs.Get("config")
-
-	if configObj.Exists() && configObj.IsObject() {
-		configPath := path + ".config"
-
-		// 2. Rename ingress_rule → ingress inside config
-		result = state.RenameField(result, configPath, configObj, "ingress_rule", "ingress")
-
-		// 3. Remove deprecated fields from config
-		result = state.RemoveFields(result, configPath, configObj, "warp_routing")
-
-		// Refresh config after changes
-		configObj = gjson.Parse(result).Get(configPath)
-
-		// 4. Transform config-level origin_request array → object (preserving nil fields)
-		originReqPath := configPath + ".origin_request"
-		result = state.TransformFieldArrayToObject(result, configPath, configObj, "origin_request", state.ArrayToObjectOptions{
-			// Keep empty objects with nil fields as-is, don't convert to null
-		})
-		// Post-process: remove deprecated fields, convert durations, transform nested access
-		configObj = gjson.Parse(result).Get(configPath)
-		originReqField := configObj.Get("origin_request")
-		if originReqField.Exists() && !originReqField.IsArray() {
-			result = transformOriginRequestPostProcess(result, originReqPath, originReqField)
-		}
-
-		// 5. Transform ingress array elements' origin_request
-		ingressArray := gjson.Parse(result).Get(configPath + ".ingress")
-		if ingressArray.Exists() && ingressArray.IsArray() {
-			for i, ingressItem := range ingressArray.Array() {
-				originReq := ingressItem.Get("origin_request")
-				if originReq.Exists() {
-					ingressItemPath := fmt.Sprintf("%s.ingress.%d", configPath, i)
-					ingressOriginReqPath := ingressItemPath + ".origin_request"
-
-					// Transform array to object (preserving nil fields)
-					result = state.TransformFieldArrayToObject(result, ingressItemPath, ingressItem, "origin_request", state.ArrayToObjectOptions{
-						// Keep empty objects with nil fields as-is, don't convert to null
-					})
-
-					// Post-process
-					ingressItem = gjson.Parse(result).Get(ingressItemPath)
-					originReqField := ingressItem.Get("origin_request")
-					if originReqField.Exists() && !originReqField.IsArray() {
-						result = transformOriginRequestPostProcess(result, ingressOriginReqPath, originReqField)
-					}
-				}
-			}
-		}
-
-	}
-
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	// Update the type field if it exists (for unit tests that pass instance-level type)
-	if instance.Get("type").Exists() {
-		result, _ = sjson.Set(result, "type", "cloudflare_zero_trust_tunnel_cloudflared_config")
-	}
-
-	return result, nil
-}
-
-// transformOriginRequestPostProcess performs post-processing on origin_request after array-to-object conversion
-// This handles: removing deprecated fields, converting duration strings to nanoseconds, transforming nested access
-func transformOriginRequestPostProcess(stateJSON string, path string, originReq gjson.Result) string {
-	if !originReq.Exists() || !originReq.IsObject() {
-		return stateJSON
-	}
-
-	// Remove deprecated fields
-	stateJSON = state.RemoveFields(stateJSON, path, originReq, "bastion_mode", "proxy_address", "proxy_port", "ip_rules")
-
-	// Refresh after removals
-	originReq = gjson.Parse(stateJSON).Get(path)
-
-	// Convert duration fields from strings to int64 seconds
-	// v4 stored these as strings (e.g., "30s", "1m30s"), v5 expects integers (seconds)
-	durationFields := []string{"connect_timeout", "tls_timeout", "tcp_keep_alive", "keep_alive_timeout"}
-	for _, field := range durationFields {
-		fieldValue := originReq.Get(field)
-		if fieldValue.Exists() {
-			// Use the general converter which handles both strings and numbers
-			if converted := state.ConvertDurationToSeconds(fieldValue); converted != nil {
-				stateJSON, _ = sjson.Set(stateJSON, path+"."+field, converted)
-			}
-		}
-	}
-
-	// Convert keep_alive_connections from int to int64
-	keepAliveConns := originReq.Get("keep_alive_connections")
-	if keepAliveConns.Exists() {
-		stateJSON, _ = sjson.Set(stateJSON, path+".keep_alive_connections", state.ConvertToInt64(keepAliveConns))
-	}
-
-	// Refresh origin_request after duration conversions
-	originReq = gjson.Parse(stateJSON).Get(path)
-
-	// Transform nested access array → object
-	accessField := originReq.Get("access")
-	if accessField.Exists() {
-		stateJSON = state.TransformFieldArrayToObject(stateJSON, path, originReq, "access", state.ArrayToObjectOptions{
-			// Keep empty objects with nil fields as-is
-		})
-
-		// After transforming, check if access has required fields. If not, remove it.
-		// Refresh after transformation
-		originReq = gjson.Parse(stateJSON).Get(path)
-		accessObj := originReq.Get("access")
-		if accessObj.Exists() && accessObj.IsObject() {
-			hasAudTag := accessObj.Get("aud_tag").Exists()
-			hasTeamName := accessObj.Get("team_name").Exists()
-
-			// If either required field is missing, remove the entire access block
-			if !hasAudTag || !hasTeamName {
-				stateJSON = state.RemoveFields(stateJSON, path, originReq, "access")
-			}
-		}
-	}
-
-	// Note: We do NOT delete empty origin_request objects with all nil fields
-	// v5 expects to keep them as-is to match v4 state behavior
-
-	return stateJSON
+	// State migration is now handled by the provider's UpgradeState mechanism.
+	// The v5 provider transforms v4 state directly when loading it, so tf-migrate
+	// no longer needs to perform state transformation.
+	return instance.String(), nil
 }
