@@ -3,7 +3,6 @@ package zero_trust_device_posture_integration
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -45,6 +44,8 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	resourceName := tfhcl.GetResourceName(block)
+
 	// Rename both possible v4 resource names to v5 name
 	tfhcl.RenameResourceType(block, "cloudflare_device_posture_integration", "cloudflare_zero_trust_device_posture_integration")
 
@@ -74,63 +75,26 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.EnsureAttribute(body, "config", map[string]any{})
 	}
 
+	// Generate moved block for resource rename
+	oldType, newType := m.GetResourceRename()
+	from := oldType + "." + resourceName
+	to := newType + "." + resourceName
+	movedBlock := tfhcl.CreateMovedBlock(from, to)
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         []*hclwrite.Block{block, movedBlock},
+		RemoveOriginal: true,
 	}, nil
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState)
+	// The moved block generated in TransformConfig triggers the provider's migration logic
+	// This function is a no-op for zero_trust_device_posture_integration migration
+	return stateJSON.String(), nil
+}
 
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Exists() {
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// Transform config from array to object
-	// v4: "config": [{ ... }]
-	// v5: "config": { ... }
-	configField := attrs.Get("config")
-	if configField.Exists() {
-		if configField.IsArray() && len(configField.Array()) > 0 {
-			// Extract first element from array and set as object
-			configObj := configField.Array()[0]
-			result, _ = sjson.Set(result, "attributes.config", configObj.Value())
-
-			// Transform empty values to null for fields not explicitly set in config
-			// v4 sets optional fields to empty string, v5 uses null
-			updatedAttrs := gjson.Parse(result).Get("attributes")
-			updatedConfigField := updatedAttrs.Get("config")
-			result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
-				Ctx:              ctx,
-				Result:           result,
-				FieldPath:        "attributes.config",
-				FieldResult:      updatedConfigField,
-				ResourceName:     resourceName,
-				HCLAttributePath: "config",
-				CanHandle:        m.CanHandle,
-			})
-		} else if configField.IsArray() && len(configField.Array()) == 0 {
-			// Empty array -> set empty object
-			result, _ = sjson.Set(result, "attributes.config", map[string]any{})
-		}
-	}
-
-	// Add interval with default if missing (required in v5)
-	intervalField := attrs.Get("interval")
-	if !intervalField.Exists() || intervalField.String() == "" {
-		result, _ = sjson.Set(result, "attributes.interval", "24h")
-	}
-
-	// Remove deprecated identifier field
-	if attrs.Get("identifier").Exists() {
-		result, _ = sjson.Delete(result, "attributes.identifier")
-	}
-
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
