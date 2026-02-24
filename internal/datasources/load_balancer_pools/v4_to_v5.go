@@ -3,7 +3,6 @@ package load_balancer_pools
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -74,42 +73,34 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState handles state file transformations.
-// Main transformations:
-// 1. Set schema_version = 0
-// 2. Remove filter field (if present)
-// 3. Rename pools → result (preserving data)
+// TransformState is a no-op for load_balancer_pools datasource migration.
+//
+// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
+// The provider's UpgradeState handlers perform the actual state migration when
+// Terraform detects a schema version mismatch.
+//
+// tf-migrate's role is limited to:
+// - Transforming HCL configuration syntax (handled by TransformConfig)
+// - Updating cross-file attribute references (handled by GetAttributeRenames)
+//
+// This delegation to the provider is the correct architectural pattern because:
+// 1. The provider is the source of truth for state structure
+// 2. Provider has access to proper schema definitions for type-safe parsing
+// 3. Eliminates duplication of transformation logic
+// 4. Ensures migrations work correctly with Terraform's state upgrade mechanisms
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := instance.String()
-	attrs := instance.Get("attributes")
+	// Return state unchanged - provider handles all state transformations
+	return instance.String(), nil
+}
 
-	if !attrs.Exists() {
-		// No attributes to transform, but still set schema_version
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	// Remove filter field (if present in state)
-	result, _ = sjson.Delete(result, "attributes.filter")
-
-	// Rename pools → result (preserving data)
-	poolsField := attrs.Get("pools")
-	if poolsField.Exists() {
-		if poolsField.IsArray() {
-			// Copy pools to result
-			result, _ = sjson.Set(result, "attributes.result", poolsField.Value())
-			// Delete old pools field
-			result, _ = sjson.Delete(result, "attributes.pools")
-		} else {
-			// pools is null or missing - just delete it
-			result, _ = sjson.Delete(result, "attributes.pools")
-		}
-	}
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this datasource uses provider-based state migration.
+//
+// When this returns true, tf-migrate knows that:
+// - State transformation is delegated to the provider's StateUpgraders
+// - The provider's UpgradeState handlers will perform the actual migration
+// - tf-migrate should only handle configuration transformation
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
 
 func init() {
