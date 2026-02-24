@@ -1,0 +1,23 @@
+# Drift Exemptions for zero_trust_device_managed_networks resource
+#
+# Resource-specific exemptions for cloudflare_zero_trust_device_managed_networks
+
+version: 1
+
+exemptions:
+  # Resource rename: cloudflare_device_managed_networks -> cloudflare_zero_trust_device_managed_networks
+  # Moved blocks show "has moved to" messages which are NOT actual drift
+  - name: "resource_rename_moved_blocks"
+    description: "Exempt moved blocks for resource rename (expected on first migration)"
+    resource_types:
+      - "cloudflare_device_managed_networks"
+      - "cloudflare_zero_trust_device_managed_networks"
+    patterns:
+      - '#.*has moved to'
+      - 'cloudflare_device_managed_networks.*has moved to'
+      - 'has moved to.*cloudflare_zero_trust_device_managed_networks'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: true  # Enable to see what's being exempted

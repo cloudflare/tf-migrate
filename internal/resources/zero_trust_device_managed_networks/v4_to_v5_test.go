@@ -33,7 +33,13 @@ resource "cloudflare_device_managed_networks" "example" {
     tls_sockaddr = "example.com:443"
     sha256       = "abcd1234"
   }
-}`,
+}
+
+moved {
+  from = cloudflare_device_managed_networks.example
+  to   = cloudflare_zero_trust_device_managed_networks.example
+}
+`,
 			},
 			{
 				Name: "Multiple resources in one file",
@@ -69,6 +75,11 @@ resource "cloudflare_device_managed_networks" "network2" {
   }
 }
 
+moved {
+  from = cloudflare_device_managed_networks.network1
+  to   = cloudflare_zero_trust_device_managed_networks.network1
+}
+
 resource "cloudflare_zero_trust_device_managed_networks" "network2" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "network-2"
@@ -77,145 +88,20 @@ resource "cloudflare_zero_trust_device_managed_networks" "network2" {
     tls_sockaddr = "network2.example.com:443"
     sha256       = "def456"
   }
-}`,
+}
+
+moved {
+  from = cloudflare_device_managed_networks.network2
+  to   = cloudflare_zero_trust_device_managed_networks.network2
+}
+`,
 			},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	// Test state transformations
-	t.Run("StateTransformation", func(t *testing.T) {
-		tests := []testhelpers.StateTestCase{
-			{
-				Name: "Basic state with array config",
-				Input: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [{
-    "type": "cloudflare_device_managed_networks",
-    "name": "example",
-    "instances": [{
-      "attributes": {
-        "id": "abc123-network-id",
-        "account_id": "f037e56e89293a057740de681ac9abbe",
-        "name": "example-network",
-        "type": "tls",
-        "config": [{
-          "tls_sockaddr": "example.com:443",
-          "sha256": "abcd1234"
-        }]
-      },
-      "schema_version": 0
-    }]
-  }]
-}`,
-				Expected: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [{
-    "type": "cloudflare_zero_trust_device_managed_networks",
-    "name": "example",
-    "instances": [{
-      "attributes": {
-        "id": "abc123-network-id",
-        "network_id": "abc123-network-id",
-        "account_id": "f037e56e89293a057740de681ac9abbe",
-        "name": "example-network",
-        "type": "tls",
-        "config": {
-          "tls_sockaddr": "example.com:443",
-          "sha256": "abcd1234"
-        }
-      },
-      "schema_version": 0
-    }]
-  }]
-}`,
-			},
-			{
-				Name: "Multiple instances",
-				Input: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [{
-    "type": "cloudflare_device_managed_networks",
-    "name": "network",
-    "instances": [
-      {
-        "index_key": 0,
-        "attributes": {
-          "id": "network-id-1",
-          "account_id": "f037e56e89293a057740de681ac9abbe",
-          "name": "network-1",
-          "type": "tls",
-          "config": [{
-            "tls_sockaddr": "network1.example.com:443",
-            "sha256": "abc123"
-          }]
-        },
-        "schema_version": 0
-      },
-      {
-        "index_key": 1,
-        "attributes": {
-          "id": "network-id-2",
-          "account_id": "f037e56e89293a057740de681ac9abbe",
-          "name": "network-2",
-          "type": "tls",
-          "config": [{
-            "tls_sockaddr": "network2.example.com:443",
-            "sha256": "def456"
-          }]
-        },
-        "schema_version": 0
-      }
-    ]
-  }]
-}`,
-				Expected: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [{
-    "type": "cloudflare_zero_trust_device_managed_networks",
-    "name": "network",
-    "instances": [
-      {
-        "index_key": 0,
-        "attributes": {
-          "id": "network-id-1",
-          "network_id": "network-id-1",
-          "account_id": "f037e56e89293a057740de681ac9abbe",
-          "name": "network-1",
-          "type": "tls",
-          "config": {
-            "tls_sockaddr": "network1.example.com:443",
-            "sha256": "abc123"
-          }
-        },
-        "schema_version": 0
-      },
-      {
-        "index_key": 1,
-        "attributes": {
-          "id": "network-id-2",
-          "network_id": "network-id-2",
-          "account_id": "f037e56e89293a057740de681ac9abbe",
-          "name": "network-2",
-          "type": "tls",
-          "config": {
-            "tls_sockaddr": "network2.example.com:443",
-            "sha256": "def456"
-          }
-        },
-        "schema_version": 0
-      }
-    ]
-  }]
-}`,
-			},
-		}
-
-		testhelpers.RunStateTransformTests(t, tests, migrator)
-	})
+	// State transformation tests removed - state migration is now handled by provider StateUpgraders
+	// tf-migrate only transforms configs and generates moved blocks
+	// The provider's MoveState and UpgradeState handlers automatically transform state when Terraform runs
 }
