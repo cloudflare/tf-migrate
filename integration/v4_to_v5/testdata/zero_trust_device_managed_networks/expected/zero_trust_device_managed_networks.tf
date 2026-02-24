@@ -38,6 +38,28 @@ locals {
   }
 }
 
+
+
+
+
+locals {
+  enable_test_network = true
+  enable_dev_network  = false
+}
+
+
+
+
+
+
+
+
+variable "custom_network_name" {
+  type    = string
+  default = "custom"
+}
+
+
 resource "cloudflare_zero_trust_device_managed_networks" "basic" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-basic-network"
@@ -47,6 +69,11 @@ resource "cloudflare_zero_trust_device_managed_networks" "basic" {
     tls_sockaddr = "basic.cf-tf-test.com:443"
     sha256       = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
   }
+}
+
+moved {
+  from = cloudflare_device_managed_networks.basic
+  to   = cloudflare_zero_trust_device_managed_networks.basic
 }
 
 resource "cloudflare_zero_trust_device_managed_networks" "map_foreach" {
@@ -62,6 +89,11 @@ resource "cloudflare_zero_trust_device_managed_networks" "map_foreach" {
   }
 }
 
+moved {
+  from = cloudflare_device_managed_networks.map_foreach
+  to   = cloudflare_zero_trust_device_managed_networks.map_foreach
+}
+
 resource "cloudflare_zero_trust_device_managed_networks" "set_foreach" {
   for_each = toset(["alpha", "beta", "gamma", "delta"])
 
@@ -73,6 +105,11 @@ resource "cloudflare_zero_trust_device_managed_networks" "set_foreach" {
     tls_sockaddr = "${each.value}.cf-tf-test.com:443"
     sha256       = "1111111111111111111111111111111111111111111111111111111111111111"
   }
+}
+
+moved {
+  from = cloudflare_device_managed_networks.set_foreach
+  to   = cloudflare_zero_trust_device_managed_networks.set_foreach
 }
 
 resource "cloudflare_zero_trust_device_managed_networks" "counted" {
@@ -88,9 +125,9 @@ resource "cloudflare_zero_trust_device_managed_networks" "counted" {
   }
 }
 
-locals {
-  enable_test_network = true
-  enable_dev_network  = false
+moved {
+  from = cloudflare_device_managed_networks.counted
+  to   = cloudflare_zero_trust_device_managed_networks.counted
 }
 
 resource "cloudflare_zero_trust_device_managed_networks" "conditional_enabled" {
@@ -106,6 +143,11 @@ resource "cloudflare_zero_trust_device_managed_networks" "conditional_enabled" {
   }
 }
 
+moved {
+  from = cloudflare_device_managed_networks.conditional_enabled
+  to   = cloudflare_zero_trust_device_managed_networks.conditional_enabled
+}
+
 resource "cloudflare_zero_trust_device_managed_networks" "conditional_disabled" {
   count = local.enable_dev_network ? 1 : 0
 
@@ -119,6 +161,11 @@ resource "cloudflare_zero_trust_device_managed_networks" "conditional_disabled" 
   }
 }
 
+moved {
+  from = cloudflare_device_managed_networks.conditional_disabled
+  to   = cloudflare_zero_trust_device_managed_networks.conditional_disabled
+}
+
 resource "cloudflare_zero_trust_device_managed_networks" "with_functions" {
   account_id = var.cloudflare_account_id
   name       = join("-", [local.name_prefix, "functions", "test"])
@@ -128,6 +175,11 @@ resource "cloudflare_zero_trust_device_managed_networks" "with_functions" {
     tls_sockaddr = "functions.cf-tf-test.com:443"
     sha256       = "functions1234567890abcdef1234567890abcdef1234567890abcdef1234567"
   }
+}
+
+moved {
+  from = cloudflare_device_managed_networks.with_functions
+  to   = cloudflare_zero_trust_device_managed_networks.with_functions
 }
 
 resource "cloudflare_zero_trust_device_managed_networks" "ipv6" {
@@ -141,6 +193,11 @@ resource "cloudflare_zero_trust_device_managed_networks" "ipv6" {
   }
 }
 
+moved {
+  from = cloudflare_device_managed_networks.ipv6
+  to   = cloudflare_zero_trust_device_managed_networks.ipv6
+}
+
 resource "cloudflare_zero_trust_device_managed_networks" "custom_port" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-custom-port"
@@ -150,6 +207,11 @@ resource "cloudflare_zero_trust_device_managed_networks" "custom_port" {
     tls_sockaddr = "custom-port.cf-tf-test.com:8443"
     sha256       = "5555555555555555555555555555555555555555555555555555555555555555"
   }
+}
+
+moved {
+  from = cloudflare_device_managed_networks.custom_port
+  to   = cloudflare_zero_trust_device_managed_networks.custom_port
 }
 
 resource "cloudflare_zero_trust_device_managed_networks" "with_lifecycle" {
@@ -167,6 +229,11 @@ resource "cloudflare_zero_trust_device_managed_networks" "with_lifecycle" {
   }
 }
 
+moved {
+  from = cloudflare_device_managed_networks.with_lifecycle
+  to   = cloudflare_zero_trust_device_managed_networks.with_lifecycle
+}
+
 resource "cloudflare_zero_trust_device_managed_networks" "special_hash" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-special-hash"
@@ -178,9 +245,9 @@ resource "cloudflare_zero_trust_device_managed_networks" "special_hash" {
   }
 }
 
-variable "custom_network_name" {
-  type    = string
-  default = "custom"
+moved {
+  from = cloudflare_device_managed_networks.special_hash
+  to   = cloudflare_zero_trust_device_managed_networks.special_hash
 }
 
 resource "cloudflare_zero_trust_device_managed_networks" "with_variables" {
@@ -192,4 +259,9 @@ resource "cloudflare_zero_trust_device_managed_networks" "with_variables" {
     tls_sockaddr = "${var.custom_network_name}.cf-tf-test.com:443"
     sha256       = "7777777777777777777777777777777777777777777777777777777777777777"
   }
+}
+
+moved {
+  from = cloudflare_device_managed_networks.with_variables
+  to   = cloudflare_zero_trust_device_managed_networks.with_variables
 }
