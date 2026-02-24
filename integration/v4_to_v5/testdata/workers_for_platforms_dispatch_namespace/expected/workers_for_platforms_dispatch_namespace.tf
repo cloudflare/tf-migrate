@@ -240,11 +240,6 @@ resource "cloudflare_workers_for_platforms_dispatch_namespace" "depends_derived"
 # These resources use the deprecated v4 name and should be renamed during migration
 # ==============================================================================
 
-# Test 35: Basic deprecated resource name
-resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_basic" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-deprecated-basic"
-}
 
 # Test 36-38: Deprecated resource with for_each (3 instances)
 locals {
@@ -255,28 +250,8 @@ locals {
   }
 }
 
-resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_for_each" {
-  for_each   = local.deprecated_map
-  account_id = var.cloudflare_account_id
-  name       = each.value
-}
 
-# Test 39-41: Deprecated resource with count (3 instances)
-resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_count" {
-  count      = 3
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-deprecated-count-${count.index}"
-}
 
-# Test 42: Deprecated resource with lifecycle
-resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_lifecycle" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-deprecated-lifecycle"
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
 
 # ==============================================================================
 # Summary: 42 total resource instances
@@ -293,3 +268,52 @@ resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_lifec
 # - Edge cases: 4 instances
 # - Pattern 10 (deprecated name): 8 instances
 # Total: 42 instances (exceeds 15-30 target)
+
+# Test 35: Basic deprecated resource name
+resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_basic" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-deprecated-basic"
+}
+
+moved {
+  from = cloudflare_workers_for_platforms_namespace.deprecated_basic
+  to   = cloudflare_workers_for_platforms_dispatch_namespace.deprecated_basic
+}
+
+resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_for_each" {
+  for_each   = local.deprecated_map
+  account_id = var.cloudflare_account_id
+  name       = each.value
+}
+
+moved {
+  from = cloudflare_workers_for_platforms_namespace.deprecated_for_each
+  to   = cloudflare_workers_for_platforms_dispatch_namespace.deprecated_for_each
+}
+
+# Test 39-41: Deprecated resource with count (3 instances)
+resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_count" {
+  count      = 3
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-deprecated-count-${count.index}"
+}
+
+moved {
+  from = cloudflare_workers_for_platforms_namespace.deprecated_count
+  to   = cloudflare_workers_for_platforms_dispatch_namespace.deprecated_count
+}
+
+# Test 42: Deprecated resource with lifecycle
+resource "cloudflare_workers_for_platforms_dispatch_namespace" "deprecated_lifecycle" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-deprecated-lifecycle"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+moved {
+  from = cloudflare_workers_for_platforms_namespace.deprecated_lifecycle
+  to   = cloudflare_workers_for_platforms_dispatch_namespace.deprecated_lifecycle
+}
