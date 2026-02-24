@@ -3,7 +3,6 @@ package rulesets
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -61,32 +60,31 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState handles state file transformations.
-// This function receives a single datasource instance and returns the transformed instance JSON.
+// TransformState is a no-op for rulesets datasource migration.
+//
+// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
+// The provider's UpgradeState handlers perform the actual state migration when
+// Terraform detects a schema version mismatch.
+//
+// tf-migrate's role is limited to:
+// - Transforming HCL configuration syntax (handled by TransformConfig)
+//
+// This delegation to the provider is the correct architectural pattern because:
+// 1. The provider is the source of truth for state structure
+// 2. Provider has access to proper schema definitions for type-safe parsing
+// 3. Eliminates duplication of transformation logic
+// 4. Ensures migrations work correctly with Terraform's state upgrade mechanisms
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// Return state unchanged - provider handles all state transformations
+	return stateJSON.String(), nil
+}
 
-	// Check if it's a valid datasource instance
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		// Even for invalid instances, set schema_version for v5
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	attrs := stateJSON.Get("attributes")
-
-	// 1. Remove filter block from state (if present)
-	if attrs.Get("filter").Exists() {
-		result, _ = sjson.Delete(result, "attributes.filter")
-	}
-
-	// 2. Remove include_rules field from state (if present)
-	if attrs.Get("include_rules").Exists() {
-		result, _ = sjson.Delete(result, "attributes.include_rules")
-	}
-
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this datasource uses provider-based state migration.
+//
+// When this returns true, tf-migrate knows that:
+// - State transformation is delegated to the provider's StateUpgraders
+// - The provider's UpgradeState handlers will perform the actual migration
+// - tf-migrate should only handle configuration transformation
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
