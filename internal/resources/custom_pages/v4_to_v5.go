@@ -3,7 +3,6 @@ package custom_pages
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -67,33 +66,15 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 }
 
 // TransformState handles state file transformations.
-// This function receives a single resource instance and returns the transformed instance JSON.
+// State transformation is handled by the provider's StateUpgraders (UpgradeState).
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State passthrough - provider handles all state migration
+	return stateJSON.String(), nil
+}
 
-	// Check if it's a valid custom_pages instance
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		// Even for invalid instances, set schema_version for v5
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	attrs := stateJSON.Get("attributes")
-
-	// 1. type → identifier
-	if typeField := attrs.Get("type"); typeField.Exists() {
-		result, _ = sjson.Set(result, "attributes.identifier", typeField.Value())
-		result, _ = sjson.Delete(result, "attributes.type")
-	}
-
-	// 2. Ensure state field exists (required in v5, optional in v4)
-	if !attrs.Get("state").Exists() {
-		// Add default value if missing
-		result, _ = sjson.Set(result, "attributes.state", "default")
-	}
-
-	// 3. Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+// This tells tf-migrate that the provider's StateUpgraders (UpgradeState) handle all state
+// transformation, not tf-migrate's TransformState function.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }

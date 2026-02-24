@@ -98,83 +98,8 @@ resource "cloudflare_custom_pages" "error_1000" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	// Test state transformations
-	t.Run("StateTransformation", func(t *testing.T) {
-		tests := []testhelpers.StateTestCase{
-			{
-				Name: "basic state transformation",
-				Input: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "500_errors",
-    "zone_id": "14e48053f1836c10cb86ba178633826a",
-    "account_id": null,
-    "type": "500_errors",
-    "url": "https://cf-tf-test.com/500.html",
-    "state": "customized"
-  }
-}`,
-				Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "500_errors",
-    "zone_id": "14e48053f1836c10cb86ba178633826a",
-    "account_id": null,
-    "identifier": "500_errors",
-    "url": "https://cf-tf-test.com/500.html",
-    "state": "customized"
-  }
-}`,
-			},
-			{
-				Name: "state transformation with missing state field",
-				Input: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "500_errors",
-    "zone_id": "14e48053f1836c10cb86ba178633826a",
-    "type": "500_errors",
-    "url": "https://cf-tf-test.com/500.html"
-  }
-}`,
-				Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "500_errors",
-    "zone_id": "14e48053f1836c10cb86ba178633826a",
-    "identifier": "500_errors",
-    "url": "https://cf-tf-test.com/500.html",
-    "state": "default"
-  }
-}`,
-			},
-			{
-				Name: "account-scoped state",
-				Input: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "basic_challenge",
-    "account_id": "dbb2ef7988061049c4bd32bf6883fde0",
-    "zone_id": null,
-    "type": "basic_challenge",
-    "url": "https://cf-tf-test.com/challenge.html",
-    "state": "default"
-  }
-}`,
-				Expected: `{
-  "schema_version": 0,
-  "attributes": {
-    "id": "basic_challenge",
-    "account_id": "dbb2ef7988061049c4bd32bf6883fde0",
-    "zone_id": null,
-    "identifier": "basic_challenge",
-    "url": "https://cf-tf-test.com/challenge.html",
-    "state": "default"
-  }
-}`,
-			},
-		}
-
-		testhelpers.RunStateTransformTests(t, tests, migrator)
+	// State transformation tests removed - state migration is now handled by provider's StateUpgraders
+	t.Run("StateTransformation_Removed", func(t *testing.T) {
+		t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
 	})
 }

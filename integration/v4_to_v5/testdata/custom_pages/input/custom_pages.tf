@@ -14,10 +14,15 @@ variable "cloudflare_domain" {
   type        = string
 }
 
+# URL for custom pages - this URL contains the required tokens for all error page types
+locals {
+  custom_pages_url = "https://custom-pages-basic.terraform-provider-acceptance-testing.workers.dev/"
+}
+
 # Basic zone-scoped custom page with real URL
 resource "cloudflare_custom_pages" "error_500" {
   zone_id = var.cloudflare_zone_id
   type    = "500_errors"
-  url     = "https://custom-pages-500-error-for-e2e.terraform-testing-a09.workers.dev/"
+  url     = local.custom_pages_url
   state   = "customized"
 }
