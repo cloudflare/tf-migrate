@@ -12,58 +12,11 @@ locals {
   account_id = var.cloudflare_account_id
 }
 
-# Default profile (will receive split tunnels without policy_id)
-resource "cloudflare_zero_trust_device_default_profile" "default" {
-  account_id = local.account_id
-  include = [{
-    address     = "203.0.113.0/24"
-    description = "Corporate VPN"
-  }]
-  exclude = [{
-    address     = "192.168.0.0/16"
-    description = "Private network"
-    }, {
-    address = "10.0.0.0/8"
-    host    = "internal.local"
-  }]
-  register_interface_ip_with_dns = true
-  sccm_vpn_boundary_support      = false
-}
 
 
 
-# Custom profile with single tunnel
-resource "cloudflare_zero_trust_device_custom_profile" "single_tunnel" {
-  account_id = local.account_id
-  name       = "single_tunnel_profile"
-  match      = "identity.groups == \"developers\""
-  precedence = 1000
-  exclude = [{
-    address     = "172.16.0.0/12"
-    description = "Dev environment"
-  }]
-}
 
 
-# Custom profile with multiple tunnels
-resource "cloudflare_zero_trust_device_custom_profile" "multiple_tunnels" {
-  account_id = local.account_id
-  name       = "multiple_tunnels_profile"
-  match      = "identity.groups == \"admins\""
-  precedence = 1100
-  include = [{
-    address     = "10.100.0.0/16"
-    description = "Admin resources"
-    host        = "prod.internal"
-  }]
-  exclude = [{
-    address     = "172.20.0.0/16"
-    description = "Admin network 1"
-    }, {
-    address = "172.21.0.0/16"
-    host    = "admin.internal"
-  }]
-}
 
 
 
@@ -111,3 +64,68 @@ resource "cloudflare_zero_trust_device_custom_profile" "multiple_tunnels" {
 *  }
 */
 
+
+# Default profile (will receive split tunnels without policy_id)
+resource "cloudflare_zero_trust_device_default_profile" "default" {
+  account_id = local.account_id
+  include = [{
+    address     = "203.0.113.0/24"
+    description = "Corporate VPN"
+  }]
+  exclude = [{
+    address     = "192.168.0.0/16"
+    description = "Private network"
+    }, {
+    address = "10.0.0.0/8"
+    host    = "internal.local"
+  }]
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.default
+  to   = cloudflare_zero_trust_device_default_profile.default
+}
+
+# Custom profile with single tunnel
+resource "cloudflare_zero_trust_device_custom_profile" "single_tunnel" {
+  account_id = local.account_id
+  name       = "single_tunnel_profile"
+  match      = "identity.groups == \"developers\""
+  precedence = 1000
+  exclude = [{
+    address     = "172.16.0.0/12"
+    description = "Dev environment"
+  }]
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.single_tunnel
+  to   = cloudflare_zero_trust_device_custom_profile.single_tunnel
+}
+
+# Custom profile with multiple tunnels
+resource "cloudflare_zero_trust_device_custom_profile" "multiple_tunnels" {
+  account_id = local.account_id
+  name       = "multiple_tunnels_profile"
+  match      = "identity.groups == \"admins\""
+  precedence = 1100
+  include = [{
+    address     = "10.100.0.0/16"
+    description = "Admin resources"
+    host        = "prod.internal"
+  }]
+  exclude = [{
+    address     = "172.20.0.0/16"
+    description = "Admin network 1"
+    }, {
+    address = "172.21.0.0/16"
+    host    = "admin.internal"
+  }]
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.multiple_tunnels
+  to   = cloudflare_zero_trust_device_custom_profile.multiple_tunnels
+}

@@ -18,6 +18,17 @@ variable "cloudflare_domain" {
   type        = string
 }
 
+
+# Custom device profile for e2e testing
+resource "cloudflare_zero_trust_device_custom_profile" "custom_e2e" {
+  account_id  = var.cloudflare_account_id
+  name        = "E2E Custom Profile"
+  description = "Custom profile for e2e testing"
+  match       = "identity.email == \"e2e@example.com\""
+  precedence  = 876
+}
+
+
 # Default profile - multiple domains with all fields
 resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "default_multi" {
   account_id = var.cloudflare_account_id
@@ -39,13 +50,9 @@ resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "d
   ]
 }
 
-# Custom device profile for e2e testing
-resource "cloudflare_zero_trust_device_custom_profile" "custom_e2e" {
-  account_id  = var.cloudflare_account_id
-  name        = "E2E Custom Profile"
-  description = "Custom profile for e2e testing"
-  match       = "identity.email == \"e2e@example.com\""
-  precedence  = 1000
+moved {
+  from = cloudflare_zero_trust_local_fallback_domain.default_multi
+  to   = cloudflare_zero_trust_device_default_profile_local_domain_fallback.default_multi
 }
 
 # Custom profile - fallback domain with policy_id
@@ -60,4 +67,8 @@ resource "cloudflare_zero_trust_device_custom_profile_local_domain_fallback" "cu
       dns_server  = ["192.168.1.1"]
     }
   ]
+}
+moved {
+  from = cloudflare_zero_trust_local_fallback_domain.custom_e2e
+  to   = cloudflare_zero_trust_device_custom_profile_local_domain_fallback.custom_e2e
 }
