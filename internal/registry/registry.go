@@ -59,11 +59,10 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_mtls_hostname_settings"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_policy"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
-	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_default_profile"
-	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_posture_integration"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_managed_networks"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_posture_integration"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_posture_rule"
-	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_split_tunnel"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_profiles"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dex_test"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_certificate"
@@ -72,6 +71,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_local_fallback_domain"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_organization"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_split_tunnel"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared_config"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared_route"
@@ -149,7 +149,7 @@ func RegisterAllMigrations() {
 	zero_trust_access_mtls_hostname_settings.NewV4ToV5Migrator()
 	zero_trust_access_policy.NewV4ToV5Migrator()
 	zero_trust_access_service_token.NewV4ToV5Migrator()
-	zero_trust_device_default_profile.NewV4ToV5Migrator()
+	zero_trust_device_profiles.NewV4ToV5Migrator()
 	zero_trust_device_managed_networks.NewV4ToV5Migrator()
 	zero_trust_device_posture_integration.NewV4ToV5Migrator()
 	zero_trust_device_posture_rule.NewV4ToV5Migrator()
