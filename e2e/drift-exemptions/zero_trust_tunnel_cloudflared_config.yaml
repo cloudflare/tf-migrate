@@ -1,0 +1,22 @@
+# Drift Exemptions for zero_trust_tunnel_cloudflared_config resource
+#
+# Resource-specific exemptions for cloudflare_zero_trust_tunnel_cloudflared_config
+
+version: 1
+
+exemptions:
+  # v5 requires aud_tag and team_name when an access block is present, but v4 allowed
+  # access blocks with only "required" set. tf-migrate intentionally removes incomplete
+  # access blocks (missing aud_tag or team_name) from the migrated HCL since they cannot
+  # be represented in valid v5 config. The API then removes the block on the next apply.
+  # This is safe because without aud_tag/team_name the Access app is unidentified and
+  # enforcement is ineffective regardless of the required field value.
+  - name: "incomplete_access_block_removal"
+    description: "Removal of access blocks that are missing required v5 fields (aud_tag, team_name)"
+    patterns:
+      - '- access\s*='
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

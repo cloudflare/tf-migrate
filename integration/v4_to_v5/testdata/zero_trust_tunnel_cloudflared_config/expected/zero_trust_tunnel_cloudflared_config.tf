@@ -41,75 +41,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "minimal" {
   }
 }
 
-# Test 2: Deprecated resource name (cloudflare_tunnel_config)
-resource "cloudflare_zero_trust_tunnel_cloudflared_config" "deprecated_name" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.deprecated_name.id
 
-  config = {
-    ingress = [
-      {
-        hostname = "app.example.com"
-        service  = "http://localhost:8080"
-      },
-      {
-        service = "http_status:404"
-      }
-    ]
-  }
-}
-
-# Test 3: Comprehensive configuration with all transformations
-resource "cloudflare_zero_trust_tunnel_cloudflared_config" "comprehensive" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.comprehensive.id
-
-  config = {
-    ingress = [
-      {
-        hostname = "app.example.com"
-        path     = "/api"
-        service  = "http://localhost:8080"
-        origin_request = {
-          connect_timeout          = 15
-          tls_timeout              = 5
-          ca_pool                  = ""
-          disable_chunked_encoding = false
-          keep_alive_timeout       = 90
-          no_tls_verify            = false
-          origin_server_name       = ""
-          proxy_type               = ""
-          tcp_keep_alive           = 30
-        }
-      },
-      {
-        hostname = "api.example.com"
-        service  = "http://localhost:3000"
-      },
-      {
-        service = "http_status:404"
-      }
-    ]
-    origin_request = {
-      connect_timeout          = 30
-      tls_timeout              = 10
-      tcp_keep_alive           = 90
-      keep_alive_timeout       = 90
-      keep_alive_connections   = 100
-      http_host_header         = "example.com"
-      origin_server_name       = "origin.example.com"
-      ca_pool                  = "/path/to/ca.pem"
-      no_tls_verify            = false
-      disable_chunked_encoding = false
-      proxy_type               = ""
-      access = {
-        required  = true
-        team_name = "my-team"
-        aud_tag   = ["abc123"]
-      }
-    }
-  }
-}
 
 # Tunnel for minimal config test
 resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
@@ -148,4 +80,89 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "deprecated_name" {
 moved {
   from = cloudflare_tunnel.deprecated_name
   to   = cloudflare_zero_trust_tunnel_cloudflared.deprecated_name
+}
+
+# Test 2: Deprecated resource name (cloudflare_tunnel_config)
+resource "cloudflare_zero_trust_tunnel_cloudflared_config" "deprecated_name" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.deprecated_name.id
+
+  config = {
+    ingress = [
+      {
+        hostname = "app.example.com"
+        service  = "http://localhost:8080"
+      },
+      {
+        service = "http_status:404"
+      }
+    ]
+  }
+}
+
+moved {
+  from = cloudflare_tunnel_config.deprecated_name
+  to   = cloudflare_zero_trust_tunnel_cloudflared_config.deprecated_name
+}
+
+# Test 3: Comprehensive configuration with all transformations
+resource "cloudflare_zero_trust_tunnel_cloudflared_config" "comprehensive" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.comprehensive.id
+
+  config = {
+    ingress = [
+      {
+        hostname = "app.example.com"
+        path     = "/api"
+        service  = "http://localhost:8080"
+        origin_request = {
+          connect_timeout          = 15
+          tls_timeout              = 5
+          ca_pool                  = ""
+          disable_chunked_encoding = false
+          http2_origin             = false
+          keep_alive_connections   = 100
+          keep_alive_timeout       = 90
+          no_happy_eyeballs        = false
+          no_tls_verify            = false
+          origin_server_name       = ""
+          proxy_type               = ""
+          tcp_keep_alive           = 30
+        }
+      },
+      {
+        hostname = "api.example.com"
+        service  = "http://localhost:3000"
+      },
+      {
+        service = "http_status:404"
+      }
+    ]
+    origin_request = {
+      connect_timeout          = 30
+      tls_timeout              = 10
+      tcp_keep_alive           = 90
+      keep_alive_timeout       = 90
+      keep_alive_connections   = 100
+      http_host_header         = "example.com"
+      origin_server_name       = "origin.example.com"
+      ca_pool                  = "/path/to/ca.pem"
+      no_tls_verify            = false
+      disable_chunked_encoding = false
+      proxy_type               = ""
+      http2_origin             = false
+      no_happy_eyeballs        = false
+      access = {
+        required  = true
+        team_name = "my-team"
+        aud_tag   = ["abc123"]
+      }
+    }
+  }
+}
+
+moved {
+  from = cloudflare_tunnel_config.comprehensive
+  to   = cloudflare_zero_trust_tunnel_cloudflared_config.comprehensive
 }
