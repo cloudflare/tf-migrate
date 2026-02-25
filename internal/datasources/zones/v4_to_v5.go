@@ -5,7 +5,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -19,7 +18,8 @@ import (
 // 3. filter.name → name (hoist to top-level)
 // 4. filter.status → status (hoist to top-level)
 // 5. Drop: filter.lookup_type, filter.match, filter.paused (not supported in v5)
-// 6. State: zones → result
+// 6. Cross-file references: zones → result (via GetAttributeRenames)
+// 7. State transformation is a no-op (datasources are always re-read from the API)
 type V4ToV5Migrator struct{}
 
 // NewV4ToV5Migrator creates a new migrator for cloudflare_zones datasource v4 to v5.
@@ -160,38 +160,14 @@ func (m *V4ToV5Migrator) setAccountAttribute(body *hclwrite.Body, accountIdAttr 
 	body.SetAttributeRaw("account", tokens)
 }
 
-// TransformState handles state file transformations.
-// Main transformations:
-// 1. Set schema_version = 0
-// 2. Rename zones → result
+// TransformState is a no-op for cloudflare_zones datasource migration.
+//
+// Datasources are always re-read from the API on the next plan/apply, so state
+// transformation is unnecessary. tf-migrate's role for datasources is limited to
+// transforming HCL configuration syntax (handled by TransformConfig) and updating
+// cross-file attribute references (handled by GetAttributeRenames).
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := instance.String()
-	attrs := instance.Get("attributes")
-
-	if !attrs.Exists() {
-		// No attributes to transform, but still set schema_version
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	// Rename zones → result
-	zonesField := attrs.Get("zones")
-	if zonesField.Exists() {
-		if zonesField.IsArray() {
-			// Copy zones to result
-			result, _ = sjson.Set(result, "attributes.result", zonesField.Value())
-			// Delete old zones field
-			result, _ = sjson.Delete(result, "attributes.zones")
-		} else {
-			// zones is null or missing - just delete it
-			result, _ = sjson.Delete(result, "attributes.zones")
-		}
-	}
-
-	return result, nil
+	return instance.String(), nil
 }
 
 func init() {

@@ -4,7 +4,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -14,7 +13,7 @@ import (
 // Key transformations:
 // 1. account_id and/or name → filter = { ... } (wrap in filter attribute)
 // 2. zone_id lookups remain unchanged
-// 3. Minimal state transformation (datasources are mostly computed)
+// 3. State transformation is a no-op (datasources are always re-read from the API)
 type V4ToV5Migrator struct{}
 
 // NewV4ToV5Migrator creates a new migrator for cloudflare_zone datasource v4 to v5.
@@ -140,16 +139,11 @@ func (m *V4ToV5Migrator) setFilterAttribute(body *hclwrite.Body, nameAttr, accou
 	body.SetAttributeRaw("filter", tokens)
 }
 
-// TransformState handles state file transformations.
-// For datasources, state transformation is minimal since fields are mostly computed.
+// TransformState is a no-op for cloudflare_zone datasource migration.
+//
+// Datasources are always re-read from the API on the next plan/apply, so state
+// transformation is unnecessary. tf-migrate's role for datasources is limited to
+// transforming HCL configuration syntax (handled by TransformConfig).
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
-
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	// Datasource fields are mostly computed - provider will populate them on refresh
-	// No need to transform computed fields
-
-	return result, nil
+	return stateJSON.String(), nil
 }
