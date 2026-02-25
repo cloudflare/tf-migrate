@@ -1,11 +1,8 @@
 package load_balancer
 
 import (
-	"strings"
-
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -140,71 +137,13 @@ func (m *V4ToV5Migrator) transformPoolsBlocks(body *hclwrite.Body, blockName, ke
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// Transform state attributes to match v5 schema
-	// v4: default_pool_ids → v5: default_pools
-	// v4: fallback_pool_id → v5: fallback_pool
-	// v4: session_affinity_attributes as array → v5: as object
+	// State transformation is handled by the provider's StateUpgraders (UpgradeState)
+	// The provider will automatically upgrade state when it detects v4 schema_version=1 or v5 version=1
+	// This function is a no-op for load_balancer migration
+	return stateJSON.String(), nil
+}
 
-	result := stateJSON.String()
-
-	// Use regex to rename attributes in JSON
-	// Replace "default_pool_ids" with "default_pools"
-	result = strings.Replace(result, `"default_pool_ids"`, `"default_pools"`, -1)
-
-	// Replace "fallback_pool_id" with "fallback_pool"
-	result = strings.Replace(result, `"fallback_pool_id"`, `"fallback_pool"`, -1)
-
-	// Transform session_affinity_attributes from array to object
-	// v4: "session_affinity_attributes": [{ ... }] or []
-	// v5: "session_affinity_attributes": { ... } or null
-	sessionAffinityAttrs := stateJSON.Get("attributes.session_affinity_attributes")
-	if sessionAffinityAttrs.Exists() && sessionAffinityAttrs.IsArray() {
-		if len(sessionAffinityAttrs.Array()) > 0 {
-			firstElement := sessionAffinityAttrs.Array()[0]
-			result, _ = sjson.Set(result, "attributes.session_affinity_attributes", firstElement.Value())
-		} else {
-			// Empty array -> null
-			result, _ = sjson.Set(result, "attributes.session_affinity_attributes", nil)
-		}
-	}
-
-	// Transform single-object fields from arrays to objects or null
-	// v4: field: [{ ... }] or []
-	// v5: field: { ... } or null
-	singleObjectFields := []string{"adaptive_routing", "location_strategy", "random_steering"}
-	for _, field := range singleObjectFields {
-		fieldData := stateJSON.Get("attributes." + field)
-		if fieldData.Exists() && fieldData.IsArray() {
-			if len(fieldData.Array()) > 0 {
-				firstElement := fieldData.Array()[0]
-				result, _ = sjson.Set(result, "attributes."+field, firstElement.Value())
-			} else {
-				// Empty array -> null
-				result, _ = sjson.Set(result, "attributes."+field, nil)
-			}
-		}
-	}
-
-	// Transform empty arrays to null for map fields that v5 expects as null or maps
-	// region_pools, pop_pools, country_pools
-	mapFields := []string{"region_pools", "pop_pools", "country_pools"}
-	for _, field := range mapFields {
-		fieldData := stateJSON.Get("attributes." + field)
-		if fieldData.Exists() && fieldData.IsArray() && len(fieldData.Array()) == 0 {
-			result, _ = sjson.Set(result, "attributes."+field, nil)
-		}
-	}
-
-	// Transform headers array inside session_affinity_attributes to null if empty
-	// Re-parse to get updated state after previous transformations
-	updatedState := gjson.Parse(result)
-	headers := updatedState.Get("attributes.session_affinity_attributes.headers")
-	if headers.Exists() && headers.IsArray() && len(headers.Array()) == 0 {
-		result, _ = sjson.Set(result, "attributes.session_affinity_attributes.headers", nil)
-	}
-
-	// Reset schema_version to 0 for v5 (v4 uses schema_version 1)
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
