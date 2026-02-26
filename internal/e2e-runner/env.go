@@ -54,8 +54,8 @@ func LoadEnv(required []string) (*E2EEnv, error) {
 		CrowdstrikeCustomerID:  os.Getenv("CLOUDFLARE_CROWDSTRIKE_CUSTOMER_ID"),
 		BYOIPCidr:              getEnvWithDefault("CLOUDFLARE_BYO_IP_CIDR", "2606:54c2:2::/48"),
 		BYOIPASN:               getEnvWithDefault("CLOUDFLARE_BYO_IP_ASN", "13335"),
-		BYOIPLOADocumentID:     getEnvWithDefault("CLOUDFLARE_BYO_IP_LOA_DOCUMENT_ID", "c8af01b0dd8f4779980824d9a8c84136"),
-		BYOIPPrefixID:          getEnvWithDefault("CLOUDFLARE_BYO_IP_PREFIX_ID", "e71bfbf3fdc740aa8b90a61e9dfffe79"),
+		BYOIPLOADocumentID:     getEnvWithDefault("CLOUDFLARE_BYO_IP_LOA_DOCUMENT_ID", "a6061274b61449d3bb4521aee2e90c95"),
+		BYOIPPrefixID:          getEnvWithDefault("CLOUDFLARE_BYO_IP_PREFIX_ID", "b543f1a825f4474b88e945f164624412"),
 	}
 
 	// Validate required variables
