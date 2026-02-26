@@ -21,6 +21,11 @@ resource "cloudflare_tunnel_virtual_network" "minimal" {
 				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared_virtual_network" "minimal" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "minimal-network"
+}
+
+moved {
+  from = cloudflare_tunnel_virtual_network.minimal
+  to   = cloudflare_zero_trust_tunnel_cloudflared_virtual_network.minimal
 }`,
 			},
 			{
@@ -33,6 +38,11 @@ resource "cloudflare_zero_trust_tunnel_virtual_network" "minimal" {
 				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared_virtual_network" "minimal" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "minimal-network"
+}
+
+moved {
+  from = cloudflare_zero_trust_tunnel_virtual_network.minimal
+  to   = cloudflare_zero_trust_tunnel_cloudflared_virtual_network.minimal
 }`,
 			},
 			{
@@ -49,6 +59,11 @@ resource "cloudflare_tunnel_virtual_network" "complete" {
   name              = "complete-network"
   is_default_network = true
   comment           = "Production virtual network"
+}
+
+moved {
+  from = cloudflare_tunnel_virtual_network.complete
+  to   = cloudflare_zero_trust_tunnel_cloudflared_virtual_network.complete
 }`,
 			},
 			{
@@ -65,6 +80,11 @@ resource "cloudflare_zero_trust_tunnel_virtual_network" "complete" {
   name              = "complete-network"
   is_default_network = true
   comment           = "Production virtual network"
+}
+
+moved {
+  from = cloudflare_zero_trust_tunnel_virtual_network.complete
+  to   = cloudflare_zero_trust_tunnel_cloudflared_virtual_network.complete
 }`,
 			},
 			{
@@ -79,6 +99,11 @@ resource "cloudflare_tunnel_virtual_network" "default" {
   account_id         = "f037e56e89293a057740de681ac9abbe"
   name              = "default-network"
   is_default_network = true
+}
+
+moved {
+  from = cloudflare_tunnel_virtual_network.default
+  to   = cloudflare_zero_trust_tunnel_cloudflared_virtual_network.default
 }`,
 			},
 			{
@@ -93,6 +118,11 @@ resource "cloudflare_tunnel_virtual_network" "documented" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name      = "documented-network"
   comment   = "This network is used for production traffic routing"
+}
+
+moved {
+  from = cloudflare_tunnel_virtual_network.documented
+  to   = cloudflare_zero_trust_tunnel_cloudflared_virtual_network.documented
 }`,
 			},
 			{
@@ -109,6 +139,11 @@ resource "cloudflare_tunnel_virtual_network" "not_default" {
   name              = "not-default-network"
   is_default_network = false
   comment           = "Test network"
+}
+
+moved {
+  from = cloudflare_tunnel_virtual_network.not_default
+  to   = cloudflare_zero_trust_tunnel_cloudflared_virtual_network.not_default
 }`,
 			},
 			{
@@ -129,10 +164,20 @@ resource "cloudflare_zero_trust_tunnel_virtual_network" "new_style" {
   name      = "old-style-network"
 }
 
+moved {
+  from = cloudflare_tunnel_virtual_network.old_style
+  to   = cloudflare_zero_trust_tunnel_cloudflared_virtual_network.old_style
+}
+
 resource "cloudflare_zero_trust_tunnel_cloudflared_virtual_network" "new_style" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name      = "new-style-network"
   comment   = "New style resource"
+}
+
+moved {
+  from = cloudflare_zero_trust_tunnel_virtual_network.new_style
+  to   = cloudflare_zero_trust_tunnel_cloudflared_virtual_network.new_style
 }`,
 			},
 			{
@@ -147,6 +192,11 @@ resource "cloudflare_tunnel_virtual_network" "empty_comment" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name      = "network-with-empty-comment"
   comment   = ""
+}
+
+moved {
+  from = cloudflare_tunnel_virtual_network.empty_comment
+  to   = cloudflare_zero_trust_tunnel_cloudflared_virtual_network.empty_comment
 }`,
 			},
 		}

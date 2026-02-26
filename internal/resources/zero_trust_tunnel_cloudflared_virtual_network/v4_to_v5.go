@@ -44,6 +44,14 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	resourceType := tfhcl.GetResourceType(block)
+	resourceName := tfhcl.GetResourceName(block)
+
+	// Generate moved block using the original (pre-rename) resource type.
+	// This allows Terraform to use the provider's MoveState hook with SourceSchema to decode
+	// the old state entry, eliminating the need for tf-migrate to rename the type in state.
+	from := resourceType + "." + resourceName
+	to := "cloudflare_zero_trust_tunnel_cloudflared_virtual_network." + resourceName
+	movedBlock := tfhcl.CreateMovedBlock(from, to)
 
 	// Rename resource type based on which v4 name is used
 	if resourceType == "cloudflare_tunnel_virtual_network" {
@@ -56,8 +64,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// All fields remain the same: account_id, name, is_default_network, comment
 
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         []*hclwrite.Block{block, movedBlock},
+		RemoveOriginal: true,
 	}, nil
 }
 
