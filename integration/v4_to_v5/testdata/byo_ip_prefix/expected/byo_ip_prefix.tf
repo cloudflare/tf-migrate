@@ -26,7 +26,7 @@ variable "cloudflare_domain" {
 variable "prefix_base" {
   description = "Base prefix ID for testing"
   type        = string
-  default     = "prefix-test"
+  default     = "cftftest"
 }
 
 variable "enable_optional" {
@@ -47,16 +47,16 @@ locals {
   description_template = "BYO IP Prefix for ${local.environment}"
 
   prefix_map = {
-    prod    = "prefix-prod-001"
-    staging = "prefix-staging-001"
-    dev     = "prefix-dev-001"
-    test    = "prefix-test-001"
+    prod    = "cftftest-prod-001"
+    staging = "cftftest-staging-001"
+    dev     = "cftftest-dev-001"
+    test    = "cftftest-test-001"
   }
 
   prefix_list = [
-    "prefix-list-001",
-    "prefix-list-002",
-    "prefix-list-003"
+    "cftftest-list-001",
+    "cftftest-list-002",
+    "cftftest-list-003"
   ]
 }
 

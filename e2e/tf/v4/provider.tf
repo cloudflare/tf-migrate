@@ -78,11 +78,11 @@ variable "byo_ip_asn" {
 variable "byo_ip_loa_document_id" {
   description = "BYO IP LOA document ID"
   type        = string
-  default     = "c8af01b0dd8f4779980824d9a8c84136"
+  default     = "a6061274b61449d3bb4521aee2e90c95"
 }
 
 variable "byo_ip_prefix_id" {
   description = "BYO IP prefix ID (for v4 provider or migration tests)"
   type        = string
-  default     = "e71bfbf3fdc740aa8b90a61e9dfffe79"
+  default     = "b543f1a825f4474b88e945f164624412"
 }
