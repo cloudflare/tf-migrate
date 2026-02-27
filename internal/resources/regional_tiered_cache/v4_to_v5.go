@@ -3,11 +3,9 @@ package regional_tiered_cache
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles the migration of cloudflare_regional_tiered_cache from v4 to v5.
@@ -55,25 +53,15 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState handles state file transformations.
+// TransformState is a no-op for regional_tiered_cache.
+// State migration is now handled by the provider's StateUpgraders.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := instance.String()
-	attrs := instance.Get("attributes")
+	// No-op: return state unchanged
+	// The provider's StateUpgraders handle all state transformations
+	return instance.String(), nil
+}
 
-	// Defensive: if no attributes, just set schema_version and return
-	if !attrs.Exists() {
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// Defensive: ensure value exists with default "off"
-	// This is unlikely since v4 requires value, but be defensive
-	if !attrs.Get("value").Exists() {
-		result = state.EnsureField(result, "attributes", attrs, "value", "off")
-	}
-
-	// Set schema version to 0 (MANDATORY for all v5 resources)
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates this resource uses provider-side state migration.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
