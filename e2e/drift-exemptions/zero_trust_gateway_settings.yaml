@@ -1,0 +1,45 @@
+# Drift Exemptions for zero_trust_gateway_settings resource
+#
+# Resource-specific exemptions for cloudflare_zero_trust_gateway_settings
+# (formerly cloudflare_teams_account)
+
+version: 1
+
+exemptions:
+  # In v5, logging and proxy settings are split into separate standalone resources.
+  # These don't exist in v4 state, so they need to be created after migration.
+  # This is expected behavior for the v4→v5 migration.
+  - name: "new_logging_resource"
+    description: "cloudflare_zero_trust_gateway_logging is a new standalone resource in v5 (split from cloudflare_teams_account)"
+    resource_types:
+      - "cloudflare_zero_trust_gateway_logging"
+    allow_resource_creation: true
+    enabled: true
+
+  - name: "new_device_settings_resource"
+    description: "cloudflare_zero_trust_device_settings is a new standalone resource in v5 (split from cloudflare_teams_account)"
+    resource_types:
+      - "cloudflare_zero_trust_device_settings"
+    allow_resource_creation: true
+    enabled: true
+
+  # block_page optional/computed fields that the API always populates with defaults
+  # but that users typically don't set in their config. This causes perpetual drift
+  # because the API returns these values but the config has them as null.
+  # This is a known pre-existing v5 provider behavior, not caused by migration.
+  - name: "block_page_api_default_fields"
+    description: "block_page fields that the API returns as defaults but are not set in user config"
+    resource_types:
+      - "cloudflare_zero_trust_gateway_settings"
+    patterns:
+      - '\-\s+mode\s*='
+      - '\-\s+include_context\s*='
+      - '\-\s+suppress_footer\s*='
+      - '\-\s+target_uri\s*='
+      - '\-\s+mailto_address\s*='
+      - '\-\s+mailto_subject\s*='
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

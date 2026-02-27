@@ -63,6 +63,95 @@ locals {
 # Pattern Group 1: Basic Resources (Edge Cases & Field Combinations)
 # ============================================================================
 
+
+
+
+
+
+
+
+
+
+
+# 11. Using v5 name in v4 (cloudflare_zero_trust_gateway_settings alias)
+resource "cloudflare_zero_trust_gateway_settings" "v5_name_in_v4" {
+  account_id = var.cloudflare_account_id
+
+
+  settings = {
+    activity_log = {
+      enabled = true
+    }
+    tls_decrypt = {
+      enabled = false
+    }
+    browser_isolation = {
+      url_browser_isolation_enabled = true
+      non_identity_enabled          = false
+    }
+    block_page = {
+      enabled     = true
+      name        = "V5 Name Test"
+      footer_text = "Using v5 resource name"
+    }
+    fips = {
+      tls = true
+    }
+  }
+}
+
+# ============================================================================
+# Pattern Group 2: for_each with Maps
+# ============================================================================
+
+
+# ============================================================================
+# Pattern Group 3: for_each with Sets (Environment Configs)
+# ============================================================================
+
+
+# ============================================================================
+# Pattern Group 4: count-based Resources
+# ============================================================================
+
+
+# ============================================================================
+# Pattern Group 5: Conditional Creation
+# ============================================================================
+
+
+
+# ============================================================================
+# Pattern Group 6: Terraform Functions
+# ============================================================================
+
+
+
+
+# ============================================================================
+# Pattern Group 7: Lifecycle Meta-Arguments
+# ============================================================================
+
+
+
+
+# ============================================================================
+# Pattern Group 8: All MaxItems:1 Blocks in Different Combinations
+# ============================================================================
+
+
+
+# Total resources:
+# - Basic: 11 resources (1-11)
+# - for_each map: 3 resources (12-14)
+# - for_each set: 3 resources (15-17)
+# - count: 3 resources (18-20)
+# - conditional: 1 resource (21, 22 not created due to default var)
+# - functions: 3 resources (23-25)
+# - lifecycle: 3 resources (26-28)
+# - combinations: 2 resources (29-30)
+# Total: 29 resource instances created
+
 # 1. Minimal configuration (only account_id)
 resource "cloudflare_zero_trust_gateway_settings" "minimal" {
   account_id = var.cloudflare_account_id
@@ -72,6 +161,11 @@ resource "cloudflare_zero_trust_gateway_settings" "minimal" {
       non_identity_enabled          = false
     }
   }
+}
+
+moved {
+  from = cloudflare_teams_account.minimal
+  to   = cloudflare_zero_trust_gateway_settings.minimal
 }
 
 # 2. Maximal configuration with ALL possible fields
@@ -132,6 +226,11 @@ resource "cloudflare_zero_trust_gateway_settings" "maximal" {
   }
 }
 
+moved {
+  from = cloudflare_teams_account.maximal
+  to   = cloudflare_zero_trust_gateway_settings.maximal
+}
+
 # 3. Only flat boolean fields (no MaxItems:1 blocks)
 resource "cloudflare_zero_trust_gateway_settings" "only_booleans" {
   account_id = var.cloudflare_account_id
@@ -152,6 +251,11 @@ resource "cloudflare_zero_trust_gateway_settings" "only_booleans" {
   }
 }
 
+moved {
+  from = cloudflare_teams_account.only_booleans
+  to   = cloudflare_zero_trust_gateway_settings.only_booleans
+}
+
 # 4. Only browser isolation fields with variable
 resource "cloudflare_zero_trust_gateway_settings" "only_browser_isolation" {
   account_id = var.cloudflare_account_id
@@ -161,6 +265,11 @@ resource "cloudflare_zero_trust_gateway_settings" "only_browser_isolation" {
       non_identity_enabled          = var.enable_browser_isolation
     }
   }
+}
+
+moved {
+  from = cloudflare_teams_account.only_browser_isolation
+  to   = cloudflare_zero_trust_gateway_settings.only_browser_isolation
 }
 
 # 5. Only block_page (single MaxItems:1 block)
@@ -178,6 +287,11 @@ resource "cloudflare_zero_trust_gateway_settings" "only_block_page" {
       footer_text = "Contact IT"
     }
   }
+}
+
+moved {
+  from = cloudflare_teams_account.only_block_page
+  to   = cloudflare_zero_trust_gateway_settings.only_block_page
 }
 
 # 6. Only antivirus with notification_settings (nested MaxItems:1)
@@ -200,6 +314,11 @@ resource "cloudflare_zero_trust_gateway_settings" "only_antivirus" {
       }
     }
   }
+}
+
+moved {
+  from = cloudflare_teams_account.only_antivirus
+  to   = cloudflare_zero_trust_gateway_settings.only_antivirus
 }
 
 # 7. Multiple MaxItems:1 blocks (block_page + fips + body_scanning)
@@ -227,398 +346,10 @@ resource "cloudflare_zero_trust_gateway_settings" "multiple_blocks" {
   }
 }
 
-
-
-
-# 11. Using v5 name in v4 (cloudflare_zero_trust_gateway_settings alias)
-resource "cloudflare_zero_trust_gateway_settings" "v5_name_in_v4" {
-  account_id = var.cloudflare_account_id
-
-
-  settings = {
-    activity_log = {
-      enabled = true
-    }
-    tls_decrypt = {
-      enabled = false
-    }
-    browser_isolation = {
-      url_browser_isolation_enabled = true
-      non_identity_enabled          = false
-    }
-    block_page = {
-      enabled     = true
-      name        = "V5 Name Test"
-      footer_text = "Using v5 resource name"
-    }
-    fips = {
-      tls = true
-    }
-  }
+moved {
+  from = cloudflare_teams_account.multiple_blocks
+  to   = cloudflare_zero_trust_gateway_settings.multiple_blocks
 }
-
-# ============================================================================
-# Pattern Group 2: for_each with Maps
-# ============================================================================
-
-# 12-14. Resources created with for_each over account configs
-resource "cloudflare_zero_trust_gateway_settings" "account_configs" {
-  for_each = var.account_configs
-
-  account_id = each.value.account_id
-
-  settings = {
-    activity_log = {
-      enabled = each.value.activity_log
-    }
-    tls_decrypt = {
-      enabled = each.value.tls_decrypt
-    }
-    protocol_detection = {
-      enabled = false
-    }
-    browser_isolation = {
-      url_browser_isolation_enabled = false
-      non_identity_enabled          = false
-    }
-    block_page = {
-      enabled     = true
-      name        = "Block Page for ${each.key}"
-      footer_text = "Account: ${each.key}"
-    }
-  }
-}
-
-# ============================================================================
-# Pattern Group 3: for_each with Sets (Environment Configs)
-# ============================================================================
-
-# 15-17. Resources created with for_each over environments
-resource "cloudflare_zero_trust_gateway_settings" "environment_configs" {
-  for_each = toset(["dev", "staging", "prod"])
-
-  account_id = "${each.value}${var.cloudflare_account_id}"
-
-  settings = {
-    activity_log = {
-      enabled = each.value == "prod" ? true : false
-    }
-    tls_decrypt = {
-      enabled = true
-    }
-    protocol_detection = {
-      enabled = each.value == "prod" ? true : false
-    }
-    browser_isolation = {
-      url_browser_isolation_enabled = false
-      non_identity_enabled          = false
-    }
-    body_scanning = {
-      inspection_mode = each.value == "prod" ? "deep" : "shallow"
-    }
-  }
-}
-
-# ============================================================================
-# Pattern Group 4: count-based Resources
-# ============================================================================
-
-# 18-20. Resources created with count (tiered accounts)
-resource "cloudflare_zero_trust_gateway_settings" "tiered_accounts" {
-  count = 3
-
-  account_id = "tier${count.index}${var.cloudflare_account_id}"
-
-
-  settings = {
-    activity_log = {
-      enabled = count.index > 0 ? true : false
-    }
-    tls_decrypt = {
-      enabled = true
-    }
-    browser_isolation = {
-      url_browser_isolation_enabled = false
-      non_identity_enabled          = false
-    }
-    block_page = {
-      enabled     = true
-      name        = "Tier ${count.index} Block Page"
-      footer_text = "Tier ${count.index} configuration"
-    }
-    fips = {
-      tls = count.index == 2 ? true : false
-    }
-  }
-}
-
-# ============================================================================
-# Pattern Group 5: Conditional Creation
-# ============================================================================
-
-# 21. Conditionally created (with browser isolation)
-resource "cloudflare_zero_trust_gateway_settings" "conditional_enabled" {
-  count = var.enable_browser_isolation ? 1 : 0
-
-  account_id = "conditional1${var.cloudflare_account_id}"
-
-  settings = {
-    activity_log = {
-      enabled = true
-    }
-    browser_isolation = {
-      url_browser_isolation_enabled = true
-      non_identity_enabled          = true
-    }
-    block_page = {
-      enabled     = true
-      name        = "Conditional - Enabled"
-      footer_text = "Browser isolation enabled"
-    }
-  }
-}
-
-# 22. Conditionally not created (no browser isolation)
-resource "cloudflare_zero_trust_gateway_settings" "conditional_disabled" {
-  count = var.enable_browser_isolation ? 0 : 1
-
-  account_id = "conditional2${var.cloudflare_account_id}"
-  settings = {
-    activity_log = {
-      enabled = true
-    }
-    tls_decrypt = {
-      enabled = true
-    }
-    browser_isolation = {
-      url_browser_isolation_enabled = false
-      non_identity_enabled          = false
-    }
-  }
-}
-
-# ============================================================================
-# Pattern Group 6: Terraform Functions
-# ============================================================================
-
-# 23. Using join() function
-resource "cloudflare_zero_trust_gateway_settings" "with_join" {
-  account_id = join("-", ["join", var.cloudflare_account_id])
-
-  settings = {
-    browser_isolation = {
-      url_browser_isolation_enabled = false
-      non_identity_enabled          = false
-    }
-    block_page = {
-      enabled     = true
-      name        = join(" - ", [local.settings_name, "Joined", "Block"])
-      footer_text = "Created with join"
-    }
-  }
-}
-
-# 24. Using string interpolation and expressions
-resource "cloudflare_zero_trust_gateway_settings" "with_interpolation" {
-  account_id = var.cloudflare_account_id
-
-  settings = {
-    activity_log = {
-      enabled = true
-    }
-    tls_decrypt = {
-      enabled = var.enable_tls_decrypt
-    }
-    browser_isolation = {
-      url_browser_isolation_enabled = false
-      non_identity_enabled          = false
-    }
-    block_page = {
-      enabled     = true
-      name        = "Block for ${var.settings_prefix} account"
-      footer_text = "Account ID: ${var.cloudflare_account_id}"
-      header_text = "Settings: ${local.settings_name}"
-    }
-  }
-}
-
-# 25. Using ternary expressions
-resource "cloudflare_zero_trust_gateway_settings" "with_ternary" {
-  account_id = var.cloudflare_account_id
-
-  settings = {
-    activity_log = {
-      enabled = var.enable_tls_decrypt ? true : false
-    }
-    tls_decrypt = {
-      enabled = var.enable_browser_isolation ? true : false
-    }
-    protocol_detection = {
-      enabled = var.enable_tls_decrypt && var.enable_browser_isolation ? true : false
-    }
-    browser_isolation = {
-      url_browser_isolation_enabled = false
-      non_identity_enabled          = false
-    }
-    antivirus = {
-      enabled_download_phase = var.enable_tls_decrypt ? true : false
-      enabled_upload_phase   = var.enable_browser_isolation ? true : false
-      fail_closed            = false
-      notification_settings = {
-        enabled     = true
-        support_url = "https://support.example.com"
-        msg         = var.enable_tls_decrypt ? "Full scanning enabled" : "Basic scanning"
-      }
-    }
-  }
-}
-
-# ============================================================================
-# Pattern Group 7: Lifecycle Meta-Arguments
-# ============================================================================
-
-# 26. With lifecycle - create_before_destroy
-resource "cloudflare_zero_trust_gateway_settings" "with_lifecycle_create" {
-  account_id = var.cloudflare_account_id
-
-
-  lifecycle {
-    create_before_destroy = true
-  }
-  settings = {
-    activity_log = {
-      enabled = true
-    }
-    tls_decrypt = {
-      enabled = true
-    }
-    browser_isolation = {
-      url_browser_isolation_enabled = false
-      non_identity_enabled          = false
-    }
-    block_page = {
-      enabled     = true
-      name        = "Protected Block Page"
-      footer_text = "Lifecycle protected"
-    }
-  }
-}
-
-# 27. With lifecycle - ignore_changes
-resource "cloudflare_zero_trust_gateway_settings" "with_lifecycle_ignore" {
-  account_id = var.cloudflare_account_id
-
-
-  lifecycle {
-    ignore_changes = [protocol_detection_enabled]
-  }
-  settings = {
-    activity_log = {
-      enabled = true
-    }
-    tls_decrypt = {
-      enabled = true
-    }
-    protocol_detection = {
-      enabled = false
-    }
-    browser_isolation = {
-      url_browser_isolation_enabled = false
-      non_identity_enabled          = false
-    }
-    fips = {
-      tls = true
-    }
-  }
-}
-
-# 28. With lifecycle - prevent_destroy (set to false for testing)
-resource "cloudflare_zero_trust_gateway_settings" "with_lifecycle_prevent" {
-  account_id = var.cloudflare_account_id
-
-
-  lifecycle {
-    prevent_destroy = false # Set to false for testing
-  }
-  settings = {
-    activity_log = {
-      enabled = true
-    }
-    browser_isolation = {
-      url_browser_isolation_enabled = false
-      non_identity_enabled          = false
-    }
-    block_page = {
-      enabled     = true
-      name        = "Critical Block Page"
-      footer_text = "Do not destroy"
-    }
-  }
-}
-
-# ============================================================================
-# Pattern Group 8: All MaxItems:1 Blocks in Different Combinations
-# ============================================================================
-
-# 29. Extended email matching + certificate
-resource "cloudflare_zero_trust_gateway_settings" "email_and_cert" {
-  account_id = var.cloudflare_account_id
-
-
-  settings = {
-    browser_isolation = {
-      url_browser_isolation_enabled = false
-      non_identity_enabled          = false
-    }
-    extended_email_matching = {
-      enabled = true
-    }
-    certificate = {
-      id = "cert-combo-123"
-    }
-  }
-}
-
-# 30. All scanning features (body_scanning + antivirus)
-resource "cloudflare_zero_trust_gateway_settings" "all_scanning" {
-  account_id = var.cloudflare_account_id
-
-
-
-  settings = {
-    browser_isolation = {
-      url_browser_isolation_enabled = false
-      non_identity_enabled          = false
-    }
-    body_scanning = {
-      inspection_mode = "deep"
-    }
-    fips = {
-      tls = true
-    }
-    antivirus = {
-      enabled_download_phase = true
-      enabled_upload_phase   = true
-      fail_closed            = true
-      notification_settings = {
-        enabled     = true
-        support_url = "https://support.example.com/scanning"
-        msg         = "Comprehensive scanning"
-      }
-    }
-  }
-}
-
-# Total resources:
-# - Basic: 11 resources (1-11)
-# - for_each map: 3 resources (12-14)
-# - for_each set: 3 resources (15-17)
-# - count: 3 resources (18-20)
-# - conditional: 1 resource (21, 22 not created due to default var)
-# - functions: 3 resources (23-25)
-# - lifecycle: 3 resources (26-28)
-# - combinations: 2 resources (29-30)
-# Total: 29 resource instances created
 
 resource "cloudflare_zero_trust_gateway_settings" "with_logging" {
   account_id = var.cloudflare_account_id
@@ -653,6 +384,11 @@ resource "cloudflare_zero_trust_gateway_logging" "with_logging_logging" {
   redact_pii = true
 }
 
+moved {
+  from = cloudflare_teams_account.with_logging
+  to   = cloudflare_zero_trust_gateway_settings.with_logging
+}
+
 resource "cloudflare_zero_trust_gateway_settings" "with_proxy" {
   account_id = var.cloudflare_account_id
 
@@ -671,6 +407,11 @@ resource "cloudflare_zero_trust_device_settings" "with_proxy_device_settings" {
   root_certificate_installation_enabled = true
   use_zt_virtual_ip                     = false
   disable_for_time                      = 300
+}
+
+moved {
+  from = cloudflare_teams_account.with_proxy
+  to   = cloudflare_zero_trust_gateway_settings.with_proxy
 }
 
 resource "cloudflare_zero_trust_gateway_settings" "with_both_deprecated" {
@@ -720,4 +461,398 @@ resource "cloudflare_zero_trust_device_settings" "with_both_deprecated_device_se
   root_certificate_installation_enabled = true
   use_zt_virtual_ip                     = true
   disable_for_time                      = 600
+}
+
+moved {
+  from = cloudflare_teams_account.with_both_deprecated
+  to   = cloudflare_zero_trust_gateway_settings.with_both_deprecated
+}
+
+# 12-14. Resources created with for_each over account configs
+resource "cloudflare_zero_trust_gateway_settings" "account_configs" {
+  for_each = var.account_configs
+
+  account_id = each.value.account_id
+
+  settings = {
+    activity_log = {
+      enabled = each.value.activity_log
+    }
+    tls_decrypt = {
+      enabled = each.value.tls_decrypt
+    }
+    protocol_detection = {
+      enabled = false
+    }
+    browser_isolation = {
+      url_browser_isolation_enabled = false
+      non_identity_enabled          = false
+    }
+    block_page = {
+      enabled     = true
+      name        = "Block Page for ${each.key}"
+      footer_text = "Account: ${each.key}"
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.account_configs
+  to   = cloudflare_zero_trust_gateway_settings.account_configs
+}
+
+# 15-17. Resources created with for_each over environments
+resource "cloudflare_zero_trust_gateway_settings" "environment_configs" {
+  for_each = toset(["dev", "staging", "prod"])
+
+  account_id = "${each.value}${var.cloudflare_account_id}"
+
+  settings = {
+    activity_log = {
+      enabled = each.value == "prod" ? true : false
+    }
+    tls_decrypt = {
+      enabled = true
+    }
+    protocol_detection = {
+      enabled = each.value == "prod" ? true : false
+    }
+    browser_isolation = {
+      url_browser_isolation_enabled = false
+      non_identity_enabled          = false
+    }
+    body_scanning = {
+      inspection_mode = each.value == "prod" ? "deep" : "shallow"
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.environment_configs
+  to   = cloudflare_zero_trust_gateway_settings.environment_configs
+}
+
+# 18-20. Resources created with count (tiered accounts)
+resource "cloudflare_zero_trust_gateway_settings" "tiered_accounts" {
+  count = 3
+
+  account_id = "tier${count.index}${var.cloudflare_account_id}"
+
+
+  settings = {
+    activity_log = {
+      enabled = count.index > 0 ? true : false
+    }
+    tls_decrypt = {
+      enabled = true
+    }
+    browser_isolation = {
+      url_browser_isolation_enabled = false
+      non_identity_enabled          = false
+    }
+    block_page = {
+      enabled     = true
+      name        = "Tier ${count.index} Block Page"
+      footer_text = "Tier ${count.index} configuration"
+    }
+    fips = {
+      tls = count.index == 2 ? true : false
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.tiered_accounts
+  to   = cloudflare_zero_trust_gateway_settings.tiered_accounts
+}
+
+# 21. Conditionally created (with browser isolation)
+resource "cloudflare_zero_trust_gateway_settings" "conditional_enabled" {
+  count = var.enable_browser_isolation ? 1 : 0
+
+  account_id = "conditional1${var.cloudflare_account_id}"
+
+  settings = {
+    activity_log = {
+      enabled = true
+    }
+    browser_isolation = {
+      url_browser_isolation_enabled = true
+      non_identity_enabled          = true
+    }
+    block_page = {
+      enabled     = true
+      name        = "Conditional - Enabled"
+      footer_text = "Browser isolation enabled"
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.conditional_enabled
+  to   = cloudflare_zero_trust_gateway_settings.conditional_enabled
+}
+
+# 22. Conditionally not created (no browser isolation)
+resource "cloudflare_zero_trust_gateway_settings" "conditional_disabled" {
+  count = var.enable_browser_isolation ? 0 : 1
+
+  account_id = "conditional2${var.cloudflare_account_id}"
+  settings = {
+    activity_log = {
+      enabled = true
+    }
+    tls_decrypt = {
+      enabled = true
+    }
+    browser_isolation = {
+      url_browser_isolation_enabled = false
+      non_identity_enabled          = false
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.conditional_disabled
+  to   = cloudflare_zero_trust_gateway_settings.conditional_disabled
+}
+
+# 23. Using join() function
+resource "cloudflare_zero_trust_gateway_settings" "with_join" {
+  account_id = join("-", ["join", var.cloudflare_account_id])
+
+  settings = {
+    browser_isolation = {
+      url_browser_isolation_enabled = false
+      non_identity_enabled          = false
+    }
+    block_page = {
+      enabled     = true
+      name        = join(" - ", [local.settings_name, "Joined", "Block"])
+      footer_text = "Created with join"
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.with_join
+  to   = cloudflare_zero_trust_gateway_settings.with_join
+}
+
+# 24. Using string interpolation and expressions
+resource "cloudflare_zero_trust_gateway_settings" "with_interpolation" {
+  account_id = var.cloudflare_account_id
+
+  settings = {
+    activity_log = {
+      enabled = true
+    }
+    tls_decrypt = {
+      enabled = var.enable_tls_decrypt
+    }
+    browser_isolation = {
+      url_browser_isolation_enabled = false
+      non_identity_enabled          = false
+    }
+    block_page = {
+      enabled     = true
+      name        = "Block for ${var.settings_prefix} account"
+      footer_text = "Account ID: ${var.cloudflare_account_id}"
+      header_text = "Settings: ${local.settings_name}"
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.with_interpolation
+  to   = cloudflare_zero_trust_gateway_settings.with_interpolation
+}
+
+# 25. Using ternary expressions
+resource "cloudflare_zero_trust_gateway_settings" "with_ternary" {
+  account_id = var.cloudflare_account_id
+
+  settings = {
+    activity_log = {
+      enabled = var.enable_tls_decrypt ? true : false
+    }
+    tls_decrypt = {
+      enabled = var.enable_browser_isolation ? true : false
+    }
+    protocol_detection = {
+      enabled = var.enable_tls_decrypt && var.enable_browser_isolation ? true : false
+    }
+    browser_isolation = {
+      url_browser_isolation_enabled = false
+      non_identity_enabled          = false
+    }
+    antivirus = {
+      enabled_download_phase = var.enable_tls_decrypt ? true : false
+      enabled_upload_phase   = var.enable_browser_isolation ? true : false
+      fail_closed            = false
+      notification_settings = {
+        enabled     = true
+        support_url = "https://support.example.com"
+        msg         = var.enable_tls_decrypt ? "Full scanning enabled" : "Basic scanning"
+      }
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.with_ternary
+  to   = cloudflare_zero_trust_gateway_settings.with_ternary
+}
+
+# 26. With lifecycle - create_before_destroy
+resource "cloudflare_zero_trust_gateway_settings" "with_lifecycle_create" {
+  account_id = var.cloudflare_account_id
+
+
+  lifecycle {
+    create_before_destroy = true
+  }
+  settings = {
+    activity_log = {
+      enabled = true
+    }
+    tls_decrypt = {
+      enabled = true
+    }
+    browser_isolation = {
+      url_browser_isolation_enabled = false
+      non_identity_enabled          = false
+    }
+    block_page = {
+      enabled     = true
+      name        = "Protected Block Page"
+      footer_text = "Lifecycle protected"
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.with_lifecycle_create
+  to   = cloudflare_zero_trust_gateway_settings.with_lifecycle_create
+}
+
+# 27. With lifecycle - ignore_changes
+resource "cloudflare_zero_trust_gateway_settings" "with_lifecycle_ignore" {
+  account_id = var.cloudflare_account_id
+
+
+  lifecycle {
+    ignore_changes = [protocol_detection_enabled]
+  }
+  settings = {
+    activity_log = {
+      enabled = true
+    }
+    tls_decrypt = {
+      enabled = true
+    }
+    protocol_detection = {
+      enabled = false
+    }
+    browser_isolation = {
+      url_browser_isolation_enabled = false
+      non_identity_enabled          = false
+    }
+    fips = {
+      tls = true
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.with_lifecycle_ignore
+  to   = cloudflare_zero_trust_gateway_settings.with_lifecycle_ignore
+}
+
+# 28. With lifecycle - prevent_destroy (set to false for testing)
+resource "cloudflare_zero_trust_gateway_settings" "with_lifecycle_prevent" {
+  account_id = var.cloudflare_account_id
+
+
+  lifecycle {
+    prevent_destroy = false # Set to false for testing
+  }
+  settings = {
+    activity_log = {
+      enabled = true
+    }
+    browser_isolation = {
+      url_browser_isolation_enabled = false
+      non_identity_enabled          = false
+    }
+    block_page = {
+      enabled     = true
+      name        = "Critical Block Page"
+      footer_text = "Do not destroy"
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.with_lifecycle_prevent
+  to   = cloudflare_zero_trust_gateway_settings.with_lifecycle_prevent
+}
+
+# 29. Extended email matching + certificate
+resource "cloudflare_zero_trust_gateway_settings" "email_and_cert" {
+  account_id = var.cloudflare_account_id
+
+
+  settings = {
+    browser_isolation = {
+      url_browser_isolation_enabled = false
+      non_identity_enabled          = false
+    }
+    extended_email_matching = {
+      enabled = true
+    }
+    certificate = {
+      id = "cert-combo-123"
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.email_and_cert
+  to   = cloudflare_zero_trust_gateway_settings.email_and_cert
+}
+
+# 30. All scanning features (body_scanning + antivirus)
+resource "cloudflare_zero_trust_gateway_settings" "all_scanning" {
+  account_id = var.cloudflare_account_id
+
+
+
+  settings = {
+    browser_isolation = {
+      url_browser_isolation_enabled = false
+      non_identity_enabled          = false
+    }
+    body_scanning = {
+      inspection_mode = "deep"
+    }
+    fips = {
+      tls = true
+    }
+    antivirus = {
+      enabled_download_phase = true
+      enabled_upload_phase   = true
+      fail_closed            = true
+      notification_settings = {
+        enabled     = true
+        support_url = "https://support.example.com/scanning"
+        msg         = "Comprehensive scanning"
+      }
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_account.all_scanning
+  to   = cloudflare_zero_trust_gateway_settings.all_scanning
 }
