@@ -16,6 +16,12 @@ variable "cloudflare_domain" {
   type        = string
 }
 
+
+
+
+
+
+
 # Default profile - no policy_id
 resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "default_single" {
   account_id = var.cloudflare_account_id
@@ -25,6 +31,11 @@ resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "d
       suffix = var.cloudflare_domain
     }
   ]
+}
+
+moved {
+  from = cloudflare_zero_trust_local_fallback_domain.default_single
+  to   = cloudflare_zero_trust_device_default_profile_local_domain_fallback.default_single
 }
 
 # Default profile - multiple domains with all fields
@@ -48,6 +59,11 @@ resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "d
   ]
 }
 
+moved {
+  from = cloudflare_zero_trust_local_fallback_domain.default_multi
+  to   = cloudflare_zero_trust_device_default_profile_local_domain_fallback.default_multi
+}
+
 # Custom profile - with policy_id
 resource "cloudflare_zero_trust_device_custom_profile_local_domain_fallback" "custom_single" {
   account_id = var.cloudflare_account_id
@@ -58,6 +74,11 @@ resource "cloudflare_zero_trust_device_custom_profile_local_domain_fallback" "cu
       suffix = "custom.${var.cloudflare_domain}"
     }
   ]
+}
+
+moved {
+  from = cloudflare_zero_trust_local_fallback_domain.custom_single
+  to   = cloudflare_zero_trust_device_custom_profile_local_domain_fallback.custom_single
 }
 
 # Custom profile - multiple domains
@@ -77,6 +98,11 @@ resource "cloudflare_zero_trust_device_custom_profile_local_domain_fallback" "cu
   ]
 }
 
+moved {
+  from = cloudflare_zero_trust_local_fallback_domain.custom_multi
+  to   = cloudflare_zero_trust_device_custom_profile_local_domain_fallback.custom_multi
+}
+
 # Deprecated resource name - default profile
 resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "deprecated_default" {
   account_id = var.cloudflare_account_id
@@ -89,6 +115,11 @@ resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "d
   ]
 }
 
+moved {
+  from = cloudflare_fallback_domain.deprecated_default
+  to   = cloudflare_zero_trust_device_default_profile_local_domain_fallback.deprecated_default
+}
+
 # Deprecated resource name - custom profile
 resource "cloudflare_zero_trust_device_custom_profile_local_domain_fallback" "deprecated_custom" {
   account_id = var.cloudflare_account_id
@@ -99,4 +130,9 @@ resource "cloudflare_zero_trust_device_custom_profile_local_domain_fallback" "de
       suffix = "old.${var.cloudflare_domain}"
     }
   ]
+}
+
+moved {
+  from = cloudflare_fallback_domain.deprecated_custom
+  to   = cloudflare_zero_trust_device_custom_profile_local_domain_fallback.deprecated_custom
 }

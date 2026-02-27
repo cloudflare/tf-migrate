@@ -2,19 +2,15 @@ package zero_trust_device_default_profile
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_split_tunnel"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of zero trust device profile resources from v4 to v5
@@ -24,27 +20,6 @@ type V4ToV5Migrator struct {
 	oldTypeDeprecated string
 	newTypeDefault    string
 	newTypeCustom     string
-}
-
-// findStateFile searches upward from the given directory to find terraform.tfstate
-// Returns empty string if not found
-func findStateFile(startDir string) string {
-	dir := startDir
-	for {
-		stateFile := filepath.Join(dir, "terraform.tfstate")
-		if _, err := os.Stat(stateFile); err == nil {
-			return stateFile
-		}
-
-		// Move to parent directory
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			// Reached root directory
-			break
-		}
-		dir = parent
-	}
-	return ""
 }
 
 func NewV4ToV5Migrator() transform.ResourceTransformer {
@@ -207,23 +182,49 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.EnsureAttribute(body, "sccm_vpn_boundary_support", false)
 	}
 
+	// 9. Generate moved block for Terraform 1.8+ state migration
+	// The moved block triggers the provider's MoveState handler
+	resourceName := tfhcl.GetResourceName(block)
+	movedBlock := m.createMovedBlock(currentType, resourceName, newResourceType, resourceName)
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         []*hclwrite.Block{block, movedBlock},
+		RemoveOriginal: true,
 	}, nil
 }
 
+// createMovedBlock creates a moved block for state migration tracking
+// This triggers Terraform 1.8+ to call the provider's MoveState handler
+func (m *V4ToV5Migrator) createMovedBlock(fromType, fromName, toType, toName string) *hclwrite.Block {
+	from := fmt.Sprintf("%s.%s", fromType, fromName)
+	to := fmt.Sprintf("%s.%s", toType, toName)
+	return tfhcl.CreateMovedBlock(from, to)
+}
+
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
+	// STATE TRANSFORMATION DISABLED - Provider handles state migration via MoveState + UpgradeState
+	//
+	// This migrator now uses Provider StateUpgraders (NEW pattern):
+	// - tf-migrate generates moved blocks (handled in TransformConfig)
+	// - Terraform 1.8+ triggers provider's MoveState when it sees moved blocks
+	// - Provider's MoveState + UpgradeState handle all state transformations:
+	//   * Type conversions (Int64 → Float64)
+	//   * Structure changes (flatten → nested)
+	//   * ID extraction (custom profile)
+	//   * Field removals/additions
+	//
+	// State is passed through UNCHANGED - provider will migrate it when user runs terraform apply.
+
 	result := stateJSON.String()
 	attrs := stateJSON.Get("attributes")
 
 	if !attrs.Exists() {
-		result, _ = sjson.Set(result, "schema_version", 0)
+		// No attributes - return as-is
 		return result, nil
 	}
 
-	// 1. Check if this is a custom profile (has match and precedence) or default profile
-	// Priority: default field > presence of match+precedence
+	// ROUTING LOGIC - Determine target resource type for moved blocks
+	// This logic is still needed to generate correct moved blocks in TransformConfig
 	defaultAttr := attrs.Get("default")
 	matchAttr := attrs.Get("match")
 	precedenceAttr := attrs.Get("precedence")
@@ -236,7 +237,7 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	isCustomProfile := !isExplicitDefault && matchAttr.Exists() && precedenceAttr.Exists()
 
 	// Store the determined type in StateTypeRenames for the pipeline to apply
-	// This avoids state bleeding between resources (singleton migrator issue)
+	// This tells TransformConfig which resource type to use in moved blocks
 	var newResourceType string
 	if isCustomProfile {
 		newResourceType = m.newTypeCustom
@@ -257,136 +258,13 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	ctx.StateTypeRenames[stateTypeRenameKey1] = newResourceType
 	ctx.StateTypeRenames[stateTypeRenameKey2] = newResourceType
 
-	// 2. Remove fields based on profile type
-	if isCustomProfile {
-		// Custom profile: remove only 'default' and 'enabled' fields
-		result = state.RemoveFields(result, "attributes", attrs, "default", "enabled")
-	} else {
-		// Default profile: remove custom-only fields
-		result = state.RemoveFields(result, "attributes", attrs,
-			"name", "description", "match", "precedence", "enabled", "default")
-	}
-
-	// Re-parse attrs after removing fields to get updated structure
-	attrs = gjson.Parse(result).Get("attributes")
-
-	// 3. Remove fallback_domains if present (both profile types)
-	// v4 allowed fallback_domains as nested attribute, v5 requires separate resource
-	// Remove from state to prevent drift and API errors when trying to update
-	// Users should migrate to cloudflare_zero_trust_device_default_profile_local_domain_fallback
-	// or cloudflare_zero_trust_device_custom_profile_local_domain_fallback resources
-	if attrs.Get("fallback_domains").Exists() {
-		result, _ = sjson.Delete(result, "attributes.fallback_domains")
-	}
-
-	// 4. Remove empty exclude arrays (Optional+Computed field)
-	// If exclude is an empty array in v4 state, remove it to let v5 API provide defaults
-	if exclude := attrs.Get("exclude"); exclude.Exists() && exclude.IsArray() && len(exclude.Array()) == 0 {
-		result, _ = sjson.Delete(result, "attributes.exclude")
-	}
-
-	// Re-parse attrs after removals to continue processing
-	attrs = gjson.Parse(result).Get("attributes")
-
-	// 5. Handle tunnel_protocol - preserve in state
-	// v5 schema: Computed + Optional, but API returns "wireguard" as default
-	// Preserve tunnel_protocol in state to match what API returns
-	// This prevents drift when v5 provider refreshes from API
-
-	// 6. Convert numeric types: Int → Float64
-	if autoConnect := attrs.Get("auto_connect"); autoConnect.Exists() {
-		result, _ = sjson.Set(result, "attributes.auto_connect", state.ConvertToFloat64(autoConnect))
-	}
-
-	if captivePortal := attrs.Get("captive_portal"); captivePortal.Exists() {
-		result, _ = sjson.Set(result, "attributes.captive_portal", state.ConvertToFloat64(captivePortal))
-	}
-
-	// Custom profile: convert precedence Int → Float64
-	if isCustomProfile {
-		if precedence := attrs.Get("precedence"); precedence.Exists() {
-			result, _ = sjson.Set(result, "attributes.precedence", state.ConvertToFloat64(precedence))
-		}
-
-		// Custom profile: set policy_id from the profile ID portion of the composite ID
-		// v4 ID format: account_id/profile_id
-		// v5 custom profile needs policy_id set to just the profile_id
-		if id := attrs.Get("id"); id.Exists() {
-			idStr := id.String()
-			// Split on "/" to get the profile_id
-			if slashIdx := strings.Index(idStr, "/"); slashIdx != -1 && slashIdx < len(idStr)-1 {
-				policyID := idStr[slashIdx+1:]
-				result, _ = sjson.Set(result, "attributes.policy_id", policyID)
-			}
-		}
-	}
-
-	// 7. Create service_mode_v2 nested object from flat fields
-	result = m.createServiceModeV2(result, attrs)
-
-	// 8. Always set schema_version
-	result, _ = sjson.Set(result, "schema_version", 0)
-
+	// Return state UNCHANGED - provider will handle all transformations
 	return result, nil
 }
 
-// createServiceModeV2 creates the service_mode_v2 nested object from v4's flat fields
-// Pattern from healthcheck migration (createTCPConfig)
-//
-// v4 structure:
-//
-//	service_mode_v2_mode: "warp"
-//	service_mode_v2_port: 8080
-//
-// v5 structure:
-//
-//	service_mode_v2: {
-//	  mode: "warp"
-//	  port: 8080
-//	}
-func (m *V4ToV5Migrator) createServiceModeV2(stateJSON string, attrs gjson.Result) string {
-	mode := attrs.Get("service_mode_v2_mode")
-	port := attrs.Get("service_mode_v2_port")
-
-	// Check if port has a meaningful value (not null/zero/empty)
-	hasPort := port.Exists() && port.Value() != nil && port.Int() != 0
-
-	// Handle v4 default: mode="warp" with no meaningful port value
-	// Don't create service_mode_v2 if it's just the v4 default
-	if mode.Exists() && mode.String() == "warp" && !hasPort {
-		// Remove the mode field - it's just the v4 default
-		stateJSON, _ = sjson.Delete(stateJSON, "attributes.service_mode_v2_mode")
-		// Also remove port if it exists but is null/zero
-		if port.Exists() {
-			stateJSON, _ = sjson.Delete(stateJSON, "attributes.service_mode_v2_port")
-		}
-		return stateJSON
-	}
-
-	// Only create nested object if we have at least one non-default field
-	serviceMode := make(map[string]interface{})
-
-	// Collect fields for nested object
-	if mode.Exists() && mode.String() != "" {
-		serviceMode["mode"] = mode.String()
-	}
-	if hasPort {
-		// Convert Int → Float64
-		serviceMode["port"] = state.ConvertToFloat64(port)
-	}
-
-	// Only create nested object if we have at least one field
-	if len(serviceMode) > 0 {
-		stateJSON, _ = sjson.Set(stateJSON, "attributes.service_mode_v2", serviceMode)
-
-		// Remove the old flat fields
-		if mode.Exists() {
-			stateJSON, _ = sjson.Delete(stateJSON, "attributes.service_mode_v2_mode")
-		}
-		if port.Exists() {
-			stateJSON, _ = sjson.Delete(stateJSON, "attributes.service_mode_v2_port")
-		}
-	}
-
-	return stateJSON
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+// When true, tf-migrate will not perform state transformation - the provider handles it via MoveState + UpgradeState
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
+

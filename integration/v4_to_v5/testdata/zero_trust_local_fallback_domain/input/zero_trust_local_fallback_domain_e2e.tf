@@ -43,7 +43,7 @@ resource "cloudflare_zero_trust_device_profiles" "custom_e2e" {
   name        = "E2E Custom Profile"
   description = "Custom profile for e2e testing"
   match       = "identity.email == \"e2e@example.com\""
-  precedence  = 100
+  precedence  = 876
 }
 
 # Custom profile - fallback domain with policy_id

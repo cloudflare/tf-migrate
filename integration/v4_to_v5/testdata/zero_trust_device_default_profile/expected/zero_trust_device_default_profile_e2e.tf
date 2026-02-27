@@ -16,6 +16,7 @@ variable "cloudflare_domain" {
   type        = string
 }
 
+
 # Single default profile test with all v4-valid fields populated
 # Note: This is a singleton resource - only one default profile exists per account
 resource "cloudflare_zero_trust_device_default_profile" "default" {
@@ -39,4 +40,9 @@ resource "cloudflare_zero_trust_device_default_profile" "default" {
   }
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.default
+  to   = cloudflare_zero_trust_device_default_profile.default
 }

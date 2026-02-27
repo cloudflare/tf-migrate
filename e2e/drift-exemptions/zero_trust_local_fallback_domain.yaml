@@ -1,0 +1,14 @@
+version: 1
+
+exemptions:
+  - name: "precedence_recalculation"
+    description: "Precedence values may be auto-adjusted/recalculated by the Cloudflare API during migration"
+    resource_types:
+      - "cloudflare_zero_trust_device_custom_profile"
+    patterns:
+      - 'precedence.*->'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: true
