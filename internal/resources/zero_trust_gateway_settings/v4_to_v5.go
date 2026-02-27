@@ -1,17 +1,13 @@
 package zero_trust_gateway_settings
 
 import (
-	"fmt"
-
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of Zero Trust Gateway Settings from v4 to v5
@@ -84,7 +80,9 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	tfhcl.RemoveBlocksByType(body, "ssh_session_log")
 	tfhcl.RemoveBlocksByType(body, "payload_log")
 
-	if tfhcl.GetResourceType(block) == "cloudflare_teams_account" {
+	// Track rename before modifying block type
+	wasRenamed := tfhcl.GetResourceType(block) == "cloudflare_teams_account"
+	if wasRenamed {
 		tfhcl.RenameResourceType(block, "cloudflare_teams_account", "cloudflare_zero_trust_gateway_settings")
 	}
 
@@ -94,13 +92,22 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	var allBlocks []*hclwrite.Block
 
 	// When we have additional resources, create a fresh block for gateway settings to avoid formatting issues
-	removeOriginal := len(newResourceBlocks) > 0
-	if removeOriginal {
+	removeOriginal := len(newResourceBlocks) > 0 || wasRenamed
+	if len(newResourceBlocks) > 0 {
 		newGatewayBlock := m.createFreshGatewaySettingsBlock(block, settingsTokens)
 		allBlocks = []*hclwrite.Block{newGatewayBlock}
 		allBlocks = append(allBlocks, newResourceBlocks...)
 	} else {
 		allBlocks = []*hclwrite.Block{block}
+	}
+
+	// Generate moved block when the resource was renamed from cloudflare_teams_account
+	if wasRenamed {
+		oldType, newType := m.GetResourceRename()
+		from := oldType + "." + resourceName
+		to := newType + "." + resourceName
+		movedBlock := tfhcl.CreateMovedBlock(from, to)
+		allBlocks = append(allBlocks, movedBlock)
 	}
 
 	return &transform.TransformResult{
@@ -248,228 +255,16 @@ func (m *V4ToV5Migrator) createEnabledNestedObject(parentName string, enabledVal
 	}
 }
 
-// TransformState transforms the state JSON from v4 to v5
+// TransformState is a no-op for zero_trust_gateway_settings.
+// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState).
+// The moved block generated in TransformConfig triggers the provider's migration logic.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := instance.String()
-
-	attrs := instance.Get("attributes")
-	if !attrs.Exists() {
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	settings := make(map[string]interface{})
-
-	// Transform flat booleans to nested structures
-	if activityLogEnabled := attrs.Get("activity_log_enabled"); activityLogEnabled.Exists() {
-		settings["activity_log"] = map[string]interface{}{
-			"enabled": activityLogEnabled.Value(),
-		}
-	}
-	if tlsDecryptEnabled := attrs.Get("tls_decrypt_enabled"); tlsDecryptEnabled.Exists() {
-		settings["tls_decrypt"] = map[string]interface{}{
-			"enabled": tlsDecryptEnabled.Value(),
-		}
-	}
-	if protocolDetectionEnabled := attrs.Get("protocol_detection_enabled"); protocolDetectionEnabled.Exists() {
-		settings["protocol_detection"] = map[string]interface{}{
-			"enabled": protocolDetectionEnabled.Value(),
-		}
-	}
-
-	// Browser isolation (combine two fields and rename one)
-	// Always create browser_isolation block with defaults for missing fields
-	browserIsolation := make(map[string]interface{})
-	if urlBrowserIsolation := attrs.Get("url_browser_isolation_enabled"); urlBrowserIsolation.Exists() {
-		browserIsolation["url_browser_isolation_enabled"] = urlBrowserIsolation.Value()
-	} else {
-		browserIsolation["url_browser_isolation_enabled"] = false
-	}
-	// Rename: non_identity_browser_isolation_enabled -> non_identity_enabled
-	if nonIdentityBrowserIsolation := attrs.Get("non_identity_browser_isolation_enabled"); nonIdentityBrowserIsolation.Exists() {
-		browserIsolation["non_identity_enabled"] = nonIdentityBrowserIsolation.Value()
-	} else {
-		browserIsolation["non_identity_enabled"] = false
-	}
-	settings["browser_isolation"] = browserIsolation
-
-	// Convert MaxItems:1 arrays to objects
-	maxItems1Fields := []string{
-		"block_page",
-		"body_scanning",
-		"fips",
-		"antivirus",
-		"extended_email_matching",
-		"custom_certificate",
-		"certificate",
-	}
-
-	for _, fieldName := range maxItems1Fields {
-		if field := attrs.Get(fieldName); field.Exists() && field.IsArray() {
-			arr := field.Array()
-			if len(arr) > 0 {
-				obj := arr[0].Value()
-
-				// Special handling for antivirus - has nested notification_settings
-				if fieldName == "antivirus" {
-					obj = m.handleAntivirusStateTransform(arr[0])
-				}
-
-				// Special handling for block_page - remove API-computed fields not in v4 schema
-				// These fields cause drift because they're returned by the API but weren't
-				// user-configurable in v4, and v5 provider doesn't handle them properly
-				if fieldName == "block_page" {
-					if objMap, ok := obj.(map[string]interface{}); ok {
-						delete(objMap, "mode")           // API default, not in v4 schema
-						delete(objMap, "version")        // API-managed counter, not in v4 schema
-						delete(objMap, "read_only")      // Org-sharing metadata, not in v4 schema
-						delete(objMap, "source_account") // Org-sharing metadata, not in v4 schema
-						obj = objMap
-					}
-				}
-
-				// Special handling for extended_email_matching - remove API-computed fields not in v4 schema
-				if fieldName == "extended_email_matching" {
-					if objMap, ok := obj.(map[string]interface{}); ok {
-						delete(objMap, "version")        // API-managed counter, not in v4 schema
-						delete(objMap, "read_only")      // Org-sharing metadata, not in v4 schema
-						delete(objMap, "source_account") // Org-sharing metadata, not in v4 schema
-						obj = objMap
-					}
-				}
-
-				settings[fieldName] = obj
-			}
-		}
-	}
-
-	// Set the settings object in state
-	if len(settings) > 0 {
-		result, _ = sjson.Set(result, "attributes.settings", settings)
-	}
-
-	// Transform empty values to null for nested objects (v4 API returns empty strings, v5 expects null)
-	// Re-parse to get the updated settings object
-	updatedAttrs := gjson.Parse(result).Get("attributes")
-	if settingsField := updatedAttrs.Get("settings"); settingsField.Exists() {
-		// Transform empty values in block_page (has many optional fields that cause drift)
-		if blockPageField := settingsField.Get("block_page"); blockPageField.Exists() {
-			result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
-				Ctx:              ctx,
-				Result:           result,
-				FieldPath:        "attributes.settings.block_page",
-				FieldResult:      blockPageField,
-				ResourceName:     resourceName,
-				HCLAttributePath: "block_page",
-				CanHandle:        m.CanHandle,
-			})
-		}
-
-		// In v4, these are blocks, so we pass the block name as the HCLAttributePath
-		for _, fieldName := range []string{"body_scanning", "fips", "extended_email_matching", "custom_certificate", "certificate"} {
-			if nestedField := settingsField.Get(fieldName); nestedField.Exists() {
-				result = transform.TransformEmptyValuesToNull(transform.TransformEmptyValuesToNullOptions{
-					Ctx:              ctx,
-					Result:           result,
-					FieldPath:        fmt.Sprintf("attributes.settings.%s", fieldName),
-					FieldResult:      nestedField,
-					ResourceName:     resourceName,
-					HCLAttributePath: fieldName,
-					CanHandle:        m.CanHandle,
-				})
-			}
-		}
-	}
-
-	// Delete API-computed fields that were not in v4 schema (must be done AFTER TransformEmptyValuesToNull)
-	// These fields cause ongoing drift because the v5 provider doesn't handle them correctly
-	updatedAttrs = gjson.Parse(result).Get("attributes")
-	if settingsField := updatedAttrs.Get("settings"); settingsField.Exists() {
-		// Remove computed fields from block_page
-		if blockPageField := settingsField.Get("block_page"); blockPageField.Exists() {
-			result, _ = sjson.Delete(result, "attributes.settings.block_page.mode")
-			result, _ = sjson.Delete(result, "attributes.settings.block_page.version")
-			result, _ = sjson.Delete(result, "attributes.settings.block_page.read_only")
-			result, _ = sjson.Delete(result, "attributes.settings.block_page.source_account")
-		}
-
-		// Remove computed fields from extended_email_matching
-		if eeMatchingField := settingsField.Get("extended_email_matching"); eeMatchingField.Exists() {
-			result, _ = sjson.Delete(result, "attributes.settings.extended_email_matching.version")
-			result, _ = sjson.Delete(result, "attributes.settings.extended_email_matching.read_only")
-			result, _ = sjson.Delete(result, "attributes.settings.extended_email_matching.source_account")
-		}
-	}
-
-	// Remove old top-level fields
-	result = state.RemoveFields(result, "attributes", attrs,
-		"activity_log_enabled",
-		"tls_decrypt_enabled",
-		"protocol_detection_enabled",
-		"url_browser_isolation_enabled",
-		"non_identity_browser_isolation_enabled",
-		"block_page",
-		"body_scanning",
-		"fips",
-		"antivirus",
-		"extended_email_matching",
-		"custom_certificate",
-		"certificate",
-		"logging",
-		"proxy",
-		"ssh_session_log",
-		"payload_log",
-	)
-
-	// Always set schema_version to 0
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+	return instance.String(), nil
 }
 
-// handleAntivirusStateTransform handles the antivirus nested notification_settings transformation
-func (m *V4ToV5Migrator) handleAntivirusStateTransform(antivirusResult gjson.Result) interface{} {
-	antivirus := make(map[string]interface{})
-
-	// Copy top-level antivirus fields
-	if enabledDownload := antivirusResult.Get("enabled_download_phase"); enabledDownload.Exists() {
-		antivirus["enabled_download_phase"] = enabledDownload.Value()
-	}
-	if enabledUpload := antivirusResult.Get("enabled_upload_phase"); enabledUpload.Exists() {
-		antivirus["enabled_upload_phase"] = enabledUpload.Value()
-	}
-	if failClosed := antivirusResult.Get("fail_closed"); failClosed.Exists() {
-		antivirus["fail_closed"] = failClosed.Value()
-	}
-
-	// Handle nested notification_settings
-	if notifSettings := antivirusResult.Get("notification_settings"); notifSettings.Exists() {
-		if notifSettings.IsArray() {
-			arr := notifSettings.Array()
-			if len(arr) > 0 {
-				notifObj := arr[0]
-				notification := make(map[string]interface{})
-
-				if enabled := notifObj.Get("enabled"); enabled.Exists() {
-					notification["enabled"] = enabled.Value()
-				}
-
-				// Rename: message -> msg
-				if message := notifObj.Get("message"); message.Exists() {
-					notification["msg"] = message.Value()
-				}
-
-				if supportUrl := notifObj.Get("support_url"); supportUrl.Exists() {
-					notification["support_url"] = supportUrl.Value()
-				}
-
-				// Convert array to object
-				antivirus["notification_settings"] = notification
-			}
-		}
-	}
-
-	return antivirus
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
 
 // createLoggingResource creates a new cloudflare_zero_trust_gateway_logging resource
