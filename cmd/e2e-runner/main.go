@@ -23,6 +23,17 @@ var initCmd = &cobra.Command{
 	SilenceUsage: true, // Don't show usage on error
 	RunE: func(cmd *cobra.Command, args []string) error {
 		resources, _ := cmd.Flags().GetString("resources")
+		phase, _ := cmd.Flags().GetString("phase")
+		if phase != "" {
+			if resources != "" {
+				return fmt.Errorf("--phase and --resources are mutually exclusive; use one or the other")
+			}
+			phaseResources, err := e2e.ResolvePhases(phase)
+			if err != nil {
+				return err
+			}
+			resources = strings.Join(phaseResources, ",")
+		}
 		return e2e.RunInit(resources)
 	},
 }
@@ -34,6 +45,17 @@ var migrateCmd = &cobra.Command{
 	SilenceUsage: true, // Don't show usage on error
 	RunE: func(cmd *cobra.Command, args []string) error {
 		resources, _ := cmd.Flags().GetString("resources")
+		phase, _ := cmd.Flags().GetString("phase")
+		if phase != "" {
+			if resources != "" {
+				return fmt.Errorf("--phase and --resources are mutually exclusive; use one or the other")
+			}
+			phaseResources, err := e2e.ResolvePhases(phase)
+			if err != nil {
+				return err
+			}
+			resources = strings.Join(phaseResources, ",")
+		}
 		return e2e.RunMigrate(resources)
 	},
 }
@@ -48,6 +70,7 @@ var runCmd = &cobra.Command{
 			SkipV4Test:                cmd.Flag("skip-v4-test").Changed,
 			ApplyExemptions:           cmd.Flag("apply-exemptions").Changed,
 			Resources:                 cmd.Flag("resources").Value.String(),
+			Phase:                     cmd.Flag("phase").Value.String(),
 			ProviderPath:              cmd.Flag("provider").Value.String(),
 			UsesProviderStateUpgrader: cmd.Flag("uses-provider-state-upgrader").Changed,
 		}
@@ -89,14 +112,17 @@ var cleanCmd = &cobra.Command{
 func init() {
 	// Init command flags
 	initCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
+	initCmd.Flags().String("phase", "", "Run predefined phase(s) (comma-separated numbers, e.g., '0' or '0,1')")
 
 	// Migrate command flags
 	migrateCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
+	migrateCmd.Flags().String("phase", "", "Run predefined phase(s) (comma-separated numbers, e.g., '0' or '0,1')")
 
 	// Run command flags
 	runCmd.Flags().Bool("skip-v4-test", false, "Skip v4 testing phase")
 	runCmd.Flags().Bool("apply-exemptions", false, "Apply drift exemptions from global and resource-specific configs")
 	runCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
+	runCmd.Flags().String("phase", "", "Run predefined phase(s) (comma-separated numbers, e.g., '0' or '0,1')")
 	runCmd.Flags().String("provider", "", "Path to provider source directory (will be built automatically)")
 	runCmd.Flags().Bool("uses-provider-state-upgrader", false, "Only test resources that use provider-based state migration")
 

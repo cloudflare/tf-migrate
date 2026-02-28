@@ -39,6 +39,7 @@ type RunConfig struct {
 	SkipV4Test                bool
 	ApplyExemptions           bool
 	Resources                 string
+	Phase                     string // comma-separated phase numbers (e.g., "0,1")
 	ProviderPath              string
 	UsesProviderStateUpgrader bool
 }
@@ -83,6 +84,24 @@ func RunE2ETests(cfg *RunConfig) error {
 	// Create tmp directory
 	if err := os.MkdirAll(tmpDir, permDir); err != nil {
 		return fmt.Errorf("failed to create tmp directory %s: %w", tmpDir, err)
+	}
+
+	// Handle --phase flag: resolve phase numbers to resource list
+	if cfg.Phase != "" {
+		if cfg.Resources != "" {
+			return fmt.Errorf("--phase and --resources are mutually exclusive; use one or the other")
+		}
+		phaseResources, err := ResolvePhases(cfg.Phase)
+		if err != nil {
+			return fmt.Errorf("failed to resolve phases: %w", err)
+		}
+		cfg.Resources = strings.Join(phaseResources, ",")
+
+		printHeader("Phase Selection")
+		printCyan("Running phase(s): %s", cfg.Phase)
+		printCyan("Resolved to %d resource(s):", len(phaseResources))
+		printCyan("  %s", cfg.Resources)
+		fmt.Println()
 	}
 
 	// Handle --uses-provider-state-upgrader flag
@@ -378,7 +397,7 @@ func RunE2ETests(cfg *RunConfig) error {
 
 	// Plan v5
 	printYellow("Running terraform plan in v5/...")
-	v5PlanArgs := append([]string{"plan", "-no-color", "-out=" + filepath.Join(tmpDir, "v5.tfplan"), "-input=false"}, targetArgs...)
+	v5PlanArgs := append([]string{"plan", "-no-color", "-parallelism=2", "-out=" + filepath.Join(tmpDir, "v5.tfplan"), "-input=false"}, targetArgs...)
 	ctx.v5PlanOutput, err = v5TF.Run(v5PlanArgs...)
 	if err != nil {
 		printError("Terraform plan failed for v5")
@@ -403,7 +422,7 @@ func RunE2ETests(cfg *RunConfig) error {
 
 	// Apply v5
 	printYellow("Running terraform apply in v5/...")
-	v5ApplyArgs := []string{"apply", "-no-color", "-auto-approve", "-input=false", filepath.Join(tmpDir, "v5.tfplan")}
+	v5ApplyArgs := []string{"apply", "-no-color", "-auto-approve", "-parallelism=2", "-input=false", filepath.Join(tmpDir, "v5.tfplan")}
 	v5ApplyOutput, err := v5TF.Run(v5ApplyArgs...)
 	if err != nil {
 		printError("Terraform apply failed for v5")
@@ -439,7 +458,7 @@ func RunE2ETests(cfg *RunConfig) error {
 	printCyan("Step 4: Verifying stable state (v5 plan after apply)")
 	printYellow("Running terraform plan again to check for ongoing drift...")
 
-	v5PostPlanArgs := append([]string{"plan", "-no-color", "-out=" + filepath.Join(tmpDir, "v5-post-apply.tfplan"), "-input=false"}, targetArgs...)
+	v5PostPlanArgs := append([]string{"plan", "-no-color", "-parallelism=2", "-out=" + filepath.Join(tmpDir, "v5-post-apply.tfplan"), "-input=false"}, targetArgs...)
 	ctx.v5PostPlanOutput, err = v5TF.Run(v5PostPlanArgs...)
 	if err != nil {
 		printError("Terraform plan failed for v5 (post-apply)")
@@ -851,7 +870,7 @@ func runV4Tests(ctx *testContext) error {
 
 	// Run terraform plan
 	printYellow("Running terraform plan in v4/...")
-	planArgs := append([]string{"plan", "-no-color", "-out=" + filepath.Join(ctx.tmpDir, "v4.tfplan"), "-input=false"}, ctx.targetArgs...)
+	planArgs := append([]string{"plan", "-no-color", "-parallelism=2", "-out=" + filepath.Join(ctx.tmpDir, "v4.tfplan"), "-input=false"}, ctx.targetArgs...)
 	planOutput, err := v4TF.Run(planArgs...)
 	if err != nil {
 		printError("Terraform plan failed for v4")
@@ -887,7 +906,7 @@ func runV4Tests(ctx *testContext) error {
 
 	// Run terraform apply
 	printYellow("Running terraform apply in v4/...")
-	applyArgs := []string{"apply", "-no-color", "-auto-approve", "-input=false", filepath.Join(ctx.tmpDir, "v4.tfplan")}
+	applyArgs := []string{"apply", "-no-color", "-auto-approve", "-parallelism=2", "-input=false", filepath.Join(ctx.tmpDir, "v4.tfplan")}
 	applyOutput, err := v4TF.Run(applyArgs...)
 	if err != nil {
 		printError("Terraform apply failed for v4")
