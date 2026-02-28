@@ -15,6 +15,16 @@ exemptions:
       - 'enabled_entries.*->.*null'
     enabled: true
 
+  # Predefined profiles have computed fields (name, entries, open_access) that the
+  # provider recalculates on every plan. These are read-only API fields.
+  - name: "predefined_profile_computed_fields"
+    description: "Computed fields on predefined profiles recompute every plan"
+    patterns:
+      - 'entries.*->.*\(known after apply\)'
+      - 'name.*->.*\(known after apply\)'
+      - 'open_access.*->.*\(known after apply\)'
+    enabled: true
+
 settings:
   apply_exemptions: true
   verbose_exemptions: false

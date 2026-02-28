@@ -1,0 +1,18 @@
+# Drift Exemptions for argo resource
+#
+# v4 cloudflare_argo splits into cloudflare_argo_smart_routing (moved) and
+# cloudflare_argo_tiered_caching (new). The tiered_caching resource must be
+# created fresh — provider state upgraders cannot create new resources.
+# Stabilizes after first apply.
+
+version: 1
+
+exemptions:
+  - name: "argo_tiered_caching_creation"
+    description: "Allow argo_tiered_caching resource creation from argo split"
+    allow_resource_creation: true
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

@@ -1,0 +1,17 @@
+# Drift Exemptions for r2_bucket resource
+#
+# The v5 provider adds jurisdiction="default" to all R2 buckets.
+# This field doesn't exist in v4 state. Stabilizes after first apply.
+
+version: 1
+
+exemptions:
+  - name: "r2_bucket_jurisdiction_drift"
+    description: "Ignore R2 bucket jurisdiction field added by v5 provider"
+    patterns:
+      - 'jurisdiction.*default'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

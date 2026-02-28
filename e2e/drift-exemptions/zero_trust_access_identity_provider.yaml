@@ -1,0 +1,30 @@
+# Drift Exemptions for zero_trust_access_identity_provider resource
+#
+# Provider state upgrader doesn't populate all fields during v4→v5 migration.
+# These fields exist in config but are missing from state after upgrade.
+# Drift stabilizes after first apply.
+
+version: 1
+
+exemptions:
+  - name: "azure_conditional_access"
+    description: "Provider state upgrader doesn't carry forward conditional_access_enabled"
+    patterns:
+      - 'conditional_access_enabled.*false'
+    enabled: true
+
+  - name: "azure_support_groups"
+    description: "Provider state upgrader doesn't carry forward support_groups"
+    patterns:
+      - 'support_groups.*false'
+    enabled: true
+
+  - name: "saml_idp_public_certs"
+    description: "Provider state upgrader doesn't transform idp_public_cert to idp_public_certs array"
+    patterns:
+      - 'idp_public_certs'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

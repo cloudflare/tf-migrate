@@ -1,0 +1,21 @@
+# Drift Exemptions for list resource
+#
+# tf-migrate correctly normalizes IP addresses by stripping CIDR notation
+# (e.g., "10.0.0.0/8" → "10.0.0.0") for v5 schema compatibility.
+# The provider state upgrader doesn't normalize IPs in state, causing
+# initial drift. Stabilizes after first apply.
+
+version: 1
+
+exemptions:
+  - name: "ip_cidr_normalization"
+    description: "CIDR notation stripped from IP addresses for v5 compatibility"
+    patterns:
+      - 'ip\s.*->.*"10\.'
+      - 'ip\s.*"10\.\d'
+      - 'comment.*CIDR'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

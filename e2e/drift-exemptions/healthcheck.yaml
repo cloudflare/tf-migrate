@@ -1,0 +1,18 @@
+# Drift Exemptions for healthcheck resource
+#
+# The v5 provider returns empty description as "" but v5 schema treats it as null.
+# Also, tcp_config/http_config computed fields appear on first plan.
+# Stabilizes after first apply.
+
+version: 1
+
+exemptions:
+  - name: "empty_description_to_null"
+    description: "Empty description string becomes null in v5"
+    patterns:
+      - 'description\s*=\s*""\s*->\s*null'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

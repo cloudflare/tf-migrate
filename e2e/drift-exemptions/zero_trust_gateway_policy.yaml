@@ -1,0 +1,40 @@
+# Drift Exemptions for zero_trust_gateway_policy resource
+#
+# Provider bugs causing ongoing drift:
+# 1. Duration format normalization: provider reads "24h" as "24h0m0s"
+# 2. Computed defaults not stabilizing: command_logging, block_page_enabled, ip_categories
+
+version: 1
+
+exemptions:
+  - name: "duration_normalization"
+    description: "Provider normalizes duration format on read (24h -> 24h0m0s)"
+    patterns:
+      - 'duration.*0m0s.*->'
+      - '~ duration'
+    enabled: true
+
+  - name: "audit_ssh_computed_defaults"
+    description: "audit_ssh.command_logging is a computed field with default true"
+    patterns:
+      - 'command_logging = true'
+      - 'audit_ssh\s*=\s*\{'
+    enabled: true
+
+  - name: "rule_settings_computed_defaults"
+    description: "block_page_enabled and ip_categories are computed defaults"
+    patterns:
+      - 'block_page_enabled.*=.*false'
+      - 'ip_categories.*=.*false'
+    enabled: true
+
+  - name: "precedence_normalization"
+    description: "Provider normalizes precedence values during state upgrade (large -> small)"
+    patterns:
+      - '~ precedence\s*='
+      - 'precedence\s*=\s*\d{4,}\s*->\s*\d{1,4}'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false
