@@ -1,0 +1,22 @@
+# Drift Exemptions for zero_trust_device_posture_integration resource
+#
+# Resource-specific exemptions for cloudflare_zero_trust_device_posture_integration
+#
+# SDK v2 stores unset optional fields as empty strings (""), while Framework stores
+# them as null. During migration, these fields are converted from "" to null to match
+# Framework behavior, which causes expected initial drift.
+
+version: 1
+
+exemptions:
+  # ONLY empty string to null conversions - no other drift allowed
+  - name: "empty_string_to_null_only"
+    description: "Allow ONLY empty string to null conversions (SDK v2 -> Framework)"
+    patterns:
+      - '"".*->.*null'
+      - '-> null # forces replacement'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false
