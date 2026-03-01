@@ -60,3 +60,29 @@ variable "crowdstrike_customer_id" {
   type        = string
   default     = ""
 }
+
+# BYO IP Prefix variables for testing
+# Set via TF_VAR_byo_ip_* environment variables or directly in terraform.tfvars
+variable "byo_ip_cidr" {
+  description = "BYO IP CIDR notation for the prefix"
+  type        = string
+  default     = "2606:54c2:2::/48"
+}
+
+variable "byo_ip_asn" {
+  description = "BYO IP ASN number"
+  type        = string
+  default     = "13335"
+}
+
+variable "byo_ip_loa_document_id" {
+  description = "BYO IP LOA document ID"
+  type        = string
+  default     = "a6061274b61449d3bb4521aee2e90c95"
+}
+
+variable "byo_ip_prefix_id" {
+  description = "BYO IP prefix ID (for v4 provider or migration tests)"
+  type        = string
+  default     = "b543f1a825f4474b88e945f164624412"
+}

@@ -1,4 +1,5 @@
 // import.go handles parsing import annotations and generating import blocks.
+// import.go handles parsing import annotations and generating import blocks.
 //
 // This file provides functionality to:
 //   - Parse import annotations from Terraform configuration files
@@ -6,16 +7,18 @@
 //   - Support variable interpolation in import addresses
 //
 // Import annotations use the format:
-//   # tf-migrate:import-address=<address>
-//   resource "type" "name" { ... }
+//
+//	# tf-migrate:import-address=<address>
+//	resource "type" "name" { ... }
 //
 // Where <address> can include variable references like ${var.cloudflare_account_id}
 //
 // The generated import blocks are placed in the root module's main.tf:
-//   import {
-//     to = module.<module_name>.<resource_type>.<resource_name>
-//     id = <resolved_address>
-//   }
+//
+//	import {
+//	  to = module.<module_name>.<resource_type>.<resource_name>
+//	  id = <resolved_address>
+//	}
 package e2e
 
 import (
