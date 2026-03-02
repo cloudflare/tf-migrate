@@ -20,6 +20,9 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
+// version is set at build time via ldflags.
+var version = "dev"
+
 type config struct {
 	// Input paths
 	configDir string
@@ -163,7 +166,7 @@ func newVersionCommand() *cobra.Command {
 		Use:   "version",
 		Short: "Print version information",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("tf-migrate version 0.1.0")
+			fmt.Printf("tf-migrate version %s\n", version)
 		},
 	}
 }

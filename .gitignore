@@ -1,4 +1,5 @@
 bin/
+dist/
 .terraformrc-tf-migrate
 
 # Binaries (should be in bin/ directory only)

@@ -6,7 +6,7 @@ GO := go
 MAIN_PACKAGE := ./cmd/tf-migrate
 E2E_PACKAGE := ./cmd/e2e-runner
 
-.PHONY: all build build-e2e build-all test test-unit test-integration lint-testdata clean
+.PHONY: all build build-e2e build-all test test-unit test-integration lint-testdata clean release-snapshot
 
 # Default target: build all binaries
 all: build-all
@@ -39,6 +39,10 @@ test-integration:
 lint-testdata:
 	@echo "Linting integration testdata for naming conventions..."
 	@$(GO) run scripts/lint_testdata_names.go
+
+# Test GoReleaser build locally (no publish)
+release-snapshot:
+	goreleaser build --snapshot --clean
 
 # Clean build artifacts
 clean:
