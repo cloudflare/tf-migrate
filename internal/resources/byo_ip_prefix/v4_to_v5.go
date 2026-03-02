@@ -3,12 +3,10 @@ package byo_ip_prefix
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of BYO IP prefix resources from v4 to v5
@@ -53,35 +51,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	// This function receives a single instance and returns the transformed instance JSON
-	result := instance.String()
-
-	// Handle invalid/incomplete instances gracefully
-	if !instance.Exists() || !instance.Get("attributes").Exists() {
-		// Even for invalid instances, set schema_version to 0 for v5
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	attrs := instance.Get("attributes")
-
-	// Set schema_version to 0 for v5 (MANDATORY)
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	// Rename prefix_id to id
-	// In v4: prefix_id is the identifier
-	// In v5: id is the identifier (computed field)
-	result = state.RenameField(result, "attributes", attrs, "prefix_id", "id")
-
-	// Remove v4-only field: advertisement
-	// In v5, this is replaced by 'advertised' (computed boolean)
-	result = state.RemoveFields(result, "attributes", attrs, "advertisement")
-
-	// Note: We do NOT add asn, cidr, or other computed fields
-	// The v5 provider will populate these on first refresh/plan
-	// State after migration will be minimal: id, account_id, description
-	// State after first refresh will be complete with all computed fields
-
-	return result, nil
+func (m *V4ToV5Migrator) TransformState(_ *transform.Context, instance gjson.Result, _, _ string) (string, error) {
+	// State transformation is handled by the v5 provider's UpgradeState (schema_version 0→1).
+	// tf-migrate only handles HCL config transformation; pass state through unchanged.
+	return instance.String(), nil
 }
