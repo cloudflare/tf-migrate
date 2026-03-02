@@ -1,15 +1,20 @@
 # tf-migrate - Cloudflare Terraform Provider Migration Tool
 
-A powerful CLI tool for automatically migrating Terraform configurations and state files between different versions of the Cloudflare Terraform Provider.
+A powerful CLI tool for automatically migrating Terraform configurations between different versions of the Cloudflare Terraform Provider.
+
+> **Disclaimer:** Please note that v1.0.0-beta.1 is in Beta and we are still testing it for stability.
+
 
 ## Overview
 
 `tf-migrate` helps you upgrade your Terraform infrastructure code by automatically transforming:
 - **Configuration files** (`.tf`) - Updates resource types, attribute names, and block structures
-- **State files** (`terraform.tfstate`) - Migrates resource state to match new provider schemas
 
-Currently supports migrations:
-- **v4 → v5**: Cloudflare Provider v4 to v5
+### Supported Migration Paths
+
+| Source Version | Target Version |
+|----------------|----------------|
+| Cloudflare Provider v4.52.5 | Cloudflare Provider v5.19 |
 
 ### Supported Resources (v4 → v5)
 
@@ -72,10 +77,6 @@ Currently supports migrations:
 
 </details>
 
-## Documentation
-
-For comprehensive documentation including architecture, testing, drift exemptions, and development guide, see **[CLAUDE.md](./CLAUDE.md)** - designed to give AI agents (and humans!) complete project context.
-
 ## Installation
 
 ### Pre-built Binaries
@@ -102,29 +103,6 @@ make
 
 ## Usage
 
-### Authentication
-
-Some resource migrations require access to the Cloudflare API to complete the migration successfully. The tool supports two authentication methods:
-
-**Option 1: API Token (Recommended)**
-```bash
-export CLOUDFLARE_API_TOKEN="your-api-token"
-```
-
-**Option 2: API Key + Email**
-```bash
-export CLOUDFLARE_API_KEY="your-api-key"
-export CLOUDFLARE_EMAIL="your-email@example.com"
-```
-
-#### Resources Requiring Authentication
-
-The following resources require API credentials for complete migration:
-
-- `cloudflare_tunnel_route` → `cloudflare_zero_trust_tunnel_cloudflared_route`
-  - **Why**: The v4 provider stored network CIDR as the resource ID, but v5 requires the UUID from the API. The migration queries the API to fetch the correct UUID for your tunnel routes.
-  - **Without credentials**: The migration will still update resource types and attributes, but you'll need to run `terraform refresh` after migration to update the IDs.
-
 ### Basic Migration
 
 Migrate all Terraform files in the current directory:
@@ -137,16 +115,6 @@ tf-migrate migrate --source-version v4 --target-version v5
 
 ```bash
 tf-migrate migrate --config-dir ./terraform --source-version v4 --target-version v5
-```
-
-### Include State File Migration
-
-```bash
-tf-migrate migrate \
-  --config-dir ./terraform \
-  --state-file terraform.tfstate \
-  --source-version v4 \
-  --target-version v5
 ```
 
 ### Dry Run Mode
@@ -172,8 +140,6 @@ tf-migrate migrate \
 tf-migrate migrate \
   --config-dir ./terraform \
   --output-dir ./terraform-v5 \
-  --state-file terraform.tfstate \
-  --output-state terraform-v5.tfstate \
   --source-version v4 \
   --target-version v5
 ```
@@ -185,7 +151,6 @@ tf-migrate migrate \
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--config-dir` | Directory containing Terraform configuration files | Current directory |
-| `--state-file` | Path to Terraform state file | None |
 | `--source-version` | Source provider version (e.g., v4) | Required |
 | `--target-version` | Target provider version (e.g., v5) | Required |
 | `--resources` | Comma-separated list of resources to migrate | All resources |
@@ -197,7 +162,6 @@ tf-migrate migrate \
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--output-dir` | Output directory for migrated configuration files | In-place |
-| `--output-state` | Output path for migrated state file | In-place |
 | `--backup` | Create backup of original files before migration | true |
 
 ### Development Tools
@@ -233,7 +197,7 @@ go test ./... -cover
 
 #### Integration Tests
 
-Integration tests verify the complete migration workflow using real configuration and state files.
+Integration tests verify the complete migration workflow using real configuration files.
 
 ```bash
 # Run all v4 to v5 integration tests
