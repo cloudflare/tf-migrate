@@ -115,7 +115,22 @@ func RunE2ETests(cfg *RunConfig) error {
 		if len(providerResources) == 0 {
 			return fmt.Errorf("no resources found with UsesProviderStateUpgrader")
 		}
-		// Override Resources with discovered list
+
+		// If --phase or --resources was set, intersect with provider state upgrader resources
+		if cfg.Resources != "" {
+			requestedSet := make(map[string]bool)
+			for _, r := range strings.Split(cfg.Resources, ",") {
+				requestedSet[strings.TrimSpace(r)] = true
+			}
+			var filtered []string
+			for _, r := range providerResources {
+				if requestedSet[r] {
+					filtered = append(filtered, r)
+				}
+			}
+			providerResources = filtered
+		}
+
 		cfg.Resources = strings.Join(providerResources, ",")
 
 		printHeader("State Migration Method: Provider State Upgrader")
