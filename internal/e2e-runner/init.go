@@ -213,7 +213,7 @@ variable "byo_ip_loa_document_id" {
 variable "byo_ip_prefix_id" {
   description = "BYO IP prefix ID (for v4 provider or migration tests)"
   type        = string
-  default     = "e71bfbf3fdc740aa8b90a61e9dfffe79"
+  default     = "b543f1a825f4474b88e945f164624412"
 }
 `
 		f, err := os.OpenFile(providerTfPath, os.O_APPEND|os.O_WRONLY, permFile)

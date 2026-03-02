@@ -1,15 +1,10 @@
 # Terraform v4 to v5 Migration E2E Test - BYO IP Prefix
 #
-# IMPORTANT: BYO IP prefixes CANNOT be created via Terraform.
-# They must be pre-created via the Cloudflare API and imported.
-#
-# This E2E test file is designed to work with the e2e-runner,
-# which will create a prefix using the API before importing it.
+# Note: The v4 provider's Create function does not call the API to create a
+# prefix. It sets the resource ID from prefix_id and reads the existing prefix.
+# A real prefix ID must be provided via CLOUDFLARE_BYO_IP_PREFIX_ID.
 #
 # See: https://github.com/cloudflare/terraform-provider-cloudflare/blob/main/docs/resources/byo_ip_prefix.md
-#
-# import annotation for e2e-runner:
-# @import cloudflare_byo_ip_prefix.test ${CLOUDFLARE_ACCOUNT_ID}/${CLOUDFLARE_BYO_IP_PREFIX_ID}
 
 # Variables passed from root module
 variable "cloudflare_account_id" {
