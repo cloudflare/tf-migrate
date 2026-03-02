@@ -11,11 +11,76 @@ A powerful CLI tool for automatically migrating Terraform configurations and sta
 Currently supports migrations:
 - **v4 → v5**: Cloudflare Provider v4 to v5
 
+### Supported Resources (v4 → v5)
+
+<details>
+<summary>50 resources with complete config migration support (click to expand)</summary>
+
+| Product | Resource | Type |
+|---------|----------|------|
+| **Zones** | `cloudflare_zone` | resource |
+| | `cloudflare_zone` | data |
+| | `cloudflare_zones` | data |
+| | `cloudflare_zone_setting` | resource |
+| | `cloudflare_zone_subscription` | resource |
+| **DNS** | `cloudflare_dns_record` | resource |
+| | `cloudflare_zone_dnssec` | resource |
+| **Load Balancers** | `cloudflare_load_balancer` | resource |
+| | `cloudflare_load_balancer_monitor` | resource |
+| | `cloudflare_load_balancer_pool` | resource |
+| **Rulesets** | `cloudflare_ruleset` | resource |
+| **Page Rules** | `cloudflare_page_rule` | resource |
+| **Managed Transforms** | `cloudflare_managed_transforms` | resource |
+| **URL Normalization** | `cloudflare_url_normalization_settings` | resource |
+| **Snippets** | `cloudflare_snippet` | resource |
+| | `cloudflare_snippet_rules` | resource |
+| **Workers** | `cloudflare_worker_script` | resource |
+| | `cloudflare_worker_route` | resource |
+| **KV** | `cloudflare_workers_kv` | resource |
+| | `cloudflare_workers_kv_namespace` | resource |
+| **Pages** | `cloudflare_pages_project` | resource |
+| **Cache** | `cloudflare_tiered_cache` | resource |
+| **Argo** | `cloudflare_argo_smart_routing` | resource |
+| | `cloudflare_argo_tiered_caching` | resource |
+| **Spectrum** | `cloudflare_spectrum_application` | resource |
+| **Addressing** | `cloudflare_regional_hostname` | resource |
+| **Bot Management** | `cloudflare_bot_management` | resource |
+| **Healthchecks** | `cloudflare_healthcheck` | resource |
+| **Custom Pages** | `cloudflare_custom_pages` | resource |
+| **Rules** | `cloudflare_list` | resource |
+| | `cloudflare_list_item` | resource |
+| **Logpush** | `cloudflare_logpush_job` | resource |
+| **Logs** | `cloudflare_logpull_retention` | resource |
+| **Alerting** | `cloudflare_notification_policy_webhooks` | resource |
+| **R2** | `cloudflare_r2_bucket` | resource |
+| **User** | `cloudflare_api_token` | resource |
+| **Zero Trust** | `cloudflare_zero_trust_access_application` | resource |
+| | `cloudflare_zero_trust_access_group` | resource |
+| | `cloudflare_zero_trust_access_identity_provider` | resource |
+| | `cloudflare_zero_trust_access_mtls_certificate` | resource |
+| | `cloudflare_zero_trust_access_mtls_hostname_settings` | resource |
+| | `cloudflare_zero_trust_access_policy` | resource |
+| | `cloudflare_zero_trust_access_service_token` | resource |
+| | `cloudflare_zero_trust_device_posture_rule` | resource |
+| | `cloudflare_zero_trust_dlp_custom_profile` | resource |
+| | `cloudflare_zero_trust_dlp_custom_entry` | resource |
+| | `cloudflare_zero_trust_dlp_predefined_entry` | resource |
+| | `cloudflare_zero_trust_dlp_integration_entry` | resource |
+| | `cloudflare_zero_trust_gateway_policy` | resource |
+| | `cloudflare_zero_trust_list` | resource |
+| | `cloudflare_zero_trust_tunnel_cloudflared_route` | resource |
+
+</details>
+
 ## Documentation
 
 For comprehensive documentation including architecture, testing, drift exemptions, and development guide, see **[CLAUDE.md](./CLAUDE.md)** - designed to give AI agents (and humans!) complete project context.
 
 ## Installation
+
+### Pre-built Binaries
+
+Download the latest release from the [GitHub Releases](https://github.com/cloudflare/tf-migrate/releases) page. Binaries are available for Linux, macOS, Windows, and FreeBSD on both amd64 and arm64.
 
 ### Building from Source
 
@@ -27,7 +92,7 @@ cd tf-migrate
 # Build the binary
 make
 
-# The binary will be available as ./tf-migrate
+# The binary will be available at ./bin/tf-migrate
 ```
 
 ### Requirements
@@ -346,6 +411,7 @@ bin/                 # Built binaries
 
 **CI/CD:**
 
-E2E tests run automatically in GitHub Actions on push to `main` or manual workflow dispatch. See `.github/workflows/e2e-tests.yml`.
+- **E2E tests** run automatically in GitHub Actions on push to `main` or manual workflow dispatch. See `.github/workflows/e2e-tests.yml`.
+- **Releases** are automated via GoReleaser. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which cross-compiles binaries and creates a GitHub Release with archives and checksums.
 
 **⚠️ Important:** E2E tests create and destroy real Cloudflare resources. Always use a dedicated test account, never production infrastructure.
