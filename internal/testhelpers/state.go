@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/cloudflare/cloudflare-go/v6"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/stretchr/testify/assert"
@@ -16,11 +15,10 @@ import (
 
 // StateTestCase represents a test case for state transformations
 type StateTestCase struct {
-	Name      string
-	Input     string
-	Expected  string
-	Config    string             // Optional: HCL configuration for testing transformations that need HCL context
-	APIClient *cloudflare.Client // Optional: mock API client for testing migrations that need API access
+	Name     string
+	Input    string
+	Expected string
+	Config   string // Optional: HCL configuration for testing transformations that need HCL context
 }
 
 // runStateTransformTest runs a single state transformation test
@@ -31,10 +29,9 @@ func runStateTransformTest(t *testing.T, tt StateTestCase, migrator transform.Re
 	inputResult := gjson.Parse(tt.Input)
 	expectedResult := gjson.Parse(tt.Expected)
 
-	// Create context with optional API client and HCL config
+	// Create context with optional HCL config
 	ctx := &transform.Context{
 		StateJSON: tt.Input,
-		APIClient: tt.APIClient,
 	}
 
 	// Parse HCL config if provided
