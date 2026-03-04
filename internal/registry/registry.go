@@ -15,6 +15,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/authenticated_origin_pulls_certificate"
 	"github.com/cloudflare/tf-migrate/internal/resources/bot_management"
 	"github.com/cloudflare/tf-migrate/internal/resources/certificate_pack"
+	"github.com/cloudflare/tf-migrate/internal/resources/custom_hostname"
 	"github.com/cloudflare/tf-migrate/internal/resources/custom_hostname_fallback_origin"
 	"github.com/cloudflare/tf-migrate/internal/resources/custom_pages"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
@@ -60,10 +61,9 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_policy"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_service_token"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_default_profile"
-	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_posture_integration"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_managed_networks"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_posture_integration"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_device_posture_rule"
-	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_split_tunnel"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dex_test"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_dlp_custom_profile"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_gateway_certificate"
@@ -72,6 +72,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_list"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_local_fallback_domain"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_organization"
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_split_tunnel"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared_config"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_tunnel_cloudflared_route"
@@ -102,6 +103,7 @@ func RegisterAllMigrations() {
 	authenticated_origin_pulls_certificate.NewV4ToV5Migrator()
 	bot_management.NewV4ToV5Migrator()
 	certificate_pack.NewV4ToV5Migrator()
+	custom_hostname.NewV4ToV5Migrator()
 	custom_hostname_fallback_origin.NewV4ToV5Migrator()
 	custom_pages.NewV4ToV5Migrator()
 	dns_record.NewV4ToV5Migrator()
