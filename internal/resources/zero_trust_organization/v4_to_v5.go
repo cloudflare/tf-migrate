@@ -3,11 +3,9 @@ package zero_trust_organization
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
 
@@ -52,8 +50,11 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // TransformConfig transforms the HCL configuration from v4 to v5.
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-	// Rename resource type from EITHER v4 name to v5 name
+	// Get the resource name and type before renaming (for moved block generation)
+	resourceName := tfhcl.GetResourceName(block)
 	currentType := tfhcl.GetResourceType(block)
+
+	// Rename resource type from EITHER v4 name to v5 name
 	if currentType == "cloudflare_access_organization" || currentType == "cloudflare_zero_trust_access_organization" {
 		tfhcl.RenameResourceType(block, currentType, "cloudflare_zero_trust_organization")
 	}
@@ -70,55 +71,36 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// v5: custom_pages = { forbidden = "id" ... }
 	tfhcl.ConvertBlocksToAttribute(body, "custom_pages", "custom_pages", func(block *hclwrite.Block) {})
 
+	// Generate moved block for state migration
+	// Both v4 resource names get moved to the same v5 name
+	from := currentType + "." + resourceName
+	to := "cloudflare_zero_trust_organization." + resourceName
+	movedBlock := tfhcl.CreateMovedBlock(from, to)
+
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         []*hclwrite.Block{block, movedBlock},
+		RemoveOriginal: true,
 	}, nil
 }
 
-// TransformState transforms the JSON state from v4 to v5.
+// TransformState is a no-op for zero_trust_organization migration.
+// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
+//
+// Provider StateUpgraders handle:
+// - login_design: []Model → *Model (MaxItems:1 array to SingleNestedAttribute)
+// - custom_pages: []Model → *Model (MaxItems:1 array to SingleNestedAttribute)
+// - Boolean defaults: Add false for allow_authenticate_via_warp, auto_redirect_to_identity, is_ui_read_only
+// - Account/Zone mutual exclusivity: Ensure only one is set
+// - ID attribute removal: Framework manages ID separately
+// - Schema version: Set to appropriate version based on migration path
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is handled by the provider's StateUpgraders (UpgradeState)
+	// This function is a no-op for zero_trust_organization migration
+	return stateJSON.String(), nil
+}
 
-	// Get attributes
-	attrs := stateJSON.Get("attributes")
-	if !attrs.Exists() {
-		// Even for invalid instances, set schema_version
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	// Handle account_id / zone_id mutual exclusivity
-	// v5 requires that only one is set, the other must be null
-	accountID := attrs.Get("account_id")
-	zoneID := attrs.Get("zone_id")
-
-	if accountID.Exists() && accountID.String() != "" {
-		// This is an account-level organization, ensure zone_id is null
-		result, _ = sjson.Delete(result, "attributes.zone_id")
-	} else if zoneID.Exists() && zoneID.String() != "" {
-		// This is a zone-level organization, ensure account_id is null
-		result, _ = sjson.Delete(result, "attributes.account_id")
-	}
-
-	// Convert MaxItems:1 arrays to objects
-	// login_design: [{"background_color": "#000", ...}] → {"background_color": "#000", ...}
-	// Handles empty arrays by deleting them
-	result = state.ConvertMaxItemsOneArrayToObject(result, "attributes", attrs, "login_design")
-	result = state.ConvertMaxItemsOneArrayToObject(result, "attributes", attrs, "custom_pages")
-
-	// Add default boolean values if missing (v5 has defaults, v4 didn't)
-	// This prevents PATCH operations when migrating resources that didn't set these
-	result = state.EnsureField(result, "attributes", attrs, "allow_authenticate_via_warp", false)
-	result = state.EnsureField(result, "attributes", attrs, "auto_redirect_to_identity", false)
-	result = state.EnsureField(result, "attributes", attrs, "is_ui_read_only", false)
-
-	// Remove the 'id' attribute - Framework manages ID separately from attributes
-	// In SDKv2 (v4), ID was stored as an attribute. In Framework (v5), it's managed separately.
-	result, _ = sjson.Delete(result, "attributes.id")
-
-	// Set schema_version to 0 for v5 (ALWAYS required!)
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+// This tells tf-migrate that the provider handles state transformation, not tf-migrate.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }

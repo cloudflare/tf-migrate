@@ -22,6 +22,37 @@ locals {
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ===== Basic Scenarios (8) =====
 resource "cloudflare_zero_trust_organization" "minimal_account" {
   account_id  = var.cloudflare_account_id
@@ -29,10 +60,20 @@ resource "cloudflare_zero_trust_organization" "minimal_account" {
   name        = "Minimal Account Organization"
 }
 
+moved {
+  from = cloudflare_access_organization.minimal_account
+  to   = cloudflare_zero_trust_organization.minimal_account
+}
+
 resource "cloudflare_zero_trust_organization" "minimal_zone" {
   zone_id     = var.cloudflare_zone_id
   auth_domain = "${local.name_prefix}-minimal-zone.cloudflareaccess.com"
   name        = "Minimal Zone Organization"
+}
+
+moved {
+  from = cloudflare_access_organization.minimal_zone
+  to   = cloudflare_zero_trust_organization.minimal_zone
 }
 
 resource "cloudflare_zero_trust_organization" "complete" {
@@ -61,6 +102,11 @@ resource "cloudflare_zero_trust_organization" "complete" {
   }
 }
 
+moved {
+  from = cloudflare_access_organization.complete
+  to   = cloudflare_zero_trust_organization.complete
+}
+
 resource "cloudflare_zero_trust_organization" "with_login_design" {
   account_id  = var.cloudflare_account_id
   auth_domain = "${local.name_prefix}-login-design.cloudflareaccess.com"
@@ -75,6 +121,11 @@ resource "cloudflare_zero_trust_organization" "with_login_design" {
   }
 }
 
+moved {
+  from = cloudflare_access_organization.with_login_design
+  to   = cloudflare_zero_trust_organization.with_login_design
+}
+
 resource "cloudflare_zero_trust_organization" "with_custom_pages" {
   account_id  = var.cloudflare_account_id
   auth_domain = "${local.name_prefix}-custom-pages.cloudflareaccess.com"
@@ -84,6 +135,11 @@ resource "cloudflare_zero_trust_organization" "with_custom_pages" {
     forbidden       = "cccccccc-cccc-cccc-cccc-cccccccccccc"
     identity_denied = "dddddddd-dddd-dddd-dddd-dddddddddddd"
   }
+}
+
+moved {
+  from = cloudflare_access_organization.with_custom_pages
+  to   = cloudflare_zero_trust_organization.with_custom_pages
 }
 
 resource "cloudflare_zero_trust_organization" "with_both_nested" {
@@ -101,6 +157,11 @@ resource "cloudflare_zero_trust_organization" "with_both_nested" {
   }
 }
 
+moved {
+  from = cloudflare_access_organization.with_both_nested
+  to   = cloudflare_zero_trust_organization.with_both_nested
+}
+
 resource "cloudflare_zero_trust_organization" "with_booleans_true" {
   account_id                  = var.cloudflare_account_id
   auth_domain                 = "${local.name_prefix}-booleans-true.cloudflareaccess.com"
@@ -108,6 +169,11 @@ resource "cloudflare_zero_trust_organization" "with_booleans_true" {
   is_ui_read_only             = true
   auto_redirect_to_identity   = true
   allow_authenticate_via_warp = true
+}
+
+moved {
+  from = cloudflare_access_organization.with_booleans_true
+  to   = cloudflare_zero_trust_organization.with_booleans_true
 }
 
 resource "cloudflare_zero_trust_organization" "with_durations" {
@@ -119,6 +185,11 @@ resource "cloudflare_zero_trust_organization" "with_durations" {
   warp_auth_session_duration         = "2h30m"
 }
 
+moved {
+  from = cloudflare_access_organization.with_durations
+  to   = cloudflare_zero_trust_organization.with_durations
+}
+
 # ===== v4 Resource Name Variations (2) =====
 resource "cloudflare_zero_trust_organization" "deprecated_name" {
   account_id  = var.cloudflare_account_id
@@ -126,10 +197,20 @@ resource "cloudflare_zero_trust_organization" "deprecated_name" {
   name        = "Using Deprecated Resource Name"
 }
 
+moved {
+  from = cloudflare_access_organization.deprecated_name
+  to   = cloudflare_zero_trust_organization.deprecated_name
+}
+
 resource "cloudflare_zero_trust_organization" "current_name" {
   account_id  = var.cloudflare_account_id
   auth_domain = "${local.name_prefix}-current.cloudflareaccess.com"
   name        = "Using Current Resource Name"
+}
+
+moved {
+  from = cloudflare_zero_trust_access_organization.current_name
+  to   = cloudflare_zero_trust_organization.current_name
 }
 
 # ===== Partial Field Combinations (8) =====
@@ -144,6 +225,11 @@ resource "cloudflare_zero_trust_organization" "partial_login_1" {
   }
 }
 
+moved {
+  from = cloudflare_access_organization.partial_login_1
+  to   = cloudflare_zero_trust_organization.partial_login_1
+}
+
 resource "cloudflare_zero_trust_organization" "partial_login_2" {
   account_id  = var.cloudflare_account_id
   auth_domain = "${local.name_prefix}-partial-login-2.cloudflareaccess.com"
@@ -152,6 +238,11 @@ resource "cloudflare_zero_trust_organization" "partial_login_2" {
   login_design = {
     logo_path = "https://assets.cf-tf-test.com/simple-logo.png"
   }
+}
+
+moved {
+  from = cloudflare_access_organization.partial_login_2
+  to   = cloudflare_zero_trust_organization.partial_login_2
 }
 
 resource "cloudflare_zero_trust_organization" "partial_custom_1" {
@@ -164,6 +255,11 @@ resource "cloudflare_zero_trust_organization" "partial_custom_1" {
   }
 }
 
+moved {
+  from = cloudflare_access_organization.partial_custom_1
+  to   = cloudflare_zero_trust_organization.partial_custom_1
+}
+
 resource "cloudflare_zero_trust_organization" "partial_custom_2" {
   account_id  = var.cloudflare_account_id
   auth_domain = "${local.name_prefix}-partial-custom-2.cloudflareaccess.com"
@@ -174,11 +270,21 @@ resource "cloudflare_zero_trust_organization" "partial_custom_2" {
   }
 }
 
+moved {
+  from = cloudflare_access_organization.partial_custom_2
+  to   = cloudflare_zero_trust_organization.partial_custom_2
+}
+
 resource "cloudflare_zero_trust_organization" "only_session" {
   account_id       = var.cloudflare_account_id
   auth_domain      = "${local.name_prefix}-only-session.cloudflareaccess.com"
   name             = "Organization with Only Session Duration"
   session_duration = "6h"
+}
+
+moved {
+  from = cloudflare_access_organization.only_session
+  to   = cloudflare_zero_trust_organization.only_session
 }
 
 resource "cloudflare_zero_trust_organization" "only_seat_expiration" {
@@ -188,11 +294,21 @@ resource "cloudflare_zero_trust_organization" "only_seat_expiration" {
   user_seat_expiration_inactive_time = "730h"
 }
 
+moved {
+  from = cloudflare_access_organization.only_seat_expiration
+  to   = cloudflare_zero_trust_organization.only_seat_expiration
+}
+
 resource "cloudflare_zero_trust_organization" "only_warp_duration" {
   account_id                 = var.cloudflare_account_id
   auth_domain                = "${local.name_prefix}-only-warp.cloudflareaccess.com"
   name                       = "Organization with Only WARP Duration"
   warp_auth_session_duration = "1h30m"
+}
+
+moved {
+  from = cloudflare_access_organization.only_warp_duration
+  to   = cloudflare_zero_trust_organization.only_warp_duration
 }
 
 resource "cloudflare_zero_trust_organization" "only_readonly" {
@@ -201,6 +317,11 @@ resource "cloudflare_zero_trust_organization" "only_readonly" {
   name                       = "Organization with Only Read-Only Flag"
   is_ui_read_only            = true
   ui_read_only_toggle_reason = "Locked down for compliance"
+}
+
+moved {
+  from = cloudflare_access_organization.only_readonly
+  to   = cloudflare_zero_trust_organization.only_readonly
 }
 
 # ===== Edge Cases (5) =====
@@ -216,6 +337,11 @@ resource "cloudflare_zero_trust_organization" "special_chars" {
   }
 }
 
+moved {
+  from = cloudflare_access_organization.special_chars
+  to   = cloudflare_zero_trust_organization.special_chars
+}
+
 resource "cloudflare_zero_trust_organization" "long_strings" {
   account_id                 = var.cloudflare_account_id
   auth_domain                = "${local.name_prefix}-long.cloudflareaccess.com"
@@ -228,6 +354,11 @@ resource "cloudflare_zero_trust_organization" "long_strings" {
   }
 }
 
+moved {
+  from = cloudflare_access_organization.long_strings
+  to   = cloudflare_zero_trust_organization.long_strings
+}
+
 resource "cloudflare_zero_trust_organization" "duration_formats" {
   account_id                         = var.cloudflare_account_id
   auth_domain                        = "${local.name_prefix}-duration-formats.cloudflareaccess.com"
@@ -235,6 +366,11 @@ resource "cloudflare_zero_trust_organization" "duration_formats" {
   session_duration                   = "2h45m"
   user_seat_expiration_inactive_time = "730h"
   warp_auth_session_duration         = "90m"
+}
+
+moved {
+  from = cloudflare_access_organization.duration_formats
+  to   = cloudflare_zero_trust_organization.duration_formats
 }
 
 resource "cloudflare_zero_trust_organization" "color_formats" {
@@ -248,6 +384,11 @@ resource "cloudflare_zero_trust_organization" "color_formats" {
   }
 }
 
+moved {
+  from = cloudflare_access_organization.color_formats
+  to   = cloudflare_zero_trust_organization.color_formats
+}
+
 resource "cloudflare_zero_trust_organization" "booleans_false" {
   account_id                  = var.cloudflare_account_id
   auth_domain                 = "${local.name_prefix}-booleans-false.cloudflareaccess.com"
@@ -255,6 +396,11 @@ resource "cloudflare_zero_trust_organization" "booleans_false" {
   is_ui_read_only             = false
   auto_redirect_to_identity   = false
   allow_authenticate_via_warp = false
+}
+
+moved {
+  from = cloudflare_access_organization.booleans_false
+  to   = cloudflare_zero_trust_organization.booleans_false
 }
 
 # ===== Terraform Patterns (8) =====
@@ -266,6 +412,11 @@ resource "cloudflare_zero_trust_organization" "foreach_set" {
   session_duration = "24h"
 }
 
+moved {
+  from = cloudflare_access_organization.foreach_set
+  to   = cloudflare_zero_trust_organization.foreach_set
+}
+
 resource "cloudflare_zero_trust_organization" "foreach_map" {
   for_each         = local.org_configs
   account_id       = var.cloudflare_account_id
@@ -274,12 +425,22 @@ resource "cloudflare_zero_trust_organization" "foreach_map" {
   session_duration = each.value.session
 }
 
+moved {
+  from = cloudflare_zero_trust_access_organization.foreach_map
+  to   = cloudflare_zero_trust_organization.foreach_map
+}
+
 resource "cloudflare_zero_trust_organization" "with_count" {
   count                       = 2
   account_id                  = var.cloudflare_account_id
   auth_domain                 = "${local.name_prefix}-count-${count.index}.cloudflareaccess.com"
   name                        = "Count-based Organization ${count.index}"
   allow_authenticate_via_warp = count.index == 0
+}
+
+moved {
+  from = cloudflare_access_organization.with_count
+  to   = cloudflare_zero_trust_organization.with_count
 }
 
 resource "cloudflare_zero_trust_organization" "with_locals" {
@@ -292,6 +453,11 @@ resource "cloudflare_zero_trust_organization" "with_locals" {
   }
 }
 
+moved {
+  from = cloudflare_access_organization.with_locals
+  to   = cloudflare_zero_trust_organization.with_locals
+}
+
 resource "cloudflare_zero_trust_organization" "conditional" {
   account_id                = var.cloudflare_account_id
   auth_domain               = "${local.name_prefix}-conditional.cloudflareaccess.com"
@@ -299,6 +465,11 @@ resource "cloudflare_zero_trust_organization" "conditional" {
   is_ui_read_only           = true
   auto_redirect_to_identity = true
   session_duration          = true ? "12h" : "24h"
+}
+
+moved {
+  from = cloudflare_access_organization.conditional
+  to   = cloudflare_zero_trust_organization.conditional
 }
 
 # ===== Meta-Arguments (3) =====
@@ -313,12 +484,22 @@ resource "cloudflare_zero_trust_organization" "with_lifecycle" {
   }
 }
 
+moved {
+  from = cloudflare_access_organization.with_lifecycle
+  to   = cloudflare_zero_trust_organization.with_lifecycle
+}
+
 resource "cloudflare_zero_trust_organization" "with_depends" {
   account_id  = var.cloudflare_account_id
   auth_domain = "${local.name_prefix}-depends.cloudflareaccess.com"
   name        = "Organization with depends_on"
 
   depends_on = [cloudflare_zero_trust_organization.minimal_account]
+}
+
+moved {
+  from = cloudflare_access_organization.with_depends
+  to   = cloudflare_zero_trust_organization.with_depends
 }
 
 resource "cloudflare_zero_trust_organization" "zone_comprehensive" {
@@ -344,4 +525,9 @@ resource "cloudflare_zero_trust_organization" "zone_comprehensive" {
     forbidden       = "33333333-3333-3333-3333-333333333333"
     identity_denied = "44444444-4444-4444-4444-444444444444"
   }
+}
+
+moved {
+  from = cloudflare_zero_trust_access_organization.zone_comprehensive
+  to   = cloudflare_zero_trust_organization.zone_comprehensive
 }
