@@ -70,98 +70,11 @@ resource "cloudflare_logpush_ownership_challenge" "account_challenge" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	t.Run("StateTransformation", func(t *testing.T) {
-		tests := []testhelpers.StateTestCase{
-			{
-				Name: "Remove ownership_challenge_filename - zone_id variant",
-				Input: `{
-  "type": "cloudflare_logpush_ownership_challenge",
-  "name": "test",
-  "attributes": {
-    "zone_id": "0da42c8d2132a9ddaf714f9e7c920711",
-    "destination_conf": "s3://my-bucket",
-    "ownership_challenge_filename": "logs/ownership-challenge.txt"
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_logpush_ownership_challenge",
-  "name": "test",
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "0da42c8d2132a9ddaf714f9e7c920711",
-    "destination_conf": "s3://my-bucket"
-  }
-}`,
-			},
-			{
-				Name: "Remove ownership_challenge_filename - account_id variant",
-				Input: `{
-  "type": "cloudflare_logpush_ownership_challenge",
-  "name": "test",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "destination_conf": "s3://my-bucket",
-    "ownership_challenge_filename": "logs/ownership-challenge.txt"
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_logpush_ownership_challenge",
-  "name": "test",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "destination_conf": "s3://my-bucket"
-  }
-}`,
-			},
-			{
-				Name: "Handle missing ownership_challenge_filename gracefully",
-				Input: `{
-  "type": "cloudflare_logpush_ownership_challenge",
-  "name": "test",
-  "attributes": {
-    "zone_id": "0da42c8d2132a9ddaf714f9e7c920711",
-    "destination_conf": "s3://my-bucket"
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_logpush_ownership_challenge",
-  "name": "test",
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "0da42c8d2132a9ddaf714f9e7c920711",
-    "destination_conf": "s3://my-bucket"
-  }
-}`,
-			},
-			{
-				Name: "Handle empty attributes - set schema_version",
-				Input: `{
-  "type": "cloudflare_logpush_ownership_challenge",
-  "name": "test",
-  "attributes": {}
-}`,
-				Expected: `{
-  "type": "cloudflare_logpush_ownership_challenge",
-  "name": "test",
-  "schema_version": 0,
-  "attributes": {}
-}`,
-			},
-			{
-				Name: "Handle missing attributes - set schema_version",
-				Input: `{
-  "type": "cloudflare_logpush_ownership_challenge",
-  "name": "test"
-}`,
-				Expected: `{
-  "type": "cloudflare_logpush_ownership_challenge",
-  "name": "test",
-  "schema_version": 0
-}`,
-			},
+	// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
+	// tf-migrate's TransformState is a no-op; validate the contract here.
+	t.Run("UsesProviderStateUpgrader", func(t *testing.T) {
+		if got := migrator.(*V4ToV5Migrator).UsesProviderStateUpgrader(); !got {
+			t.Errorf("UsesProviderStateUpgrader() = %v, want true", got)
 		}
-
-		testhelpers.RunStateTransformTests(t, tests, migrator)
 	})
 }
