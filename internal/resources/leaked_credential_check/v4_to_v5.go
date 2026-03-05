@@ -3,7 +3,6 @@ package leaked_credential_check
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -56,12 +55,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 }
 
 // TransformState handles state file transformations.
-// Only need to ensure schema_version is set to 0.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is handled by the provider's StateUpgraders.
+	// This function intentionally returns the original state unchanged.
+	return stateJSON.String(), nil
+}
 
-	// Set schema version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
