@@ -1,0 +1,23 @@
+# Drift Exemptions for load_balancer_pool resource
+#
+# The v5 provider returns origins array in different order and the enabled
+# field toggles between true/false during state upgrade. Provider state
+# upgrader gap. Stabilizes after first apply.
+
+version: 1
+
+exemptions:
+  - name: "origins_reorder_drift"
+    description: "Origins array reordering and enabled field toggling during state upgrade"
+    patterns:
+      - 'enabled\s*=\s*(true|false)\s*->\s*null'
+      - 'enabled\s*=\s*(true|false)'
+      - 'disabled_at'
+      - 'address.*192\.0\.2\.201'
+      - 'name.*static-origin'
+      - 'weight\s*=\s*1'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

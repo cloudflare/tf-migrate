@@ -1,10 +1,3 @@
-# Integration test for zero_trust_device_default_profile migration
-# Covers v4 cloudflare_zero_trust_device_profiles (default=true) → v5 cloudflare_zero_trust_device_default_profile
-
-# ============================================================================
-# Pattern Group 1: Variables & Locals
-# ============================================================================
-
 variable "cloudflare_account_id" {
   description = "Cloudflare account ID"
   type        = string
@@ -25,11 +18,6 @@ locals {
   name_prefix    = "cftftest"
   test_tags      = ["test", "migration", "device_profile"]
 }
-
-# ============================================================================
-# Pattern Group 2: for_each with Maps (5 resources)
-# Tests: map iteration, each.value, each.key
-# ============================================================================
 
 resource "cloudflare_zero_trust_device_profiles" "map_example" {
   for_each = {
@@ -70,11 +58,6 @@ resource "cloudflare_zero_trust_device_profiles" "map_example" {
   captive_portal    = each.value.captive_portal
 }
 
-# ============================================================================
-# Pattern Group 3: for_each with Sets (4 resources)
-# Tests: toset(), set iteration
-# ============================================================================
-
 resource "cloudflare_zero_trust_device_profiles" "set_example" {
   for_each = toset(["alpha", "beta", "gamma", "delta"])
 
@@ -87,11 +70,6 @@ resource "cloudflare_zero_trust_device_profiles" "set_example" {
   auto_connect      = 0
   captive_portal    = 180
 }
-
-# ============================================================================
-# Pattern Group 4: count-based resources (4 resources)
-# Tests: count, count.index
-# ============================================================================
 
 resource "cloudflare_zero_trust_device_profiles" "counted" {
   count = 4
@@ -106,11 +84,6 @@ resource "cloudflare_zero_trust_device_profiles" "counted" {
   captive_portal    = (count.index + 1) * 100
 }
 
-# ============================================================================
-# Pattern Group 5: Conditional resource creation (1 resource or 0)
-# Tests: conditional count, ternary
-# ============================================================================
-
 resource "cloudflare_zero_trust_device_profiles" "conditional" {
   count = local.name_prefix == "cftftest" ? 1 : 0
 
@@ -123,17 +96,6 @@ resource "cloudflare_zero_trust_device_profiles" "conditional" {
   auto_connect      = 0
   captive_portal    = 300
 }
-
-# ============================================================================
-# Pattern Group 6: Cross-resource references (if applicable)
-# Tests: resource references
-# Note: Device profiles don't typically reference other resources
-# ============================================================================
-
-# ============================================================================
-# Pattern Group 7: Lifecycle meta-arguments (1 resource)
-# Tests: lifecycle, create_before_destroy, ignore_changes
-# ============================================================================
 
 resource "cloudflare_zero_trust_device_profiles" "with_lifecycle" {
   account_id  = var.cloudflare_account_id
@@ -151,11 +113,6 @@ resource "cloudflare_zero_trust_device_profiles" "with_lifecycle" {
   }
 }
 
-# ============================================================================
-# Pattern Group 8: Terraform functions (various)
-# Tests: base64encode, join, format, etc.
-# ============================================================================
-
 resource "cloudflare_zero_trust_device_profiles" "with_functions" {
   account_id  = var.cloudflare_account_id
   name        = "Default Profile Functions"
@@ -171,10 +128,6 @@ resource "cloudflare_zero_trust_device_profiles" "with_functions" {
   tunnel_protocol       = "wireguard"
   disable_auto_fallback = true
 }
-
-# ============================================================================
-# Pattern Group 9: Edge Cases
-# ============================================================================
 
 # Edge Case 1: Minimal config (only required fields + default)
 resource "cloudflare_zero_trust_device_profiles" "minimal" {
@@ -267,11 +220,6 @@ resource "cloudflare_zero_trust_device_profiles" "interpolation" {
   captive_portal = 180
 }
 
-# ============================================================================
-# Pattern Group 8: Custom Profiles (match + precedence)
-# Tests: custom profile routing, precedence transformation, field preservation
-# ============================================================================
-
 # Basic custom profile
 resource "cloudflare_zero_trust_device_profiles" "custom_employees" {
   account_id  = var.cloudflare_account_id
@@ -324,21 +272,12 @@ resource "cloudflare_zero_trust_device_profiles" "custom_teams" {
     }
   }
 
-  account_id  = var.cloudflare_account_id
-  name        = "${title(each.key)} Team Profile"
-  description = "Custom profile for ${each.key} team"
-  match       = each.value.match
-  precedence  = each.value.precedence
+  account_id   = var.cloudflare_account_id
+  name         = "${title(each.key)} Team Profile"
+  description  = "Custom profile for ${each.key} team"
+  match        = each.value.match
+  precedence   = each.value.precedence
   auto_connect = 15
 }
 
-# TOTAL RESOURCES:
-# - for_each maps: 5 instances (default profiles)
-# - for_each sets: 4 instances (default profiles)
-# - count-based: 4 instances (default profiles)
-# - conditional: 1 instance (default profile)
-# - lifecycle: 1 instance (default profile)
-# - functions: 1 instance (default profile)
-# - edge cases: 7 instances (default profiles)
-# - custom profiles: 5 instances (3 single + 2 for_each)
-# TOTAL: 28 resource instances
+

@@ -1,0 +1,18 @@
+# Drift Exemptions for tiered_cache resource
+#
+# v4 cloudflare_tiered_cache with cache_type="generic" splits into
+# cloudflare_tiered_cache (value="off") and cloudflare_argo_tiered_caching (new).
+# The argo_tiered_caching resource must be created fresh.
+# Stabilizes after first apply.
+
+version: 1
+
+exemptions:
+  - name: "tiered_cache_argo_creation"
+    description: "Allow argo_tiered_caching resource creation from tiered_cache split"
+    allow_resource_creation: true
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

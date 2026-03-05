@@ -23,6 +23,35 @@ locals {
   ws1_auth_url       = "https://na.uemauth.vmwservices.com/connect/token"
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Total resource instances:
+# - map_integrations: 3 (workspace_one, crowdstrike, uptycs)
+# - set_integrations: 3 (intune, kolide, sentinelone_s2s)
+# - count_integrations: 3
+# - conditional: 2
+# - primary: 1
+# - secondary: 1
+# - lifecycle_test: 1
+# - prevent_destroy: 1
+# - function_test: 1
+# - minimal: 1
+# - all_fields: 1
+# - no_interval: 1
+# - dynamic_test: 1
+# TOTAL: 20 resource instances
+
 # Pattern 3: for_each with maps (3-5 resources)
 resource "cloudflare_zero_trust_device_posture_integration" "map_integrations" {
   for_each = {
@@ -65,6 +94,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "map_integrations" {
   }
 }
 
+moved {
+  from = cloudflare_device_posture_integration.map_integrations
+  to   = cloudflare_zero_trust_device_posture_integration.map_integrations
+}
+
 # Pattern 4: for_each with sets (3-5 items)
 resource "cloudflare_zero_trust_device_posture_integration" "set_integrations" {
   for_each = toset(["intune", "kolide", "sentinelone_s2s"])
@@ -78,6 +112,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "set_integrations" {
     client_id     = "${each.key}-client"
     client_secret = "${each.key}-secret"
   }
+}
+
+moved {
+  from = cloudflare_device_posture_integration.set_integrations
+  to   = cloudflare_zero_trust_device_posture_integration.set_integrations
 }
 
 # Pattern 5: count-based resources (at least 3)
@@ -96,6 +135,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "count_integrations"
   }
 }
 
+moved {
+  from = cloudflare_device_posture_integration.count_integrations
+  to   = cloudflare_zero_trust_device_posture_integration.count_integrations
+}
+
 # Pattern 6: Conditional resource creation (count with ternary)
 resource "cloudflare_zero_trust_device_posture_integration" "conditional" {
   count = var.enable_integrations ? 2 : 0
@@ -109,6 +153,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "conditional" {
     api_url       = "https://tanium-${count.index}.example.com"
     client_secret = "tanium-secret-${count.index}"
   }
+}
+
+moved {
+  from = cloudflare_device_posture_integration.conditional
+  to   = cloudflare_zero_trust_device_posture_integration.conditional
 }
 
 # Pattern 7: Cross-resource references
@@ -126,6 +175,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "primary" {
   }
 }
 
+moved {
+  from = cloudflare_device_posture_integration.primary
+  to   = cloudflare_zero_trust_device_posture_integration.primary
+}
+
 resource "cloudflare_zero_trust_device_posture_integration" "secondary" {
   # References the primary integration's name
   account_id = var.cloudflare_account_id
@@ -138,6 +192,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "secondary" {
     client_secret = "secondary-secret"
     customer_id   = "secondary-customer"
   }
+}
+
+moved {
+  from = cloudflare_device_posture_integration.secondary
+  to   = cloudflare_zero_trust_device_posture_integration.secondary
 }
 
 # Pattern 8: Lifecycle meta-arguments
@@ -161,6 +220,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "lifecycle_test" {
   }
 }
 
+moved {
+  from = cloudflare_device_posture_integration.lifecycle_test
+  to   = cloudflare_zero_trust_device_posture_integration.lifecycle_test
+}
+
 resource "cloudflare_zero_trust_device_posture_integration" "prevent_destroy" {
   account_id = var.cloudflare_account_id
   name       = "${local.integration_prefix}-prevent-destroy"
@@ -179,6 +243,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "prevent_destroy" {
   }
 }
 
+moved {
+  from = cloudflare_device_posture_integration.prevent_destroy
+  to   = cloudflare_zero_trust_device_posture_integration.prevent_destroy
+}
+
 # Pattern 9: Terraform functions
 resource "cloudflare_zero_trust_device_posture_integration" "function_test" {
   account_id = var.cloudflare_account_id
@@ -194,6 +263,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "function_test" {
   }
 }
 
+moved {
+  from = cloudflare_device_posture_integration.function_test
+  to   = cloudflare_zero_trust_device_posture_integration.function_test
+}
+
 # Additional edge cases
 resource "cloudflare_zero_trust_device_posture_integration" "minimal" {
   account_id = var.cloudflare_account_id
@@ -204,6 +278,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "minimal" {
   config = {
     api_url = "https://minimal.example.com"
   }
+}
+
+moved {
+  from = cloudflare_device_posture_integration.minimal
+  to   = cloudflare_zero_trust_device_posture_integration.minimal
 }
 
 resource "cloudflare_zero_trust_device_posture_integration" "all_fields" {
@@ -224,6 +303,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "all_fields" {
   }
 }
 
+moved {
+  from = cloudflare_device_posture_integration.all_fields
+  to   = cloudflare_zero_trust_device_posture_integration.all_fields
+}
+
 resource "cloudflare_zero_trust_device_posture_integration" "no_interval" {
   account_id = var.cloudflare_account_id
   name       = "${local.integration_prefix}-no-interval"
@@ -234,6 +318,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "no_interval" {
     client_id     = "no-interval-client"
     client_secret = "no-interval-secret"
   }
+}
+
+moved {
+  from = cloudflare_device_posture_integration.no_interval
+  to   = cloudflare_zero_trust_device_posture_integration.no_interval
 }
 
 # Dynamic block example
@@ -253,18 +342,7 @@ resource "cloudflare_zero_trust_device_posture_integration" "dynamic_test" {
   }
 }
 
-# Total resource instances:
-# - map_integrations: 3 (workspace_one, crowdstrike, uptycs)
-# - set_integrations: 3 (intune, kolide, sentinelone_s2s)
-# - count_integrations: 3
-# - conditional: 2
-# - primary: 1
-# - secondary: 1
-# - lifecycle_test: 1
-# - prevent_destroy: 1
-# - function_test: 1
-# - minimal: 1
-# - all_fields: 1
-# - no_interval: 1
-# - dynamic_test: 1
-# TOTAL: 20 resource instances
+moved {
+  from = cloudflare_device_posture_integration.dynamic_test
+  to   = cloudflare_zero_trust_device_posture_integration.dynamic_test
+}

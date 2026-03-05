@@ -1,21 +1,87 @@
 # tf-migrate - Cloudflare Terraform Provider Migration Tool
 
-A powerful CLI tool for automatically migrating Terraform configurations and state files between different versions of the Cloudflare Terraform Provider.
+A powerful CLI tool for automatically migrating Terraform configurations between different versions of the Cloudflare Terraform Provider.
+
+> **Disclaimer:** Please note that v1.0.0-beta.1 is in Beta and we are still testing it for stability.
+
 
 ## Overview
 
 `tf-migrate` helps you upgrade your Terraform infrastructure code by automatically transforming:
 - **Configuration files** (`.tf`) - Updates resource types, attribute names, and block structures
-- **State files** (`terraform.tfstate`) - Migrates resource state to match new provider schemas
 
-Currently supports migrations:
-- **v4 → v5**: Cloudflare Provider v4 to v5
+### Supported Migration Paths
 
-## Documentation
+| Source Version | Target Version |
+|----------------|----------------|
+| Cloudflare Provider v4.52.5 | Cloudflare Provider v5.19 |
 
-For comprehensive documentation including architecture, testing, drift exemptions, and development guide, see **[CLAUDE.md](./CLAUDE.md)** - designed to give AI agents (and humans!) complete project context.
+### Supported Resources (v4 → v5)
+
+<details>
+<summary>50 resources with complete config migration support (click to expand)</summary>
+
+| Product | Resource | Type |
+|---------|----------|------|
+| **Zones** | `cloudflare_zone` | resource |
+| | `cloudflare_zone` | data |
+| | `cloudflare_zones` | data |
+| | `cloudflare_zone_setting` | resource |
+| | `cloudflare_zone_subscription` | resource |
+| **DNS** | `cloudflare_dns_record` | resource |
+| | `cloudflare_zone_dnssec` | resource |
+| **Load Balancers** | `cloudflare_load_balancer` | resource |
+| | `cloudflare_load_balancer_monitor` | resource |
+| | `cloudflare_load_balancer_pool` | resource |
+| **Rulesets** | `cloudflare_ruleset` | resource |
+| **Page Rules** | `cloudflare_page_rule` | resource |
+| **Managed Transforms** | `cloudflare_managed_transforms` | resource |
+| **URL Normalization** | `cloudflare_url_normalization_settings` | resource |
+| **Snippets** | `cloudflare_snippet` | resource |
+| | `cloudflare_snippet_rules` | resource |
+| **Workers** | `cloudflare_worker_script` | resource |
+| | `cloudflare_worker_route` | resource |
+| **KV** | `cloudflare_workers_kv` | resource |
+| | `cloudflare_workers_kv_namespace` | resource |
+| **Pages** | `cloudflare_pages_project` | resource |
+| **Cache** | `cloudflare_tiered_cache` | resource |
+| **Argo** | `cloudflare_argo_smart_routing` | resource |
+| | `cloudflare_argo_tiered_caching` | resource |
+| **Spectrum** | `cloudflare_spectrum_application` | resource |
+| **Addressing** | `cloudflare_regional_hostname` | resource |
+| **Bot Management** | `cloudflare_bot_management` | resource |
+| **Healthchecks** | `cloudflare_healthcheck` | resource |
+| **Custom Pages** | `cloudflare_custom_pages` | resource |
+| **Rules** | `cloudflare_list` | resource |
+| | `cloudflare_list_item` | resource |
+| **Logpush** | `cloudflare_logpush_job` | resource |
+| **Logs** | `cloudflare_logpull_retention` | resource |
+| **Alerting** | `cloudflare_notification_policy_webhooks` | resource |
+| **R2** | `cloudflare_r2_bucket` | resource |
+| **User** | `cloudflare_api_token` | resource |
+| **Zero Trust** | `cloudflare_zero_trust_access_application` | resource |
+| | `cloudflare_zero_trust_access_group` | resource |
+| | `cloudflare_zero_trust_access_identity_provider` | resource |
+| | `cloudflare_zero_trust_access_mtls_certificate` | resource |
+| | `cloudflare_zero_trust_access_mtls_hostname_settings` | resource |
+| | `cloudflare_zero_trust_access_policy` | resource |
+| | `cloudflare_zero_trust_access_service_token` | resource |
+| | `cloudflare_zero_trust_device_posture_rule` | resource |
+| | `cloudflare_zero_trust_dlp_custom_profile` | resource |
+| | `cloudflare_zero_trust_dlp_custom_entry` | resource |
+| | `cloudflare_zero_trust_dlp_predefined_entry` | resource |
+| | `cloudflare_zero_trust_dlp_integration_entry` | resource |
+| | `cloudflare_zero_trust_gateway_policy` | resource |
+| | `cloudflare_zero_trust_list` | resource |
+| | `cloudflare_zero_trust_tunnel_cloudflared_route` | resource |
+
+</details>
 
 ## Installation
+
+### Pre-built Binaries
+
+Download the latest release from the [GitHub Releases](https://github.com/cloudflare/tf-migrate/releases) page. Binaries are available for Linux, macOS, Windows, and FreeBSD on both amd64 and arm64.
 
 ### Building from Source
 
@@ -27,7 +93,7 @@ cd tf-migrate
 # Build the binary
 make
 
-# The binary will be available as ./tf-migrate
+# The binary will be available at ./bin/tf-migrate
 ```
 
 ### Requirements
@@ -36,29 +102,6 @@ make
 - Terraform (for testing migrated configurations)
 
 ## Usage
-
-### Authentication
-
-Some resource migrations require access to the Cloudflare API to complete the migration successfully. The tool supports two authentication methods:
-
-**Option 1: API Token (Recommended)**
-```bash
-export CLOUDFLARE_API_TOKEN="your-api-token"
-```
-
-**Option 2: API Key + Email**
-```bash
-export CLOUDFLARE_API_KEY="your-api-key"
-export CLOUDFLARE_EMAIL="your-email@example.com"
-```
-
-#### Resources Requiring Authentication
-
-The following resources require API credentials for complete migration:
-
-- `cloudflare_tunnel_route` → `cloudflare_zero_trust_tunnel_cloudflared_route`
-  - **Why**: The v4 provider stored network CIDR as the resource ID, but v5 requires the UUID from the API. The migration queries the API to fetch the correct UUID for your tunnel routes.
-  - **Without credentials**: The migration will still update resource types and attributes, but you'll need to run `terraform refresh` after migration to update the IDs.
 
 ### Basic Migration
 
@@ -72,16 +115,6 @@ tf-migrate migrate --source-version v4 --target-version v5
 
 ```bash
 tf-migrate migrate --config-dir ./terraform --source-version v4 --target-version v5
-```
-
-### Include State File Migration
-
-```bash
-tf-migrate migrate \
-  --config-dir ./terraform \
-  --state-file terraform.tfstate \
-  --source-version v4 \
-  --target-version v5
 ```
 
 ### Dry Run Mode
@@ -107,8 +140,6 @@ tf-migrate migrate \
 tf-migrate migrate \
   --config-dir ./terraform \
   --output-dir ./terraform-v5 \
-  --state-file terraform.tfstate \
-  --output-state terraform-v5.tfstate \
   --source-version v4 \
   --target-version v5
 ```
@@ -120,7 +151,6 @@ tf-migrate migrate \
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--config-dir` | Directory containing Terraform configuration files | Current directory |
-| `--state-file` | Path to Terraform state file | None |
 | `--source-version` | Source provider version (e.g., v4) | Required |
 | `--target-version` | Target provider version (e.g., v5) | Required |
 | `--resources` | Comma-separated list of resources to migrate | All resources |
@@ -132,7 +162,6 @@ tf-migrate migrate \
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--output-dir` | Output directory for migrated configuration files | In-place |
-| `--output-state` | Output path for migrated state file | In-place |
 | `--backup` | Create backup of original files before migration | true |
 
 ### Development Tools
@@ -168,7 +197,7 @@ go test ./... -cover
 
 #### Integration Tests
 
-Integration tests verify the complete migration workflow using real configuration and state files.
+Integration tests verify the complete migration workflow using real configuration files.
 
 ```bash
 # Run all v4 to v5 integration tests
@@ -346,6 +375,7 @@ bin/                 # Built binaries
 
 **CI/CD:**
 
-E2E tests run automatically in GitHub Actions on push to `main` or manual workflow dispatch. See `.github/workflows/e2e-tests.yml`.
+- **E2E tests** run automatically in GitHub Actions on push to `main` or manual workflow dispatch. See `.github/workflows/e2e-tests.yml`.
+- **Releases** are automated via GoReleaser. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which cross-compiles binaries and creates a GitHub Release with archives and checksums.
 
 **⚠️ Important:** E2E tests create and destroy real Cloudflare resources. Always use a dedicated test account, never production infrastructure.

@@ -20,7 +20,13 @@ func TestV4ToV5Transformation(t *testing.T) {
 				Expected: `resource "cloudflare_zero_trust_organization" "example" {
   auth_domain = "example.cloudflareaccess.com"
   name        = "My Organization"
-}`,
+}
+
+moved {
+  from = cloudflare_access_organization.example
+  to   = cloudflare_zero_trust_organization.example
+}
+`,
 			},
 			{
 				Name: "Minimal resource - cloudflare_zero_trust_access_organization",
@@ -31,7 +37,13 @@ func TestV4ToV5Transformation(t *testing.T) {
 				Expected: `resource "cloudflare_zero_trust_organization" "example" {
   auth_domain = "example.cloudflareaccess.com"
   name        = "My Organization"
-}`,
+}
+
+moved {
+  from = cloudflare_zero_trust_access_organization.example
+  to   = cloudflare_zero_trust_organization.example
+}
+`,
 			},
 			{
 				Name: "With login_design block",
@@ -58,7 +70,13 @@ func TestV4ToV5Transformation(t *testing.T) {
     header_text      = "Welcome"
     footer_text      = "Powered by Cloudflare"
   }
-}`,
+}
+
+moved {
+  from = cloudflare_access_organization.example
+  to   = cloudflare_zero_trust_organization.example
+}
+`,
 			},
 			{
 				Name: "With custom_pages block",
@@ -79,7 +97,13 @@ func TestV4ToV5Transformation(t *testing.T) {
     forbidden       = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
     identity_denied = "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
   }
-}`,
+}
+
+moved {
+  from = cloudflare_access_organization.example
+  to   = cloudflare_zero_trust_organization.example
+}
+`,
 			},
 			{
 				Name: "Complete organization with all fields",
@@ -138,7 +162,13 @@ func TestV4ToV5Transformation(t *testing.T) {
 
   allow_authenticate_via_warp = true
   warp_auth_session_duration  = "12h"
-}`,
+}
+
+moved {
+  from = cloudflare_access_organization.example
+  to   = cloudflare_zero_trust_organization.example
+}
+`,
 			},
 			{
 				Name: "Partial login_design block",
@@ -159,7 +189,13 @@ func TestV4ToV5Transformation(t *testing.T) {
     background_color = "#000000"
     text_color       = "#FFFFFF"
   }
-}`,
+}
+
+moved {
+  from = cloudflare_access_organization.example
+  to   = cloudflare_zero_trust_organization.example
+}
+`,
 			},
 			{
 				Name: "Multiple resources in one file",
@@ -180,306 +216,25 @@ resource "cloudflare_zero_trust_access_organization" "zone_org" {
   name        = "Account Organization"
 }
 
+moved {
+  from = cloudflare_access_organization.account_org
+  to   = cloudflare_zero_trust_organization.account_org
+}
+
 resource "cloudflare_zero_trust_organization" "zone_org" {
   zone_id     = "023e105f4ecef8ad9ca31a8372d0c353"
   auth_domain = "zone.cloudflareaccess.com"
   name        = "Zone Organization"
-}`,
+}
+
+moved {
+  from = cloudflare_zero_trust_access_organization.zone_org
+  to   = cloudflare_zero_trust_organization.zone_org
+}
+`,
 			},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
-	})
-
-	t.Run("StateTransformation", func(t *testing.T) {
-		tests := []testhelpers.StateTestCase{
-			{
-				Name: "Minimal state",
-				Input: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization"
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization",
-    "allow_authenticate_via_warp": false,
-    "auto_redirect_to_identity": false,
-    "is_ui_read_only": false
-  }
-}`,
-			},
-			{
-				Name: "With login_design array (MaxItems:1)",
-				Input: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization",
-    "login_design": [{
-      "background_color": "#000000",
-      "text_color": "#FFFFFF",
-      "logo_path": "https://example.com/logo.png",
-      "header_text": "Welcome",
-      "footer_text": "Powered by Cloudflare"
-    }]
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization",
-    "login_design": {
-      "background_color": "#000000",
-      "text_color": "#FFFFFF",
-      "logo_path": "https://example.com/logo.png",
-      "header_text": "Welcome",
-      "footer_text": "Powered by Cloudflare"
-    },
-    "allow_authenticate_via_warp": false,
-    "auto_redirect_to_identity": false,
-    "is_ui_read_only": false
-  }
-}`,
-			},
-			{
-				Name: "Empty login_design array",
-				Input: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization",
-    "login_design": []
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization",
-    "allow_authenticate_via_warp": false,
-    "auto_redirect_to_identity": false,
-    "is_ui_read_only": false
-  }
-}`,
-			},
-			{
-				Name: "Zone-scoped organization (zone_id instead of account_id)",
-				Input: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "attributes": {
-    "zone_id": "023e105f4ecef8ad9ca31a8372d0c353",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization"
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "schema_version": 0,
-  "attributes": {
-    "zone_id": "023e105f4ecef8ad9ca31a8372d0c353",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization",
-    "allow_authenticate_via_warp": false,
-    "auto_redirect_to_identity": false,
-    "is_ui_read_only": false
-  }
-}`,
-			},
-			{
-				Name: "With custom_pages array (MaxItems:1)",
-				Input: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization",
-    "custom_pages": [{
-      "forbidden": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-      "identity_denied": "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
-    }]
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization",
-    "custom_pages": {
-      "forbidden": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-      "identity_denied": "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
-    },
-    "allow_authenticate_via_warp": false,
-    "auto_redirect_to_identity": false,
-    "is_ui_read_only": false
-  }
-}`,
-			},
-			{
-				Name: "With both login_design and custom_pages arrays",
-				Input: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization",
-    "login_design": [{
-      "background_color": "#000000",
-      "text_color": "#FFFFFF"
-    }],
-    "custom_pages": [{
-      "forbidden": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-    }]
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization",
-    "login_design": {
-      "background_color": "#000000",
-      "text_color": "#FFFFFF"
-    },
-    "custom_pages": {
-      "forbidden": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-    },
-    "allow_authenticate_via_warp": false,
-    "auto_redirect_to_identity": false,
-    "is_ui_read_only": false
-  }
-}`,
-			},
-			{
-				Name: "With existing boolean values (should be preserved)",
-				Input: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization",
-    "allow_authenticate_via_warp": true,
-    "auto_redirect_to_identity": true,
-    "is_ui_read_only": true
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "My Organization",
-    "allow_authenticate_via_warp": true,
-    "auto_redirect_to_identity": true,
-    "is_ui_read_only": true
-  }
-}`,
-			},
-			{
-				Name: "Complete state with all fields",
-				Input: `{
-  "type": "cloudflare_zero_trust_access_organization",
-  "name": "example",
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "Complete Organization",
-    "session_duration": "24h",
-    "user_seat_expiration_inactive_time": "730h",
-    "warp_auth_session_duration": "12h",
-    "ui_read_only_toggle_reason": "Managed by Terraform",
-    "is_ui_read_only": true,
-    "auto_redirect_to_identity": true,
-    "allow_authenticate_via_warp": true,
-    "login_design": [{
-      "background_color": "#000000",
-      "text_color": "#FFFFFF",
-      "logo_path": "https://example.com/logo.png",
-      "header_text": "Welcome",
-      "footer_text": "Powered by Cloudflare"
-    }],
-    "custom_pages": [{
-      "forbidden": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-      "identity_denied": "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
-    }]
-  }
-}`,
-				Expected: `{
-  "type": "cloudflare_zero_trust_access_organization",
-  "name": "example",
-  "schema_version": 0,
-  "attributes": {
-    "account_id": "f037e56e89293a057740de681ac9abbe",
-    "auth_domain": "example.cloudflareaccess.com",
-    "name": "Complete Organization",
-    "session_duration": "24h",
-    "user_seat_expiration_inactive_time": "730h",
-    "warp_auth_session_duration": "12h",
-    "ui_read_only_toggle_reason": "Managed by Terraform",
-    "is_ui_read_only": true,
-    "auto_redirect_to_identity": true,
-    "allow_authenticate_via_warp": true,
-    "login_design": {
-      "background_color": "#000000",
-      "text_color": "#FFFFFF",
-      "logo_path": "https://example.com/logo.png",
-      "header_text": "Welcome",
-      "footer_text": "Powered by Cloudflare"
-    },
-    "custom_pages": {
-      "forbidden": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-      "identity_denied": "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
-    }
-  }
-}`,
-			},
-			{
-				Name: "Invalid instance (no attributes) - should still set schema_version",
-				Input: `{
-  "type": "cloudflare_access_organization",
-  "name": "example"
-}`,
-				Expected: `{
-  "type": "cloudflare_access_organization",
-  "name": "example",
-  "schema_version": 0
-}`,
-			},
-		}
-
-		testhelpers.RunStateTransformTests(t, tests, migrator)
 	})
 }

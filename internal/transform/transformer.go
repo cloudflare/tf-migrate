@@ -1,7 +1,6 @@
 package transform
 
 import (
-	"github.com/cloudflare/cloudflare-go/v6"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
@@ -17,9 +16,8 @@ type Context struct {
 	Diagnostics      hcl.Diagnostics
 	Metadata         map[string]interface{}
 	Resources        []string
-	SourceVersion    string             // Source provider version (e.g., "v4")
-	TargetVersion    string             // Target provider version (e.g., "v5")
-	APIClient        *cloudflare.Client // Optional: Cloudflare API client for migrations that need to query the API
+	SourceVersion    string // Source provider version (e.g., "v4")
+	TargetVersion    string // Target provider version (e.g., "v5")
 	StateTypeRenames map[string]interface{}
 }
 

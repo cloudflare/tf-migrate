@@ -39,6 +39,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "test" {
     client_secret = "secret-456"
   }
 }
+
+moved {
+  from = cloudflare_device_posture_integration.test
+  to   = cloudflare_zero_trust_device_posture_integration.test
+}
 `,
 		},
 		{
@@ -70,6 +75,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "test" {
     client_secret = "secret-456"
   }
 }
+
+moved {
+  from = cloudflare_device_posture_integration.test
+  to   = cloudflare_zero_trust_device_posture_integration.test
+}
 `,
 		},
 		{
@@ -99,6 +109,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "test" {
     client_id     = "client-123"
     client_secret = "secret-456"
   }
+}
+
+moved {
+  from = cloudflare_device_posture_integration.test
+  to   = cloudflare_zero_trust_device_posture_integration.test
 }
 `,
 		},
@@ -131,6 +146,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "test" {
     client_id     = "client-123"
     client_secret = "secret-456"
   }
+}
+
+moved {
+  from = cloudflare_device_posture_integration.test
+  to   = cloudflare_zero_trust_device_posture_integration.test
 }
 `,
 		},
@@ -170,6 +190,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "full" {
     access_client_id      = "cf-access-id"
     access_client_secret  = "cf-access-secret"
   }
+}
+
+moved {
+  from = cloudflare_device_posture_integration.full
+  to   = cloudflare_zero_trust_device_posture_integration.full
 }
 `,
 		},
@@ -227,6 +252,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "ws1" {
   }
 }
 
+moved {
+  from = cloudflare_device_posture_integration.ws1
+  to   = cloudflare_zero_trust_device_posture_integration.ws1
+}
+
 resource "cloudflare_zero_trust_device_posture_integration" "crowdstrike" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "CrowdStrike"
@@ -239,6 +269,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "crowdstrike" {
   }
 }
 
+moved {
+  from = cloudflare_device_posture_integration.crowdstrike
+  to   = cloudflare_zero_trust_device_posture_integration.crowdstrike
+}
+
 resource "cloudflare_zero_trust_device_posture_integration" "uptycs" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "Uptycs"
@@ -249,6 +284,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "uptycs" {
     client_id  = "uptycs-client"
     client_key = "uptycs-key"
   }
+}
+
+moved {
+  from = cloudflare_device_posture_integration.uptycs
+  to   = cloudflare_zero_trust_device_posture_integration.uptycs
 }
 `,
 		},
@@ -303,6 +343,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "intune" {
   }
 }
 
+moved {
+  from = cloudflare_device_posture_integration.intune
+  to   = cloudflare_zero_trust_device_posture_integration.intune
+}
+
 resource "cloudflare_zero_trust_device_posture_integration" "kolide" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "Kolide"
@@ -316,6 +361,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "kolide" {
   }
 }
 
+moved {
+  from = cloudflare_device_posture_integration.kolide
+  to   = cloudflare_zero_trust_device_posture_integration.kolide
+}
+
 resource "cloudflare_zero_trust_device_posture_integration" "sentinelone" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "SentinelOne"
@@ -326,6 +376,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "sentinelone" {
     client_id  = "s1-client"
     client_key = "s1-key"
   }
+}
+
+moved {
+  from = cloudflare_device_posture_integration.sentinelone
+  to   = cloudflare_zero_trust_device_posture_integration.sentinelone
 }
 `,
 		},
@@ -355,6 +410,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "edge" {
     access_client_id      = "custom-access-id"
     access_client_secret  = "custom-access-secret"
   }
+}
+
+moved {
+  from = cloudflare_device_posture_integration.edge
+  to   = cloudflare_zero_trust_device_posture_integration.edge
 }
 `,
 		},
@@ -387,13 +447,17 @@ resource "cloudflare_zero_trust_device_posture_integration" "commented" {
   type       = "workspace_one"
   interval   = "24h"
 
-  # Integration configuration
   config = {
     api_url       = "https://api.example.com"
     auth_url      = "https://auth.example.com"
     client_id     = "client-123"
     client_secret = "secret-456"
   }
+}
+
+moved {
+  from = cloudflare_device_posture_integration.commented
+  to   = cloudflare_zero_trust_device_posture_integration.commented
 }
 `,
 		},
@@ -426,6 +490,11 @@ resource "cloudflare_zero_trust_device_posture_integration" "vars" {
     client_secret = var.ws1_client_secret
   }
 }
+
+moved {
+  from = cloudflare_device_posture_integration.vars
+  to   = cloudflare_zero_trust_device_posture_integration.vars
+}
 `,
 		},
 	}
@@ -433,363 +502,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "vars" {
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
 
-func TestStateTransformation(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
-
-	tests := []testhelpers.StateTestCase{
-		{
-			Name: "basic state transformation",
-			Input: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "mode": "managed",
-      "type": "cloudflare_zero_trust_device_posture_integration",
-      "name": "test",
-      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
-      "instances": [
-        {
-          "schema_version": 0,
-          "attributes": {
-            "id": "480f4f69-1a28-4fdd-9240-1ed29f0ac1dc",
-            "account_id": "f037e56e89293a057740de681ac9abbe",
-            "name": "Test Integration",
-            "type": "workspace_one",
-            "interval": "24h",
-            "config": [
-              {
-                "api_url": "https://api.example.com",
-                "auth_url": "https://auth.example.com",
-                "client_id": "client-123",
-                "client_secret": "secret-456",
-                "customer_id": "",
-                "client_key": "",
-                "access_client_id": "",
-                "access_client_secret": ""
-              }
-            ]
-          }
-        }
-      ]
-    }
-  ]
-}`,
-			Expected: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "type": "cloudflare_zero_trust_device_posture_integration",
-      "name": "test",
-      "instances": [
-        {
-          "schema_version": 0,
-          "attributes": {
-            "id": "480f4f69-1a28-4fdd-9240-1ed29f0ac1dc",
-            "account_id": "f037e56e89293a057740de681ac9abbe",
-            "name": "Test Integration",
-            "type": "workspace_one",
-            "interval": "24h",
-            "config": {
-              "api_url": "https://api.example.com",
-              "auth_url": "https://auth.example.com",
-              "client_id": "client-123",
-              "client_secret": "secret-456",
-              "customer_id": null,
-              "client_key": null,
-              "access_client_id": null,
-              "access_client_secret": null
-            }
-          }
-        }
-      ]
-    }
-  ]
-}`,
-		},
-		{
-			Name: "state with identifier field - removes it",
-			Input: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "mode": "managed",
-      "type": "cloudflare_zero_trust_device_posture_integration",
-      "name": "test",
-      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
-      "instances": [
-        {
-          "schema_version": 0,
-          "attributes": {
-            "id": "480f4f69-1a28-4fdd-9240-1ed29f0ac1dc",
-            "account_id": "f037e56e89293a057740de681ac9abbe",
-            "name": "Test Integration",
-            "type": "workspace_one",
-            "identifier": "legacy-id-123",
-            "interval": "24h",
-            "config": [
-              {
-                "api_url": "https://api.example.com",
-                "auth_url": "https://auth.example.com",
-                "client_id": "client-123",
-                "client_secret": "secret-456"
-              }
-            ]
-          }
-        }
-      ]
-    }
-  ]
-}`,
-			Expected: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "type": "cloudflare_zero_trust_device_posture_integration",
-      "name": "test",
-      "instances": [
-        {
-          "schema_version": 0,
-          "attributes": {
-            "id": "480f4f69-1a28-4fdd-9240-1ed29f0ac1dc",
-            "account_id": "f037e56e89293a057740de681ac9abbe",
-            "name": "Test Integration",
-            "type": "workspace_one",
-            "interval": "24h",
-            "config": {
-              "api_url": "https://api.example.com",
-              "auth_url": "https://auth.example.com",
-              "client_id": "client-123",
-              "client_secret": "secret-456"
-            }
-          }
-        }
-      ]
-    }
-  ]
-}`,
-		},
-		{
-			Name: "state without interval - adds default",
-			Input: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "mode": "managed",
-      "type": "cloudflare_zero_trust_device_posture_integration",
-      "name": "test",
-      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
-      "instances": [
-        {
-          "schema_version": 0,
-          "attributes": {
-            "id": "480f4f69-1a28-4fdd-9240-1ed29f0ac1dc",
-            "account_id": "f037e56e89293a057740de681ac9abbe",
-            "name": "Test Integration",
-            "type": "crowdstrike_s2s",
-            "config": [
-              {
-                "client_id": "cs-client",
-                "client_secret": "cs-secret",
-                "customer_id": "customer-123"
-              }
-            ]
-          }
-        }
-      ]
-    }
-  ]
-}`,
-			Expected: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "type": "cloudflare_zero_trust_device_posture_integration",
-      "name": "test",
-      "instances": [
-        {
-          "schema_version": 0,
-          "attributes": {
-            "id": "480f4f69-1a28-4fdd-9240-1ed29f0ac1dc",
-            "account_id": "f037e56e89293a057740de681ac9abbe",
-            "name": "Test Integration",
-            "type": "crowdstrike_s2s",
-            "interval": "24h",
-            "config": {
-              "client_id": "cs-client",
-              "client_secret": "cs-secret",
-              "customer_id": "customer-123"
-            }
-          }
-        }
-      ]
-    }
-  ]
-}`,
-		},
-		{
-			Name: "state with empty config array",
-			Input: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "mode": "managed",
-      "type": "cloudflare_zero_trust_device_posture_integration",
-      "name": "test",
-      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
-      "instances": [
-        {
-          "schema_version": 0,
-          "attributes": {
-            "id": "480f4f69-1a28-4fdd-9240-1ed29f0ac1dc",
-            "account_id": "f037e56e89293a057740de681ac9abbe",
-            "name": "Test Integration",
-            "type": "custom_s2s",
-            "interval": "1h",
-            "config": []
-          }
-        }
-      ]
-    }
-  ]
-}`,
-			Expected: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "type": "cloudflare_zero_trust_device_posture_integration",
-      "name": "test",
-      "instances": [
-        {
-          "schema_version": 0,
-          "attributes": {
-            "id": "480f4f69-1a28-4fdd-9240-1ed29f0ac1dc",
-            "account_id": "f037e56e89293a057740de681ac9abbe",
-            "name": "Test Integration",
-            "type": "custom_s2s",
-            "interval": "1h",
-            "config": {}
-          }
-        }
-      ]
-    }
-  ]
-}`,
-		},
-		{
-			Name: "state with full config fields",
-			Input: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "mode": "managed",
-      "type": "cloudflare_zero_trust_device_posture_integration",
-      "name": "full",
-      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
-      "instances": [
-        {
-          "schema_version": 0,
-          "attributes": {
-            "id": "550f5f69-2b38-5fdd-a350-2ed39f0bc2ed",
-            "account_id": "f037e56e89293a057740de681ac9abbe",
-            "name": "Full Integration",
-            "type": "crowdstrike_s2s",
-            "interval": "12h",
-            "config": [
-              {
-                "api_url": "https://api.crowdstrike.com",
-                "auth_url": "https://auth.crowdstrike.com",
-                "client_id": "crowdstrike-client",
-                "client_secret": "crowdstrike-secret",
-                "customer_id": "customer-acme",
-                "client_key": "crowdstrike-key",
-                "access_client_id": "cf-access-id",
-                "access_client_secret": "cf-access-secret"
-              }
-            ]
-          }
-        }
-      ]
-    }
-  ]
-}`,
-			Expected: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "type": "cloudflare_zero_trust_device_posture_integration",
-      "name": "full",
-      "instances": [
-        {
-          "schema_version": 0,
-          "attributes": {
-            "id": "550f5f69-2b38-5fdd-a350-2ed39f0bc2ed",
-            "account_id": "f037e56e89293a057740de681ac9abbe",
-            "name": "Full Integration",
-            "type": "crowdstrike_s2s",
-            "interval": "12h",
-            "config": {
-              "api_url": "https://api.crowdstrike.com",
-              "auth_url": "https://auth.crowdstrike.com",
-              "client_id": "crowdstrike-client",
-              "client_secret": "crowdstrike-secret",
-              "customer_id": "customer-acme",
-              "client_key": "crowdstrike-key",
-              "access_client_id": "cf-access-id",
-              "access_client_secret": "cf-access-secret"
-            }
-          }
-        }
-      ]
-    }
-  ]
-}`,
-		},
-		{
-			Name: "state with no attributes - sets schema_version only",
-			Input: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "mode": "managed",
-      "type": "cloudflare_zero_trust_device_posture_integration",
-      "name": "empty",
-      "provider": "provider[\"registry.terraform.io/cloudflare/cloudflare\"]",
-      "instances": [
-        {
-          "schema_version": 1
-        }
-      ]
-    }
-  ]
-}`,
-			Expected: `{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "type": "cloudflare_zero_trust_device_posture_integration",
-      "name": "empty",
-      "instances": [
-        {
-          "schema_version": 0
-        }
-      ]
-    }
-  ]
-}`,
-		},
-	}
-
-	testhelpers.RunStateTransformTests(t, tests, migrator)
+func TestV4ToV5TransformationState_Removed(t *testing.T) {
+	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
 }

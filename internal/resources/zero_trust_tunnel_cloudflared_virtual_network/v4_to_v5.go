@@ -3,7 +3,6 @@ package zero_trust_tunnel_cloudflared_virtual_network
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -45,6 +44,14 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	resourceType := tfhcl.GetResourceType(block)
+	resourceName := tfhcl.GetResourceName(block)
+
+	// Generate moved block using the original (pre-rename) resource type.
+	// This allows Terraform to use the provider's MoveState hook with SourceSchema to decode
+	// the old state entry, eliminating the need for tf-migrate to rename the type in state.
+	from := resourceType + "." + resourceName
+	to := "cloudflare_zero_trust_tunnel_cloudflared_virtual_network." + resourceName
+	movedBlock := tfhcl.CreateMovedBlock(from, to)
 
 	// Rename resource type based on which v4 name is used
 	if resourceType == "cloudflare_tunnel_virtual_network" {
@@ -57,42 +64,19 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// All fields remain the same: account_id, name, is_default_network, comment
 
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block},
-		RemoveOriginal: false,
+		Blocks:         []*hclwrite.Block{block, movedBlock},
+		RemoveOriginal: true,
 	}, nil
 }
 
+// UsesProviderStateUpgrader indicates that the provider's StateUpgrader handles all
+// state migration for this resource. TransformState is a no-op.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
+}
+
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := instance.String()
-	attrs := instance.Get("attributes")
-
-	if !attrs.Exists() {
-		return result, nil
-	}
-
-	// Add defaults for optional fields with v5 defaults
-	// This prevents v5 provider from triggering PATCH operations when fields are null
-
-	// comment has default "" (empty string) in v5
-	if !attrs.Get("comment").Exists() || attrs.Get("comment").Type == gjson.Null {
-		result, _ = sjson.Set(result, "attributes.comment", "")
-	}
-
-	// is_default_network has default false in v5
-	if !attrs.Get("is_default_network").Exists() || attrs.Get("is_default_network").Type == gjson.Null {
-		result, _ = sjson.Set(result, "attributes.is_default_network", false)
-	}
-
-	// No computed fields from v4 to remove
-	// v5 adds new computed fields (id, created_at, deleted_at) but provider will generate these
-
-	// Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	// Update the type field if it exists (for unit tests that pass instance-level type)
-	if instance.Get("type").Exists() {
-		result, _ = sjson.Set(result, "type", "cloudflare_zero_trust_tunnel_cloudflared_virtual_network")
-	}
-
-	return result, nil
+	// State migration is handled by the provider's StateUpgrader (MoveState + UpgradeState).
+	// tf-migrate passes state through unchanged.
+	return instance.String(), nil
 }
