@@ -3,11 +3,9 @@ package logpush_ownership_challenge
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 type V4ToV5Migrator struct {
@@ -52,27 +50,21 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
+// TransformState is a no-op for logpush_ownership_challenge migration.
+// State transformation is handled by the provider's StateUpgraders (UpgradeState).
+//
+// Provider StateUpgraders handle:
+// - Direct copies: account_id, zone_id, destination_conf
+// - Remove: ownership_challenge_filename (v4 computed field)
+// - Set to Null: filename, message, valid (new v5 computed fields, API populates on create)
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is handled by the provider's StateUpgraders (UpgradeState)
+	// This function is a no-op for logpush_ownership_challenge migration
+	return stateJSON.String(), nil
+}
 
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		// Set schema_version even for invalid/incomplete instances
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	attrs := stateJSON.Get("attributes")
-
-	// ONLY ACTION: Remove v4 computed field that doesn't exist in v5
-	// ownership_challenge_filename was a computed field in v4
-	// In v5, it's replaced by separate computed fields: filename, message, valid
-	// We remove the old field and let v5 provider regenerate the new computed fields
-	result = state.RemoveFields(result, "attributes", attrs,
-		"ownership_challenge_filename",
-	)
-
-	// CRITICAL: Set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+// This tells tf-migrate that the provider handles state transformation, not tf-migrate.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
