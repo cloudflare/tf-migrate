@@ -3,11 +3,9 @@ package mtls_certificate
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of mtls_certificate resources from v4 to v5
@@ -56,28 +54,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 }
 
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState)
+	// The moved block generated in TransformConfig triggers the provider's migration logic
+	// This function is a no-op for mtls_certificate migration
+	return stateJSON.String(), nil
+}
 
-	// Early return for missing attributes
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		result, _ = sjson.Set(result, "schema_version", 0)
-		return result, nil
-	}
-
-	attrs := stateJSON.Get("attributes")
-
-	// Remove new v5 computed fields if they somehow exist
-	// Note: 'id' exists in both v4 and v5, so we preserve it
-	// Only 'updated_at' is genuinely new in v5
-	result = state.RemoveFields(result, "attributes", attrs, "updated_at")
-
-	// All other fields remain unchanged:
-	// - No field renames
-	// - No type conversions
-	// - Computed fields (issuer, signature, serial_number, uploaded_on, expires_on) preserved as-is
-
-	// Always set schema_version to 0 for v5
-	result, _ = sjson.Set(result, "schema_version", 0)
-
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
