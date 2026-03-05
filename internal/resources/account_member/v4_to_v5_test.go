@@ -54,50 +54,9 @@ resource "cloudflare_account_member" "example" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	t.Run("StateTransformation", func(t *testing.T) {
-		tests := []testhelpers.StateTestCase{
-			{
-				Name: "minimum state",
-				Input: `{
-					"attributes": {
-						"id": "test-id",
-						"account_id": "f037e56e89293a057740de681ac9abbe",
-						"email_address": "user@example.com",
-						"role_ids": ["68b329da9893e34099c7d8ad5cb9c940"]
-					}
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "test-id",
-						"account_id": "f037e56e89293a057740de681ac9abbe",
-						"email": "user@example.com",
-						"roles": ["68b329da9893e34099c7d8ad5cb9c940"]
-					}
-				}`,
-			},
-			{
-				Name: "full state",
-				Input: `{
-					"attributes": {
-						"id": "test-id",
-						"account_id": "f037e56e89293a057740de681ac9abbe",
-						"email_address": "user@example.com",
-						"status": "accepted",
-						"role_ids": ["68b329da9893e34099c7d8ad5cb9c940", "d784fa8b6d98d27699781bd9a7cf19f0"]
-					}
-				}`,
-				Expected: `{
-					"attributes": {
-						"id": "test-id",
-						"account_id": "f037e56e89293a057740de681ac9abbe",
-						"email": "user@example.com",
-						"status": "accepted",
-						"roles": ["68b329da9893e34099c7d8ad5cb9c940", "d784fa8b6d98d27699781bd9a7cf19f0"]
-					}
-				}`,
-			},
-		}
-
-		testhelpers.RunStateTransformTests(t, tests, migrator)
-	})
+	// Note: StateTransformation test removed.
+	// State migration is now handled by the provider's StateUpgrader (v5.19+).
+	// The provider implements UpgradeState with slot 0 handling v4 SDKv2 state
+	// (schema_version=0) and transforming email_address→email, role_ids→roles.
+	// tf-migrate's TransformState returns input unchanged (no-op).
 }
