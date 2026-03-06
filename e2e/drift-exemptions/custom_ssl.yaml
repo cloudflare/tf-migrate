@@ -1,0 +1,24 @@
+# Drift Exemptions for custom_ssl resource
+#
+# custom_ssl (cloudflare_custom_ssl) v4 → v5 migration:
+#   - v4 stored certificate fields in a custom_ssl_options TypeList block.
+#   - v5 hoists those fields to flat top-level attributes.
+#   - State upgrade is handled by the provider's UpgradeState (TF_MIG_TEST=1).
+
+version: 1
+
+exemptions:
+  # v4 custom_ssl_options blocks that omit `type` produce an empty string in the
+  # API response. Transform() defaults the field to "legacy_custom" in migrated
+  # state. On first plan after migration the provider reads "" from the API and
+  # plans to set "legacy_custom", producing this diff. It stabilises after one
+  # apply (or when the v5 config explicitly sets type = "legacy_custom").
+  - name: "type_default_legacy_custom"
+    description: "type defaults from empty string to legacy_custom when absent in v4 custom_ssl_options"
+    patterns:
+      - 'type\s*=\s*""\s*->\s*"legacy_custom"'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false
