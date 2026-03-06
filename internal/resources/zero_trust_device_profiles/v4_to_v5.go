@@ -2,8 +2,6 @@ package zero_trust_device_profiles
 
 import (
 	"fmt"
-	"strings"
-
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 
@@ -52,12 +50,8 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
-	// Check if this is JSON state content (starts with '{')
-	trimmed := strings.TrimSpace(content)
-	if strings.HasPrefix(trimmed, "{") {
-		// Process cross-resource state migrations (merge split_tunnel into device profiles, remove split_tunnels)
-		return zero_trust_split_tunnel.ProcessCrossResourceStateMigration(content)
-	}
+	// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState).
+	// tf-migrate no longer performs cross-resource state merging for split tunnels.
 	return content
 }
 
@@ -267,4 +261,3 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
 	return true
 }
-
