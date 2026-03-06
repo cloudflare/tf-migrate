@@ -7,7 +7,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -16,9 +15,6 @@ import (
 )
 
 // V4ToV5Migrator handles migration of cloudflare_split_tunnel resources from v4 to v5.
-// In v5, split tunnel settings are embedded in device profile resources.
-// This migrator marks split_tunnel resources for removal - the actual merging
-// is done by the device profile migrators.
 type V4ToV5Migrator struct{}
 
 func NewV4ToV5Migrator() transform.ResourceTransformer {
@@ -52,9 +48,16 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState returns empty state - split tunnels are merged into device profiles via ProcessCrossResourceStateMigration.
+// TransformState is a no-op — state transformation is handled by the provider's StateUpgraders.
+// cloudflare_split_tunnel does not exist in v5; users must run `terraform state rm` for each
+// split tunnel entry after migration. The provider's MoveState + UpgradeState handlers on
+// device profile resources handle the device profile state migration.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	return "", nil
+	// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState).
+	// The moved blocks generated in TransformConfig (on device profiles) trigger the provider's
+	// migration logic. split_tunnel has no v5 equivalent resource; its state entries are removed
+	// by the user via `terraform state rm` after migration.
+	return stateJSON.String(), nil
 }
 
 // ProcessCrossResourceConfigMigration merges split_tunnel resources into device profile resources.
@@ -64,9 +67,10 @@ func ProcessCrossResourceConfigMigration(file *hclwrite.File) {
 
 	// Step 1: Collect all device profiles and split tunnels
 	var defaultProfileBlock *hclwrite.Block
-	customProfiles := make(map[string]*hclwrite.Block)  // resource_name -> block
-	splitTunnelsByParent := make(map[string][]*hclwrite.Block)  // parent_name -> []tunnel_blocks
-	orphanedSplitTunnels := []*hclwrite.Block{}  // Unparseable policy_id references
+	customProfiles := make(map[string]*hclwrite.Block)         // resource_name -> block
+	splitTunnelsByParent := make(map[string][]*hclwrite.Block) // parent_name -> []tunnel_blocks
+	orphanedSplitTunnels := []*hclwrite.Block{}                // Unparseable policy_id references
+	orphanedDefaultTunnels := []*hclwrite.Block{}              // Default-profile tunnels with no default profile in file
 
 	for _, block := range body.Blocks() {
 		if block.Type() == "resource" && len(block.Labels()) >= 2 {
@@ -115,14 +119,12 @@ func ProcessCrossResourceConfigMigration(file *hclwrite.File) {
 
 	// Step 2: Merge default profile split tunnels
 	if defaultProfileBlock != nil {
-		defaultTunnels := splitTunnelsByParent[""]  // Empty string = default profile
+		defaultTunnels := splitTunnelsByParent[""] // Empty string = default profile
 		mergeSplitTunnelsIntoProfile(defaultTunnels, defaultProfileBlock)
 	} else if len(splitTunnelsByParent[""]) > 0 {
-		// Have split tunnels for default profile but no default profile resource
-		for _, tunnelBlock := range splitTunnelsByParent[""] {
-			tfhcl.AppendWarningComment(tunnelBlock.Body(),
-				"No default device profile found - create cloudflare_zero_trust_device_default_profile resource first")
-		}
+		// Have split tunnels for the default profile but no default profile resource in this file.
+		// Collect them for end-of-file warnings — the blocks will be removed in Step 4.
+		orphanedDefaultTunnels = append(orphanedDefaultTunnels, splitTunnelsByParent[""]...)
 	}
 
 	// Step 3: Merge custom profile split tunnels
@@ -164,10 +166,29 @@ func ProcessCrossResourceConfigMigration(file *hclwrite.File) {
 		})
 	}
 
+	// Step 5b: Handle split tunnels that targeted the implicit default profile but no default profile
+	// resource was declared in this file. The tunnel config is preserved in the comment so the user
+	// can manually add it to a cloudflare_zero_trust_device_default_profile resource.
+	for _, tunnelBlock := range orphanedDefaultTunnels {
+		tunnelResourceName := tfhcl.GetResourceName(tunnelBlock)
+		warningMsg := fmt.Sprintf(
+			"Split tunnel %q was configured on the implicit default device profile. "+
+				"Its configuration has been removed during migration. "+
+				"To manage these settings in Terraform, declare a cloudflare_zero_trust_device_default_profile resource "+
+				"and run `terraform import cloudflare_zero_trust_device_default_profile.<name> <account_id>`, "+
+				"then add the following tunnel entries to its exclude or include attribute.",
+			tunnelResourceName,
+		)
+		migrationWarnings = append(migrationWarnings, migrationWarning{
+			message: warningMsg,
+			block:   tunnelBlock,
+		})
+	}
+
 	// Step 6: Handle split tunnels referencing non-existent profiles
 	for profileName, tunnels := range splitTunnelsByParent {
 		if profileName == "" {
-			continue  // Default profile already handled
+			continue // Default profile already handled
 		}
 		if customProfiles[profileName] == nil {
 			// Referenced profile doesn't exist in this file
@@ -347,206 +368,4 @@ func addMigrationCommentAtEndOfFile(file *hclwrite.File, message string, block *
 		},
 	}
 	body.AppendUnstructuredTokens(multiLineTokens)
-}
-
-// ProcessCrossResourceStateMigration merges split_tunnel state into device profile state.
-// This function is called by the device profile migrators' Preprocess method.
-func ProcessCrossResourceStateMigration(stateJSON string) string {
-	result := stateJSON
-
-	// Maps to track resources
-	defaultProfiles := make(map[string]int)      // account_id -> resource index
-	customProfiles := make(map[string]int)       // policy_id -> resource index
-	var splitTunnels []splitTunnelStateInfo
-
-	resources := gjson.Get(stateJSON, "resources")
-	if resources.Exists() && resources.IsArray() {
-		for i, resource := range resources.Array() {
-			resourceType := resource.Get("type").String()
-
-			if resourceType == "cloudflare_zero_trust_device_default_profile" {
-				// Default profile - keyed by account_id
-				accountID := resource.Get("instances.0.attributes.account_id").String()
-				if accountID != "" {
-					defaultProfiles[accountID] = i
-				}
-			} else if resourceType == "cloudflare_zero_trust_device_custom_profile" {
-				// Custom profile - keyed by policy_id
-				policyID := resource.Get("instances.0.attributes.policy_id").String()
-				if policyID != "" {
-					customProfiles[policyID] = i
-				}
-			} else if resourceType == "cloudflare_zero_trust_device_profiles" {
-				// v4 device_profiles resource - need to determine if default or custom
-				attrs := resource.Get("instances.0.attributes")
-				if attrs.Exists() {
-					defaultAttr := attrs.Get("default")
-					matchAttr := attrs.Get("match")
-					precedenceAttr := attrs.Get("precedence")
-
-					isExplicitDefault := defaultAttr.Exists() && defaultAttr.Bool()
-					isCustomProfile := !isExplicitDefault && matchAttr.Exists() && precedenceAttr.Exists()
-
-					if isCustomProfile {
-						// It's a custom profile - get policy_id
-						// Try policy_id attribute first, then extract from compound ID if needed
-						policyID := attrs.Get("policy_id").String()
-						if policyID == "" {
-							// Fallback: extract from ID if it has format account_id/profile_id
-							id := attrs.Get("id").String()
-							if slashIdx := strings.Index(id, "/"); slashIdx != -1 && slashIdx < len(id)-1 {
-								policyID = id[slashIdx+1:]
-							}
-						}
-						if policyID != "" {
-							customProfiles[policyID] = i
-						}
-					} else {
-						// It's a default profile
-						accountID := attrs.Get("account_id").String()
-						if accountID != "" {
-							defaultProfiles[accountID] = i
-						}
-					}
-				}
-			} else if resourceType == "cloudflare_split_tunnel" {
-				tunnel := extractSplitTunnelStateInfo(resource)
-				if tunnel != nil {
-					splitTunnels = append(splitTunnels, *tunnel)
-				}
-			}
-		}
-	}
-
-	// Merge split tunnels into their parent profiles
-	for _, tunnel := range splitTunnels {
-		if tunnel.policyID == "" {
-			// No policy_id = default profile
-			if profileIndex, exists := defaultProfiles[tunnel.accountID]; exists {
-				result = mergeTunnelsIntoProfileState(result, profileIndex, tunnel.mode, []splitTunnelStateInfo{tunnel})
-			}
-		} else {
-			// Has policy_id = custom profile
-			if profileIndex, exists := customProfiles[tunnel.policyID]; exists {
-				result = mergeTunnelsIntoProfileState(result, profileIndex, tunnel.mode, []splitTunnelStateInfo{tunnel})
-			}
-		}
-	}
-
-	// Remove all split_tunnel resources from state
-	result = removeSplitTunnelResourcesFromState(result)
-
-	return result
-}
-
-// splitTunnelStateInfo holds state information extracted from a split_tunnel resource
-type splitTunnelStateInfo struct {
-	accountID string
-	policyID  string   // empty string for default profile
-	mode      string   // "exclude" or "include"
-	tunnels   []map[string]interface{}
-}
-
-// extractSplitTunnelStateInfo extracts split tunnel state data from a resource
-func extractSplitTunnelStateInfo(resource gjson.Result) *splitTunnelStateInfo {
-	attrs := resource.Get("instances.0.attributes")
-	if !attrs.Exists() {
-		return nil
-	}
-
-	info := &splitTunnelStateInfo{
-		accountID: attrs.Get("account_id").String(),
-		policyID:  attrs.Get("policy_id").String(),
-		mode:      attrs.Get("mode").String(),
-		tunnels:   []map[string]interface{}{},
-	}
-
-	// Default mode if not specified
-	if info.mode == "" {
-		info.mode = "exclude"
-	}
-
-	// Extract tunnels array
-	tunnelsData := attrs.Get("tunnels")
-	if tunnelsData.Exists() && tunnelsData.IsArray() {
-		for _, tunnel := range tunnelsData.Array() {
-			tunnelMap := make(map[string]interface{})
-
-			// Extract optional string fields
-			extractOptionalStringField(tunnel, "address", tunnelMap)
-			extractOptionalStringField(tunnel, "description", tunnelMap)
-			extractOptionalStringField(tunnel, "host", tunnelMap)
-
-			if len(tunnelMap) > 0 {
-				info.tunnels = append(info.tunnels, tunnelMap)
-			}
-		}
-	}
-
-	return info
-}
-
-// extractOptionalStringField extracts a string field from gjson.Result if it exists and is non-empty.
-func extractOptionalStringField(source gjson.Result, fieldName string, target map[string]interface{}) {
-	if value := source.Get(fieldName); value.Exists() && value.String() != "" {
-		target[fieldName] = value.String()
-	}
-}
-
-// mergeTunnelsIntoProfileState merges split tunnel data into a device profile's state
-func mergeTunnelsIntoProfileState(jsonStr string, profileIndex int, mode string, tunnels []splitTunnelStateInfo) string {
-	result := jsonStr
-
-	// Build the path to the mode attribute (exclude or include)
-	modePath := fmt.Sprintf("resources.%d.instances.0.attributes.%s", profileIndex, mode)
-	existingTunnels := gjson.Get(jsonStr, modePath)
-
-	var allTunnels []interface{}
-
-	// Get existing tunnels if any
-	if existingTunnels.Exists() && existingTunnels.IsArray() {
-		for _, tunnel := range existingTunnels.Array() {
-			allTunnels = append(allTunnels, tunnel.Value())
-		}
-	}
-
-	// Add tunnels from split_tunnel resources
-	for _, splitTunnel := range tunnels {
-		for _, tunnel := range splitTunnel.tunnels {
-			allTunnels = append(allTunnels, tunnel)
-		}
-	}
-
-	// Set the merged tunnels in the profile
-	if len(allTunnels) > 0 {
-		result, _ = sjson.Set(result, modePath, allTunnels)
-	}
-
-	return result
-}
-
-// removeSplitTunnelResourcesFromState removes all cloudflare_split_tunnel resources from state
-func removeSplitTunnelResourcesFromState(jsonStr string) string {
-	result := jsonStr
-
-	resources := gjson.Get(jsonStr, "resources")
-	if !resources.Exists() || !resources.IsArray() {
-		return result
-	}
-
-	var indicesToRemove []int
-	for i, resource := range resources.Array() {
-		resourceType := resource.Get("type").String()
-		if resourceType == "cloudflare_split_tunnel" {
-			indicesToRemove = append(indicesToRemove, i)
-		}
-	}
-
-	// Remove in reverse order to preserve indices
-	for i := len(indicesToRemove) - 1; i >= 0; i-- {
-		resourcePath := fmt.Sprintf("resources.%d", indicesToRemove[i])
-		result, _ = sjson.Delete(result, resourcePath)
-	}
-
-	return result
 }

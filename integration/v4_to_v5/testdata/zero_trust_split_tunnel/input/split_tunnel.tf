@@ -12,13 +12,7 @@ locals {
   account_id = var.cloudflare_account_id
 }
 
-# Default profile (will receive split tunnels without policy_id)
-resource "cloudflare_zero_trust_device_profiles" "default" {
-  account_id = local.account_id
-  default    = true
-}
-
-# Split tunnel embedded in default profile (no policy_id)
+# Split tunnels targeting the implicit default profile (no policy_id, no explicit default profile resource)
 resource "cloudflare_split_tunnel" "default_exclude" {
   account_id = local.account_id
   mode       = "exclude"
