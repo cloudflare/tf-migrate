@@ -48,6 +48,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/turnstile_widget"
 	"github.com/cloudflare/tf-migrate/internal/resources/url_normalization_settings"
 	"github.com/cloudflare/tf-migrate/internal/resources/worker_route"
+	"github.com/cloudflare/tf-migrate/internal/resources/workers_custom_domain"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_for_platforms_dispatch_namespace"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
@@ -138,6 +139,7 @@ func RegisterAllMigrations() {
 	turnstile_widget.NewV4ToV5Migrator()
 	url_normalization_settings.NewV4ToV5Migrator()
 	worker_route.NewV4ToV5Migrator()
+	workers_custom_domain.NewV4ToV5Migrator()
 	workers_kv.NewV4ToV5Migrator()
 	workers_kv_namespace.NewV4ToV5Migrator()
 	workers_script.NewV4ToV5Migrator()
