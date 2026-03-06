@@ -18,6 +18,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/custom_hostname"
 	"github.com/cloudflare/tf-migrate/internal/resources/custom_hostname_fallback_origin"
 	"github.com/cloudflare/tf-migrate/internal/resources/custom_pages"
+	"github.com/cloudflare/tf-migrate/internal/resources/custom_ssl"
 	"github.com/cloudflare/tf-migrate/internal/resources/dns_record"
 	"github.com/cloudflare/tf-migrate/internal/resources/healthcheck"
 	"github.com/cloudflare/tf-migrate/internal/resources/leaked_credential_check"
@@ -104,6 +105,7 @@ func RegisterAllMigrations() {
 	authenticated_origin_pulls_certificate.NewV4ToV5Migrator()
 	bot_management.NewV4ToV5Migrator()
 	certificate_pack.NewV4ToV5Migrator()
+	custom_ssl.NewV4ToV5Migrator()
 	custom_hostname.NewV4ToV5Migrator()
 	custom_hostname_fallback_origin.NewV4ToV5Migrator()
 	custom_pages.NewV4ToV5Migrator()
