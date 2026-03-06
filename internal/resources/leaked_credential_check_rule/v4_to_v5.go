@@ -68,20 +68,12 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 // - No type conversions are required (all StringAttribute)
 // - All fields maintain their semantics
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	result := stateJSON.String()
+	// State transformation is handled by the provider's StateUpgraders.
+	// This function intentionally returns the original state unchanged.
+	return stateJSON.String(), nil
+}
 
-	// Validate that this is a valid leaked_credential_check_rule instance
-	if !stateJSON.Exists() || !stateJSON.Get("attributes").Exists() {
-		return result, nil
-	}
-
-	attrs := stateJSON.Get("attributes")
-
-	// Validate that zone_id exists (required field)
-	if !attrs.Get("zone_id").Exists() {
-		return result, nil
-	}
-
-	// No transformations needed - all fields pass through unchanged
-	return result, nil
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }
