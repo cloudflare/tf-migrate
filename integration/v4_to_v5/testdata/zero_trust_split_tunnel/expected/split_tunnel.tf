@@ -21,7 +21,6 @@ locals {
 
 
 
-
 /** MIGRATION_WARNING: Split tunnel "unparseable_var" has unparseable policy_id reference - manual migration required
 *  # Unparseable policy_id - variable reference
 *  resource "cloudflare_split_tunnel" "unparseable_var" {
@@ -50,6 +49,36 @@ locals {
 *  }
 */
 
+/** MIGRATION_WARNING: Split tunnel "default_exclude" was configured on the implicit default device profile. Its configuration has been removed during migration. To manage these settings in Terraform, declare a cloudflare_zero_trust_device_default_profile resource and run `terraform import cloudflare_zero_trust_device_default_profile.<name> <account_id>`, then add the following tunnel entries to its exclude or include attribute.
+*  # Split tunnels targeting the implicit default profile (no policy_id, no explicit default profile resource)
+*  resource "cloudflare_split_tunnel" "default_exclude" {
+*    account_id = local.account_id
+*    mode       = "exclude"
+*  
+*    tunnels {
+*      address     = "192.168.0.0/16"
+*      description = "Private network"
+*    }
+*  
+*    tunnels {
+*      address = "10.0.0.0/8"
+*      host    = "internal.local"
+*    }
+*  }
+*/
+
+/** MIGRATION_WARNING: Split tunnel "default_include" was configured on the implicit default device profile. Its configuration has been removed during migration. To manage these settings in Terraform, declare a cloudflare_zero_trust_device_default_profile resource and run `terraform import cloudflare_zero_trust_device_default_profile.<name> <account_id>`, then add the following tunnel entries to its exclude or include attribute.
+*  resource "cloudflare_split_tunnel" "default_include" {
+*    account_id = local.account_id
+*    mode       = "include"
+*  
+*    tunnels {
+*      address     = "203.0.113.0/24"
+*      description = "Corporate VPN"
+*    }
+*  }
+*/
+
 /** MIGRATION_WARNING: Split tunnel "missing_profile" references profile "nonexistent" which was not found - manual migration required
 *  # Reference to non-existent device profile
 *  resource "cloudflare_split_tunnel" "missing_profile" {
@@ -64,29 +93,6 @@ locals {
 *  }
 */
 
-
-# Default profile (will receive split tunnels without policy_id)
-resource "cloudflare_zero_trust_device_default_profile" "default" {
-  account_id = local.account_id
-  include = [{
-    address     = "203.0.113.0/24"
-    description = "Corporate VPN"
-  }]
-  exclude = [{
-    address     = "192.168.0.0/16"
-    description = "Private network"
-    }, {
-    address = "10.0.0.0/8"
-    host    = "internal.local"
-  }]
-  register_interface_ip_with_dns = true
-  sccm_vpn_boundary_support      = false
-}
-
-moved {
-  from = cloudflare_zero_trust_device_profiles.default
-  to   = cloudflare_zero_trust_device_default_profile.default
-}
 
 # Custom profile with single tunnel
 resource "cloudflare_zero_trust_device_custom_profile" "single_tunnel" {
