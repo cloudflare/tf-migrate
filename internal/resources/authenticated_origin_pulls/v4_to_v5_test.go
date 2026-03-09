@@ -45,7 +45,7 @@ moved {
 }`,
 		},
 		{
-			Name: "AOP with hostname (removed in v5)",
+			Name: "Per-Hostname AOP (stays as authenticated_origin_pulls)",
 			Input: `
 resource "cloudflare_authenticated_origin_pulls" "example" {
   zone_id = "0da42c8d2132a9ddaf714f9e7c920711"
@@ -53,13 +53,12 @@ resource "cloudflare_authenticated_origin_pulls" "example" {
   enabled = true
 }`,
 			Expected: `
-resource "cloudflare_authenticated_origin_pulls_settings" "example" {
+resource "cloudflare_authenticated_origin_pulls" "example" {
   zone_id = "0da42c8d2132a9ddaf714f9e7c920711"
-  enabled = true
-}
-moved {
-  from = cloudflare_authenticated_origin_pulls.example
-  to   = cloudflare_authenticated_origin_pulls_settings.example
+  config = [{
+    hostname = "app.example.com"
+    enabled  = true
+  }]
 }`,
 		},
 		{
@@ -81,7 +80,7 @@ moved {
 }`,
 		},
 		{
-			Name: "AOP with both hostname and certificate (removed in v5)",
+			Name: "Per-Hostname AOP with certificate (restructured to nested config)",
 			Input: `
 resource "cloudflare_authenticated_origin_pulls" "example" {
   zone_id = "0da42c8d2132a9ddaf714f9e7c920711"
@@ -90,13 +89,13 @@ resource "cloudflare_authenticated_origin_pulls" "example" {
   enabled = true
 }`,
 			Expected: `
-resource "cloudflare_authenticated_origin_pulls_settings" "example" {
+resource "cloudflare_authenticated_origin_pulls" "example" {
   zone_id = "0da42c8d2132a9ddaf714f9e7c920711"
-  enabled = true
-}
-moved {
-  from = cloudflare_authenticated_origin_pulls.example
-  to   = cloudflare_authenticated_origin_pulls_settings.example
+  config = [{
+    hostname = "app.example.com"
+    cert_id  = "cert-id-123"
+    enabled  = true
+  }]
 }`,
 		},
 		{
