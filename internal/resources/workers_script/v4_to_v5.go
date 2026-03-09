@@ -248,7 +248,7 @@ func (m *V4ToV5Migrator) convertBindingBlockToObject(block *hclwrite.Block, bind
 			attrs = append(attrs, "part = "+exprToString(attr.Expr()))
 		}
 	case "queue":
-		// queue_binding: binding → name, queue → queue (but update references from .name to .queue_name)
+		// queue_binding: binding → name, queue → queue_name (and update references from .name to .queue_name)
 		if attr := blockBody.GetAttribute("binding"); attr != nil {
 			attrs = append(attrs, "name = "+exprToString(attr.Expr()))
 		}
@@ -256,7 +256,7 @@ func (m *V4ToV5Migrator) convertBindingBlockToObject(block *hclwrite.Block, bind
 			queueExpr := exprToString(attr.Expr())
 			// Replace cloudflare_queue.*.name with cloudflare_queue.*.queue_name
 			queueExpr = replaceQueueNameReference(queueExpr)
-			attrs = append(attrs, "queue = "+queueExpr)
+			attrs = append(attrs, "queue_name = "+queueExpr)
 		}
 	case "d1":
 		// d1_database_binding: database_id → id

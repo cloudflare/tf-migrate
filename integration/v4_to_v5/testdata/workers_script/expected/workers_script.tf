@@ -174,9 +174,9 @@ resource "cloudflare_workers_script" "queue" {
   script_name = "cftftest-queue-worker"
   bindings = [
     {
-      type  = "queue"
-      name  = "MY_QUEUE"
-      queue = cloudflare_queue.test_queue.queue_name
+      type       = "queue"
+      name       = "MY_QUEUE"
+      queue_name = cloudflare_queue.test_queue.queue_name
     }
   ]
 }
@@ -473,9 +473,9 @@ resource "cloudflare_workers_script" "dependent" {
       name        = "STORAGE"
       bucket_name = cloudflare_r2_bucket.test_r2.name
       }, {
-      type  = "queue"
-      name  = "JOBS"
-      queue = cloudflare_queue.test_queue.queue_name
+      type       = "queue"
+      name       = "JOBS"
+      queue_name = cloudflare_queue.test_queue.queue_name
     }
   ]
 }
@@ -553,9 +553,9 @@ resource "cloudflare_workers_script" "environment" {
       namespace_id = cloudflare_workers_kv_namespace.test_kv_multiple[each.value.kv_index].id
     }
     ], each.value.use_queue ? [{
-      type  = "queue"
-      name  = "ENV_QUEUE"
-      queue = cloudflare_queue.test_queue.queue_name
+      type       = "queue"
+      name       = "ENV_QUEUE"
+      queue_name = cloudflare_queue.test_queue.queue_name
   }] : [])
 }
 
