@@ -37,7 +37,6 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 // Note: This returns the default type for resources without hostname.
 // Resources with hostname stay as cloudflare_authenticated_origin_pulls (handled in TransformConfig).
 func (m *V4ToV5Migrator) GetResourceType() string {
-	// TODO i dont think this is right
 	return "cloudflare_authenticated_origin_pulls_settings"
 }
 
@@ -56,7 +55,6 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 // Note: This returns the default rename for resources without hostname.
 // Resources with hostname don't rename (handled conditionally in TransformConfig).
 func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	// TODO This isnt right
 	return "cloudflare_authenticated_origin_pulls", "cloudflare_authenticated_origin_pulls_settings"
 }
 
