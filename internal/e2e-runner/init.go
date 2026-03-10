@@ -143,6 +143,10 @@ func RunInit(resources string) error {
     cloudflare = {
       source = "cloudflare/cloudflare"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = ">= 4.0"
+    }
   }
 }
 `
@@ -422,4 +426,3 @@ func discoverModuleVariables(moduleDir string) (map[string]bool, error) {
 
 	return variables, nil
 }
-
