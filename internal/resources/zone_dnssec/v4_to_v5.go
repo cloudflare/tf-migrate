@@ -113,3 +113,8 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// Return state unchanged - provider StateUpgraders will handle migration
 	return stateJSON.String(), nil
 }
+
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
+}
