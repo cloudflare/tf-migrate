@@ -51,6 +51,11 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	return stateJSON.String(), nil
 }
 
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	// Get the resource name before renaming (for moved block generation)
 	resourceName := tfhcl.GetResourceName(block)
@@ -749,9 +754,6 @@ func (m *V4ToV5Migrator) buildExprTokens(expr hclsyntax.Expression) hclwrite.Tok
 
 	return tokens
 }
-
-
-
 
 // normalizeIP adds /32 suffix to single IP addresses without CIDR notation
 // The Cloudflare API normalizes single IPs to /32 format

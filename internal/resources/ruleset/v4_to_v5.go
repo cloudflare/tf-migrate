@@ -100,10 +100,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Define which nested block types should always be converted to arrays (even with 1 element)
 	// These correspond to ListNestedAttribute fields in the v5 schema
 	alwaysArrayFields := map[string]bool{
-		"rules":            true, // Can refer to both top-level rules OR action_parameters.overrides.rules
-		"categories":       true, // action_parameters.overrides.categories is always an array
-		"status_code_ttl":  true, // action_parameters.edge_ttl.status_code_ttl is always an array
-		"algorithms":       true, // action_parameters.algorithms is always an array
+		"rules":           true, // Can refer to both top-level rules OR action_parameters.overrides.rules
+		"categories":      true, // action_parameters.overrides.categories is always an array
+		"status_code_ttl": true, // action_parameters.edge_ttl.status_code_ttl is always an array
+		"algorithms":      true, // action_parameters.algorithms is always an array
 	}
 
 	// Convert all nested blocks to attributes recursively.
@@ -404,6 +404,11 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 	return instance.String(), nil
 }
 
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
+}
+
 // convertDynamicRulesToForExpression converts dynamic "rules" blocks to rules = [for ...] syntax
 // v4: dynamic "rules" { for_each = var.rules content { ... } }
 // v5: rules = [for rule in var.rules : { ... }]
@@ -499,7 +504,7 @@ func transformIteratorValueReferences(tokens hclwrite.Tokens, iteratorName strin
 			string(tokens[i+2].Bytes) == "value" &&
 			tokens[i+3].Type == hclsyntax.TokenDot {
 			// Skip the ".value." part (keep iterator and first dot, skip "value" and second dot)
-			result = append(result, token)      // iterator name
+			result = append(result, token)       // iterator name
 			result = append(result, tokens[i+1]) // first dot
 			// Skip tokens[i+2] (value) and tokens[i+3] (second dot)
 			i += 4
