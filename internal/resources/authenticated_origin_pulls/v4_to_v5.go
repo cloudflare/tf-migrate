@@ -34,10 +34,12 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 }
 
 // GetResourceType returns the resource type this migrator handles (v5 name).
-// Note: This returns the default type for resources without hostname.
-// Resources with hostname stay as cloudflare_authenticated_origin_pulls (handled in TransformConfig).
+// Returns empty string because this resource routes to TWO different types based on hostname presence:
+// - WITHOUT hostname → cloudflare_authenticated_origin_pulls_settings (via moved blocks in TransformConfig)
+// - WITH hostname → cloudflare_authenticated_origin_pulls (no type change)
+// The actual type is determined dynamically in TransformConfig based on configuration attributes.
 func (m *V4ToV5Migrator) GetResourceType() string {
-	return "cloudflare_authenticated_origin_pulls_settings"
+	return ""
 }
 
 // CanHandle determines if this migrator can handle the given resource type.

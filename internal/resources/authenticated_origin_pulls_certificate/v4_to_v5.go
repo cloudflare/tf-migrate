@@ -26,8 +26,10 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 }
 
 func (m *V4ToV5Migrator) GetResourceType() string {
-	// Return empty string because this resource splits into TWO different types
-	// based on the type field value. The actual type is determined dynamically in TransformState.
+	// Returns empty string because this resource routes to TWO different types based on type field:
+	// - type="per-hostname" → cloudflare_authenticated_origin_pulls_hostname_certificate (via moved blocks in TransformConfig)
+	// - type="per-zone" (or default) → cloudflare_authenticated_origin_pulls_certificate (no type change)
+	// The actual type is determined dynamically in TransformConfig based on state/config attributes.
 	return ""
 }
 
@@ -155,4 +157,9 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	//
 	// This is the Terraform-native approach: moved blocks + provider state upgraders
 	return stateJSON.String(), nil
+}
+
+// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
 }

@@ -5,12 +5,30 @@
 version: 1
 
 exemptions:
-  # DNSSEC status transitions from pending/disabled to active
-  - name: "status_to_active"
-    description: "Status changes from pending/disabled to active during DNSSEC activation"
+  # v4 to v5 status normalization: v4 had 4 values, v5 has 2
+  # v4: active, pending, disabled, pending-disabled
+  # v5: active, disabled
+  # Mapping: (pending -> active), (pending-disabled -> disabled)
+  - name: "status_normalization_pending_to_active"
+    description: "v4 'pending' status normalized to 'active' in v5"
     patterns:
-      - 'status.*->.*"active"'
-      - '\+ status\s*=\s*"active"'  # Allow adding status = "active"
+      - 'status.*=.*"pending".*->.*"active"'
+      - '~ status\s*=\s*"pending"\s*->\s*"active"'
+    enabled: true
+
+  - name: "status_normalization_pending_disabled_to_disabled"
+    description: "v4 'pending-disabled' status normalized to 'disabled' in v5"
+    patterns:
+      - 'status.*=.*"pending-disabled".*->.*"disabled"'
+      - '~ status\s*=\s*"pending-disabled"\s*->\s*"disabled"'
+    enabled: true
+
+  # occurs when status field doesn't exist in the config (v4 > v5)
+  - name: "status_pending_to_null"
+    description: "API returns 'pending' during DNSSEC activation but config/state has null (user must set status)"
+    patterns:
+      - 'status.*=.*"pending".*->.*null'
+      - '-\s+status\s*=\s*"pending"\s*->\s*null'
     enabled: true
 
 settings:

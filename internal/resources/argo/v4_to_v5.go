@@ -24,8 +24,10 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 }
 
 func (m *V4ToV5Migrator) GetResourceType() string {
-	// Return empty string because this resource splits into TWO different types
-	// based on instance attributes. The type is determined dynamically in TransformState.
+	// Returns empty string because this resource routes to TWO different types based on attribute presence:
+	// - smart_routing attribute → cloudflare_argo_smart_routing (via moved blocks in TransformConfig)
+	// - tiered_caching attribute → cloudflare_argo_tiered_caching (via moved blocks in TransformConfig)
+	// The actual type is determined dynamically in TransformConfig based on configuration attributes.
 	return ""
 }
 

@@ -214,12 +214,3 @@ func TestCanHandle(t *testing.T) {
 		t.Error("Expected migrator to not handle cloudflare_some_other_resource")
 	}
 }
-
-func TestGetResourceType(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
-	resourceType := migrator.GetResourceType()
-
-	if resourceType != "cloudflare_authenticated_origin_pulls_settings" {
-		t.Errorf("Expected resource type 'cloudflare_authenticated_origin_pulls_settings', got '%s'", resourceType)
-	}
-}
