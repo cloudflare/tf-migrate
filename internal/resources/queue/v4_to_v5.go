@@ -39,6 +39,13 @@ func (m *V4ToV5Migrator) Postprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface.
+// The resource name doesn't change between v4 and v5, but we implement this
+// to ensure the resource participates in global cross-file reference updates.
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_queue"}, "cloudflare_queue"
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	// No resource type rename needed (cloudflare_queue stays the same)
 	body := block.Body()
@@ -56,11 +63,6 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// State transformation is handled by the provider's StateUpgraders (UpgradeState).
 	// This function is a no-op for queue migration.
 	return stateJSON.String(), nil
-}
-
-// GetResourceRename returns the v4 and v5 resource type names (unchanged for queue).
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_queue", "cloudflare_queue"
 }
 
 // UsesProviderStateUpgrader indicates that this resource uses provider-based state migration

@@ -40,8 +40,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // cloudflare_pages_project doesn't rename, so return the same name
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_pages_project", "cloudflare_pages_project"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_pages_project"}, "cloudflare_pages_project"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

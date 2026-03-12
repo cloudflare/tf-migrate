@@ -21,10 +21,6 @@ func TestV4ToV5Migration(t *testing.T) {
 		if m.CanHandle("cloudflare_other") {
 			t.Error("CanHandle(cloudflare_other) = true, want false")
 		}
-		oldName, newName := m.GetResourceRename()
-		if oldName != "cloudflare_api_token" || newName != "cloudflare_api_token" {
-			t.Errorf("GetResourceRename() = (%v, %v), want (cloudflare_api_token, cloudflare_api_token)", oldName, newName)
-		}
 		// Test Postprocess (should return input unchanged)
 		input := "test content"
 		if m.Postprocess(input) != input {

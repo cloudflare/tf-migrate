@@ -44,8 +44,8 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 
 // GetResourceRename implements the ResourceRenamer interface
 // This allows the migration tool to collect all resource renames and apply them globally
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return m.oldType, m.newType
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_access_group", "cloudflare_zero_trust_access_group"}, m.newType
 }
 
 // Preprocess transforms v4 block syntax to v5 attribute syntax with array explosion
@@ -790,25 +790,33 @@ func (m *V4ToV5Migrator) transformForExpressionRegex(forExpr, selectorName, inne
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-	// Get the resource name before renaming (for moved block generation)
+	// Capture original resource type before any modifications (for moved block generation)
+	originalResourceType := tfhcl.GetResourceType(block)
 	resourceName := tfhcl.GetResourceName(block)
 
 	// Rename resource type: cloudflare_access_group → cloudflare_zero_trust_access_group
 	tfhcl.RenameResourceType(block, m.oldType, m.newType)
 
-	// Generate moved block for resource rename
+	// Generate moved block for resource rename if type changed
 	// This triggers the provider's MoveState handler which calls the StateUpgrader
-	oldType, newType := m.GetResourceRename()
-	from := oldType + "." + resourceName
-	to := newType + "." + resourceName
-	movedBlock := tfhcl.CreateMovedBlock(from, to)
+	_, newType := m.GetResourceRename()
+	if originalResourceType != newType {
+		from := originalResourceType + "." + resourceName
+		to := newType + "." + resourceName
+		movedBlock := tfhcl.CreateMovedBlock(from, to)
 
-	// Note: Most config transformation happens in Preprocess() due to complexity
-	// This function handles resource renaming and moved block generation
+		// Note: Most config transformation happens in Preprocess() due to complexity
+		// This function handles resource renaming and moved block generation
+
+		return &transform.TransformResult{
+			Blocks:         []*hclwrite.Block{block, movedBlock},
+			RemoveOriginal: true, // Remove original block since we're renaming
+		}, nil
+	}
 
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block, movedBlock},
-		RemoveOriginal: true, // Remove original block since we're renaming
+		Blocks:         []*hclwrite.Block{block},
+		RemoveOriginal: false,
 	}, nil
 }
 
@@ -823,4 +831,3 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
 	return true
 }
-

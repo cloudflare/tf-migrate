@@ -75,6 +75,48 @@ locals {
 
 
 
+# ============================================================================
+# Pattern Group 9: Cross-File References (Resource Rename Test)
+# ============================================================================
+
+# Pattern 9 tests that cross-file references are updated when resource names change.
+# The migrator renames:
+#   cloudflare_device_posture_rule -> cloudflare_zero_trust_device_posture_rule
+#   cloudflare_zero_trust_device_posture_rule -> cloudflare_zero_trust_device_posture_rule (no-op)
+# We create dependent resources (gateway policies) that reference these posture rules via depends_on.
+# After migration, the references must be updated to use the new resource names.
+
+
+
+# Dependent resources that reference the above posture rules
+# Using realistic resources that would depend on posture rules
+
+# Gateway policy depending on old-name posture rule
+resource "cloudflare_zero_trust_gateway_policy" "depends_on_old_posture" {
+  account_id  = var.cloudflare_account_id
+  name        = "cftftest Gateway Policy - Old Posture Rule"
+  description = "Policy depending on old-name posture rule"
+  action      = "block"
+  precedence  = 1000
+  enabled     = true
+  traffic     = "any(dns.domains[*] == \"example-old.com\")"
+
+  depends_on = [cloudflare_zero_trust_device_posture_rule.ref_source_old_name]
+}
+
+# Gateway policy depending on new-name posture rule
+resource "cloudflare_zero_trust_gateway_policy" "depends_on_new_posture" {
+  account_id  = var.cloudflare_account_id
+  name        = "cftftest Gateway Policy - New Posture Rule"
+  description = "Policy depending on new-name posture rule"
+  action      = "allow"
+  precedence  = 2000
+  enabled     = true
+  traffic     = "any(dns.domains[*] == \"example-new.com\")"
+
+  depends_on = [cloudflare_zero_trust_device_posture_rule.ref_source_new_name]
+}
+
 resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
   for_each = {
     "prod" = {
@@ -126,8 +168,9 @@ resource "cloudflare_zero_trust_device_posture_rule" "map_example" {
 
 
   input = {
-    version  = each.value.version
-    operator = ">="
+    version        = "22.4.0"
+    operator       = ">="
+    os_distro_name = "ubuntu"
   }
   match = [
     {
@@ -545,4 +588,44 @@ resource "cloudflare_zero_trust_device_posture_rule" "domain_joined" {
 moved {
   from = cloudflare_device_posture_rule.domain_joined
   to   = cloudflare_zero_trust_device_posture_rule.domain_joined
+}
+
+# Using old v4 name (cloudflare_device_posture_rule) -> becomes cloudflare_zero_trust_device_posture_rule
+resource "cloudflare_zero_trust_device_posture_rule" "ref_source_old_name" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-ref-source-old-name"
+  type        = "os_version"
+  schedule    = "24h"
+  description = "Referenced by gateway policy (old name)"
+
+
+  input = {
+    version  = "20.4.0"
+    operator = ">="
+  }
+  match = [{
+    platform = "linux"
+  }]
+}
+
+moved {
+  from = cloudflare_device_posture_rule.ref_source_old_name
+  to   = cloudflare_zero_trust_device_posture_rule.ref_source_old_name
+}
+
+# Using new v4 name (cloudflare_zero_trust_device_posture_rule) -> stays cloudflare_zero_trust_device_posture_rule
+resource "cloudflare_zero_trust_device_posture_rule" "ref_source_new_name" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-ref-source-new-name"
+  type        = "firewall"
+  schedule    = "12h"
+  description = "Referenced by gateway policy (new name)"
+
+
+  input = {
+    enabled = true
+  }
+  match = [{
+    platform = "windows"
+  }]
 }

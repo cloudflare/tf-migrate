@@ -30,8 +30,8 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 }
 
 // GetResourceRename implements the ResourceRenamer interface
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_notification_policy", "cloudflare_notification_policy"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_notification_policy"}, "cloudflare_notification_policy"
 }
 
 // Preprocess performs any string-level transformations before HCL parsing.

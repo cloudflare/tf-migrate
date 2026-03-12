@@ -369,22 +369,22 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 	for _, migrator := range migrators {
 		// Check if this migrator implements ResourceRenamer interface
 		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
-			oldType, newType := renamer.GetResourceRename()
-			if oldType != "" && newType != "" {
-				// Only add to renames map if the types are different (actual rename)
-				if oldType != newType {
-					renames[oldType] = newType
-					log.Debug("Collected resource rename", "old", oldType, "new", newType)
-				} else {
-					log.Debug("Resource type unchanged", "type", oldType)
+			oldTypes, newType := renamer.GetResourceRename()
+			if len(oldTypes) > 0 && newType != "" {
+				// Process each old type
+				for _, oldType := range oldTypes {
+					// Only add to renames map if the types are different (actual rename)
+					if oldType != newType {
+						renames[oldType] = newType
+						log.Debug("Collected resource rename", "old", oldType, "new", newType)
+					} else {
+						log.Debug("Resource type unchanged", "type", oldType)
+					}
 				}
-			} else if oldType != "" && newType == "" {
-				// Resource removed in v5 — no rename needed, not a warning
-				log.Debug("Resource removed in v5, no cross-file rename needed", "old", oldType)
 			} else {
-				// Both empty — unexpected, warn
+				// Warn if migrator implements interface but returned empty values
 				log.Warn("Migrator implements ResourceRenamer but returned empty type names",
-					"old", oldType, "new", newType)
+					"oldTypes", oldTypes, "newType", newType)
 			}
 		} else {
 			// Warn if migrator doesn't implement ResourceRenamer interface

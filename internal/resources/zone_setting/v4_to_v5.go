@@ -283,8 +283,8 @@ func (m *V4ToV5Migrator) createImportBlock(resourceName, settingID string, zoneI
 
 // GetResourceRename returns the v4 and v5 resource type names for zone_setting.
 // This resource is renamed from cloudflare_zone_settings_override to cloudflare_zone_setting.
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_zone_settings_override", "cloudflare_zone_setting"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_zone_settings_override"}, "cloudflare_zone_setting"
 }
 
 // TransformState handles state transformation

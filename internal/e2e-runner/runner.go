@@ -1297,18 +1297,31 @@ func hasProviderStateUpgrader(resourceType string) bool {
 	for _, migrator := range allMigrators {
 		// Check if this migrator's resource type matches what we're looking for
 		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
-			oldType, newType := renamer.GetResourceRename()
+			oldTypes, newType := renamer.GetResourceRename()
 
-			// Check if either the old or new resource type (without cloudflare_ prefix) matches
-			oldTypeShort := strings.TrimPrefix(oldType, "cloudflare_")
+			// Check if either any old type or new resource type (without cloudflare_ prefix) matches
 			newTypeShort := strings.TrimPrefix(newType, "cloudflare_")
 
-			if oldTypeShort == resourceType || newTypeShort == resourceType {
-				// Found a match - check if it uses provider state upgrader
+			// Check new type first
+			if newTypeShort == resourceType {
 				if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
 					if psu.UsesProviderStateUpgrader() {
 						return true
 					}
+				}
+			}
+
+			// Check each old type
+			for _, oldType := range oldTypes {
+				oldTypeShort := strings.TrimPrefix(oldType, "cloudflare_")
+				if oldTypeShort == resourceType {
+					// Found a match - check if it uses provider state upgrader
+					if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
+						if psu.UsesProviderStateUpgrader() {
+							return true
+						}
+					}
+					break
 				}
 			}
 		}

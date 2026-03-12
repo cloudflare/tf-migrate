@@ -57,8 +57,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // Returns rename from old names to new name
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_zero_trust_device_profiles", "cloudflare_zero_trust_device_default_profile"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_zero_trust_device_profiles", "cloudflare_device_settings_policy"}, "cloudflare_zero_trust_device_default_profile"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

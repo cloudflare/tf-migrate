@@ -60,6 +60,29 @@ variable "custom_network_name" {
 }
 
 
+# ============================================================================
+# Pattern 9: Cross-resource reference using both v4 names
+# ============================================================================
+# This validates that GetResourceRename() returns ALL v4 names for cross-file reference updates
+# v4 name option 1: cloudflare_device_managed_networks
+# v4 name option 2: cloudflare_zero_trust_device_managed_networks
+# v5 name: cloudflare_zero_trust_device_managed_networks
+
+
+# Resource using v4 name option 2
+resource "cloudflare_zero_trust_device_managed_networks" "resourcename_opt2" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-pattern9-opt2"
+  type       = "tls"
+
+  config = {
+    tls_sockaddr = "pattern9-opt2.cf-tf-test.com:443"
+    sha256       = "bb22222222222222222222222222222222222222222222222222222222222222"
+  }
+}
+
+
+
 resource "cloudflare_zero_trust_device_managed_networks" "basic" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-basic-network"
@@ -264,4 +287,49 @@ resource "cloudflare_zero_trust_device_managed_networks" "with_variables" {
 moved {
   from = cloudflare_device_managed_networks.with_variables
   to   = cloudflare_zero_trust_device_managed_networks.with_variables
+}
+
+# Resource using v4 name option 1
+resource "cloudflare_zero_trust_device_managed_networks" "resourcename_opt1" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-pattern9-opt1"
+  type       = "tls"
+
+  config = {
+    tls_sockaddr = "pattern9-opt1.cf-tf-test.com:443"
+    sha256       = "aa11111111111111111111111111111111111111111111111111111111111111"
+  }
+}
+
+moved {
+  from = cloudflare_device_managed_networks.resourcename_opt1
+  to   = cloudflare_zero_trust_device_managed_networks.resourcename_opt1
+}
+
+# Dependent resource that references option 1
+resource "cloudflare_zero_trust_device_default_profile" "ref_opt1" {
+  account_id = var.cloudflare_account_id
+
+  depends_on                     = [cloudflare_zero_trust_device_managed_networks.resourcename_opt1]
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.ref_opt1
+  to   = cloudflare_zero_trust_device_default_profile.ref_opt1
+}
+
+# Dependent resource that references option 2
+resource "cloudflare_zero_trust_device_default_profile" "ref_opt2" {
+  account_id = var.cloudflare_account_id
+
+  depends_on                     = [cloudflare_zero_trust_device_managed_networks.resourcename_opt2]
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.ref_opt2
+  to   = cloudflare_zero_trust_device_default_profile.ref_opt2
 }

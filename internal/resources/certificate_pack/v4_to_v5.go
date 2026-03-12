@@ -36,8 +36,8 @@ func (m *V4ToV5Migrator) Postprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // cloudflare_certificate_pack doesn't rename, so return the same name
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_certificate_pack", "cloudflare_certificate_pack"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_certificate_pack"}, "cloudflare_certificate_pack"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

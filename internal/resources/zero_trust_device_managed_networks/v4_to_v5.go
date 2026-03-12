@@ -36,12 +36,13 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // Returns rename from cloudflare_device_managed_networks to cloudflare_zero_trust_device_managed_networks
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_device_managed_networks", "cloudflare_zero_trust_device_managed_networks"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_device_managed_networks", "cloudflare_zero_trust_device_managed_networks"}, "cloudflare_zero_trust_device_managed_networks"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-	// Get the resource name before renaming (for moved block generation)
+	// Capture original resource type before any modifications (for moved block generation)
+	originalResourceType := tfhcl.GetResourceType(block)
 	resourceName := tfhcl.GetResourceName(block)
 
 	// Rename cloudflare_device_managed_networks to cloudflare_zero_trust_device_managed_networks
@@ -53,15 +54,22 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.ConvertBlocksToAttribute(body, "config", "config", func(configBlock *hclwrite.Block) {})
 	}
 
-	// Generate moved block for state migration
-	oldType, newType := m.GetResourceRename()
-	from := oldType + "." + resourceName
-	to := newType + "." + resourceName
-	movedBlock := tfhcl.CreateMovedBlock(from, to)
+	// Generate moved block for state migration if resource type changed
+	_, newType := m.GetResourceRename()
+	if originalResourceType != newType {
+		from := originalResourceType + "." + resourceName
+		to := newType + "." + resourceName
+		movedBlock := tfhcl.CreateMovedBlock(from, to)
+
+		return &transform.TransformResult{
+			Blocks:         []*hclwrite.Block{block, movedBlock},
+			RemoveOriginal: true,
+		}, nil
+	}
 
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block, movedBlock},
-		RemoveOriginal: true,
+		Blocks:         []*hclwrite.Block{block},
+		RemoveOriginal: false,
 	}, nil
 }
 

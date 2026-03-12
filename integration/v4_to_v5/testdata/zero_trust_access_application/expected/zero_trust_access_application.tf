@@ -421,3 +421,65 @@ resource "cloudflare_zero_trust_access_application" "special_chars" {
   type                       = "self_hosted"
   http_only_cookie_attribute = "false"
 }
+
+# ============================================================================
+# Pattern 9: Cross-resource reference using both v4 names
+# ============================================================================
+# This validates that GetResourceRename() returns ALL v4 names for cross-file reference updates
+# v4 name option 1: cloudflare_access_application
+# v4 name option 2: cloudflare_zero_trust_access_application
+# v5 name: cloudflare_zero_trust_access_application
+
+
+# Resource using v4 name option 2
+resource "cloudflare_zero_trust_access_application" "resourcename_opt2" {
+  account_id                 = var.cloudflare_account_id
+  name                       = "${local.name_prefix} Pattern9 Option2"
+  domain                     = "pattern9-opt2.${local.app_domain_suffix}"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
+}
+
+
+
+# Resource using v4 name option 1
+resource "cloudflare_zero_trust_access_application" "resourcename_opt1" {
+  account_id                 = var.cloudflare_account_id
+  name                       = "${local.name_prefix} Pattern9 Option1"
+  domain                     = "pattern9-opt1.${local.app_domain_suffix}"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
+}
+
+moved {
+  from = cloudflare_access_application.resourcename_opt1
+  to   = cloudflare_zero_trust_access_application.resourcename_opt1
+}
+
+# Dependent resource that references option 1
+resource "cloudflare_zero_trust_access_policy" "ref_opt1" {
+  account_id = var.cloudflare_account_id
+  name       = "Policy referencing pattern9 opt1"
+  decision   = "allow"
+
+  include = [{ email = { email = "user@example.com" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.ref_opt1
+  to   = cloudflare_zero_trust_access_policy.ref_opt1
+}
+
+# Dependent resource that references option 2
+resource "cloudflare_zero_trust_access_policy" "ref_opt2" {
+  account_id = var.cloudflare_account_id
+  name       = "Policy referencing pattern9 opt2"
+  decision   = "allow"
+
+  include = [{ email = { email = "admin@example.com" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.ref_opt2
+  to   = cloudflare_zero_trust_access_policy.ref_opt2
+}

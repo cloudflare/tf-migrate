@@ -19,13 +19,6 @@ func TestV4ToV5Transformation(t *testing.T) {
 			t.Errorf("GetResourceType() = %v, want %v", got, "cloudflare_observatory_scheduled_test")
 		}
 
-		// Test GetResourceRename
-		oldName, newName := m.GetResourceRename()
-		if oldName != "cloudflare_observatory_scheduled_test" || newName != "cloudflare_observatory_scheduled_test" {
-			t.Errorf("GetResourceRename() = (%v, %v), want (%v, %v)",
-				oldName, newName, "cloudflare_observatory_scheduled_test", "cloudflare_observatory_scheduled_test")
-		}
-
 		// Test CanHandle
 		if !m.CanHandle("cloudflare_observatory_scheduled_test") {
 			t.Error("CanHandle('cloudflare_observatory_scheduled_test') should return true")

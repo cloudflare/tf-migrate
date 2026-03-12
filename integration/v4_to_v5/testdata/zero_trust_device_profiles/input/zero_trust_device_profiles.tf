@@ -280,4 +280,81 @@ resource "cloudflare_zero_trust_device_profiles" "custom_teams" {
   auto_connect = 15
 }
 
+# ============================================================================
+# Pattern Group 9: Cross-File References (Resource Rename Test)
+# ============================================================================
+
+# Pattern 9 tests that cross-file references are updated when resource names change.
+# The migrator renames:
+#   cloudflare_zero_trust_device_profiles -> cloudflare_zero_trust_device_default_profile (for default=true)
+#   cloudflare_device_settings_policy -> cloudflare_zero_trust_device_default_profile
+# We create dependent resources that reference these profiles via depends_on.
+# After migration, the references must be updated to use the new resource names.
+
+# Using old v4 name (cloudflare_device_settings_policy) -> becomes cloudflare_zero_trust_device_default_profile
+resource "cloudflare_device_settings_policy" "ref_source_old_name" {
+  account_id  = var.cloudflare_account_id
+  name        = "Default Profile Old Name Reference"
+  description = "Referenced by device posture rule (old name)"
+  default     = true
+
+  allow_mode_switch = true
+  auto_connect      = 30
+  captive_portal    = 300
+}
+
+# Using first v4 name (cloudflare_zero_trust_device_profiles) -> becomes cloudflare_zero_trust_device_default_profile
+resource "cloudflare_zero_trust_device_profiles" "ref_source_new_name" {
+  account_id  = var.cloudflare_account_id
+  name        = "Default Profile New Name Reference"
+  description = "Referenced by device posture rule (new name)"
+  default     = true
+
+  allow_mode_switch = false
+  auto_connect      = 15
+  captive_portal    = 180
+}
+
+# Dependent resources that reference the above profiles
+# Using realistic resources that would depend on device profiles
+
+# Device posture rule depending on old-name profile
+resource "cloudflare_zero_trust_device_posture_rule" "depends_on_old_profile" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-posture-rule-old-profile"
+  type        = "os_version"
+  schedule    = "24h"
+  description = "Posture rule depending on old-name profile"
+
+  match {
+    platform = "linux"
+  }
+
+  input {
+    version  = "22.04"
+    operator = ">="
+  }
+
+  depends_on = [cloudflare_device_settings_policy.ref_source_old_name]
+}
+
+# Device posture rule depending on new-name profile
+resource "cloudflare_zero_trust_device_posture_rule" "depends_on_new_profile" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-posture-rule-new-profile"
+  type        = "firewall"
+  schedule    = "12h"
+  description = "Posture rule depending on new-name profile"
+
+  match {
+    platform = "windows"
+  }
+
+  input {
+    enabled = true
+  }
+
+  depends_on = [cloudflare_zero_trust_device_profiles.ref_source_new_name]
+}
+
 

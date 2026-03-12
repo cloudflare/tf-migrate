@@ -33,8 +33,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 }
 
 // GetResourceRename implements the ResourceRenamer interface.
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_bot_management", "cloudflare_bot_management"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_bot_management"}, "cloudflare_bot_management"
 }
 
 // TransformConfig handles configuration file transformations.

@@ -34,8 +34,8 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 
 // GetResourceRename implements the ResourceRenamer interface.
 // cloudflare_leaked_credential_check doesn't rename, so return the same name.
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_leaked_credential_check", "cloudflare_leaked_credential_check"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_leaked_credential_check"}, "cloudflare_leaked_credential_check"
 }
 
 // Preprocess handles string-level transformations before HCL parsing.

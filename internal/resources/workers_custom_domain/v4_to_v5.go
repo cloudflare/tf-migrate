@@ -28,16 +28,20 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_worker_domain", "cloudflare_workers_custom_domain"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_worker_domain"}, "cloudflare_workers_custom_domain"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	// Capture original name/type for moved block generation
+	originalResourceType := tfhcl.GetResourceType(block)
 	resourceName := tfhcl.GetResourceName(block)
+
 	tfhcl.RenameResourceType(block, "cloudflare_worker_domain", "cloudflare_workers_custom_domain")
 
-	oldType, newType := m.GetResourceRename()
-	from := oldType + "." + resourceName
+	// Generate moved block using original type
+	_, newType := m.GetResourceRename()
+	from := originalResourceType + "." + resourceName
 	to := newType + "." + resourceName
 	movedBlock := tfhcl.CreateMovedBlock(from, to)
 

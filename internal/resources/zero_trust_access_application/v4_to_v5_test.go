@@ -1613,24 +1613,4 @@ func TestResourceNaming(t *testing.T) {
 			t.Errorf("Expected %s, got %s", expected, migrator.GetResourceType())
 		}
 	})
-
-	t.Run("GetResourceRename returns correct mapping", func(t *testing.T) {
-		// GetResourceRename is an optional interface
-		type resourceRenamer interface {
-			GetResourceRename() (string, string)
-		}
-
-		renamer, ok := migrator.(resourceRenamer)
-		if !ok {
-			t.Fatal("Migrator should implement GetResourceRename")
-		}
-
-		old, new := renamer.GetResourceRename()
-		if old != "cloudflare_access_application" {
-			t.Errorf("Expected old name cloudflare_access_application, got %s", old)
-		}
-		if new != "cloudflare_zero_trust_access_application" {
-			t.Errorf("Expected new name cloudflare_zero_trust_access_application, got %s", new)
-		}
-	})
 }

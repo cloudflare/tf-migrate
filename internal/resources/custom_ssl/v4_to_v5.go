@@ -49,8 +49,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 }
 
 // GetResourceRename implements ResourceRenamer — resource is NOT renamed.
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_custom_ssl", "cloudflare_custom_ssl"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_custom_ssl"}, "cloudflare_custom_ssl"
 }
 
 // TransformConfig handles HCL configuration transformations.

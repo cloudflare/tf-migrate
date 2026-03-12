@@ -33,8 +33,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // This resource was not renamed between v4 and v5.
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_zero_trust_access_mtls_hostname_settings", "cloudflare_zero_trust_access_mtls_hostname_settings"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_zero_trust_access_mtls_hostname_settings"}, "cloudflare_zero_trust_access_mtls_hostname_settings"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

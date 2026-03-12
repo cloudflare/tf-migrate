@@ -34,8 +34,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return v4ResourceType, v5ResourceType
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{v4ResourceType}, v5ResourceType
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

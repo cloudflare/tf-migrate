@@ -30,6 +30,13 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// GetResourceRename implements the ResourceRenamer interface.
+// The resource name doesn't change between v4 and v5, but we implement this
+// to ensure the resource participates in global cross-file reference updates.
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_zero_trust_gateway_certificate"}, "cloudflare_zero_trust_gateway_certificate"
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
 
@@ -47,11 +54,6 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	// The moved block generated in TransformConfig triggers the provider's migration logic
 	// This function is a no-op for zero_trust_gateway_certificate migration
 	return stateJSON.String(), nil
-}
-
-// GetResourceRename returns the v4 and v5 resource type names (unchanged).
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_zero_trust_gateway_certificate", "cloudflare_zero_trust_gateway_certificate"
 }
 
 // UsesProviderStateUpgrader indicates that this resource uses provider-based state migration

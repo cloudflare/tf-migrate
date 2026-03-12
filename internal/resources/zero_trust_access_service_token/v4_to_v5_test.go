@@ -29,11 +29,6 @@ resource "cloudflare_zero_trust_access_service_token" "test" {
   duration                          = "8760h"
   client_secret_version             = 2
   previous_client_secret_expires_at = "2024-12-31T23:59:59Z"
-}
-
-moved {
-  from = cloudflare_access_service_token.test
-  to   = cloudflare_zero_trust_access_service_token.test
 }`,
 			},
 			{
@@ -46,11 +41,6 @@ resource "cloudflare_zero_trust_access_service_token" "minimal" {
 				Expected: `resource "cloudflare_zero_trust_access_service_token" "minimal" {
   zone_id = "zone456"
   name    = "minimal_token"
-}
-
-moved {
-  from = cloudflare_access_service_token.minimal
-  to   = cloudflare_zero_trust_access_service_token.minimal
 }`,
 			},
 			{
@@ -81,11 +71,6 @@ resource "cloudflare_zero_trust_access_service_token" "test" {
 				Expected: `resource "cloudflare_zero_trust_access_service_token" "test" {
   account_id = "account123"
   name       = "test_token"
-}
-
-moved {
-  from = cloudflare_access_service_token.test
-  to   = cloudflare_zero_trust_access_service_token.test
 }`,
 			},
 			{
@@ -107,19 +92,9 @@ resource "cloudflare_zero_trust_access_service_token" "second" {
   name       = "first_token"
 }
 
-moved {
-  from = cloudflare_access_service_token.first
-  to   = cloudflare_zero_trust_access_service_token.first
-}
-
 resource "cloudflare_zero_trust_access_service_token" "second" {
   zone_id = "zone456"
   name    = "second_token"
-}
-
-moved {
-  from = cloudflare_access_service_token.second
-  to   = cloudflare_zero_trust_access_service_token.second
 }`,
 			},
 			{
@@ -134,11 +109,6 @@ resource "cloudflare_zero_trust_access_service_token" "no_renewal" {
   account_id = "account123"
   name       = "no_renewal_token"
   duration   = "17520h"
-}
-
-moved {
-  from = cloudflare_access_service_token.no_renewal
-  to   = cloudflare_zero_trust_access_service_token.no_renewal
 }`,
 			},
 		}

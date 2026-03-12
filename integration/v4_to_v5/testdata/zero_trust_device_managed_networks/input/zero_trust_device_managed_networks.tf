@@ -193,3 +193,57 @@ resource "cloudflare_device_managed_networks" "with_variables" {
     sha256       = "7777777777777777777777777777777777777777777777777777777777777777"
   }
 }
+
+# ============================================================================
+# Pattern 9: Cross-resource reference using both v4 names
+# ============================================================================
+# This validates that GetResourceRename() returns ALL v4 names for cross-file reference updates
+# v4 name option 1: cloudflare_device_managed_networks
+# v4 name option 2: cloudflare_zero_trust_device_managed_networks
+# v5 name: cloudflare_zero_trust_device_managed_networks
+
+# Resource using v4 name option 1
+resource "cloudflare_device_managed_networks" "resourcename_opt1" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-pattern9-opt1"
+  type       = "tls"
+
+  config {
+    tls_sockaddr = "pattern9-opt1.cf-tf-test.com:443"
+    sha256       = "aa11111111111111111111111111111111111111111111111111111111111111"
+  }
+}
+
+# Resource using v4 name option 2
+resource "cloudflare_zero_trust_device_managed_networks" "resourcename_opt2" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-pattern9-opt2"
+  type       = "tls"
+
+  config {
+    tls_sockaddr = "pattern9-opt2.cf-tf-test.com:443"
+    sha256       = "bb22222222222222222222222222222222222222222222222222222222222222"
+  }
+}
+
+# Dependent resource that references option 1
+resource "cloudflare_zero_trust_device_profiles" "ref_opt1" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-profile-opt1"
+  description = "Profile depending on managed network opt1"
+  match       = "identity.email == \"test-opt1@example.com\""
+  precedence  = 100
+
+  depends_on = [cloudflare_device_managed_networks.resourcename_opt1]
+}
+
+# Dependent resource that references option 2
+resource "cloudflare_zero_trust_device_profiles" "ref_opt2" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-profile-opt2"
+  description = "Profile depending on managed network opt2"
+  match       = "identity.email == \"test-opt2@example.com\""
+  precedence  = 101
+
+  depends_on = [cloudflare_zero_trust_device_managed_networks.resourcename_opt2]
+}

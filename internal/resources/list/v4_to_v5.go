@@ -37,8 +37,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // cloudflare_list doesn't rename, so return the same name
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_list", "cloudflare_list"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_list"}, "cloudflare_list"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

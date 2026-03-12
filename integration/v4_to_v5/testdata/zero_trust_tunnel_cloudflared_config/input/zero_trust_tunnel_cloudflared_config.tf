@@ -100,10 +100,10 @@ resource "cloudflare_tunnel_config" "comprehensive" {
       no_tls_verify            = false
       disable_chunked_encoding = false
       # Deprecated fields to be removed
-      bastion_mode             = true
-      proxy_address            = "127.0.0.1"
-      proxy_port               = 8080
-      proxy_type               = ""
+      bastion_mode  = true
+      proxy_address = "127.0.0.1"
+      proxy_port    = 8080
+      proxy_type    = ""
       # ip_rules block will be removed
       ip_rules {
         prefix = "192.0.2.0/24"
@@ -149,4 +149,69 @@ resource "cloudflare_tunnel_config" "comprehensive" {
       service = "http_status:404"
     }
   }
+}
+
+# ============================================================================
+# Pattern 9: Cross-resource reference using both v4 names
+# ============================================================================
+# This validates that GetResourceRename() returns ALL v4 names for cross-file reference updates
+# v4 name option 1: cloudflare_tunnel_config
+# v4 name option 2: cloudflare_zero_trust_tunnel_cloudflared_config
+# v5 name: cloudflare_zero_trust_tunnel_cloudflared_config
+
+# Parent tunnels for Pattern 9
+resource "cloudflare_tunnel" "resourcename_opt1" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-pattern9-opt1-tunnel"
+  secret     = base64encode("pattern9-opt1-secret-32-bytes-minimum-here")
+  config_src = "cloudflare"
+}
+
+resource "cloudflare_tunnel" "resourcename_opt2" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-pattern9-opt2-tunnel"
+  secret     = base64encode("pattern9-opt2-secret-32-bytes-minimum-here")
+  config_src = "cloudflare"
+}
+
+# Resource using v4 name option 1
+resource "cloudflare_tunnel_config" "resourcename_opt1" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_tunnel.resourcename_opt1.id
+
+  config {
+    ingress_rule {
+      service = "http_status:404"
+    }
+  }
+}
+
+# Resource using v4 name option 2
+resource "cloudflare_zero_trust_tunnel_cloudflared_config" "resourcename_opt2" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_tunnel.resourcename_opt2.id
+
+  config {
+    ingress_rule {
+      service = "http_status:404"
+    }
+  }
+}
+
+# Dependent resource that references option 1
+resource "cloudflare_tunnel_route" "ref_opt1" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_tunnel.resourcename_opt1.id
+  network    = "192.0.2.0/24"
+
+  depends_on = [cloudflare_tunnel_config.resourcename_opt1]
+}
+
+# Dependent resource that references option 2
+resource "cloudflare_tunnel_route" "ref_opt2" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_tunnel.resourcename_opt2.id
+  network    = "198.51.100.0/24"
+
+  depends_on = [cloudflare_zero_trust_tunnel_cloudflared_config.resourcename_opt2]
 }

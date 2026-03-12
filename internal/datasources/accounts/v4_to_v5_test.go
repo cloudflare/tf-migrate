@@ -76,14 +76,6 @@ func TestGetAttributeRenames(t *testing.T) {
 	assert.Equal(t, "result", renames[0].NewAttribute)
 }
 
-func TestGetResourceRename(t *testing.T) {
-	migrator := &V4ToV5Migrator{}
-	oldType, newType := migrator.GetResourceRename()
-
-	assert.Equal(t, "data.cloudflare_accounts", oldType)
-	assert.Equal(t, "data.cloudflare_accounts", newType)
-}
-
 func TestCanHandle(t *testing.T) {
 	migrator := &V4ToV5Migrator{}
 

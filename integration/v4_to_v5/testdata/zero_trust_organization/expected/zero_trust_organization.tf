@@ -53,6 +53,18 @@ locals {
 
 
 
+# ============================================================================
+# Pattern 9: Cross-resource reference using both v4 names
+# ============================================================================
+# This validates that GetResourceRename() returns ALL v4 names for cross-file reference updates
+# v4 name option 1: cloudflare_access_organization
+# v4 name option 2: cloudflare_zero_trust_access_organization
+# v5 name: cloudflare_zero_trust_organization
+
+
+
+
+
 # ===== Basic Scenarios (8) =====
 resource "cloudflare_zero_trust_organization" "minimal_account" {
   account_id  = var.cloudflare_account_id
@@ -530,4 +542,60 @@ resource "cloudflare_zero_trust_organization" "zone_comprehensive" {
 moved {
   from = cloudflare_zero_trust_access_organization.zone_comprehensive
   to   = cloudflare_zero_trust_organization.zone_comprehensive
+}
+
+# Resource using v4 name option 1
+resource "cloudflare_zero_trust_organization" "resourcename_opt1" {
+  account_id  = var.cloudflare_account_id
+  auth_domain = "${local.name_prefix}-pattern9-opt1.cloudflareaccess.com"
+  name        = "Pattern9 Organization Option1"
+}
+
+moved {
+  from = cloudflare_access_organization.resourcename_opt1
+  to   = cloudflare_zero_trust_organization.resourcename_opt1
+}
+
+# Resource using v4 name option 2
+resource "cloudflare_zero_trust_organization" "resourcename_opt2" {
+  account_id  = var.cloudflare_account_id
+  auth_domain = "${local.name_prefix}-pattern9-opt2.cloudflareaccess.com"
+  name        = "Pattern9 Organization Option2"
+}
+
+moved {
+  from = cloudflare_zero_trust_access_organization.resourcename_opt2
+  to   = cloudflare_zero_trust_organization.resourcename_opt2
+}
+
+# Dependent resource that references option 1
+resource "cloudflare_zero_trust_access_application" "ref_opt1" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} App depends on org opt1"
+  domain     = "org-opt1.${var.cloudflare_domain}"
+  type       = "self_hosted"
+
+  depends_on                 = [cloudflare_zero_trust_organization.resourcename_opt1]
+  http_only_cookie_attribute = "false"
+}
+
+moved {
+  from = cloudflare_access_application.ref_opt1
+  to   = cloudflare_zero_trust_access_application.ref_opt1
+}
+
+# Dependent resource that references option 2
+resource "cloudflare_zero_trust_access_application" "ref_opt2" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} App depends on org opt2"
+  domain     = "org-opt2.${var.cloudflare_domain}"
+  type       = "self_hosted"
+
+  depends_on                 = [cloudflare_zero_trust_organization.resourcename_opt2]
+  http_only_cookie_attribute = "false"
+}
+
+moved {
+  from = cloudflare_access_application.ref_opt2
+  to   = cloudflare_zero_trust_access_application.ref_opt2
 }

@@ -135,9 +135,9 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 // GetResourceRename implements the ResourceRenamer interface
 // Note: This is complex because we have conditional renaming
 // We'll return the default profile name here, but actual renaming happens in TransformConfig
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	// Return one of the mappings - the actual logic is in TransformConfig
-	return "cloudflare_zero_trust_local_fallback_domain", m.newTypeDefault
+	return []string{"cloudflare_zero_trust_local_fallback_domain", "cloudflare_fallback_domain"}, m.newTypeDefault
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

@@ -39,12 +39,13 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // This allows the migration tool to collect all resource renames and apply them globally
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_access_mutual_tls_certificate", "cloudflare_zero_trust_access_mtls_certificate"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_access_mutual_tls_certificate", "cloudflare_zero_trust_access_mtls_certificate"}, "cloudflare_zero_trust_access_mtls_certificate"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	// Capture resource name and original type BEFORE any modifications
+	originalResourceType := tfhcl.GetResourceType(block)
 	resourceName := tfhcl.GetResourceName(block)
 	originalType := block.Labels()[0]
 	needsMovedBlock := originalType == "cloudflare_access_mutual_tls_certificate"
@@ -59,8 +60,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	// Generate moved block for state migration (only when renaming from old type)
 	if needsMovedBlock {
-		oldType, newType := m.GetResourceRename()
-		from := oldType + "." + resourceName
+		_, newType := m.GetResourceRename()
+		from := originalResourceType + "." + resourceName
 		to := newType + "." + resourceName
 		movedBlock := tfhcl.CreateMovedBlock(from, to)
 		resultBlocks = append(resultBlocks, movedBlock)

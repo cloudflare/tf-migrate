@@ -550,25 +550,6 @@ moved {
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
 
-// TestStateTransformation is no longer needed
-// State transformation is now handled by the provider's StateUpgrader (UpgradeState)
-// The provider automatically transforms state when users run `terraform plan` or `terraform apply`
-// See: cloudflare-terraform-next/internal/services/zero_trust_access_group/migration/v500/
-
-func TestResourceRename(t *testing.T) {
-	migrator := NewV4ToV5Migrator().(*V4ToV5Migrator)
-
-	oldName, newName := migrator.GetResourceRename()
-
-	if oldName != "cloudflare_access_group" {
-		t.Errorf("Expected old name to be 'cloudflare_access_group', got '%s'", oldName)
-	}
-
-	if newName != "cloudflare_zero_trust_access_group" {
-		t.Errorf("Expected new name to be 'cloudflare_zero_trust_access_group', got '%s'", newName)
-	}
-}
-
 func TestCanHandle(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 

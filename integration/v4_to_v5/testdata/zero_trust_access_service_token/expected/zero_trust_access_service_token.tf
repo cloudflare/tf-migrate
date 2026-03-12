@@ -30,48 +30,6 @@ locals {
 # Pattern Group 2: for_each with Maps (5 resources)
 # ============================================================================
 
-
-# ============================================================================
-# Pattern Group 3: for_each with Sets (4 items)
-# ============================================================================
-
-
-# ============================================================================
-# Pattern Group 4: count-based Resources (3 instances)
-# ============================================================================
-
-
-# ============================================================================
-# Pattern Group 5: Conditional Creation
-# ============================================================================
-
-
-
-# ============================================================================
-# Pattern Group 7: Terraform Functions
-# ============================================================================
-
-
-
-# ============================================================================
-# Pattern Group 8: Lifecycle Meta-Arguments
-# ============================================================================
-
-
-
-# ============================================================================
-# Pattern Group 9: Edge Cases
-# ============================================================================
-
-
-
-
-
-
-
-
-
-
 resource "cloudflare_zero_trust_access_service_token" "map_example" {
   for_each = {
     "prod" = {
@@ -111,10 +69,9 @@ resource "cloudflare_zero_trust_access_service_token" "map_example" {
   duration   = each.value.duration
 }
 
-moved {
-  from = cloudflare_access_service_token.map_example
-  to   = cloudflare_zero_trust_access_service_token.map_example
-}
+# ============================================================================
+# Pattern Group 3: for_each with Sets (4 items)
+# ============================================================================
 
 resource "cloudflare_zero_trust_access_service_token" "set_example" {
   for_each = toset([
@@ -129,10 +86,9 @@ resource "cloudflare_zero_trust_access_service_token" "set_example" {
   duration   = local.token_duration
 }
 
-moved {
-  from = cloudflare_access_service_token.set_example
-  to   = cloudflare_zero_trust_access_service_token.set_example
-}
+# ============================================================================
+# Pattern Group 4: count-based Resources (3 instances)
+# ============================================================================
 
 resource "cloudflare_zero_trust_access_service_token" "counted" {
   count = 3
@@ -142,10 +98,9 @@ resource "cloudflare_zero_trust_access_service_token" "counted" {
   duration   = "8760h"
 }
 
-moved {
-  from = cloudflare_access_service_token.counted
-  to   = cloudflare_zero_trust_access_service_token.counted
-}
+# ============================================================================
+# Pattern Group 5: Conditional Creation
+# ============================================================================
 
 resource "cloudflare_zero_trust_access_service_token" "conditional_enabled" {
   count = local.enable_long_duration ? 1 : 0
@@ -153,11 +108,6 @@ resource "cloudflare_zero_trust_access_service_token" "conditional_enabled" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-conditional-long-duration"
   duration   = "17520h" # 2 years
-}
-
-moved {
-  from = cloudflare_access_service_token.conditional_enabled
-  to   = cloudflare_zero_trust_access_service_token.conditional_enabled
 }
 
 resource "cloudflare_zero_trust_access_service_token" "conditional_disabled" {
@@ -168,10 +118,9 @@ resource "cloudflare_zero_trust_access_service_token" "conditional_disabled" {
   duration   = "8760h" # Changed from 720h to valid value
 }
 
-moved {
-  from = cloudflare_access_service_token.conditional_disabled
-  to   = cloudflare_zero_trust_access_service_token.conditional_disabled
-}
+# ============================================================================
+# Pattern Group 7: Terraform Functions
+# ============================================================================
 
 resource "cloudflare_zero_trust_access_service_token" "with_functions" {
   account_id = local.common_account
@@ -180,13 +129,8 @@ resource "cloudflare_zero_trust_access_service_token" "with_functions" {
   name = join("-", [local.name_prefix, "function", "example"])
 
   # String interpolation
-  duration = "${local.token_duration}"
+  duration = local.token_duration
 
-}
-
-moved {
-  from = cloudflare_access_service_token.with_functions
-  to   = cloudflare_zero_trust_access_service_token.with_functions
 }
 
 resource "cloudflare_zero_trust_access_service_token" "with_interpolation" {
@@ -195,10 +139,9 @@ resource "cloudflare_zero_trust_access_service_token" "with_interpolation" {
   duration   = "8760h"
 }
 
-moved {
-  from = cloudflare_access_service_token.with_interpolation
-  to   = cloudflare_zero_trust_access_service_token.with_interpolation
-}
+# ============================================================================
+# Pattern Group 8: Lifecycle Meta-Arguments
+# ============================================================================
 
 resource "cloudflare_zero_trust_access_service_token" "with_lifecycle" {
   account_id = var.cloudflare_account_id
@@ -211,11 +154,6 @@ resource "cloudflare_zero_trust_access_service_token" "with_lifecycle" {
   }
 }
 
-moved {
-  from = cloudflare_access_service_token.with_lifecycle
-  to   = cloudflare_zero_trust_access_service_token.with_lifecycle
-}
-
 resource "cloudflare_zero_trust_access_service_token" "with_prevent_destroy" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-prevent-destroy-token"
@@ -226,20 +164,14 @@ resource "cloudflare_zero_trust_access_service_token" "with_prevent_destroy" {
   }
 }
 
-moved {
-  from = cloudflare_access_service_token.with_prevent_destroy
-  to   = cloudflare_zero_trust_access_service_token.with_prevent_destroy
-}
+# ============================================================================
+# Pattern Group 9: Edge Cases
+# ============================================================================
 
 # Minimal resource (only required fields)
 resource "cloudflare_zero_trust_access_service_token" "minimal" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-minimal-token"
-}
-
-moved {
-  from = cloudflare_access_service_token.minimal
-  to   = cloudflare_zero_trust_access_service_token.minimal
 }
 
 # Maximal resource (all fields populated)
@@ -251,11 +183,6 @@ resource "cloudflare_zero_trust_access_service_token" "maximal" {
   previous_client_secret_expires_at = "2025-12-31T23:59:59Z"
 }
 
-moved {
-  from = cloudflare_access_service_token.maximal
-  to   = cloudflare_zero_trust_access_service_token.maximal
-}
-
 # Zero values
 resource "cloudflare_zero_trust_access_service_token" "zero_values" {
   account_id = var.cloudflare_account_id
@@ -263,9 +190,80 @@ resource "cloudflare_zero_trust_access_service_token" "zero_values" {
   duration   = "8760h"
 }
 
-moved {
-  from = cloudflare_access_service_token.zero_values
-  to   = cloudflare_zero_trust_access_service_token.zero_values
+
+# Resource without min_days_for_renewal (deprecated field)
+resource "cloudflare_zero_trust_access_service_token" "without_deprecated" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-no-deprecated-field"
+  duration   = "8760h"
+}
+
+# Resource with very large client_secret_version
+resource "cloudflare_zero_trust_access_service_token" "large_version" {
+  account_id                        = var.cloudflare_account_id
+  name                              = "${local.name_prefix}-large-version-token"
+  duration                          = "8760h"
+  client_secret_version             = 999
+  previous_client_secret_expires_at = "2025-12-31T23:59:59Z"
+}
+
+# Resource with special characters in name
+resource "cloudflare_zero_trust_access_service_token" "special_chars" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-token-with-special_chars-123"
+  duration   = "8760h"
+}
+
+# Resource with minimum duration
+resource "cloudflare_zero_trust_access_service_token" "min_duration" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-min-duration-token"
+  duration   = "8760h" # Changed from 30m to valid minimum value
+}
+
+# Resource with maximum duration
+resource "cloudflare_zero_trust_access_service_token" "max_duration" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-max-duration-token"
+  duration   = "87600h" # 10 years
+}
+
+# ============================================================================
+# Pattern 9: Cross-resource reference using both v4 names
+# ============================================================================
+# This validates that GetResourceRename() returns ALL v4 names for cross-file reference updates
+# v4 name option 1: cloudflare_access_service_token
+# v4 name option 2: cloudflare_zero_trust_access_service_token
+# v5 name: cloudflare_zero_trust_access_service_token
+
+
+# Resource using v4 name option 2
+resource "cloudflare_zero_trust_access_service_token" "resourcename_opt2" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-pattern9-opt2-token"
+  duration   = "8760h"
+}
+
+# Dependent resource that references option 1 via depends_on
+resource "cloudflare_zero_trust_access_application" "ref_opt1" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} App depends on token opt1"
+  domain     = "token-opt1.${var.cloudflare_domain}"
+  type       = "self_hosted"
+
+  depends_on                 = [cloudflare_zero_trust_access_service_token.resourcename_opt1]
+  http_only_cookie_attribute = "false"
+}
+
+# Dependent resource that references option 2 via depends_on
+resource "cloudflare_zero_trust_access_application" "ref_opt2" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} App depends on token opt2"
+  domain     = "token-opt2.${var.cloudflare_domain}"
+  type       = "self_hosted"
+
+  depends_on                 = [cloudflare_zero_trust_access_service_token.resourcename_opt2]
+  http_only_cookie_attribute = "false"
 }
 
 # Legacy resource name (cloudflare_access_service_token - deprecated)
@@ -282,64 +280,14 @@ moved {
   to   = cloudflare_zero_trust_access_service_token.legacy_name
 }
 
-# Resource without min_days_for_renewal (deprecated field)
-resource "cloudflare_zero_trust_access_service_token" "without_deprecated" {
+# Resource using v4 name option 1
+resource "cloudflare_zero_trust_access_service_token" "resourcename_opt1" {
   account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-no-deprecated-field"
+  name       = "${local.name_prefix}-pattern9-opt1-token"
   duration   = "8760h"
 }
 
 moved {
-  from = cloudflare_access_service_token.without_deprecated
-  to   = cloudflare_zero_trust_access_service_token.without_deprecated
-}
-
-# Resource with very large client_secret_version
-resource "cloudflare_zero_trust_access_service_token" "large_version" {
-  account_id                        = var.cloudflare_account_id
-  name                              = "${local.name_prefix}-large-version-token"
-  duration                          = "8760h"
-  client_secret_version             = 999
-  previous_client_secret_expires_at = "2025-12-31T23:59:59Z"
-}
-
-moved {
-  from = cloudflare_access_service_token.large_version
-  to   = cloudflare_zero_trust_access_service_token.large_version
-}
-
-# Resource with special characters in name
-resource "cloudflare_zero_trust_access_service_token" "special_chars" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-token-with-special_chars-123"
-  duration   = "8760h"
-}
-
-moved {
-  from = cloudflare_access_service_token.special_chars
-  to   = cloudflare_zero_trust_access_service_token.special_chars
-}
-
-# Resource with minimum duration
-resource "cloudflare_zero_trust_access_service_token" "min_duration" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-min-duration-token"
-  duration   = "8760h" # Changed from 30m to valid minimum value
-}
-
-moved {
-  from = cloudflare_access_service_token.min_duration
-  to   = cloudflare_zero_trust_access_service_token.min_duration
-}
-
-# Resource with maximum duration
-resource "cloudflare_zero_trust_access_service_token" "max_duration" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-max-duration-token"
-  duration   = "87600h" # 10 years
-}
-
-moved {
-  from = cloudflare_access_service_token.max_duration
-  to   = cloudflare_zero_trust_access_service_token.max_duration
+  from = cloudflare_access_service_token.resourcename_opt1
+  to   = cloudflare_zero_trust_access_service_token.resourcename_opt1
 }

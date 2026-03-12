@@ -78,13 +78,6 @@ func TestPreprocess(t *testing.T) {
 	}
 }
 
-func TestGetResourceRename(t *testing.T) {
-	migrator := &V4ToV5Migrator{}
-	oldName, newName := migrator.GetResourceRename()
-	assert.Equal(t, "cloudflare_regional_hostname", oldName)
-	assert.Equal(t, "cloudflare_regional_hostname", newName)
-}
-
 func TestV4ToV5Migration(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 

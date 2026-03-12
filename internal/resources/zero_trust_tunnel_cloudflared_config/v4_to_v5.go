@@ -41,8 +41,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // This allows the migration tool to collect all resource renames and apply them globally
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_tunnel_config", "cloudflare_zero_trust_tunnel_cloudflared_config"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_tunnel_config", "cloudflare_zero_trust_tunnel_cloudflared_config"}, "cloudflare_zero_trust_tunnel_cloudflared_config"
 }
 
 // addOriginRequestDefaults adds v4 default values to origin_request block for fields not already specified

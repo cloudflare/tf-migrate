@@ -50,8 +50,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 // GetResourceRename returns the v4 resource type and empty string for v5 since
 // cloudflare_split_tunnel is removed in v5 (merged into device profile resources).
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_split_tunnel", ""
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_split_tunnel"}, ""
 }
 
 // TransformState is a no-op — state transformation is handled by the provider's StateUpgraders.

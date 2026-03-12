@@ -94,8 +94,8 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 }
 
 // GetResourceRename returns the v4 and v5 datasource type names (unchanged).
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "data.cloudflare_load_balancer_pools", "data.cloudflare_load_balancer_pools"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"data.cloudflare_load_balancer_pools"}, "data.cloudflare_load_balancer_pools"
 }
 
 // UsesProviderStateUpgrader indicates that this datasource uses provider-based state migration.

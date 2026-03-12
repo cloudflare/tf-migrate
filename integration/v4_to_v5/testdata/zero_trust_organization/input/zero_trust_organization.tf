@@ -14,7 +14,7 @@ variable "cloudflare_domain" {
 
 locals {
   name_prefix = "cftftest"
-  org_names = toset(["org-alpha", "org-beta", "org-gamma"])
+  org_names   = toset(["org-alpha", "org-beta", "org-gamma"])
   org_configs = {
     dev     = { auth_domain = "${local.name_prefix}-dev.cloudflareaccess.com", session = "12h" }
     staging = { auth_domain = "${local.name_prefix}-staging.cloudflareaccess.com", session = "24h" }
@@ -102,12 +102,12 @@ resource "cloudflare_access_organization" "with_both_nested" {
 }
 
 resource "cloudflare_access_organization" "with_booleans_true" {
-  account_id                      = var.cloudflare_account_id
-  auth_domain                     = "${local.name_prefix}-booleans-true.cloudflareaccess.com"
-  name                            = "Organization with Booleans True"
-  is_ui_read_only                 = true
-  auto_redirect_to_identity       = true
-  allow_authenticate_via_warp     = true
+  account_id                  = var.cloudflare_account_id
+  auth_domain                 = "${local.name_prefix}-booleans-true.cloudflareaccess.com"
+  name                        = "Organization with Booleans True"
+  is_ui_read_only             = true
+  auto_redirect_to_identity   = true
+  allow_authenticate_via_warp = true
 }
 
 resource "cloudflare_access_organization" "with_durations" {
@@ -249,20 +249,20 @@ resource "cloudflare_access_organization" "color_formats" {
 }
 
 resource "cloudflare_access_organization" "booleans_false" {
-  account_id                      = var.cloudflare_account_id
-  auth_domain                     = "${local.name_prefix}-booleans-false.cloudflareaccess.com"
-  name                            = "Organization with Booleans False"
-  is_ui_read_only                 = false
-  auto_redirect_to_identity       = false
-  allow_authenticate_via_warp     = false
+  account_id                  = var.cloudflare_account_id
+  auth_domain                 = "${local.name_prefix}-booleans-false.cloudflareaccess.com"
+  name                        = "Organization with Booleans False"
+  is_ui_read_only             = false
+  auto_redirect_to_identity   = false
+  allow_authenticate_via_warp = false
 }
 
 # ===== Terraform Patterns (8) =====
 resource "cloudflare_access_organization" "foreach_set" {
-  for_each        = local.org_names
-  account_id      = var.cloudflare_account_id
-  auth_domain     = "${local.name_prefix}-${each.value}.cloudflareaccess.com"
-  name            = "Organization ${each.value}"
+  for_each         = local.org_names
+  account_id       = var.cloudflare_account_id
+  auth_domain      = "${local.name_prefix}-${each.value}.cloudflareaccess.com"
+  name             = "Organization ${each.value}"
   session_duration = "24h"
 }
 
@@ -275,17 +275,17 @@ resource "cloudflare_zero_trust_access_organization" "foreach_map" {
 }
 
 resource "cloudflare_access_organization" "with_count" {
-  count                           = 2
-  account_id                      = var.cloudflare_account_id
-  auth_domain                     = "${local.name_prefix}-count-${count.index}.cloudflareaccess.com"
-  name                            = "Count-based Organization ${count.index}"
-  allow_authenticate_via_warp     = count.index == 0
+  count                       = 2
+  account_id                  = var.cloudflare_account_id
+  auth_domain                 = "${local.name_prefix}-count-${count.index}.cloudflareaccess.com"
+  name                        = "Count-based Organization ${count.index}"
+  allow_authenticate_via_warp = count.index == 0
 }
 
 resource "cloudflare_access_organization" "with_locals" {
-  account_id       = var.cloudflare_account_id
-  auth_domain      = "${local.name_prefix}-locals.cloudflareaccess.com"
-  name             = "${local.name_prefix} Organization with Locals"
+  account_id  = var.cloudflare_account_id
+  auth_domain = "${local.name_prefix}-locals.cloudflareaccess.com"
+  name        = "${local.name_prefix} Organization with Locals"
 
   login_design {
     header_text = "Welcome to ${local.name_prefix}"
@@ -322,15 +322,15 @@ resource "cloudflare_access_organization" "with_depends" {
 }
 
 resource "cloudflare_zero_trust_access_organization" "zone_comprehensive" {
-  zone_id                            = var.cloudflare_zone_id
-  auth_domain                        = "${local.name_prefix}-zone-comprehensive.cloudflareaccess.com"
-  name                               = "Comprehensive Zone-Scoped Organization"
-  is_ui_read_only                    = true
-  ui_read_only_toggle_reason         = "Zone-level configuration"
-  auto_redirect_to_identity          = true
-  session_duration                   = "12h"
-  allow_authenticate_via_warp        = true
-  warp_auth_session_duration         = "6h"
+  zone_id                     = var.cloudflare_zone_id
+  auth_domain                 = "${local.name_prefix}-zone-comprehensive.cloudflareaccess.com"
+  name                        = "Comprehensive Zone-Scoped Organization"
+  is_ui_read_only             = true
+  ui_read_only_toggle_reason  = "Zone-level configuration"
+  auto_redirect_to_identity   = true
+  session_duration            = "12h"
+  allow_authenticate_via_warp = true
+  warp_auth_session_duration  = "6h"
 
   login_design {
     background_color = "#1e1e1e"
@@ -344,4 +344,46 @@ resource "cloudflare_zero_trust_access_organization" "zone_comprehensive" {
     forbidden       = "33333333-3333-3333-3333-333333333333"
     identity_denied = "44444444-4444-4444-4444-444444444444"
   }
+}
+
+# ============================================================================
+# Pattern 9: Cross-resource reference using both v4 names
+# ============================================================================
+# This validates that GetResourceRename() returns ALL v4 names for cross-file reference updates
+# v4 name option 1: cloudflare_access_organization
+# v4 name option 2: cloudflare_zero_trust_access_organization
+# v5 name: cloudflare_zero_trust_organization
+
+# Resource using v4 name option 1
+resource "cloudflare_access_organization" "resourcename_opt1" {
+  account_id  = var.cloudflare_account_id
+  auth_domain = "${local.name_prefix}-pattern9-opt1.cloudflareaccess.com"
+  name        = "Pattern9 Organization Option1"
+}
+
+# Resource using v4 name option 2
+resource "cloudflare_zero_trust_access_organization" "resourcename_opt2" {
+  account_id  = var.cloudflare_account_id
+  auth_domain = "${local.name_prefix}-pattern9-opt2.cloudflareaccess.com"
+  name        = "Pattern9 Organization Option2"
+}
+
+# Dependent resource that references option 1
+resource "cloudflare_access_application" "ref_opt1" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} App depends on org opt1"
+  domain     = "org-opt1.${var.cloudflare_domain}"
+  type       = "self_hosted"
+
+  depends_on = [cloudflare_access_organization.resourcename_opt1]
+}
+
+# Dependent resource that references option 2
+resource "cloudflare_access_application" "ref_opt2" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} App depends on org opt2"
+  domain     = "org-opt2.${var.cloudflare_domain}"
+  type       = "self_hosted"
+
+  depends_on = [cloudflare_zero_trust_access_organization.resourcename_opt2]
 }

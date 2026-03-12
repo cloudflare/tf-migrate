@@ -41,11 +41,6 @@ resource "cloudflare_zero_trust_dex_test" "http_test" {
     method = "GET"
   }
 }
-
-moved {
-  from = cloudflare_device_dex_test.http_test
-  to   = cloudflare_zero_trust_dex_test.http_test
-}
 `,
 		},
 		{
@@ -76,11 +71,6 @@ resource "cloudflare_zero_trust_dex_test" "traceroute_test" {
     kind = "traceroute"
     host = "8.8.8.8"
   }
-}
-
-moved {
-  from = cloudflare_device_dex_test.traceroute_test
-  to   = cloudflare_zero_trust_dex_test.traceroute_test
 }
 `,
 		},
@@ -115,11 +105,6 @@ resource "cloudflare_zero_trust_dex_test" "disabled" {
     method = "GET"
   }
 }
-
-moved {
-  from = cloudflare_device_dex_test.disabled
-  to   = cloudflare_zero_trust_dex_test.disabled
-}
 `,
 		},
 		{
@@ -152,11 +137,6 @@ resource "cloudflare_zero_trust_dex_test" "var_test" {
     host   = var.test_host
     method = var.test_method
   }
-}
-
-moved {
-  from = cloudflare_device_dex_test.var_test
-  to   = cloudflare_zero_trust_dex_test.var_test
 }
 `,
 		},

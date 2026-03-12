@@ -34,8 +34,8 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 
 // GetResourceRename implements the ResourceRenamer interface
 // Maps the deprecated name to the current name
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_workers_for_platforms_namespace", "cloudflare_workers_for_platforms_dispatch_namespace"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_workers_for_platforms_namespace", "cloudflare_workers_for_platforms_dispatch_namespace"}, "cloudflare_workers_for_platforms_dispatch_namespace"
 }
 
 // Preprocess performs any string-level transformations before HCL parsing.
@@ -49,19 +49,18 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 // and generates a `moved` block to trigger the provider's MoveState handler.
 // For cloudflare_workers_for_platforms_dispatch_namespace: config is identical, no changes needed.
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-	resourceType := tfhcl.GetResourceType(block)
+	// Capture original name/type for moved block generation
+	originalResourceType := tfhcl.GetResourceType(block)
+	resourceName := tfhcl.GetResourceName(block)
 
-	if resourceType == "cloudflare_workers_for_platforms_namespace" {
-		// Get the resource name before renaming (needed for moved block generation)
-		resourceName := tfhcl.GetResourceName(block)
-
+	if originalResourceType == "cloudflare_workers_for_platforms_namespace" {
 		// Rename deprecated resource type to current name
 		tfhcl.RenameResourceType(block, "cloudflare_workers_for_platforms_namespace", "cloudflare_workers_for_platforms_dispatch_namespace")
 
 		// Generate moved block to trigger provider's MoveState handler (Terraform 1.8+)
 		// This allows the provider's StateUpgraders to handle state transformation automatically
-		oldType, newType := m.GetResourceRename()
-		from := oldType + "." + resourceName
+		_, newType := m.GetResourceRename()
+		from := originalResourceType + "." + resourceName
 		to := newType + "." + resourceName
 		movedBlock := tfhcl.CreateMovedBlock(from, to)
 

@@ -52,8 +52,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // cloudflare_turnstile_widget doesn't rename, so return the same name
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_turnstile_widget", "cloudflare_turnstile_widget"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_turnstile_widget"}, "cloudflare_turnstile_widget"
 }
 
 // TransformConfig handles configuration file transformations.
