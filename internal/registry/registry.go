@@ -1,11 +1,13 @@
 package registry
 
 import (
+	accountsdata "github.com/cloudflare/tf-migrate/internal/datasources/accounts"
 	lbpoolsdata "github.com/cloudflare/tf-migrate/internal/datasources/load_balancer_pools"
 	rulesetsdata "github.com/cloudflare/tf-migrate/internal/datasources/rulesets"
 	zonedata "github.com/cloudflare/tf-migrate/internal/datasources/zone"
 	zonesdata "github.com/cloudflare/tf-migrate/internal/datasources/zones"
 	"github.com/cloudflare/tf-migrate/internal/resources/access_rule"
+	"github.com/cloudflare/tf-migrate/internal/resources/account"
 	"github.com/cloudflare/tf-migrate/internal/resources/account_member"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_shield"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_shield_operation"
@@ -91,6 +93,7 @@ import (
 // Each resource package's NewV4ToV5Migrator function registers itself with the internal registry.
 func RegisterAllMigrations() {
 	// Datasources
+	accountsdata.NewV4ToV5Migrator()
 	lbpoolsdata.NewV4ToV5Migrator()
 	rulesetsdata.NewV4ToV5Migrator()
 	zonedata.NewV4ToV5Migrator()
@@ -98,6 +101,7 @@ func RegisterAllMigrations() {
 
 	// Resources
 	access_rule.NewV4ToV5Migrator()
+	account.NewV4ToV5Migrator()
 	account_member.NewV4ToV5Migrator()
 	api_shield.NewV4ToV5Migrator()
 	api_shield_operation.NewV4ToV5Migrator()
