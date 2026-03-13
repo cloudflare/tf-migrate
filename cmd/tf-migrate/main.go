@@ -342,8 +342,11 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 				} else {
 					log.Debug("Resource type unchanged", "type", oldType)
 				}
+			} else if oldType != "" && newType == "" {
+				// Resource removed in v5 — no rename needed, not a warning
+				log.Debug("Resource removed in v5, no cross-file rename needed", "old", oldType)
 			} else {
-				// Warn if migrator implements interface but returns empty values
+				// Both empty — unexpected, warn
 				log.Warn("Migrator implements ResourceRenamer but returned empty type names",
 					"old", oldType, "new", newType)
 			}

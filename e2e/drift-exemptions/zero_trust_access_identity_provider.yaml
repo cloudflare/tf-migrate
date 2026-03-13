@@ -7,11 +7,6 @@
 version: 1
 
 exemptions:
-  - name: "azure_conditional_access"
-    description: "Provider state upgrader doesn't carry forward conditional_access_enabled"
-    patterns:
-      - 'conditional_access_enabled.*false'
-    enabled: true
 
   - name: "azure_support_groups"
     description: "Provider state upgrader doesn't carry forward support_groups"

@@ -281,6 +281,12 @@ func (m *V4ToV5Migrator) createImportBlock(resourceName, settingID string, zoneI
 	return block
 }
 
+// GetResourceRename returns the v4 and v5 resource type names for zone_setting.
+// This resource is renamed from cloudflare_zone_settings_override to cloudflare_zone_setting.
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_zone_settings_override", "cloudflare_zone_setting"
+}
+
 // TransformState handles state transformation
 // For zone_settings_override, this is a complex one-to-many transformation
 // Each v4 instance needs to be split into multiple v5 instances
@@ -368,12 +374,12 @@ func buildTemplateStringTokens(zoneIDTokens hclwrite.Tokens, suffix string) hclw
 
 // metaArguments holds meta-arguments extracted from a resource block
 type metaArguments struct {
-	count      *hclwrite.Attribute
-	forEach    *hclwrite.Attribute
-	lifecycle  *hclwrite.Block
-	dependsOn  *hclwrite.Attribute
-	provider   *hclwrite.Attribute
-	timeouts   *hclwrite.Block
+	count     *hclwrite.Attribute
+	forEach   *hclwrite.Attribute
+	lifecycle *hclwrite.Block
+	dependsOn *hclwrite.Attribute
+	provider  *hclwrite.Attribute
+	timeouts  *hclwrite.Block
 }
 
 // extractMetaArguments extracts meta-arguments from the original resource block
