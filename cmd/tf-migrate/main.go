@@ -17,6 +17,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
 	"github.com/cloudflare/tf-migrate/internal/registry"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	"github.com/cloudflare/tf-migrate/internal/verifydrift"
 )
 
 // version is set at build time via ldflags.
@@ -94,6 +95,7 @@ func main() {
 	log := logger.New(cfg.logLevel)
 	rootCmd.AddCommand(newMigrateCommand(log, cfg))
 	rootCmd.AddCommand(newVersionCommand())
+	rootCmd.AddCommand(newVerifyDriftCommand())
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -168,6 +170,40 @@ func newVersionCommand() *cobra.Command {
 			fmt.Printf("tf-migrate version %s\n", version)
 		},
 	}
+}
+
+func newVerifyDriftCommand() *cobra.Command {
+	var planFile string
+	cmd := &cobra.Command{
+		Use:   "verify-drift",
+		Short: "Verify a terraform plan output against known migration drift exemptions",
+		Long: `Reads a terraform plan output file and checks each change against Cloudflare's
+known migration drift exemptions. Prints a report of expected vs unexpected changes.
+
+Exit code 0: all drift is expected or none detected.
+Exit code 1: unexpected drift requires attention.`,
+		Example: `  # Export plan output and verify
+  terraform plan > plan.txt
+  tf-migrate verify-drift --file plan.txt`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			content, err := os.ReadFile(planFile)
+			if err != nil {
+				return fmt.Errorf("reading plan file: %w", err)
+			}
+			result, err := verifydrift.Verify(string(content))
+			if err != nil {
+				return fmt.Errorf("verifying drift: %w", err)
+			}
+			verifydrift.PrintReport(result, planFile)
+			if result.HasUnexpected {
+				os.Exit(1)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&planFile, "file", "", "Path to terraform plan output file (required)")
+	_ = cmd.MarkFlagRequired("file")
+	return cmd
 }
 
 // runMigration performs the actual migration using the pipeline

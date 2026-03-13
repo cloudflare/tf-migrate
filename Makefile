@@ -6,18 +6,18 @@ GO := go
 MAIN_PACKAGE := ./cmd/tf-migrate
 E2E_PACKAGE := ./cmd/e2e-runner
 
-.PHONY: all build build-e2e build-all test test-unit test-integration lint-testdata clean release-snapshot
+.PHONY: all build build-e2e build-all test test-unit test-integration lint-testdata clean release-snapshot sync-exemptions
 
 # Default target: build all binaries
 all: build-all
 
 # Build the main tf-migrate binary
-build:
+build: sync-exemptions
 	@mkdir -p bin
 	$(GO) build -v -o $(BINARY_NAME) $(MAIN_PACKAGE)
 
 # Build the e2e test runner binary
-build-e2e:
+build-e2e: sync-exemptions
 	@mkdir -p bin
 	$(GO) build -v -o $(E2E_BINARY) $(E2E_PACKAGE)
 
@@ -43,6 +43,13 @@ lint-testdata:
 # Test GoReleaser build locally (no publish)
 release-snapshot:
 	goreleaser build --snapshot --clean
+
+# Sync embedded exemption YAML files from e2e source of truth
+sync-exemptions:
+	@echo "Syncing exemption YAMLs from e2e/ into internal/verifydrift/exemptions/..."
+	cp e2e/global-drift-exemptions.yaml internal/verifydrift/exemptions/
+	cp -r e2e/drift-exemptions/. internal/verifydrift/exemptions/drift-exemptions/
+	@echo "Sync complete"
 
 # Clean build artifacts
 clean:
