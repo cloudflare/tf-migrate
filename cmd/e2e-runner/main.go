@@ -66,9 +66,13 @@ var runCmd = &cobra.Command{
 	Long:         `Runs the complete e2e test: init, v4 apply, migrate, v5 apply, drift check`,
 	SilenceUsage: true, // Don't show usage on error
 	RunE: func(cmd *cobra.Command, args []string) error {
+		parallelism, _ := cmd.Flags().GetInt("parallelism")
+
 		cfg := &e2e.RunConfig{
 			SkipV4Test:                cmd.Flag("skip-v4-test").Changed,
 			ApplyExemptions:           cmd.Flag("apply-exemptions").Changed,
+			NoRefreshSnapshot:         cmd.Flag("no-refresh-snapshot").Changed,
+			Parallelism:               parallelism,
 			Resources:                 cmd.Flag("resources").Value.String(),
 			Phase:                     cmd.Flag("phase").Value.String(),
 			ProviderPath:              cmd.Flag("provider").Value.String(),
@@ -125,6 +129,8 @@ func init() {
 	runCmd.Flags().String("phase", "", "Run predefined phase(s) (comma-separated numbers, e.g., '0' or '0,1')")
 	runCmd.Flags().String("provider", "", "Path to provider source directory (will be built automatically)")
 	runCmd.Flags().Bool("uses-provider-state-upgrader", false, "Only test resources that use provider-based state migration")
+	runCmd.Flags().Int("parallelism", 0, "Terraform parallelism for plan/apply (0 uses Terraform default)")
+	runCmd.Flags().Bool("no-refresh-snapshot", false, "Run an additional diagnostic terraform plan with -refresh=false before the authoritative refresh plan")
 
 	// Clean command flags
 	cleanCmd.Flags().String("modules", "", "Modules to remove from state (comma-separated)")
