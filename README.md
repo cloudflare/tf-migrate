@@ -283,6 +283,12 @@ make build-all
 # Run with drift exemptions applied
 ./bin/e2e-runner run --apply-exemptions
 
+# Optional diagnostic no-refresh snapshot before authoritative plan
+./bin/e2e-runner run --no-refresh-snapshot
+
+# Set terraform plan/apply parallelism (0 uses Terraform default)
+./bin/e2e-runner run --parallelism 5
+
 # Initialize test resources from integration testdata
 ./bin/e2e-runner init
 ./bin/e2e-runner init --resources dns_record
@@ -297,6 +303,12 @@ make build-all
 # Clean up: Remove modules from remote state
 ./bin/e2e-runner clean --modules module.dns_record,module.load_balancer
 ```
+
+**Notable `run` options:**
+
+- `--parallelism <n>`: Applies to all Terraform `plan`/`apply` calls in the run. Use `0` to use Terraform's default.
+- `--no-refresh-snapshot`: Runs an extra diagnostic `terraform plan -refresh=false` before the authoritative refresh plan.
+- `--apply-exemptions`: Enables global + resource-specific drift exemption matching.
 
 **Testing the E2E Runner:**
 

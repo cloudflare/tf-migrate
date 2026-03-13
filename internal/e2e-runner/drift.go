@@ -62,10 +62,10 @@ type ExemptionSettings struct {
 
 // DriftExemptionsConfig represents the drift exemptions configuration file
 type DriftExemptionsConfig struct {
-	Version    int                `yaml:"version"`
-	Exemptions []DriftExemption   `yaml:"exemptions"`
-	Settings   ExemptionSettings  `yaml:"settings"`
-	Source     string             // "global", "legacy", or "resource:{name}"
+	Version    int               `yaml:"version"`
+	Exemptions []DriftExemption  `yaml:"exemptions"`
+	Settings   ExemptionSettings `yaml:"settings"`
+	Source     string            // "global", "legacy", or "resource:{name}"
 }
 
 // loadDriftExemptions loads exemptions from multiple sources and merges them
@@ -261,11 +261,12 @@ func compilePatterns(config *DriftExemptionsConfig) error {
 
 // DriftCheckResult holds the result of drift detection
 type DriftCheckResult struct {
-	OnlyComputedChanges   bool
-	TriggeredExemptions   map[string]int // exemption name -> count of matches
-	ExemptionsEnabled     bool
-	RealDriftLines        []string       // actual drift detected (non-exempted changes)
-	ExemptedDriftLines    []string       // exempted changes (for display purposes)
+	OnlyComputedChanges  bool
+	TriggeredExemptions  map[string]int // exemption name -> count of matches
+	ExemptionsEnabled    bool
+	RealDriftLines       []string // actual drift detected (non-exempted changes)
+	ExemptedDriftLines   []string // exempted changes (for display purposes)
+	ComputedRefreshLines []string // computed-only refresh lines (known after apply)
 }
 
 // hasOnlyComputedChanges checks if a terraform plan only has "known after apply" changes
@@ -301,13 +302,14 @@ func checkDrift(planOutput string, resourceFilter []string) DriftCheckResult {
 		}
 	}
 
-	onlyComputed, triggeredExemptions, realDriftLines, exemptedDriftLines := hasOnlyComputedChangesWithExemptions(planOutput, config)
+	onlyComputed, triggeredExemptions, realDriftLines, exemptedDriftLines, computedRefreshLines := hasOnlyComputedChangesWithExemptions(planOutput, config)
 	return DriftCheckResult{
-		OnlyComputedChanges: onlyComputed,
-		TriggeredExemptions: triggeredExemptions,
-		ExemptionsEnabled:   true,
-		RealDriftLines:      realDriftLines,
-		ExemptedDriftLines:  exemptedDriftLines,
+		OnlyComputedChanges:  onlyComputed,
+		TriggeredExemptions:  triggeredExemptions,
+		ExemptionsEnabled:    true,
+		RealDriftLines:       realDriftLines,
+		ExemptedDriftLines:   exemptedDriftLines,
+		ComputedRefreshLines: computedRefreshLines,
 	}
 }
 
@@ -358,7 +360,7 @@ func hasOnlyComputedChangesDefault(planOutput string) bool {
 
 // hasOnlyComputedChangesWithExemptions checks drift using exemption rules from config
 // Returns whether only computed changes exist, a map of triggered exemptions, real drift lines, and exempted drift lines
-func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExemptionsConfig) (bool, map[string]int, []string, []string) {
+func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExemptionsConfig) (bool, map[string]int, []string, []string, []string) {
 	scanner := bufio.NewScanner(strings.NewReader(planOutput))
 
 	// Patterns to detect
@@ -373,6 +375,7 @@ func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExempt
 	exemptionUsageCounts := make(map[string]int) // Track which exemptions were used
 	realDriftLines := []string{}
 	exemptedDriftLines := []string{}
+	computedRefreshLines := []string{}
 
 	// Helper function to check if exemption applies to current resource scope
 	matchesResourceScope := func(exemption *DriftExemption) bool {
@@ -513,6 +516,17 @@ func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExempt
 
 		// Check for update lines
 		if updateLinePattern.MatchString(line) {
+			// Ignore computed refresh updates (e.g. "-> (known after apply)")
+			// These are informational and should not be counted as exempted drift.
+			if knownAfterApplyPattern.MatchString(line) {
+				if currentResourceName != "" {
+					computedRefreshLines = append(computedRefreshLines, "  "+currentResourceName+": "+strings.TrimSpace(line))
+				} else {
+					computedRefreshLines = append(computedRefreshLines, "  "+strings.TrimSpace(line))
+				}
+				continue
+			}
+
 			// Check if this line matches any exemption pattern
 			isExempted, matchedExemptionName := checkExemption(line, "update")
 
@@ -544,6 +558,17 @@ func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExempt
 
 		// Check for additions
 		if additionPattern.MatchString(line) {
+			// Ignore computed-only additions (e.g. "+ foo = (known after apply)")
+			// to avoid inflating exemption counts with non-actionable refresh noise.
+			if knownAfterApplyPattern.MatchString(line) {
+				if currentResourceName != "" {
+					computedRefreshLines = append(computedRefreshLines, "  "+currentResourceName+": "+strings.TrimSpace(line))
+				} else {
+					computedRefreshLines = append(computedRefreshLines, "  "+strings.TrimSpace(line))
+				}
+				continue
+			}
+
 			// Check if this addition is exempted
 			isExempted, matchedExemptionName := checkExemption(line, "addition")
 
@@ -570,6 +595,16 @@ func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExempt
 
 		// Check for deletions
 		if deletionPattern.MatchString(line) {
+			// Defensive: ignore computed-only deletions if Terraform ever emits them.
+			if knownAfterApplyPattern.MatchString(line) {
+				if currentResourceName != "" {
+					computedRefreshLines = append(computedRefreshLines, "  "+currentResourceName+": "+strings.TrimSpace(line))
+				} else {
+					computedRefreshLines = append(computedRefreshLines, "  "+strings.TrimSpace(line))
+				}
+				continue
+			}
+
 			// Check if this deletion is exempted
 			isExempted, matchedExemptionName := checkExemption(line, "deletion")
 
@@ -607,7 +642,7 @@ func hasOnlyComputedChangesWithExemptions(planOutput string, config *DriftExempt
 
 	// Return true (only computed) if no real changes, additions, or deletions
 	onlyComputed := !hasRealChanges && !hasAdditions && !hasDeletions
-	return onlyComputed, triggeredExemptions, realDriftLines, exemptedDriftLines
+	return onlyComputed, triggeredExemptions, realDriftLines, exemptedDriftLines, computedRefreshLines
 }
 
 // extractPlanChanges extracts and formats the changes section from terraform plan output

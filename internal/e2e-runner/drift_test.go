@@ -379,7 +379,7 @@ func TestHasOnlyComputedChangesWithExemptions(t *testing.T) {
     }
 `,
 			wantOnlyComputed:        true,
-			wantTriggeredExemptions: map[string]int{"computed-fields": 1},
+			wantTriggeredExemptions: map[string]int{},
 		},
 		{
 			name: "exempted resource-specific change",
@@ -426,13 +426,13 @@ Plan: 0 to add, 1 to change, 0 to destroy.
     }
 `,
 			wantOnlyComputed:        true,
-			wantTriggeredExemptions: map[string]int{"computed-fields": 1, "zone-specific": 1},
+			wantTriggeredExemptions: map[string]int{"zone-specific": 1},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotComputed, gotExemptions, gotDriftLines, _ := hasOnlyComputedChangesWithExemptions(tt.planOutput, config)
+			gotComputed, gotExemptions, gotDriftLines, _, _ := hasOnlyComputedChangesWithExemptions(tt.planOutput, config)
 
 			if gotComputed != tt.wantOnlyComputed {
 				t.Errorf("hasOnlyComputedChangesWithExemptions() computed = %v, want %v", gotComputed, tt.wantOnlyComputed)
@@ -548,9 +548,9 @@ Plan: 0 to add, 0 to change, 1 to destroy.
 
 func TestExtractPlanChanges(t *testing.T) {
 	tests := []struct {
-		name       string
-		planOutput string
-		wantContains []string
+		name            string
+		planOutput      string
+		wantContains    []string
 		wantNotContains []string
 	}{
 		{
@@ -586,7 +586,7 @@ Plan: 1 to add, 1 to change, 0 to destroy.
 			planOutput: `
 No changes. Infrastructure is up-to-date.
 `,
-			wantContains: []string{},
+			wantContains:    []string{},
 			wantNotContains: []string{},
 		},
 	}
@@ -689,9 +689,9 @@ func TestCountUniqueDrifts(t *testing.T) {
 		want       int
 	}{
 		{
-			name: "no drift lines",
+			name:       "no drift lines",
 			driftLines: []string{},
-			want: 0,
+			want:       0,
 		},
 		{
 			name: "all unique drift lines",
@@ -1020,4 +1020,3 @@ Plan: 0 to add, 3 to change, 0 to destroy.
 		})
 	}
 }
-
