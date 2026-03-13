@@ -35,7 +35,7 @@ resource "cloudflare_list" "ip_list" {
     ip      = "1.1.1.1"
     }, {
     comment = "CIDR block"
-    ip      = "10.0.0.0"
+    ip      = "10.0.0.0/8"
     }, {
     comment = "IPv6 address"
     ip      = "2001:db8::1"

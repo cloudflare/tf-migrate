@@ -566,17 +566,17 @@ func TestNormalizeIPAddress(t *testing.T) {
 		{
 			name:  "CIDR /8",
 			input: "10.0.0.0/8",
-			want:  "10.0.0.0",
+			want:  "10.0.0.0/8",
 		},
 		{
 			name:  "CIDR /16",
 			input: "192.168.0.0/16",
-			want:  "192.168.0.0",
+			want:  "192.168.0.0/16",
 		},
 		{
 			name:  "CIDR /24",
 			input: "192.168.1.0/24",
-			want:  "192.168.1.0",
+			want:  "192.168.1.0/24",
 		},
 		{
 			name:  "IPv4 without CIDR",
@@ -594,9 +594,19 @@ func TestNormalizeIPAddress(t *testing.T) {
 			want:  "",
 		},
 		{
+			name:  "IPv4 host CIDR /32 strips suffix",
+			input: "192.0.2.1/32",
+			want:  "192.0.2.1",
+		},
+		{
+			name:  "IPv6 host CIDR /128 strips suffix",
+			input: "2001:db8::1/128",
+			want:  "2001:db8::1",
+		},
+		{
 			name:  "IPv6 with CIDR",
 			input: "2001:db8::/32",
-			want:  "2001:db8::",
+			want:  "2001:db8::/32",
 		},
 	}
 
@@ -619,12 +629,12 @@ func TestNormalizeIPAddressInExpr(t *testing.T) {
 		{
 			name:  "Quoted CIDR /8",
 			input: `"10.0.0.0/8"`,
-			want:  `"10.0.0.0"`,
+			want:  `"10.0.0.0/8"`,
 		},
 		{
 			name:  "Quoted CIDR /24",
 			input: `"192.168.1.0/24"`,
-			want:  `"192.168.1.0"`,
+			want:  `"192.168.1.0/24"`,
 		},
 		{
 			name:  "Quoted IPv4 without CIDR",
@@ -647,9 +657,19 @@ func TestNormalizeIPAddressInExpr(t *testing.T) {
 			want:  "",
 		},
 		{
+			name:  "Quoted IPv4 host CIDR /32 strips suffix",
+			input: `"192.0.2.1/32"`,
+			want:  `"192.0.2.1"`,
+		},
+		{
+			name:  "Quoted IPv6 host CIDR /128 strips suffix",
+			input: `"2001:db8::1/128"`,
+			want:  `"2001:db8::1"`,
+		},
+		{
 			name:  "Quoted IPv6 with CIDR",
 			input: `"2001:db8::/32"`,
-			want:  `"2001:db8::"`,
+			want:  `"2001:db8::/32"`,
 		},
 	}
 
