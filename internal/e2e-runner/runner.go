@@ -523,8 +523,9 @@ func RunE2ETests(cfg *RunConfig) error {
 
 	// Apply v5
 	printYellow("Running terraform apply in v5/...")
-	v5ApplyArgs := []string{"apply", "-no-color", "-auto-approve", "-input=false", filepath.Join(tmpDir, "v5.tfplan")}
+	v5ApplyArgs := []string{"apply", "-no-color", "-auto-approve", "-input=false"}
 	v5ApplyArgs = addParallelismArg(v5ApplyArgs, cfg.Parallelism)
+	v5ApplyArgs = append(v5ApplyArgs, filepath.Join(tmpDir, "v5.tfplan"))
 	v5ApplyOutput, err := v5TF.Run(v5ApplyArgs...)
 	if err != nil {
 		printError("Terraform apply failed for v5")
@@ -1048,8 +1049,9 @@ func runV4Tests(ctx *testContext) error {
 
 	// Run terraform apply
 	printYellow("Running terraform apply in v4/...")
-	applyArgs := []string{"apply", "-no-color", "-auto-approve", "-input=false", filepath.Join(ctx.tmpDir, "v4.tfplan")}
+	applyArgs := []string{"apply", "-no-color", "-auto-approve", "-input=false"}
 	applyArgs = addParallelismArg(applyArgs, ctx.cfg.Parallelism)
+	applyArgs = append(applyArgs, filepath.Join(ctx.tmpDir, "v4.tfplan"))
 	applyOutput, err := v4TF.Run(applyArgs...)
 	if err != nil {
 		printError("Terraform apply failed for v4")
