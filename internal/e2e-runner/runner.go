@@ -40,6 +40,7 @@ type RunConfig struct {
 	NoRefreshSnapshot         bool
 	Parallelism               int
 	Resources                 string
+	Exclude                   string // comma-separated resource names to exclude
 	Phase                     string // comma-separated phase numbers (e.g., "0,1")
 	ProviderPath              string
 	UsesProviderStateUpgrader bool
@@ -219,6 +220,45 @@ func RunE2ETests(cfg *RunConfig) error {
 			printCyan("Resources using tf-migrate TransformState:")
 			printCyan("  %s", strings.Join(tfMigrateResources, ", "))
 		}
+		fmt.Println()
+	}
+
+	// Apply --exclude filter: remove excluded resources from cfg.Resources
+	if cfg.Exclude != "" {
+		excludeSet := make(map[string]bool)
+		for _, r := range strings.Split(cfg.Exclude, ",") {
+			excludeSet[strings.TrimSpace(r)] = true
+		}
+
+		// Resolve the full resource list to filter against
+		var base []string
+		if cfg.Resources != "" {
+			for _, r := range strings.Split(cfg.Resources, ",") {
+				base = append(base, strings.TrimSpace(r))
+			}
+		} else {
+			all, err := discoverAllResources()
+			if err != nil {
+				return fmt.Errorf("failed to discover resources for exclusion: %w", err)
+			}
+			base = all
+		}
+
+		var kept []string
+		for _, r := range base {
+			if !excludeSet[r] {
+				kept = append(kept, r)
+			}
+		}
+
+		excluded := []string{}
+		for r := range excludeSet {
+			excluded = append(excluded, r)
+		}
+		printYellow("Excluding resources: %s", strings.Join(excluded, ", "))
+
+		cfg.Resources = strings.Join(kept, ",")
+		printCyan("Remaining resources after exclusion: %s", cfg.Resources)
 		fmt.Println()
 	}
 

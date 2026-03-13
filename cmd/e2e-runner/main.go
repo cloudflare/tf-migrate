@@ -74,6 +74,7 @@ var runCmd = &cobra.Command{
 			NoRefreshSnapshot:         cmd.Flag("no-refresh-snapshot").Changed,
 			Parallelism:               parallelism,
 			Resources:                 cmd.Flag("resources").Value.String(),
+			Exclude:                   cmd.Flag("exclude").Value.String(),
 			Phase:                     cmd.Flag("phase").Value.String(),
 			ProviderPath:              cmd.Flag("provider").Value.String(),
 			UsesProviderStateUpgrader: cmd.Flag("uses-provider-state-upgrader").Changed,
@@ -126,6 +127,7 @@ func init() {
 	runCmd.Flags().Bool("skip-v4-test", false, "Skip v4 testing phase")
 	runCmd.Flags().Bool("apply-exemptions", false, "Apply drift exemptions from global and resource-specific configs")
 	runCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
+	runCmd.Flags().String("exclude", "", "Exclude specific resources (comma-separated)")
 	runCmd.Flags().String("phase", "", "Run predefined phase(s) (comma-separated numbers, e.g., '0' or '0,1')")
 	runCmd.Flags().String("provider", "", "Path to provider source directory (will be built automatically)")
 	runCmd.Flags().Bool("uses-provider-state-upgrader", false, "Only test resources that use provider-based state migration")
