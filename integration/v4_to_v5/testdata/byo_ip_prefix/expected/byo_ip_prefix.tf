@@ -67,18 +67,21 @@ locals {
 # Instance 1: Minimal resource (only required fields)
 resource "cloudflare_byo_ip_prefix" "minimal" {
   account_id = var.cloudflare_account_id
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 # Instance 2: Full resource with all optional fields
 resource "cloudflare_byo_ip_prefix" "full" {
   account_id  = var.cloudflare_account_id
   description = "Full BYO IP prefix with all fields"
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 # Instance 3: Resource with variables
 resource "cloudflare_byo_ip_prefix" "with_variables" {
   account_id  = var.cloudflare_account_id
   description = local.description_template
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 # ============================================================================
@@ -90,6 +93,7 @@ resource "cloudflare_byo_ip_prefix" "from_map" {
 
   account_id  = var.cloudflare_account_id
   description = "Prefix for ${each.key} environment"
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 # ============================================================================
@@ -101,6 +105,7 @@ resource "cloudflare_byo_ip_prefix" "from_set" {
 
   account_id  = var.cloudflare_account_id
   description = "Prefix from set: ${each.value}"
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 # ============================================================================
@@ -112,6 +117,7 @@ resource "cloudflare_byo_ip_prefix" "with_count" {
 
   account_id  = var.cloudflare_account_id
   description = "Prefix number ${count.index + 1}"
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 # ============================================================================
@@ -123,6 +129,7 @@ resource "cloudflare_byo_ip_prefix" "conditional" {
 
   account_id  = var.cloudflare_account_id
   description = "Conditional prefix"
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 resource "cloudflare_byo_ip_prefix" "conditional_ternary" {
@@ -130,6 +137,7 @@ resource "cloudflare_byo_ip_prefix" "conditional_ternary" {
 
   account_id  = var.cloudflare_account_id
   description = var.enable_optional ? "Enabled prefix ${count.index}" : null
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 # ============================================================================
@@ -141,6 +149,7 @@ resource "cloudflare_byo_ip_prefix" "conditional_ternary" {
 resource "cloudflare_byo_ip_prefix" "reference" {
   account_id  = cloudflare_byo_ip_prefix.minimal.account_id
   description = "References minimal: ${cloudflare_byo_ip_prefix.minimal.prefix_id}"
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 # ============================================================================
@@ -155,6 +164,7 @@ resource "cloudflare_byo_ip_prefix" "with_lifecycle" {
     create_before_destroy = true
     ignore_changes        = [description]
   }
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 resource "cloudflare_byo_ip_prefix" "prevent_destroy" {
@@ -164,6 +174,7 @@ resource "cloudflare_byo_ip_prefix" "prevent_destroy" {
   lifecycle {
     prevent_destroy = true
   }
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 # ============================================================================
@@ -173,16 +184,19 @@ resource "cloudflare_byo_ip_prefix" "prevent_destroy" {
 resource "cloudflare_byo_ip_prefix" "with_join" {
   account_id  = var.cloudflare_account_id
   description = join(" - ", ["BYO IP", local.environment, "test"])
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 resource "cloudflare_byo_ip_prefix" "with_format" {
   account_id  = var.cloudflare_account_id
   description = format("Prefix for %s environment", local.environment)
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 resource "cloudflare_byo_ip_prefix" "with_interpolation" {
   account_id  = var.cloudflare_account_id
   description = "Prefix managed by ${local.name_prefix} for ${local.environment}"
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 # ============================================================================
@@ -193,12 +207,14 @@ resource "cloudflare_byo_ip_prefix" "with_interpolation" {
 resource "cloudflare_byo_ip_prefix" "empty_description" {
   account_id  = var.cloudflare_account_id
   description = ""
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 # Edge case 2: Advertisement off
 resource "cloudflare_byo_ip_prefix" "advertisement_off" {
   account_id  = var.cloudflare_account_id
   description = "Prefix with advertisement disabled"
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details.
 }
 
 # ============================================================================

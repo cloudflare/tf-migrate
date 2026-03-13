@@ -40,10 +40,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// advertisement - replaced by 'advertised' in v5 (computed)
 	tfhcl.RemoveAttributes(body, "prefix_id", "advertisement")
 
-	// Note: We do NOT add asn and cidr here
-	// These are required in v5 but don't exist in v4
-	// User must manually add them after migration
-	// v5 provider will fetch all computed fields on first refresh
+	// Add warning comment for required v5 fields
+	// User must manually add asn and cidr after migration
+	warningMsg := "This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes. See migration documentation for details."
+	tfhcl.AppendWarningComment(body, warningMsg)
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
@@ -51,8 +51,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-func (m *V4ToV5Migrator) TransformState(_ *transform.Context, instance gjson.Result, _, _ string) (string, error) {
+func (m *V4ToV5Migrator) TransformState(_ *transform.Context, stateJSON gjson.Result, _, _ string) (string, error) {
 	// State transformation is handled by the v5 provider's UpgradeState (schema_version 0→1).
 	// tf-migrate only handles HCL config transformation; pass state through unchanged.
-	return instance.String(), nil
+	return stateJSON.String(), nil
 }

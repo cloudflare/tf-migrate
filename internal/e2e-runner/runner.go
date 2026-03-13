@@ -369,6 +369,13 @@ func RunE2ETests(cfg *RunConfig) error {
 	}
 	printSuccess("Migration successful")
 
+	// Complete byo_ip_prefix migration by adding asn/cidr from env vars
+	// This simulates the manual intervention step users must perform
+	if err := completeBYOIPPrefixMigration(v5Dir, env); err != nil {
+		printYellow("Warning: failed to complete byo_ip_prefix migration: %v", err)
+		// Don't fail the test - this is optional enhancement
+	}
+
 	// Step 3: Test v5 configurations
 	fmt.Println()
 	printCyan("Step 3: Testing v5 configurations")
