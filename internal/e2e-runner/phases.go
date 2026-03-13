@@ -63,6 +63,7 @@ var PhaseResources = map[int][]string{
 		"zones_datasource",
 	},
 	2: {
+		"account",
 		"account_member",
 		"api_shield",
 		"api_shield_operation",

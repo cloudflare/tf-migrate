@@ -1,12 +1,10 @@
 package zone_dnssec
 
 import (
-	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
-	"github.com/zclconf/go-cty/cty"
-
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/tidwall/gjson"
 )
 
 // V4ToV5Migrator handles the migration of cloudflare_zone_dnssec from v4 to v5.
@@ -48,7 +46,7 @@ func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
 }
 
 // TransformConfig handles configuration file transformations.
-// 1. Adds status attribute from state (changed from computed-only to optional in v5)
+// 1. Attribute status changed from computed-only to optional in v5
 // 2. Removes modified_on attribute if present (changed from optional+computed to computed-only in v5)
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
@@ -56,45 +54,6 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Remove modified_on attribute if present (changed from optional+computed to computed-only)
 	// RemoveAttribute is safe to call even if the attribute doesn't exist
 	body.RemoveAttribute("modified_on")
-
-	// Status changed from Computed (v4) to Optional (v5), so we need to preserve the current value
-	// If there is no state value there is no value to preserve
-	if ctx.StateJSON == "" {
-		return &transform.TransformResult{
-			Blocks:         []*hclwrite.Block{block},
-			RemoveOriginal: false,
-		}, nil
-	}
-
-	// Get the resource name from the block labels (e.g., "example" in resource "cloudflare_zone_dnssec" "example")
-	labels := block.Labels()
-	if len(labels) >= 2 {
-		resourceName := labels[1]
-
-		// Parse state JSON and find this specific resource
-		state := gjson.Parse(ctx.StateJSON)
-		state.Get("resources").ForEach(func(key, resource gjson.Result) bool {
-			// Match by resource type and name
-			if resource.Get("type").String() == "cloudflare_zone_dnssec" &&
-				resource.Get("name").String() == resourceName {
-				// Get status from the first instance
-				status := resource.Get("instances.0.attributes.status")
-				statusValue := status.String()
-				// Only add status if it's a valid v5 value ("active" or "disabled")
-				// The v5 schema only accepts these two values, not "pending" or other intermediate states
-				if status.Exists() && status.Type != gjson.Null && statusValue != "" {
-					if statusValue == "active" || statusValue == "pending" {
-						// Add status attribute to config using the value from state
-						body.SetAttributeValue("status", cty.StringVal("active"))
-					} else if statusValue == "disabled" || statusValue == "pending-disabled" {
-						body.SetAttributeValue("status", cty.StringVal("disabled"))
-					}
-				}
-				return false // stop iterating
-			}
-			return true // continue iterating
-		})
-	}
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},

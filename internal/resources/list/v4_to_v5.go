@@ -2,6 +2,7 @@ package list
 
 import (
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -810,22 +811,27 @@ func ensureSourceURLHasPathInExpr(expr string) string {
 	return expr
 }
 
-// normalizeIPAddress normalizes an IP address by removing CIDR notation.
-// The v5 provider requires IP addresses to be normalized without CIDR suffix.
+// normalizeIPAddress normalizes an IP/CIDR to match v5 list validator behavior.
+// Keep CIDRs intact except host CIDRs (/32 IPv4, /128 IPv6), which normalize to plain IP.
 // Examples:
 //
-//	"10.0.0.0/8" -> "10.0.0.0"
-//	"192.168.1.0/24" -> "192.168.1.0"
+//	"10.0.0.0/8" -> "10.0.0.0/8"
+//	"192.0.2.1/32" -> "192.0.2.1"
 //	"1.1.1.1" -> "1.1.1.1" (no change)
 func normalizeIPAddress(ip string) string {
 	if ip == "" {
 		return ip
 	}
-	// Check if IP contains CIDR notation
-	if idx := strings.Index(ip, "/"); idx != -1 {
-		// Return only the IP address part, removing /prefix
-		return ip[:idx]
+
+	parsedIP, network, err := net.ParseCIDR(ip)
+	if err == nil && network != nil {
+		ones, bits := network.Mask.Size()
+		if (bits == 32 && ones == 32) || (bits == 128 && ones == 128) {
+			return parsedIP.String()
+		}
+		return ip
 	}
+
 	return ip
 }
 

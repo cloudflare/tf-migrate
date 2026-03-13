@@ -1,6 +1,10 @@
 # Drift Exemptions for zone_dnssec resource
 #
 # Resource-specific exemptions for cloudflare_zone_dnssec
+#
+# V4 -> V5 changes:
+# - status: Computed (v4) -> Optional (v5), values: pending/active -> active/disabled
+# - modified_on: Optional+Computed (v4) -> Computed only (v5)
 
 version: 1
 
@@ -29,6 +33,17 @@ exemptions:
     patterns:
       - 'status.*=.*"pending".*->.*null'
       - '-\s+status\s*=\s*"pending"\s*->\s*null'
+    enabled: true
+
+  # Status field drift when migration doesn't preserve state value
+  - name: "status_to_null"
+    description: "Status field going to null when state is not available during migration"
+    patterns:
+      - 'status\s*=\s*"pending"\s*->\s*null'
+      - 'status\s*=\s*"active"\s*->\s*null'
+      - 'status\s*=\s*"disabled"\s*->\s*null'
+      - '-\s*status\s*=\s*"pending"'
+      - '-\s*status\s*=\s*"active"'
     enabled: true
 
 settings:

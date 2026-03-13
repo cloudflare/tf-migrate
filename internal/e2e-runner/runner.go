@@ -37,7 +37,10 @@ const (
 type RunConfig struct {
 	SkipV4Test                bool
 	ApplyExemptions           bool
+	NoRefreshSnapshot         bool
+	Parallelism               int
 	Resources                 string
+	Exclude                   string // comma-separated resource names to exclude
 	Phase                     string // comma-separated phase numbers (e.g., "0,1")
 	ProviderPath              string
 	UsesProviderStateUpgrader bool
@@ -59,12 +62,22 @@ type testContext struct {
 	// Drift tracking
 	hasChanges               bool
 	hasPostApplyChanges      bool
+	hasNoRefreshChanges      bool
 	v5InitialDrift           []string
 	v5PostApplyDrift         []string
+	v5NoRefreshDrift         []string
+	v5InitialMaterial        int
+	v5PostApplyMaterial      int
+	v5NoRefreshMaterial      int
+	v5InitialReal            int
+	v5PostApplyReal          int
+	v5NoRefreshReal          int
 	v5InitialExempted        int
 	v5PostApplyExempted      int
+	v5NoRefreshExempted      int
 	v5InitialExemptedLines   []string
 	v5PostApplyExemptedLines []string
+	v5NoRefreshExemptedLines []string
 
 	// Output tracking
 	v5PlanOutput     string
@@ -73,6 +86,10 @@ type testContext struct {
 
 // RunE2ETests executes the complete e2e test suite
 func RunE2ETests(cfg *RunConfig) error {
+	if cfg.Parallelism < 0 {
+		return fmt.Errorf("parallelism must be >= 0, got %d", cfg.Parallelism)
+	}
+
 	// Get paths
 	repoRoot := getRepoRoot()
 	e2eRoot := filepath.Join(repoRoot, "e2e")
@@ -203,6 +220,45 @@ func RunE2ETests(cfg *RunConfig) error {
 			printCyan("Resources using tf-migrate TransformState:")
 			printCyan("  %s", strings.Join(tfMigrateResources, ", "))
 		}
+		fmt.Println()
+	}
+
+	// Apply --exclude filter: remove excluded resources from cfg.Resources
+	if cfg.Exclude != "" {
+		excludeSet := make(map[string]bool)
+		for _, r := range strings.Split(cfg.Exclude, ",") {
+			excludeSet[strings.TrimSpace(r)] = true
+		}
+
+		// Resolve the full resource list to filter against
+		var base []string
+		if cfg.Resources != "" {
+			for _, r := range strings.Split(cfg.Resources, ",") {
+				base = append(base, strings.TrimSpace(r))
+			}
+		} else {
+			all, err := discoverAllResources()
+			if err != nil {
+				return fmt.Errorf("failed to discover resources for exclusion: %w", err)
+			}
+			base = all
+		}
+
+		var kept []string
+		for _, r := range base {
+			if !excludeSet[r] {
+				kept = append(kept, r)
+			}
+		}
+
+		excluded := []string{}
+		for r := range excludeSet {
+			excluded = append(excluded, r)
+		}
+		printYellow("Excluding resources: %s", strings.Join(excluded, ", "))
+
+		cfg.Resources = strings.Join(kept, ",")
+		printCyan("Remaining resources after exclusion: %s", cfg.Resources)
 		fmt.Println()
 	}
 
@@ -409,9 +465,38 @@ func RunE2ETests(cfg *RunConfig) error {
 	}
 	printSuccess("Terraform init successful")
 
-	// Plan v5
+	// Optional diagnostic snapshot before refresh
+	if cfg.NoRefreshSnapshot {
+		printYellow("Running terraform plan in v5/ (without refresh)...")
+		v5NoRefreshPlanArgs := append([]string{"plan", "-no-color", "-refresh=false", "-input=false"}, targetArgs...)
+		v5NoRefreshPlanArgs = addParallelismArg(v5NoRefreshPlanArgs, cfg.Parallelism)
+		ctx.v5PlanOutput, err = v5TF.Run(v5NoRefreshPlanArgs...)
+		if err != nil {
+			printError("Terraform plan failed for v5 (without refresh)")
+			fmt.Println()
+			printRed("Error output:")
+			fmt.Println(ctx.v5PlanOutput)
+			return err
+		}
+
+		v5NoRefreshPlanLog := filepath.Join(tmpDir, "v5-plan-no-refresh.log")
+		if err := os.WriteFile(v5NoRefreshPlanLog, []byte(ctx.v5PlanOutput), permFile); err != nil {
+			printYellow("Warning: Failed to save v5 no-refresh plan log to %s: %v", v5NoRefreshPlanLog, err)
+		}
+
+		noRefreshDriftResult := checkAndDisplayDrift(ctx.v5PlanOutput, cfg, "initial-no-refresh", ctx.resourceList)
+		ctx.hasNoRefreshChanges = noRefreshDriftResult.hasDrift
+		ctx.v5NoRefreshDrift = noRefreshDriftResult.driftLines
+		ctx.v5NoRefreshMaterial = noRefreshDriftResult.materialCount
+		ctx.v5NoRefreshReal = noRefreshDriftResult.realCount
+		ctx.v5NoRefreshExempted = noRefreshDriftResult.exemptedCount
+		ctx.v5NoRefreshExemptedLines = noRefreshDriftResult.exemptedLines
+
+		fmt.Println()
+	}
 	printYellow("Running terraform plan in v5/...")
-	v5PlanArgs := append([]string{"plan", "-no-color", "-parallelism=2", "-out=" + filepath.Join(tmpDir, "v5.tfplan"), "-input=false"}, targetArgs...)
+	v5PlanArgs := append([]string{"plan", "-no-color", "-out=" + filepath.Join(tmpDir, "v5.tfplan"), "-input=false"}, targetArgs...)
+	v5PlanArgs = addParallelismArg(v5PlanArgs, cfg.Parallelism)
 	ctx.v5PlanOutput, err = v5TF.Run(v5PlanArgs...)
 	if err != nil {
 		printError("Terraform plan failed for v5")
@@ -431,12 +516,16 @@ func RunE2ETests(cfg *RunConfig) error {
 	driftResult := checkAndDisplayDrift(ctx.v5PlanOutput, cfg, "initial", ctx.resourceList)
 	ctx.hasChanges = driftResult.hasDrift
 	ctx.v5InitialDrift = driftResult.driftLines
+	ctx.v5InitialMaterial = driftResult.materialCount
+	ctx.v5InitialReal = driftResult.realCount
 	ctx.v5InitialExempted = driftResult.exemptedCount
 	ctx.v5InitialExemptedLines = driftResult.exemptedLines
 
 	// Apply v5
 	printYellow("Running terraform apply in v5/...")
-	v5ApplyArgs := []string{"apply", "-no-color", "-auto-approve", "-parallelism=2", "-input=false", filepath.Join(tmpDir, "v5.tfplan")}
+	v5ApplyArgs := []string{"apply", "-no-color", "-auto-approve", "-input=false"}
+	v5ApplyArgs = addParallelismArg(v5ApplyArgs, cfg.Parallelism)
+	v5ApplyArgs = append(v5ApplyArgs, filepath.Join(tmpDir, "v5.tfplan"))
 	v5ApplyOutput, err := v5TF.Run(v5ApplyArgs...)
 	if err != nil {
 		printError("Terraform apply failed for v5")
@@ -472,7 +561,8 @@ func RunE2ETests(cfg *RunConfig) error {
 	printCyan("Step 4: Verifying stable state (v5 plan after apply)")
 	printYellow("Running terraform plan again to check for ongoing drift...")
 
-	v5PostPlanArgs := append([]string{"plan", "-no-color", "-parallelism=2", "-out=" + filepath.Join(tmpDir, "v5-post-apply.tfplan"), "-input=false"}, targetArgs...)
+	v5PostPlanArgs := append([]string{"plan", "-no-color", "-out=" + filepath.Join(tmpDir, "v5-post-apply.tfplan"), "-input=false"}, targetArgs...)
+	v5PostPlanArgs = addParallelismArg(v5PostPlanArgs, cfg.Parallelism)
 	ctx.v5PostPlanOutput, err = v5TF.Run(v5PostPlanArgs...)
 	if err != nil {
 		printError("Terraform plan failed for v5 (post-apply)")
@@ -492,6 +582,8 @@ func RunE2ETests(cfg *RunConfig) error {
 	postDriftResult := checkAndDisplayDrift(ctx.v5PostPlanOutput, cfg, "post-apply", ctx.resourceList)
 	ctx.hasPostApplyChanges = postDriftResult.hasDrift
 	ctx.v5PostApplyDrift = postDriftResult.driftLines
+	ctx.v5PostApplyMaterial = postDriftResult.materialCount
+	ctx.v5PostApplyReal = postDriftResult.realCount
 	ctx.v5PostApplyExempted = postDriftResult.exemptedCount
 	ctx.v5PostApplyExemptedLines = postDriftResult.exemptedLines
 
@@ -567,6 +659,9 @@ func RunE2ETests(cfg *RunConfig) error {
 	printYellow("")
 
 	printYellow("  Step 3: v5 plan (before apply)")
+	if cfg.NoRefreshSnapshot && (ctx.v5NoRefreshMaterial > 0 || ctx.hasNoRefreshChanges || ctx.v5NoRefreshExempted > 0) {
+		printYellow("    No-refresh snapshot (diagnostic only): %d material changes (%d matched exemptions, %d unmatched)", ctx.v5NoRefreshMaterial, ctx.v5NoRefreshExempted, ctx.v5NoRefreshReal)
+	}
 	v5PlanSummary := extractPlanSummary(ctx.v5PlanOutput)
 	if v5PlanSummary == "" {
 		printYellow("    Status: %s", colorGreen+"✓ No changes needed"+colorReset)
@@ -580,9 +675,13 @@ func RunE2ETests(cfg *RunConfig) error {
 				printYellow("    Result: %d real changes detected", uniqueDrifts)
 			}
 			printYellow("    Terraform: %s", v5PlanSummary)
+		} else if ctx.v5InitialMaterial > 0 {
+			printYellow("    Status: %s", colorGreen+"✓ SUCCESS - Drift matched exemptions"+colorReset)
+			printYellow("    Result: %d material changes (%d matched exemptions, %d unmatched)", ctx.v5InitialMaterial, ctx.v5InitialExempted, ctx.v5InitialReal)
+			printYellow("    Terraform: %s", v5PlanSummary)
 		} else {
-			printYellow("    Status: %s", colorYellow+"⚠ Changes detected but all exempted"+colorReset)
-			printYellow("    Result: 0 real changes (%d exempted)", ctx.v5InitialExempted)
+			printYellow("    Status: %s", colorGreen+"✓ No material changes"+colorReset)
+			printYellow("    Result: 0 material changes")
 			printYellow("    Terraform: %s", v5PlanSummary)
 		}
 	}
@@ -610,8 +709,13 @@ func RunE2ETests(cfg *RunConfig) error {
 			printYellow("    Terraform: %s", postPlanSummary)
 		}
 	} else {
-		printYellow("    Status: %s", colorGreen+"✓ SUCCESS - Stable state achieved"+colorReset)
-		printYellow("    Result: No changes detected")
+		if ctx.v5PostApplyMaterial > 0 {
+			printYellow("    Status: %s", colorGreen+"✓ SUCCESS - Stable state achieved"+colorReset)
+			printYellow("    Result: %d material changes matched exemptions (%d unmatched)", ctx.v5PostApplyMaterial, ctx.v5PostApplyReal)
+		} else {
+			printYellow("    Status: %s", colorGreen+"✓ SUCCESS - Stable state achieved"+colorReset)
+			printYellow("    Result: No changes detected")
+		}
 	}
 
 	fmt.Println()
@@ -642,15 +746,21 @@ type driftCheckResult struct {
 	driftLines    []string
 	exemptedCount int
 	exemptedLines []string
+	computedLines []string
+	materialCount int
+	realCount     int
 }
 
 // checkAndDisplayDrift checks for drift in plan output and displays results
 // Returns true if real drift was detected (excluding exemptions)
 func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string, resourceFilter []string) driftCheckResult {
 	result := driftCheckResult{}
+	isNoRefreshDiagnostic := stage == "initial-no-refresh"
 
 	if strings.Contains(planOutput, "No changes") {
-		if stage == "initial" {
+		if isNoRefreshDiagnostic {
+			printSuccess("No-refresh snapshot: no changes")
+		} else if stage == "initial" {
 			printSuccess("Terraform plan shows no changes (expected)")
 		} else {
 			printSuccess("No ongoing drift detected - migration achieved stable state!")
@@ -669,9 +779,18 @@ func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string, resou
 		}
 		result.exemptedCount = totalExempted
 		result.exemptedLines = driftResult.ExemptedDriftLines
+		result.computedLines = driftResult.ComputedRefreshLines
+		result.realCount = len(driftResult.RealDriftLines)
+		result.materialCount = len(driftResult.RealDriftLines) + len(driftResult.ExemptedDriftLines)
+
+		if len(driftResult.ComputedRefreshLines) > 0 || totalExempted > 0 || len(driftResult.RealDriftLines) > 0 {
+			printYellow("Drift breakdown: %d material, %d computed refresh, %d exempted", result.materialCount, len(driftResult.ComputedRefreshLines), totalExempted)
+		}
 
 		if driftResult.OnlyComputedChanges {
-			if stage == "initial" {
+			if isNoRefreshDiagnostic {
+				printSuccess("No-refresh snapshot shows only computed value refreshes")
+			} else if stage == "initial" {
 				printSuccess("Terraform plan shows only computed value refreshes (ignored with --apply-exemptions)")
 			} else {
 				printSuccess("Only computed value refreshes detected (ignored with --apply-exemptions) - migration achieved stable state!")
@@ -692,7 +811,9 @@ func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string, resou
 		result.hasDrift = true
 		result.driftLines = driftResult.RealDriftLines
 
-		if stage == "initial" {
+		if isNoRefreshDiagnostic {
+			printYellow("No-refresh snapshot detected drift (diagnostic only; refresh plan is authoritative)")
+		} else if stage == "initial" {
 			printRed("⚠ Migration produced drift - v5 config wants to make changes")
 		} else {
 			printRed("✗ Ongoing drift detected - resources keep changing")
@@ -702,6 +823,86 @@ func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string, resou
 		if planSummary != "" {
 			fmt.Println("  " + planSummary)
 		}
+		if !isNoRefreshDiagnostic {
+			fmt.Println()
+
+			// Show detailed changes
+			if stage == "initial" {
+				printYellow("Detailed changes:")
+			} else {
+				printYellow("Detailed ongoing drift:")
+			}
+			fmt.Println()
+			fmt.Println(extractPlanChanges(planOutput))
+			fmt.Println()
+
+			// Explain what this means
+			printRed("What this means:")
+			if stage == "initial" {
+				printRed("  The migrated v5 config doesn't match your existing infrastructure.")
+				printRed("  This indicates the migration may not be correct.")
+			} else {
+				printRed("  Your resources are unstable - they change with every apply.")
+				printRed("  This is a serious issue that prevents using v5 in production.")
+			}
+			fmt.Println()
+
+			// Show affected resources
+			affectedResources := extractAffectedResources(planOutput)
+			if len(affectedResources) > 0 {
+				printYellow("Affected Resources:")
+				for _, resource := range affectedResources {
+					printYellow("  - %s", resource)
+				}
+			}
+
+			printYellow("")
+			printYellow("Next steps:")
+			if stage == "initial" {
+				printYellow("  1. Review the changes above")
+				printYellow("  2. Check if the migration tool has a bug")
+				printYellow("  3. Consider using --apply-exemptions if changes are expected")
+			} else {
+				printYellow("  1. This is likely a provider or migration tool bug")
+				printYellow("  2. Review the changes above to understand what's changing")
+				printYellow("  3. Report this issue with the logs from tmp/")
+			}
+		}
+
+		return result
+	}
+
+	// No exemptions - all drift is real
+	result.hasDrift = true
+
+	// Extract drift lines for the Drift Report
+	// When exemptions are disabled, we still need to populate drift lines for the report
+	planChangesText := extractPlanChanges(planOutput)
+	if planChangesText != "" {
+		// Split into lines and filter out empty lines
+		for _, line := range strings.Split(planChangesText, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" {
+				result.driftLines = append(result.driftLines, line)
+			}
+		}
+	}
+	result.realCount = len(result.driftLines)
+	result.materialCount = len(result.driftLines)
+
+	if isNoRefreshDiagnostic {
+		printYellow("No-refresh snapshot detected drift (diagnostic only; refresh plan is authoritative)")
+	} else if stage == "initial" {
+		printRed("⚠ Migration produced drift - v5 config wants to make changes")
+	} else {
+		printRed("✗ Ongoing drift detected - resources keep changing")
+	}
+
+	planSummary := extractPlanSummary(planOutput)
+	if planSummary != "" {
+		fmt.Println("  " + planSummary)
+	}
+	if !isNoRefreshDiagnostic {
 		fmt.Println()
 
 		// Show detailed changes
@@ -745,78 +946,6 @@ func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string, resou
 			printYellow("  2. Review the changes above to understand what's changing")
 			printYellow("  3. Report this issue with the logs from tmp/")
 		}
-
-		return result
-	}
-
-	// No exemptions - all drift is real
-	result.hasDrift = true
-
-	// Extract drift lines for the Drift Report
-	// When exemptions are disabled, we still need to populate drift lines for the report
-	planChangesText := extractPlanChanges(planOutput)
-	if planChangesText != "" {
-		// Split into lines and filter out empty lines
-		for _, line := range strings.Split(planChangesText, "\n") {
-			trimmed := strings.TrimSpace(line)
-			if trimmed != "" {
-				result.driftLines = append(result.driftLines, line)
-			}
-		}
-	}
-
-	if stage == "initial" {
-		printRed("⚠ Migration produced drift - v5 config wants to make changes")
-	} else {
-		printRed("✗ Ongoing drift detected - resources keep changing")
-	}
-
-	planSummary := extractPlanSummary(planOutput)
-	if planSummary != "" {
-		fmt.Println("  " + planSummary)
-	}
-	fmt.Println()
-
-	// Show detailed changes
-	if stage == "initial" {
-		printYellow("Detailed changes:")
-	} else {
-		printYellow("Detailed ongoing drift:")
-	}
-	fmt.Println()
-	fmt.Println(extractPlanChanges(planOutput))
-	fmt.Println()
-
-	// Explain what this means
-	printRed("What this means:")
-	if stage == "initial" {
-		printRed("  The migrated v5 config doesn't match your existing infrastructure.")
-		printRed("  This indicates the migration may not be correct.")
-	} else {
-		printRed("  Your resources are unstable - they change with every apply.")
-		printRed("  This is a serious issue that prevents using v5 in production.")
-	}
-	fmt.Println()
-
-	// Show affected resources
-	affectedResources := extractAffectedResources(planOutput)
-	if len(affectedResources) > 0 {
-		printYellow("Affected Resources:")
-		for _, resource := range affectedResources {
-			printYellow("  - %s", resource)
-		}
-	}
-
-	printYellow("")
-	printYellow("Next steps:")
-	if stage == "initial" {
-		printYellow("  1. Review the changes above")
-		printYellow("  2. Check if the migration tool has a bug")
-		printYellow("  3. Consider using --apply-exemptions if changes are expected")
-	} else {
-		printYellow("  1. This is likely a provider or migration tool bug")
-		printYellow("  2. Review the changes above to understand what's changing")
-		printYellow("  3. Report this issue with the logs from tmp/")
 	}
 
 	return result
@@ -883,7 +1012,8 @@ func runV4Tests(ctx *testContext) error {
 
 	// Run terraform plan
 	printYellow("Running terraform plan in v4/...")
-	planArgs := append([]string{"plan", "-no-color", "-parallelism=2", "-out=" + filepath.Join(ctx.tmpDir, "v4.tfplan"), "-input=false"}, ctx.targetArgs...)
+	planArgs := append([]string{"plan", "-no-color", "-out=" + filepath.Join(ctx.tmpDir, "v4.tfplan"), "-input=false"}, ctx.targetArgs...)
+	planArgs = addParallelismArg(planArgs, ctx.cfg.Parallelism)
 	planOutput, err := v4TF.Run(planArgs...)
 	if err != nil {
 		printError("Terraform plan failed for v4")
@@ -919,7 +1049,9 @@ func runV4Tests(ctx *testContext) error {
 
 	// Run terraform apply
 	printYellow("Running terraform apply in v4/...")
-	applyArgs := []string{"apply", "-no-color", "-auto-approve", "-parallelism=2", "-input=false", filepath.Join(ctx.tmpDir, "v4.tfplan")}
+	applyArgs := []string{"apply", "-no-color", "-auto-approve", "-input=false"}
+	applyArgs = addParallelismArg(applyArgs, ctx.cfg.Parallelism)
+	applyArgs = append(applyArgs, filepath.Join(ctx.tmpDir, "v4.tfplan"))
 	applyOutput, err := v4TF.Run(applyArgs...)
 	if err != nil {
 		printError("Terraform apply failed for v4")
@@ -980,6 +1112,13 @@ func countUniqueDrifts(driftLines []string) int {
 		driftCounts[line]++
 	}
 	return len(driftCounts)
+}
+
+func addParallelismArg(args []string, parallelism int) []string {
+	if parallelism > 0 {
+		return append(args, fmt.Sprintf("-parallelism=%d", parallelism))
+	}
+	return args
 }
 
 // getDriftColorFunc returns the appropriate color function based on drift type

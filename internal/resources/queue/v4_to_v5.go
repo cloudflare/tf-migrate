@@ -58,6 +58,11 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.
 	return stateJSON.String(), nil
 }
 
+// GetResourceRename returns the v4 and v5 resource type names (unchanged for queue).
+func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+	return "cloudflare_queue", "cloudflare_queue"
+}
+
 // UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
 func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
 	return true
