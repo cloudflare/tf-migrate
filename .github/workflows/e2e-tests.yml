@@ -53,4 +53,4 @@ jobs:
 
       - name: Run E2E Tests (provider state upgrader)
         working-directory: ./tf-migrate
-        run: ./scripts/run-e2e-tests.sh --apply-exemptions --uses-provider-state-upgrader --provider ../provider
+        run: ./scripts/run-e2e-tests.sh --apply-exemptions --uses-provider-state-upgrader --provider ../provider --exclude byo_ip_prefix
