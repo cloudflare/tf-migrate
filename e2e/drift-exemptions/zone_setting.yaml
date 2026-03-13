@@ -2,17 +2,26 @@
 #
 # Resource-specific exemptions for cloudflare_zone_setting
 #
-# The v4 cloudflare_zone_settings_override resource is deleted from state and splits
-# into multiple v5 cloudflare_zone_setting resources. This causes expected initial
-# drift where all v5 resources need to be created via terraform apply.
+# The v4 cloudflare_zone_settings_override is a one-to-many resource: one v4 resource
+# holds all zone settings. After migration, the provider's UpgradeState (version 2)
+# produces a single heuristic state entry (picking the first non-null setting) which
+# won't match any v5 config resource. Terraform destroys these orphaned entries and
+# creates all v5 resources fresh via terraform apply.
+#
+# Expected drift pattern:
+#   - 10 destroys: orphaned heuristic state entries (e.g., cloudflare_zone_setting.minimal)
+#   - 20 creates:  new v5 cloudflare_zone_setting resources (one per setting)
 
 version: 1
 
 exemptions:
   # One-to-many transformation: v4 zone_settings_override -> multiple v5 zone_setting
+  # The provider's UpgradeState creates heuristic state entries that get orphaned and
+  # destroyed, while all v5 resources are created fresh via terraform apply.
   - name: "zone_setting_migration_drift"
-    description: "Allow zone_setting resources to be created after migration (one-to-many transformation)"
+    description: "Allow zone_setting resources to be created/destroyed after migration (one-to-many transformation)"
     allow_resource_creation: true
+    allow_resource_destruction: true
     enabled: true
 
 settings:

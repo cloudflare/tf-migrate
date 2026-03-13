@@ -24,6 +24,10 @@ func TestV4ToV5Transformation(t *testing.T) {
   zone_id    = "0da42c8d2132a9ddaf714f9e7c920711"
   setting_id = "always_online"
   value      = "on"
+}
+moved {
+  from = cloudflare_zone_settings_override.example
+  to   = cloudflare_zone_setting.example_always_online
 }`,
 			},
 			{
@@ -41,6 +45,10 @@ func TestV4ToV5Transformation(t *testing.T) {
   zone_id    = var.zone_id
   setting_id = "always_online"
   value      = "on"
+}
+moved {
+  from = cloudflare_zone_settings_override.test
+  to   = cloudflare_zone_setting.test_always_online
 }
 resource "cloudflare_zone_setting" "test_brotli" {
   zone_id    = var.zone_id
@@ -67,6 +75,10 @@ resource "cloudflare_zone_setting" "test_ipv6" {
   zone_id    = var.zone_id
   setting_id = "browser_cache_ttl"
   value      = 14400
+}
+moved {
+  from = cloudflare_zone_settings_override.test
+  to   = cloudflare_zone_setting.test_browser_cache_ttl
 }
 resource "cloudflare_zone_setting" "test_challenge_ttl" {
   zone_id    = var.zone_id
@@ -95,6 +107,10 @@ resource "cloudflare_zone_setting" "test_challenge_ttl" {
     html = "on"
     js   = "off"
   }
+}
+moved {
+  from = cloudflare_zone_settings_override.test
+  to   = cloudflare_zone_setting.test_minify
 }`,
 			},
 			{
@@ -118,6 +134,10 @@ resource "cloudflare_zone_setting" "test_challenge_ttl" {
     status           = "on"
     strip_uri        = false
   }
+}
+moved {
+  from = cloudflare_zone_settings_override.test
+  to   = cloudflare_zone_setting.test_mobile_redirect
 }`,
 			},
 			{
@@ -147,6 +167,10 @@ resource "cloudflare_zone_setting" "test_challenge_ttl" {
       preload            = true
     }
   }
+}
+moved {
+  from = cloudflare_zone_settings_override.test
+  to   = cloudflare_zone_setting.test_security_header
 }`,
 			},
 			{
@@ -166,6 +190,10 @@ resource "cloudflare_zone_setting" "test_challenge_ttl" {
   value = {
     enabled = true
   }
+}
+moved {
+  from = cloudflare_zone_settings_override.test
+  to   = cloudflare_zone_setting.test_nel
 }`,
 			},
 			{
@@ -183,6 +211,10 @@ resource "cloudflare_zone_setting" "test_challenge_ttl" {
   zone_id    = var.zone_id
   setting_id = "always_online"
   value      = "on"
+}
+moved {
+  from = cloudflare_zone_settings_override.test
+  to   = cloudflare_zone_setting.test_always_online
 }
 resource "cloudflare_zone_setting" "test_brotli" {
   zone_id    = var.zone_id
@@ -203,6 +235,10 @@ resource "cloudflare_zone_setting" "test_brotli" {
   zone_id    = var.zone_id
   setting_id = "0rtt"
   value      = "on"
+}
+moved {
+  from = cloudflare_zone_settings_override.test
+  to   = cloudflare_zone_setting.test_zero_rtt
 }`,
 			},
 			{
@@ -235,6 +271,10 @@ resource "cloudflare_zone_setting" "test_brotli" {
   zone_id    = var.zone_id
   setting_id = "always_online"
   value      = "on"
+}
+moved {
+  from = cloudflare_zone_settings_override.test
+  to   = cloudflare_zone_setting.test_always_online
 }
 resource "cloudflare_zone_setting" "test_brotli" {
   zone_id    = var.zone_id
@@ -289,6 +329,10 @@ resource "cloudflare_zone_setting" "test_security_header" {
   setting_id = "always_online"
   value      = var.always_on
 }
+moved {
+  from = cloudflare_zone_settings_override.test
+  to   = cloudflare_zone_setting.test_always_online
+}
 resource "cloudflare_zone_setting" "test_browser_cache_ttl" {
   zone_id    = var.zone_id
   setting_id = "browser_cache_ttl"
@@ -317,9 +361,10 @@ resource "cloudflare_zone_setting" "test_browser_cache_ttl" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	// Note: State transformation deletes the v4 resources (returns empty string)
-	// State is recreated via import blocks, which is validated in E2E tests
-	// No unit test needed for state deletion
+	// Note: State transformation is a no-op (returns state unchanged).
+	// The provider's MoveState handles the actual state migration when Terraform
+	// processes the moved blocks generated in TransformConfig.
+	// No unit test needed for the no-op state pass-through.
 }
 
 func TestMigratorInterface(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
@@ -85,6 +86,11 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}
 	sort.Strings(attrNames)
 
+	// Track whether we've emitted the first moved block yet.
+	// Only the FIRST generated resource (alphabetically) gets a moved block;
+	// the rest are created fresh. This mirrors the argo pattern.
+	firstBlock := true
+
 	for _, attrName := range attrNames {
 		attr := attrs[attrName]
 		// Skip deprecated settings
@@ -106,10 +112,14 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 		newBlocks = append(newBlocks, newResource)
 
-		// Note: Import blocks are NOT generated because:
-		// 1. Import blocks can only be used in root modules, not child modules
-		// 2. Import blocks don't support count/for_each meta-arguments
-		// The state will be recreated when users run `terraform apply` after migration
+		// Generate a moved block for the first resource only.
+		// The provider's MoveState handles the actual state migration when Terraform
+		// processes the moved block.
+		if firstBlock {
+			movedBlock := m.createMovedBlock(baseName, resourceName)
+			newBlocks = append(newBlocks, movedBlock)
+			firstBlock = false
+		}
 	}
 
 	// Process nested blocks (minify, mobile_redirect, security_header, nel, aegis)
@@ -136,7 +146,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 		newBlocks = append(newBlocks, newResource)
 
-		// Note: Import blocks are NOT generated (same reasons as above)
+		// If no attribute blocks were generated yet, this nested block is the first
+		// resource and gets the moved block.
+		if firstBlock {
+			movedBlock := m.createMovedBlock(baseName, resourceName)
+			newBlocks = append(newBlocks, movedBlock)
+			firstBlock = false
+		}
 	}
 
 	return &transform.TransformResult{
@@ -281,23 +297,23 @@ func (m *V4ToV5Migrator) createImportBlock(resourceName, settingID string, zoneI
 	return block
 }
 
-// TransformState handles state transformation
-// For zone_settings_override, this is a complex one-to-many transformation
-// Each v4 instance needs to be split into multiple v5 instances
-//
-// Since import blocks can't be used in modules or with count/for_each,
-// we mark the resource for deletion and rely on a manual import process or
-// a fresh terraform apply to recreate the state
+// createMovedBlock creates a moved block for state migration tracking.
+// The from address is cloudflare_zone_settings_override.{fromName} and
+// the to address is cloudflare_zone_setting.{toName}.
+func (m *V4ToV5Migrator) createMovedBlock(fromName, toName string) *hclwrite.Block {
+	from := fmt.Sprintf("cloudflare_zone_settings_override.%s", fromName)
+	to := fmt.Sprintf("cloudflare_zone_setting.%s", toName)
+	return tfhcl.CreateMovedBlock(from, to)
+}
+
+// TransformState is a no-op for zone_setting migration.
+// State transformation is delegated to the provider via MoveState.
+// The moved blocks generated in TransformConfig trigger the provider's MoveState
+// which handles the cloudflare_zone_settings_override → cloudflare_zone_setting transition.
 func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// For zone_setting migration, we can't programmatically transform the state
-	// because it's a one-to-many transformation (1 v4 resource → N v5 resources)
-	// and we don't know the resource addresses of the generated v5 resources during state transformation
-	//
-	// The user will need to run `terraform apply` after migration to let Terraform
-	// create the new resources based on the migrated configuration
-	//
-	// Return empty string to delete this instance from state
-	return "", nil
+	// State transformation is delegated to the provider via MoveState.
+	// The moved blocks generated in TransformConfig trigger the provider's migration logic.
+	return stateJSON.String(), nil
 }
 
 // isDeprecatedSetting checks if a setting should be skipped during migration
@@ -368,12 +384,12 @@ func buildTemplateStringTokens(zoneIDTokens hclwrite.Tokens, suffix string) hclw
 
 // metaArguments holds meta-arguments extracted from a resource block
 type metaArguments struct {
-	count      *hclwrite.Attribute
-	forEach    *hclwrite.Attribute
-	lifecycle  *hclwrite.Block
-	dependsOn  *hclwrite.Attribute
-	provider   *hclwrite.Attribute
-	timeouts   *hclwrite.Block
+	count     *hclwrite.Attribute
+	forEach   *hclwrite.Attribute
+	lifecycle *hclwrite.Block
+	dependsOn *hclwrite.Attribute
+	provider  *hclwrite.Attribute
+	timeouts  *hclwrite.Block
 }
 
 // extractMetaArguments extracts meta-arguments from the original resource block
