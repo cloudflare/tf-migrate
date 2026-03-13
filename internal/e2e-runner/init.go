@@ -59,7 +59,6 @@ func RunInit(resources string) error {
 	// Sync resource files from testdata
 	printYellow("Syncing resource files from testdata...")
 	fileCount := 0
-	skippedCount := 0
 	var moduleNames []string
 
 	// Find all input directories
@@ -104,15 +103,6 @@ func RunInit(resources string) error {
 		}
 
 		if len(e2eFiles) > 0 {
-			// Check if this resource should be skipped for E2E
-			if shouldSkipE2EResource(e2eFiles[0]) {
-				printYellow("  ⊗ Skipped %s (E2E-SKIP)", resourceType)
-				skippedCount++
-				// Remove the module directory we just created since we're skipping
-				os.RemoveAll(moduleDir)
-				continue
-			}
-
 			// Use e2e-specific files
 			for _, tfFile := range e2eFiles {
 				filename := filepath.Base(tfFile)
@@ -170,9 +160,6 @@ func RunInit(resources string) error {
 
 	fmt.Println()
 	printGreen("  Total: %d files synced", fileCount)
-	if skippedCount > 0 {
-		printYellow("  Skipped: %d modules (E2E-SKIP)", skippedCount)
-	}
 	fmt.Println()
 
 	// Configure terraform variables
@@ -497,37 +484,4 @@ func discoverModuleVariables(moduleDir string) (map[string]bool, error) {
 	}
 
 	return variables, nil
-}
-
-// shouldSkipE2EResource checks if a resource should be skipped from E2E tests.
-// Resources are skipped if they have an "E2E-SKIP:" marker in a comment at the
-// top of their *_e2e.tf file (within the first 20 lines).
-func shouldSkipE2EResource(e2eFilePath string) bool {
-	content, err := os.ReadFile(e2eFilePath)
-	if err != nil {
-		return false
-	}
-
-	lines := strings.Split(string(content), "\n")
-	// Only check first 20 lines for the skip marker
-	maxLines := 20
-	if len(lines) < maxLines {
-		maxLines = len(lines)
-	}
-
-	for i := 0; i < maxLines; i++ {
-		line := strings.TrimSpace(lines[i])
-
-		// Check for E2E-SKIP marker (must be in a comment)
-		if strings.HasPrefix(line, "#") && strings.Contains(line, "E2E-SKIP:") {
-			return true
-		}
-
-		// Stop searching after first non-comment, non-empty line
-		if line != "" && !strings.HasPrefix(line, "#") {
-			break
-		}
-	}
-
-	return false
 }

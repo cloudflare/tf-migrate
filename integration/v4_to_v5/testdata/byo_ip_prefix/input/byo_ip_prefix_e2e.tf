@@ -1,5 +1,8 @@
 # E2E-SKIP: BYO IP Prefix cannot be tested in automated E2E runs
 #
+# NOTE: This marker is for documentation only. To exclude this resource
+# from E2E tests, use: --exclude byo_ip_prefix
+#
 # REASON FOR SKIP:
 # ================
 # We are waiting on the Addressing team to provide an IP for use 
@@ -20,9 +23,6 @@
 #   - Process: Manual migration with real resources
 #
 # ✗ E2E tests: Requires pre-existing infrastructure (not automatable)
-#
-# This resource is intentionally excluded from automated E2E test runs.
-# The E2E runner will skip this resource during initialization.
 
 # Terraform v4 to v5 Migration E2E Test - BYO IP Prefix
 #
