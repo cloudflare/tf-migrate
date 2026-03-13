@@ -27,6 +27,10 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 	return resourceType == "cloudflare_byo_ip_prefix"
 }
 
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
+}
+
 func (m *V4ToV5Migrator) Preprocess(content string) string {
 	// No preprocessing needed for BYO IP prefix
 	return content
