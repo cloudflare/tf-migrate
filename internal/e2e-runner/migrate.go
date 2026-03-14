@@ -299,10 +299,10 @@ func copyAllResources(srcDir, dstDir string) error {
 	}
 
 	excludes := map[string]bool{
-		".terraform":              true,
-		".terraform.lock.hcl":     true,
-		"backend.hcl":             true,
-		"backend.configured.hcl":  true,
+		".terraform":             true,
+		".terraform.lock.hcl":    true,
+		"backend.hcl":            true,
+		"backend.configured.hcl": true,
 	}
 
 	fileCount := 0
@@ -585,6 +585,62 @@ func hasProviderStateUpgraderInMigrate(resourceType string) bool {
 	}
 
 	return false
+}
+
+// completeBYOIPPrefixMigration adds asn and cidr fields to migrated byo_ip_prefix resources.
+// This simulates the manual intervention step users must perform after migration.
+// It replaces MIGRATION WARNING comments with actual field values from environment variables.
+func completeBYOIPPrefixMigration(migratedDir string, env *E2EEnv) error {
+	// Only run if env vars are set
+	if env.BYOIPASN == "" || env.BYOIPCidr == "" {
+		return nil // Skip if not configured
+	}
+
+	// Find all .tf files in migrated directory
+	files, err := filepath.Glob(filepath.Join(migratedDir, "**", "*.tf"))
+	if err != nil {
+		return fmt.Errorf("finding tf files: %w", err)
+	}
+
+	// Also check root level
+	rootFiles, err := filepath.Glob(filepath.Join(migratedDir, "*.tf"))
+	if err != nil {
+		return fmt.Errorf("finding root tf files: %w", err)
+	}
+	files = append(files, rootFiles...)
+
+	warningPattern := "# MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'"
+	modified := 0
+
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", file, err)
+		}
+
+		// Check if file contains byo_ip_prefix with migration warning
+		if !strings.Contains(string(content), "cloudflare_byo_ip_prefix") {
+			continue
+		}
+		if !strings.Contains(string(content), warningPattern) {
+			continue
+		}
+
+		// Replace warning comment with actual fields
+		replacement := fmt.Sprintf("asn  = %s\n  cidr = \"%s\"", env.BYOIPASN, env.BYOIPCidr)
+		newContent := strings.ReplaceAll(string(content), warningPattern, replacement)
+
+		if err := os.WriteFile(file, []byte(newContent), 0644); err != nil {
+			return fmt.Errorf("writing %s: %w", file, err)
+		}
+		modified++
+	}
+
+	if modified > 0 {
+		printSuccess("Completed byo_ip_prefix migration (%d file(s) updated)", modified)
+	}
+
+	return nil
 }
 
 // buildBinary builds the tf-migrate binary

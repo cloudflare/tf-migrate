@@ -69,7 +69,6 @@ func TestFindInputDirs_NonexistentDir(t *testing.T) {
 	}
 }
 
-
 func TestRunInit_ResourceFiltering(t *testing.T) {
 	// This is more of an integration test
 	// We can test the logic of resource filtering separately

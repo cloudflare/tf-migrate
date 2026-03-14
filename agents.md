@@ -564,6 +564,72 @@ import {
 }
 ```
 
+#### Skipping Resources from E2E Tests
+
+Some resources cannot be tested in E2E environments due to lifecycle constraints (cannot be created/destroyed) or external dependencies. To exclude a resource from E2E tests while keeping integration tests:
+
+**Add E2E-SKIP marker to the `*_e2e.tf` file:**
+
+```hcl
+# E2E-SKIP: Brief reason why E2E testing is not possible
+#
+# REASON FOR SKIP:
+# - Detailed explanation of constraints
+# - Why automated testing is not feasible
+#
+# TESTING COVERAGE:
+# ✓ Integration tests: What IS tested
+# ✓ Provider tests: What IS tested
+# ✗ E2E tests: Why NOT tested
+
+# Rest of file content...
+```
+
+**Pattern Rules:**
+
+1. **Marker location**: Must be in the first 20 lines of the `*_e2e.tf` file
+2. **Format**: `# E2E-SKIP:` (case-sensitive, must be in a comment)
+3. **Documentation**: Include detailed reasoning and alternative test coverage
+4. **Integration tests**: Continue to work normally (use separate input files)
+
+**Example: BYO IP Prefix**
+
+The `byo_ip_prefix` resource is skipped from E2E tests because:
+- Cannot be created via Terraform (requires manual account manager provisioning)
+- Cannot be destroyed (active bindings prevent deletion)
+- Requires manual intervention during migration
+
+See: `integration/v4_to_v5/testdata/byo_ip_prefix/input/byo_ip_prefix_e2e.tf`
+
+**E2E Runner Behavior:**
+
+```bash
+# When initializing E2E tests:
+./bin/e2e-runner init
+
+# Output shows skipped resources:
+Syncing resource files from testdata...
+  ✓ dns_record/dns_record.tf (from dns_record_e2e.tf)
+  ⊗ Skipped byo_ip_prefix (E2E-SKIP)
+  ✓ zone_setting/zone_setting.tf (from zone_setting_e2e.tf)
+
+  Total: 120 files synced
+  Skipped: 1 modules (E2E-SKIP)
+```
+
+**When to Use E2E-SKIP:**
+
+Use the E2E-SKIP marker when:
+- Resources cannot be created via Terraform/API
+- Resources cannot be destroyed (lifecycle constraints)
+- Resources require manual provisioning or external setup
+- E2E testing would require pre-existing infrastructure
+
+**Do NOT use E2E-SKIP for:**
+- Resources that can be imported (use import annotations instead)
+- Resources with slow operations (improve test efficiency instead)
+- Temporary test failures (fix the underlying issue)
+
 ---
 
 ## Drift Exemptions System
@@ -1195,6 +1261,50 @@ func (t *MyTransformer) TransformHCL(ctx *transform.Context) (*transform.Result,
     return &transform.Result{Content: ctx.OriginalContent}, nil
 }
 ```
+
+### Pattern 7: Manual Intervention with Warning Comments
+
+When required fields cannot be automatically populated (e.g., values must come from external sources), add warning comments to guide users:
+
+```go
+// See: internal/resources/byo_ip_prefix/v4_to_v5.go
+// See: internal/resources/list_item/v4_to_v5.go
+
+func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+    body := block.Body()
+
+    // Remove deprecated fields
+    tfhcl.RemoveAttributes(body, "old_field_1", "old_field_2")
+
+    // Add warning comment for fields requiring manual intervention
+    warningMsg := "This resource requires manual intervention to add v5 required fields 'field_a' and 'field_b'. Find values in [source]. See migration documentation for details."
+    tfhcl.AppendWarningComment(body, warningMsg)
+
+    return &transform.TransformResult{
+        Blocks:         []*hclwrite.Block{block},
+        RemoveOriginal: false,
+    }, nil
+}
+```
+
+**Result in HCL:**
+```hcl
+resource "cloudflare_example" "test" {
+  account_id = "abc123"
+  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'field_a' and 'field_b'. Find values in [source]. See migration documentation for details.
+}
+```
+
+**When to use:**
+- New v5 required fields don't exist in v4
+- Values must come from external sources (API, dashboard, user)
+- No reasonable default value exists
+- Field values are account/environment-specific
+
+**Integration test strategy:**
+- Expected output files include the warning comment
+- E2E tests simulate user adding fields from environment variables
+- Provider tests verify warning exists before manual intervention step
 
 ---
 

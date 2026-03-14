@@ -16,6 +16,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/authenticated_origin_pulls"
 	"github.com/cloudflare/tf-migrate/internal/resources/authenticated_origin_pulls_certificate"
 	"github.com/cloudflare/tf-migrate/internal/resources/bot_management"
+	"github.com/cloudflare/tf-migrate/internal/resources/byo_ip_prefix"
 	"github.com/cloudflare/tf-migrate/internal/resources/certificate_pack"
 	"github.com/cloudflare/tf-migrate/internal/resources/custom_hostname"
 	"github.com/cloudflare/tf-migrate/internal/resources/custom_hostname_fallback_origin"
@@ -110,6 +111,7 @@ func RegisterAllMigrations() {
 	authenticated_origin_pulls.NewV4ToV5Migrator()
 	authenticated_origin_pulls_certificate.NewV4ToV5Migrator()
 	bot_management.NewV4ToV5Migrator()
+	byo_ip_prefix.NewV4ToV5Migrator()
 	certificate_pack.NewV4ToV5Migrator()
 	custom_ssl.NewV4ToV5Migrator()
 	custom_hostname.NewV4ToV5Migrator()
