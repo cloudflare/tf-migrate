@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -195,7 +196,44 @@ func loadConfigFromFile(path string, source string) (*DriftExemptionsConfig, err
 	return &config, nil
 }
 
-// mergeExemptions combines exemptions from multiple sources
+// ParseDriftExemptionsConfig parses YAML bytes into a DriftExemptionsConfig and
+// tags every exemption with the given source label (e.g. "global", "resource:zone_setting").
+// This is the exported variant of the internal loadConfigFromFile, intended for callers
+// that already have the raw bytes (e.g. from an embedded FS).
+func ParseDriftExemptionsConfig(data []byte, source string) (*DriftExemptionsConfig, error) {
+	var config DriftExemptionsConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+	config.Source = source
+	for i := range config.Exemptions {
+		config.Exemptions[i].source = source
+	}
+	return &config, nil
+}
+
+// MergeAndCompileExemptions merges a global config with a map of resource-specific
+// configs (keyed by resource name) and pre-compiles all regex patterns. This is the
+// exported variant of the internal mergeExemptions+compilePatterns pipeline.
+func MergeAndCompileExemptions(global *DriftExemptionsConfig, resourceSpecific map[string]*DriftExemptionsConfig) (*DriftExemptionsConfig, error) {
+	merged := mergeExemptions(global, resourceSpecific)
+	if err := compilePatterns(merged); err != nil {
+		return nil, err
+	}
+	return merged, nil
+}
+
+// mergeExemptions combines exemptions from multiple sources.
+//
+// Resource-specific exemptions are placed before global ones so that more
+// targeted rules are checked first by checkExemption, which returns on the
+// first match.
+//
+// Each resource-specific config is keyed by a short resource name (e.g.
+// "load_balancer_pool"). Exemptions from that config that have no explicit
+// resource_types filter are automatically scoped to "cloudflare_<key>" — this
+// means the file name alone is sufficient to constrain the exemption, and
+// authors don't need to repeat the resource type inside the YAML.
 func mergeExemptions(
 	global *DriftExemptionsConfig,
 	resourceSpecific map[string]*DriftExemptionsConfig,
@@ -207,24 +245,61 @@ func mergeExemptions(
 		Source:     "merged",
 	}
 
-	exemptionMap := make(map[string]DriftExemption) // name -> exemption
+	seen := make(map[string]struct{})
 
-	// 1. Add global exemptions
-	for _, e := range global.Exemptions {
-		exemptionMap[e.Name] = e
+	// 1. Resource-specific exemptions first (more specific, checked first).
+	// Sort keys for deterministic ordering across runs.
+	resourceKeys := make([]string, 0, len(resourceSpecific))
+	for k := range resourceSpecific {
+		resourceKeys = append(resourceKeys, k)
 	}
+	sort.Strings(resourceKeys)
 
-	// 2. Merge resource-specific exemptions (override global)
-	for _, config := range resourceSpecific {
-		for _, e := range config.Exemptions {
-			exemptionMap[e.Name] = e // Override or add
+	for _, key := range resourceKeys {
+		implicitType := "cloudflare_" + key
+		for _, e := range resourceSpecific[key].Exemptions {
+			// If the exemption uses pattern matching and has no explicit
+			// resource_types, implicitly scope it to the resource type implied
+			// by the file name. This prevents broad patterns (e.g. `enabled =
+			// true`) from matching unrelated resources when all exemptions are
+			// merged into a flat list.
+			//
+			// We do NOT apply the implicit type to allow_resource_creation /
+			// allow_resource_destruction / allow_resource_replacement exemptions
+			// because those often intentionally cover a *different* resource type
+			// than the file name (e.g. argo.yaml covers cloudflare_argo_tiered_caching,
+			// not cloudflare_argo). For those, explicit resource_types in the YAML
+			// or the absence of a filter (match-all) is the intended behaviour.
+			isPatternOnly := len(e.Patterns) > 0 &&
+				!e.AllowResourceCreation && !e.AllowResourceDestruction && !e.AllowResourceReplacement
+			if isPatternOnly && len(e.ResourceTypes) == 0 {
+				e.ResourceTypes = []string{implicitType}
+			}
+			seen[e.Name] = struct{}{}
+			merged.Exemptions = append(merged.Exemptions, e)
 		}
 	}
 
-	// Convert map back to slice
-	for _, e := range exemptionMap {
+	// 2. Global exemptions that were not overridden by a resource-specific one.
+	for _, e := range global.Exemptions {
+		if _, already := seen[e.Name]; already {
+			continue
+		}
 		merged.Exemptions = append(merged.Exemptions, e)
 	}
+
+	// Sort the final list so that exemptions with explicit resource_types
+	// constraints are checked before unconstrained ones. checkExemption returns
+	// on the first match, so constrained rules must win over broad fallbacks
+	// (e.g. a generic allow_resource_creation without resource_types).
+	sort.SliceStable(merged.Exemptions, func(i, j int) bool {
+		iConstrained := len(merged.Exemptions[i].ResourceTypes) > 0
+		jConstrained := len(merged.Exemptions[j].ResourceTypes) > 0
+		if iConstrained != jConstrained {
+			return iConstrained
+		}
+		return false
+	})
 
 	return merged
 }
@@ -715,6 +790,109 @@ func extractPlanSummary(planOutput string) string {
 	}
 
 	return ""
+}
+
+// DetectResourcesFromPlan extracts unique Cloudflare resource type names from a terraform
+// plan output string. It parses resource header lines of the form:
+//
+//	# module.zone_setting.cloudflare_zone_setting.example will be created
+//
+// and returns the module names (e.g. ["dns_record", "zone_setting"]) sorted alphabetically.
+// These names map 1:1 to the per-resource exemption YAML files in e2e/drift-exemptions/.
+// This is the exported variant of extractAffectedResources for use by external packages.
+func DetectResourcesFromPlan(planOutput string) []string {
+	return extractAffectedResources(planOutput)
+}
+
+// CheckDriftWithConfig runs drift detection against a pre-loaded *DriftExemptionsConfig,
+// bypassing all filesystem and network access. This is the primary entry point for the
+// verify-drift command, which fetches the config independently and passes it in.
+func CheckDriftWithConfig(planOutput string, config *DriftExemptionsConfig) DriftCheckResult {
+	if config == nil || !config.Settings.ApplyExemptions {
+		return DriftCheckResult{
+			OnlyComputedChanges: hasOnlyComputedChangesDefault(planOutput),
+			TriggeredExemptions: make(map[string]int),
+			ExemptionsEnabled:   false,
+			RealDriftLines:      []string{},
+			ExemptedDriftLines:  []string{},
+		}
+	}
+
+	onlyComputed, triggered, realLines, exemptedLines, computedLines := hasOnlyComputedChangesWithExemptions(planOutput, config)
+	return DriftCheckResult{
+		OnlyComputedChanges:  onlyComputed,
+		TriggeredExemptions:  triggered,
+		ExemptionsEnabled:    true,
+		RealDriftLines:       realLines,
+		ExemptedDriftLines:   exemptedLines,
+		ComputedRefreshLines: computedLines,
+	}
+}
+
+// LoadDriftExemptionsFromDir loads and merges drift exemptions from an explicit root
+// directory instead of auto-detecting the repo root. The directory is expected to contain:
+//
+//	{dir}/global-drift-exemptions.yaml
+//	{dir}/drift-exemptions/{resource}.yaml   (one per resource)
+//
+// resourceFilter controls which per-resource YAML files are loaded; pass nil to load all.
+func LoadDriftExemptionsFromDir(dir string, resourceFilter []string) (*DriftExemptionsConfig, error) {
+	globalPath := filepath.Join(dir, "global-drift-exemptions.yaml")
+
+	var globalConfig *DriftExemptionsConfig
+	if _, err := os.Stat(globalPath); os.IsNotExist(err) {
+		globalConfig = &DriftExemptionsConfig{
+			Version:    1,
+			Exemptions: []DriftExemption{},
+			Settings: ExemptionSettings{
+				ApplyExemptions:        true,
+				LoadResourceExemptions: true,
+			},
+			Source: "default",
+		}
+	} else {
+		var err error
+		globalConfig, err = loadConfigFromFile(globalPath, "global")
+		if err != nil {
+			return nil, fmt.Errorf("failed to load global exemptions: %w", err)
+		}
+	}
+
+	resourceConfigs := make(map[string]*DriftExemptionsConfig)
+	if globalConfig.Settings.LoadResourceExemptions {
+		// If no filter provided, discover all YAML files in drift-exemptions/
+		resources := resourceFilter
+		if len(resources) == 0 {
+			entries, err := os.ReadDir(filepath.Join(dir, "drift-exemptions"))
+			if err == nil {
+				for _, e := range entries {
+					if !e.IsDir() && strings.HasSuffix(e.Name(), ".yaml") {
+						resources = append(resources, strings.TrimSuffix(e.Name(), ".yaml"))
+					}
+				}
+			}
+		}
+
+		for _, resource := range resources {
+			path := filepath.Join(dir, "drift-exemptions", resource+".yaml")
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				continue
+			}
+			cfg, err := loadConfigFromFile(path, fmt.Sprintf("resource:%s", resource))
+			if err != nil {
+				return nil, fmt.Errorf("failed to load exemptions for %s: %w", resource, err)
+			}
+			if cfg != nil {
+				resourceConfigs[resource] = cfg
+			}
+		}
+	}
+
+	merged := mergeExemptions(globalConfig, resourceConfigs)
+	if err := compilePatterns(merged); err != nil {
+		return nil, fmt.Errorf("failed to compile patterns: %w", err)
+	}
+	return merged, nil
 }
 
 // extractAffectedResources extracts unique module names from plan output

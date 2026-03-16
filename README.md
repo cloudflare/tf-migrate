@@ -144,6 +144,96 @@ tf-migrate migrate \
   --target-version v5
 ```
 
+## Verifying Drift After Migration
+
+After running `tf-migrate migrate` and switching to the v5 provider, run `terraform plan` to see what changes Terraform detects. Some changes are **expected** — they are known, safe differences between how the v4 and v5 providers represent state. Others are **unexpected** and require your attention before applying.
+
+`tf-migrate verify-drift` reads your plan output and tells you which changes are expected (exempted) and which are not.
+
+### Workflow
+
+```bash
+# 1. Migrate your configuration
+tf-migrate migrate --source-version v4 --target-version v5
+
+# 2. Initialize the v5 provider
+terraform init -upgrade
+
+# 3. Capture the plan output
+terraform plan > plan.txt
+
+# 4. Verify the drift
+tf-migrate verify-drift --file plan.txt
+```
+
+### Example Output
+
+**All drift is expected (exit code 0):**
+
+```
+Cloudflare Terraform Migration - Drift Verification
+====================================================
+Plan file:          plan.txt
+Resources detected: dns_record, zone_setting
+
+✓ Exempted Changes  (3 change(s) are expected and safe to ignore)
+────────────────────────────────────────────────────
+Rule: computed_value_refreshes
+  "Ignore attributes that refresh to 'known after apply'"
+  module.dns_record.cloudflare_dns_record.example:
+    ~ ttl = (known after apply)
+
+✓ No unexpected drift
+────────────────────────────────────────────────────
+
+====================================================
+Result: ✓ MIGRATION LOOKS GOOD
+  No unexpected drift detected
+```
+
+**Unexpected drift found (exit code 1):**
+
+```
+Cloudflare Terraform Migration - Drift Verification
+====================================================
+Plan file:          plan.txt
+Resources detected: dns_record
+
+✓ No exempted changes
+────────────────────────────────────────────────────
+
+✗ Unexpected Drift  (1 change(s) require attention)
+────────────────────────────────────────────────────
+  module.dns_record.cloudflare_dns_record.example:
+    ~ value = "old-value" -> "new-value"
+
+====================================================
+Result: MIGRATION NEEDS ATTENTION
+  1 unexpected change(s) require review
+```
+
+### Understanding the Results
+
+| Section | Meaning |
+|---------|---------|
+| **Exempted Changes** | Known, safe differences between v4 and v5 providers. These do not require action — they will stabilise on the next `terraform apply`. |
+| **Unexpected Drift** | Changes that are not accounted for by any known exemption. Review each one before applying. |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | All drift is expected, or no changes detected. Safe to proceed. |
+| `1` | Unexpected drift found. Review the output before running `terraform apply`. |
+
+This makes `verify-drift` suitable for use in CI pipelines:
+
+```bash
+tf-migrate verify-drift --file plan.txt || exit 1
+```
+
+---
+
 ## Command Reference
 
 ### Global Flags
@@ -163,6 +253,12 @@ tf-migrate migrate \
 |------|-------------|---------|
 | `--output-dir` | Output directory for migrated configuration files | In-place |
 | `--backup` | Create backup of original files before migration | true |
+
+### Verify-Drift Command Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--file` | Path to `terraform plan` output file | Required |
 
 ### Development Tools
 
