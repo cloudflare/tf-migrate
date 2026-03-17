@@ -519,7 +519,8 @@ moved {
 }
 `,
 		},
-		// TODO - Check with service team if this is captured in another resource / removal is intentional
+		// ssh_session_log is intentionally dropped: no v5 equivalent exists.
+		// Confirmed by v5 provider migration/v500/transform.go which also drops it.
 		{
 			Name: "ssh_session_log removed",
 			Input: `
@@ -547,7 +548,8 @@ moved {
 }
 `,
 		},
-		// TODO - Check with service team if this is captured in another resource / removal is intentional
+		// payload_log is intentionally dropped: no v5 equivalent exists.
+		// Confirmed by v5 provider migration/v500/transform.go which also drops it.
 		{
 			Name: "payload_log removed",
 			Input: `
@@ -833,4 +835,3 @@ moved {
 func TestStateTransformation_Removed(t *testing.T) {
 	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
 }
-

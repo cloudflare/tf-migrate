@@ -83,10 +83,65 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// v5: country_pools = { "US" = [...] }
 	m.transformPoolsBlocks(body, "country_pools", "country")
 
+	// Transform rules blocks to list attribute.
+	// v4: repeated rules { ... overrides { ... } fixed_response { ... } } blocks
+	// v5: rules = [{ ... overrides = { ... } fixed_response = { ... } }, ...]
+	//
+	// Each rule's overrides sub-block contains the same block→attribute patterns
+	// as the top-level LB resource, so we apply the same transformations recursively.
+	tfhcl.ConvertBlocksToAttributeList(body, "rules", m.transformRuleBlock)
+
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
+}
+
+// transformRuleBlock applies all necessary transformations to a single rules block
+// before it is converted to an object in the rules list attribute.
+func (m *V4ToV5Migrator) transformRuleBlock(ruleBlock *hclwrite.Block) {
+	ruleBody := ruleBlock.Body()
+
+	// Transform fixed_response block (MaxItems:1) → single object attribute
+	// v4: fixed_response { message_body = "..." status_code = 200 ... }
+	// v5: fixed_response = { message_body = "..." status_code = 200 ... }
+	tfhcl.ConvertSingleBlockToAttribute(ruleBody, "fixed_response", "fixed_response")
+
+	// Transform overrides block (TypeList, MaxItems:1 in practice) → single object attribute.
+	// The overrides body itself contains the same block→attribute patterns as the top-level LB.
+	// We must transform those nested blocks before converting overrides to an attribute.
+	overridesBlocks := tfhcl.FindBlocksByType(ruleBody, "overrides")
+	for _, overridesBlock := range overridesBlocks {
+		m.transformOverridesBlock(overridesBlock)
+	}
+
+	// Now convert the overrides block(s) to a single object attribute
+	// v4: overrides { ... }
+	// v5: overrides = { ... }
+	tfhcl.ConvertSingleBlockToAttribute(ruleBody, "overrides", "overrides")
+}
+
+// transformOverridesBlock applies all block→attribute transformations inside
+// a rules[].overrides block, mirroring the top-level LB transformations.
+func (m *V4ToV5Migrator) transformOverridesBlock(overridesBlock *hclwrite.Block) {
+	overridesBody := overridesBlock.Body()
+
+	// session_affinity_attributes block → single object attribute
+	tfhcl.ConvertSingleBlockToAttribute(overridesBody, "session_affinity_attributes", "session_affinity_attributes")
+
+	// adaptive_routing block → single object attribute
+	tfhcl.ConvertSingleBlockToAttribute(overridesBody, "adaptive_routing", "adaptive_routing")
+
+	// location_strategy block → single object attribute
+	tfhcl.ConvertSingleBlockToAttribute(overridesBody, "location_strategy", "location_strategy")
+
+	// random_steering block → single object attribute
+	tfhcl.ConvertSingleBlockToAttribute(overridesBody, "random_steering", "random_steering")
+
+	// region_pools / pop_pools / country_pools blocks → map attributes
+	m.transformPoolsBlocks(overridesBody, "region_pools", "region")
+	m.transformPoolsBlocks(overridesBody, "pop_pools", "pop")
+	m.transformPoolsBlocks(overridesBody, "country_pools", "country")
 }
 
 // transformPoolsBlocks converts region/pop/country_pools blocks to map attributes
