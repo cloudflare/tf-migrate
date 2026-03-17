@@ -466,6 +466,19 @@ func RunE2ETests(cfg *RunConfig) error {
 	}
 	printSuccess("Terraform init successful")
 
+	// Remove state entries for resource types the v5 provider no longer knows.
+	// The v5 provider has no schema for these types, so terraform plan would fail
+	// with "no schema available" errors. The removed blocks in the migrated config
+	// handle the config side; we handle the state side here.
+	//
+	// This is the automated equivalent of the manual step tf-migrate warns about:
+	//   terraform state rm 'cloudflare_zone_settings_override.<name>'
+	if err := removeObsoleteStateEntries(v5TF, []string{
+		"cloudflare_zone_settings_override",
+	}); err != nil {
+		printYellow("Warning: Failed to remove obsolete state entries: %v", err)
+	}
+
 	// Optional diagnostic snapshot before refresh
 	if cfg.NoRefreshSnapshot {
 		printYellow("Running terraform plan in v5/ (without refresh)...")

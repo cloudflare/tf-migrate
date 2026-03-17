@@ -378,6 +378,36 @@ func CreateMovedBlock(from, to string) *hclwrite.Block {
 	return block
 }
 
+// CreateRemovedBlock creates a removed block that removes a resource from state
+// without destroying it (requires Terraform 1.7+). Used when a v4 resource type
+// no longer exists in v5 and the state entry must be dropped cleanly.
+//
+//	removed {
+//	  from = cloudflare_zone_settings_override.example
+//	  lifecycle { destroy = false }
+//	}
+func CreateRemovedBlock(from string) *hclwrite.Block {
+	block := hclwrite.NewBlock("removed", nil)
+	body := block.Body()
+
+	fromParts := strings.Split(from, ".")
+	fromTraversal := hcl.Traversal{}
+	for i, part := range fromParts {
+		if i == 0 {
+			fromTraversal = append(fromTraversal, hcl.TraverseRoot{Name: part})
+		} else {
+			fromTraversal = append(fromTraversal, hcl.TraverseAttr{Name: part})
+		}
+	}
+	body.SetAttributeTraversal("from", fromTraversal)
+
+	lcBlock := hclwrite.NewBlock("lifecycle", nil)
+	lcBlock.Body().SetAttributeValue("destroy", cty.False)
+	body.AppendBlock(lcBlock)
+
+	return block
+}
+
 // CreateImportBlock creates an import block for a resource
 // Used for generating import blocks when transforming resources
 func CreateImportBlock(resourceType, resourceName, importID string) *hclwrite.Block {
@@ -821,19 +851,21 @@ func copyMetaArguments(original, newBlock *hclwrite.Block, attributeRenames map[
 // Example:
 //
 // Before:
-//   dynamic "origins" {
-//     for_each = local.origin_configs
-//     content {
-//       name    = origins.value.name
-//       address = origins.value.address
-//     }
-//   }
+//
+//	dynamic "origins" {
+//	  for_each = local.origin_configs
+//	  content {
+//	    name    = origins.value.name
+//	    address = origins.value.address
+//	  }
+//	}
 //
 // After:
-//   origins = [for value in local.origin_configs : {
-//     name    = value.name
-//     address = value.address
-//   }]
+//
+//	origins = [for value in local.origin_configs : {
+//	  name    = value.name
+//	  address = value.address
+//	}]
 func ConvertDynamicBlocksToForExpression(body *hclwrite.Body, targetBlockType string) {
 	// Find all dynamic blocks
 	dynamicBlocks := FindBlocksByType(body, "dynamic")
@@ -977,20 +1009,22 @@ func replaceIteratorReferences(tokens hclwrite.Tokens, iteratorName string) hclw
 // Example - Converting managed headers:
 //
 // Before:
-//   managed_request_headers {
-//     id      = "header_1"
-//     enabled = true
-//   }
-//   managed_request_headers {
-//     id      = "header_2"
-//     enabled = false
-//   }
+//
+//	managed_request_headers {
+//	  id      = "header_1"
+//	  enabled = true
+//	}
+//	managed_request_headers {
+//	  id      = "header_2"
+//	  enabled = false
+//	}
 //
 // After calling ConvertBlocksToArrayAttribute(body, "managed_request_headers"):
-//   managed_request_headers = [
-//     { id = "header_1", enabled = true },
-//     { id = "header_2", enabled = false }
-//   ]
+//
+//	managed_request_headers = [
+//	  { id = "header_1", enabled = true },
+//	  { id = "header_2", enabled = false }
+//	]
 //
 // If no blocks are found and emptyIfNone is true, sets an empty array [].
 //

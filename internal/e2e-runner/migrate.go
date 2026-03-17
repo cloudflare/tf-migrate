@@ -141,6 +141,14 @@ func RunMigrate(resources string) error {
 		printYellow("Warning: Failed to apply post-migration patches: %v", err)
 	}
 
+	// Hoist import blocks from module subdirectories to the root main.tf.
+	// Terraform only supports import blocks in the root module, so any import
+	// blocks generated inside a module directory must be moved to root with the
+	// module address prepended to the `to` attribute.
+	if err := hoistImportBlocksToRoot(generatedDir, resourceList); err != nil {
+		printYellow("Warning: Failed to hoist import blocks to root: %v", err)
+	}
+
 	// Clean up backup files
 	if err := filepath.Walk(generatedDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -518,6 +526,207 @@ func filterStateFile(dir string, resources []string) error {
 
 	// Use restrictive permissions for state files (contain sensitive data)
 	return os.WriteFile(stateFile, filteredData, permSecretFile)
+}
+
+// hoistImportBlocksToRoot extracts import blocks from module subdirectories and
+// appends them to the root main.tf with the module address prepended to `to`.
+//
+// Terraform only supports import blocks in the root module. tf-migrate generates
+// import blocks inside the resource module files (e.g. zone_setting/zone_setting.tf).
+// This function moves them to root so they are valid.
+//
+// Example: an import block inside zone_setting/ with
+//
+//	to = cloudflare_zone_setting.minimal_always_online
+//
+// becomes at root:
+//
+//	to = module.zone_setting.cloudflare_zone_setting.minimal_always_online
+func hoistImportBlocksToRoot(generatedDir string, resourceList []string) error {
+	mainTFPath := filepath.Join(generatedDir, "main.tf")
+
+	var hoisted []string
+
+	for _, resource := range resourceList {
+		resource = strings.TrimSpace(resource)
+		moduleDir := filepath.Join(generatedDir, resource)
+		if _, err := os.Stat(moduleDir); os.IsNotExist(err) {
+			continue
+		}
+
+		tfFiles, err := filepath.Glob(filepath.Join(moduleDir, "*.tf"))
+		if err != nil {
+			continue
+		}
+
+		for _, tfFile := range tfFiles {
+			content, err := os.ReadFile(tfFile)
+			if err != nil {
+				continue
+			}
+
+			cleaned, extracted := extractImportBlocks(string(content), resource)
+			if len(extracted) == 0 {
+				continue
+			}
+
+			if err := os.WriteFile(tfFile, []byte(cleaned), permFile); err != nil {
+				return fmt.Errorf("failed to rewrite %s after extracting import blocks: %w", tfFile, err)
+			}
+
+			hoisted = append(hoisted, extracted...)
+			printBlue("  ✓ Hoisted %d import block(s) from %s/%s to root",
+				len(extracted), resource, filepath.Base(tfFile))
+		}
+	}
+
+	if len(hoisted) == 0 {
+		return nil
+	}
+
+	// Append all hoisted import blocks to root main.tf
+	f, err := os.OpenFile(mainTFPath, os.O_APPEND|os.O_WRONLY, permFile)
+	if err != nil {
+		return fmt.Errorf("failed to open root main.tf for appending import blocks: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := fmt.Fprintf(f, "\n# Import blocks hoisted from module subdirectories\n"); err != nil {
+		return err
+	}
+	for _, block := range hoisted {
+		if _, err := fmt.Fprintf(f, "%s\n", block); err != nil {
+			return err
+		}
+	}
+
+	printSuccess("Hoisted %d import block(s) to root main.tf", len(hoisted))
+	return nil
+}
+
+// extractImportBlocks removes all import blocks from content and returns:
+// - the content with import blocks removed
+// - the import blocks rewritten with "module.<moduleName>." prepended to the `to` address
+func extractImportBlocks(content, moduleName string) (cleaned string, blocks []string) {
+	lines := strings.Split(content, "\n")
+	var cleanedLines []string
+	var currentBlock []string
+	inImport := false
+	braceDepth := 0
+
+	for _, line := range lines {
+		if !inImport && strings.TrimSpace(line) == "import {" {
+			inImport = true
+			braceDepth = 1
+			currentBlock = []string{line}
+			continue
+		}
+
+		if inImport {
+			currentBlock = append(currentBlock, line)
+			braceDepth += strings.Count(line, "{")
+			braceDepth -= strings.Count(line, "}")
+
+			if braceDepth == 0 {
+				blockStr := strings.Join(currentBlock, "\n")
+
+				// Skip hoisting if the id expression references module-local values
+				// (e.g. local.X) that are not accessible at root level. Leave the
+				// block in the module file with a comment explaining why it was skipped.
+				if strings.Contains(blockStr, "local.") {
+					cleanedLines = append(cleanedLines, "# NOTE: import block not hoisted to root — id references a module-local value.")
+					cleanedLines = append(cleanedLines, "# Add this import block manually in your root module with the resolved id value:")
+					for _, bl := range currentBlock {
+						cleanedLines = append(cleanedLines, "# "+bl)
+					}
+					currentBlock = nil
+					inImport = false
+					braceDepth = 0
+					continue
+				}
+
+				// Rewrite the `to` attribute to include the module prefix
+				var rewritten []string
+				for _, blockLine := range currentBlock {
+					trimmed := strings.TrimSpace(blockLine)
+					if strings.HasPrefix(trimmed, "to = ") {
+						addr := strings.TrimPrefix(trimmed, "to = ")
+						indent := blockLine[:len(blockLine)-len(strings.TrimLeft(blockLine, " \t"))]
+						blockLine = indent + "to = module." + moduleName + "." + addr
+					}
+					rewritten = append(rewritten, blockLine)
+				}
+				blocks = append(blocks, strings.Join(rewritten, "\n"))
+				currentBlock = nil
+				inImport = false
+				braceDepth = 0
+			}
+			continue
+		}
+
+		cleanedLines = append(cleanedLines, line)
+	}
+
+	// Trim trailing blank lines left by removed import blocks
+	for len(cleanedLines) > 0 && strings.TrimSpace(cleanedLines[len(cleanedLines)-1]) == "" {
+		cleanedLines = cleanedLines[:len(cleanedLines)-1]
+	}
+
+	return strings.Join(cleanedLines, "\n") + "\n", blocks
+}
+
+// removeObsoleteStateEntries removes state entries whose resource type is no longer
+// known to the v5 provider. Without this, terraform plan fails with:
+//
+//	"no schema available for <type> while reading state"
+//
+// This is the automated equivalent of the manual cleanup step that tf-migrate
+// warns about in its output when migrating zone_settings_override resources.
+func removeObsoleteStateEntries(tf *TerraformRunner, obsoleteTypes []string) error {
+	resources, err := tf.StateList()
+	if err != nil {
+		// State list may fail if state is empty or not initialized — not an error
+		return nil
+	}
+
+	obsoleteSet := make(map[string]bool, len(obsoleteTypes))
+	for _, t := range obsoleteTypes {
+		obsoleteSet[t] = true
+	}
+
+	var removed []string
+	for _, addr := range resources {
+		// Extract resource type from address like:
+		//   module.zone_setting.cloudflare_zone_settings_override.minimal
+		//   cloudflare_zone_settings_override.minimal
+		//   module.zone_setting.cloudflare_zone_settings_override.conditional_enabled[0]
+		parts := strings.Split(addr, ".")
+		// Walk parts to find the resource type (skip "module" and module name pairs)
+		resourceType := ""
+		for i := 0; i < len(parts); i++ {
+			if parts[i] == "module" {
+				i++ // skip module name
+				continue
+			}
+			resourceType = parts[i]
+			break
+		}
+
+		if obsoleteSet[resourceType] {
+			printYellow("  Removing obsolete state entry: %s", addr)
+			if err := tf.StateRm(addr); err != nil {
+				printYellow("  Warning: failed to remove %s: %v", addr, err)
+			} else {
+				removed = append(removed, addr)
+			}
+		}
+	}
+
+	if len(removed) > 0 {
+		printSuccess("Removed %d obsolete state entries (resource type no longer in v5 provider)", len(removed))
+	}
+
+	return nil
 }
 
 // allResourcesUseProviderStateUpgrader checks if resources use provider state upgraders

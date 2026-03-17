@@ -78,7 +78,6 @@ module "complex" {
 	}
 }
 
-
 func TestFilterStateFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -337,16 +336,16 @@ func TestCopyAllResources(t *testing.T) {
 
 	// Verify copied files exist
 	tests := []struct {
-		path       string
+		path        string
 		shouldExist bool
 		content     string
 	}{
 		{filepath.Join(dstDir, "provider.tf"), true, "provider content"},
 		{filepath.Join(dstDir, "variables.tf"), true, "variables content"},
 		{filepath.Join(dstDir, "module1", "main.tf"), true, "module1 content"},
-		{filepath.Join(dstDir, "backend.hcl"), false, ""}, // Should be excluded
+		{filepath.Join(dstDir, "backend.hcl"), false, ""},         // Should be excluded
 		{filepath.Join(dstDir, ".terraform.lock.hcl"), false, ""}, // Should be excluded
-		{filepath.Join(dstDir, ".terraform"), false, ""}, // Should be excluded
+		{filepath.Join(dstDir, ".terraform"), false, ""},          // Should be excluded
 	}
 
 	for _, tt := range tests {
@@ -523,5 +522,120 @@ func TestCopyTargetedResources_OptionalRootFiles(t *testing.T) {
 	// Verify missing optional files don't cause errors
 	if _, err := os.Stat(filepath.Join(dstDir, "variables.tf")); err == nil {
 		t.Error("variables.tf should not exist if it wasn't in source")
+	}
+}
+
+func TestExtractImportBlocks(t *testing.T) {
+	tests := []struct {
+		name           string
+		content        string
+		moduleName     string
+		wantCleaned    string
+		wantBlockCount int
+		wantToPrefix   string
+	}{
+		{
+			name: "single import block with literal zone_id",
+			content: `resource "cloudflare_zone_setting" "example_http3" {
+  zone_id    = "abc123"
+  setting_id = "http3"
+  value      = "on"
+}
+import {
+  to = cloudflare_zone_setting.example_http3
+  id = "abc123/http3"
+}
+removed {
+  from = cloudflare_zone_settings_override.example
+  lifecycle {
+    destroy = false
+  }
+}
+`,
+			moduleName:     "zone_setting",
+			wantBlockCount: 1,
+			wantToPrefix:   "module.zone_setting.cloudflare_zone_setting.example_http3",
+		},
+		{
+			name: "single import block with variable zone_id",
+			content: `resource "cloudflare_zone_setting" "test_http3" {
+  zone_id    = var.zone_id
+  setting_id = "http3"
+  value      = "on"
+}
+import {
+  to = cloudflare_zone_setting.test_http3
+  id = "${var.zone_id}/http3"
+}
+`,
+			moduleName:     "zone_setting",
+			wantBlockCount: 1,
+			wantToPrefix:   "module.zone_setting.cloudflare_zone_setting.test_http3",
+		},
+		{
+			name: "multiple import blocks",
+			content: `resource "cloudflare_zone_setting" "test_http3" {
+  zone_id    = var.zone_id
+  setting_id = "http3"
+  value      = "on"
+}
+import {
+  to = cloudflare_zone_setting.test_http3
+  id = "${var.zone_id}/http3"
+}
+resource "cloudflare_zone_setting" "test_brotli" {
+  zone_id    = var.zone_id
+  setting_id = "brotli"
+  value      = "on"
+}
+import {
+  to = cloudflare_zone_setting.test_brotli
+  id = "${var.zone_id}/brotli"
+}
+`,
+			moduleName:     "zone_setting",
+			wantBlockCount: 2,
+			wantToPrefix:   "module.zone_setting.",
+		},
+		{
+			name: "no import blocks",
+			content: `resource "cloudflare_zone_setting" "test_http3" {
+  zone_id    = var.zone_id
+  setting_id = "http3"
+  value      = "on"
+}
+`,
+			moduleName:     "zone_setting",
+			wantBlockCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cleaned, blocks := extractImportBlocks(tt.content, tt.moduleName)
+
+			if len(blocks) != tt.wantBlockCount {
+				t.Errorf("extractImportBlocks() got %d blocks, want %d", len(blocks), tt.wantBlockCount)
+			}
+
+			// Verify import blocks are removed from cleaned content
+			if strings.Contains(cleaned, "import {") {
+				t.Errorf("extractImportBlocks() cleaned content still contains import block:\n%s", cleaned)
+			}
+
+			// Verify `to` addresses are prefixed with module name
+			if tt.wantToPrefix != "" {
+				for _, block := range blocks {
+					if !strings.Contains(block, tt.wantToPrefix) {
+						t.Errorf("extractImportBlocks() block missing module prefix %q:\n%s", tt.wantToPrefix, block)
+					}
+				}
+			}
+
+			// Verify non-import content is preserved
+			if !strings.Contains(cleaned, "cloudflare_zone_setting") {
+				t.Errorf("extractImportBlocks() cleaned content lost resource block")
+			}
+		})
 	}
 }

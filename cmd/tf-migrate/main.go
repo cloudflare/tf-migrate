@@ -505,76 +505,86 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 	return nil
 }
 
-// replaceSkippingMovedBlocks replaces old with new in content, but skips any content within moved blocks
-func replaceSkippingMovedBlocks(content, old, new string) string {
-	// Regex to match moved blocks: moved { ... }
-	// This matches multiline moved blocks with any content inside
-	movedBlockPattern := regexp.MustCompile(`(?s)moved\s*\{[^}]*\}`)
+// findProtectedBlockRanges returns the [start, end) byte ranges of all moved and
+// removed blocks in content. Uses brace counting to correctly handle nested braces
+// (e.g. a removed block containing a lifecycle { } sub-block).
+func findProtectedBlockRanges(content string) [][2]int {
+	var ranges [][2]int
+	i := 0
+	for i < len(content) {
+		// Look for "moved {" or "removed {" at the start of a line (possibly indented)
+		for _, keyword := range []string{"moved", "removed"} {
+			if !strings.HasPrefix(content[i:], keyword) {
+				continue
+			}
+			// Must be followed by optional whitespace then "{"
+			j := i + len(keyword)
+			for j < len(content) && (content[j] == ' ' || content[j] == '\t' || content[j] == '\n' || content[j] == '\r') {
+				j++
+			}
+			if j >= len(content) || content[j] != '{' {
+				continue
+			}
+			// Found a block — count braces to find the end
+			start := i
+			depth := 0
+			k := j
+			for k < len(content) {
+				if content[k] == '{' {
+					depth++
+				} else if content[k] == '}' {
+					depth--
+					if depth == 0 {
+						ranges = append(ranges, [2]int{start, k + 1})
+						i = k + 1
+						goto nextChar
+					}
+				}
+				k++
+			}
+		}
+		i++
+	nextChar:
+	}
+	return ranges
+}
 
-	// Find all moved block positions
-	matches := movedBlockPattern.FindAllStringIndex(content, -1)
-	if len(matches) == 0 {
-		// No moved blocks, do simple replacement
+// replaceSkippingMovedBlocks replaces old with new in content, skipping moved and
+// removed blocks. Uses brace counting to correctly handle nested braces.
+func replaceSkippingMovedBlocks(content, old, new string) string {
+	protected := findProtectedBlockRanges(content)
+	if len(protected) == 0 {
 		return strings.ReplaceAll(content, old, new)
 	}
 
-	// Build result by processing content in segments
 	var result strings.Builder
 	lastEnd := 0
-
-	for _, match := range matches {
-		start, end := match[0], match[1]
-
-		// Process content before this moved block
-		before := content[lastEnd:start]
-		result.WriteString(strings.ReplaceAll(before, old, new))
-
-		// Copy the moved block as-is
-		result.WriteString(content[start:end])
-
-		lastEnd = end
+	for _, r := range protected {
+		result.WriteString(strings.ReplaceAll(content[lastEnd:r[0]], old, new))
+		result.WriteString(content[r[0]:r[1]])
+		lastEnd = r[1]
 	}
-
-	// Process remaining content after last moved block
 	result.WriteString(strings.ReplaceAll(content[lastEnd:], old, new))
-
 	return result.String()
 }
 
-// regexReplaceSkippingMovedBlocks replaces regex matches in content, but skips any content within moved blocks
+// regexReplaceSkippingMovedBlocks replaces regex matches in content, skipping moved
+// and removed blocks. Uses brace counting to correctly handle nested braces.
 func regexReplaceSkippingMovedBlocks(content, pattern, replacement string) string {
-	// Regex to match moved blocks
-	movedBlockPattern := regexp.MustCompile(`(?s)moved\s*\{[^}]*\}`)
-
-	// Find all moved block positions
-	matches := movedBlockPattern.FindAllStringIndex(content, -1)
-	if len(matches) == 0 {
-		// No moved blocks, do simple replacement
-		re := regexp.MustCompile(pattern)
+	protected := findProtectedBlockRanges(content)
+	re := regexp.MustCompile(pattern)
+	if len(protected) == 0 {
 		return re.ReplaceAllString(content, replacement)
 	}
 
-	// Build result by processing content in segments
 	var result strings.Builder
 	lastEnd := 0
-	re := regexp.MustCompile(pattern)
-
-	for _, match := range matches {
-		start, end := match[0], match[1]
-
-		// Process content before this moved block
-		before := content[lastEnd:start]
-		result.WriteString(re.ReplaceAllString(before, replacement))
-
-		// Copy the moved block as-is
-		result.WriteString(content[start:end])
-
-		lastEnd = end
+	for _, r := range protected {
+		result.WriteString(re.ReplaceAllString(content[lastEnd:r[0]], replacement))
+		result.WriteString(content[r[0]:r[1]])
+		lastEnd = r[1]
 	}
-
-	// Process remaining content after last moved block
 	result.WriteString(re.ReplaceAllString(content[lastEnd:], replacement))
-
 	return result.String()
 }
 
