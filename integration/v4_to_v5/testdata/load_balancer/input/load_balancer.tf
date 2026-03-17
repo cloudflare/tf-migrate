@@ -138,3 +138,107 @@ resource "cloudflare_load_balancer" "with_all_attributes" {
     default_weight = 0.5
   }
 }
+
+# 8. Load balancer with rules - fixed_response
+# v4: rules { fixed_response { ... } }
+# v5: rules = [{ fixed_response = { ... } }]
+resource "cloudflare_load_balancer" "with_rules_fixed_response" {
+  zone_id          = var.cloudflare_zone_id
+  name             = "${local.name_prefix}-rules-fixed-lb.${var.cloudflare_domain}"
+  default_pool_ids = ["pool-id-1"]
+  fallback_pool_id = "pool-id-fallback"
+
+  rules {
+    name      = "return 200"
+    condition = "dns.qry.type == 28"
+
+    fixed_response {
+      message_body = "hello"
+      status_code  = 200
+      content_type = "html"
+      location     = "www.example.com"
+    }
+  }
+}
+
+# 9. Load balancer with rules - overrides containing block→attribute sub-blocks
+# v4: rules { overrides { session_affinity_attributes { } adaptive_routing { } ... } }
+# v5: rules = [{ overrides = { session_affinity_attributes = { } adaptive_routing = { } ... } }]
+resource "cloudflare_load_balancer" "with_rules_overrides" {
+  zone_id          = var.cloudflare_zone_id
+  name             = "${local.name_prefix}-rules-overrides-lb.${var.cloudflare_domain}"
+  default_pool_ids = ["pool-id-1"]
+  fallback_pool_id = "pool-id-fallback"
+
+  rules {
+    name      = "override rule"
+    condition = "dns.qry.type == 28"
+
+    overrides {
+      steering_policy = "geo"
+
+      session_affinity_attributes {
+        samesite               = "Auto"
+        secure                 = "Auto"
+        zero_downtime_failover = "sticky"
+      }
+
+      adaptive_routing {
+        failover_across_pools = true
+      }
+
+      location_strategy {
+        prefer_ecs = "always"
+        mode       = "resolver_ip"
+      }
+
+      random_steering {
+        default_weight = 0.2
+      }
+
+      region_pools {
+        region   = "ENAM"
+        pool_ids = ["pool-id-1"]
+      }
+    }
+  }
+}
+
+# 10. Load balancer with multiple rules (mixed overrides and fixed_response)
+resource "cloudflare_load_balancer" "with_multiple_rules" {
+  zone_id          = var.cloudflare_zone_id
+  name             = "${local.name_prefix}-multi-rules-lb.${var.cloudflare_domain}"
+  default_pool_ids = ["pool-id-1"]
+  fallback_pool_id = "pool-id-fallback"
+
+  rules {
+    name      = "geo rule"
+    condition = "dns.qry.type == 28"
+    priority  = 1
+
+    overrides {
+      steering_policy = "geo"
+
+      region_pools {
+        region   = "WNAM"
+        pool_ids = ["pool-id-1"]
+      }
+
+      region_pools {
+        region   = "ENAM"
+        pool_ids = ["pool-id-2"]
+      }
+    }
+  }
+
+  rules {
+    name      = "fallback rule"
+    condition = "dns.qry.type == 1"
+    priority  = 2
+
+    fixed_response {
+      message_body = "not found"
+      status_code  = 404
+    }
+  }
+}

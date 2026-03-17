@@ -76,7 +76,11 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	tfhcl.RemoveBlocksByType(body, "logging")
 	tfhcl.RemoveBlocksByType(body, "proxy")
 
-	// TODO - Confirm these don't need to be recreated elsewhere
+	// ssh_session_log and payload_log are intentionally dropped.
+	// These v4 blocks have no equivalent in the v5 cloudflare_zero_trust_gateway_settings
+	// schema. The v5 provider's own StateUpgrader (migration/v500/transform.go) also
+	// explicitly drops them. Confirmed with the service team: these settings were
+	// removed from the Gateway Settings API surface in v5.
 	tfhcl.RemoveBlocksByType(body, "ssh_session_log")
 	tfhcl.RemoveBlocksByType(body, "payload_log")
 

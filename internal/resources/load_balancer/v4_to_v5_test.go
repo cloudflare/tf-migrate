@@ -186,6 +186,365 @@ func TestV4ToV5Transformation(t *testing.T) {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
+	t.Run("RulesTransformation", func(t *testing.T) {
+		tests := []testhelpers.ConfigTestCase{
+			{
+				Name: "Rules with fixed_response only",
+				Input: `resource "cloudflare_load_balancer" "example" {
+  zone_id          = "zone-id"
+  name             = "example.com"
+  default_pool_ids = ["pool-id"]
+  fallback_pool_id = "fallback-id"
+
+  rules {
+    name      = "return 200"
+    condition = "dns.qry.type == 28"
+
+    fixed_response {
+      message_body = "hello"
+      status_code  = 200
+      content_type = "html"
+      location     = "www.example.com"
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_load_balancer" "example" {
+  zone_id       = "zone-id"
+  name          = "example.com"
+  default_pools = ["pool-id"]
+  fallback_pool = "fallback-id"
+  rules = [
+    {
+      name      = "return 200"
+      condition = "dns.qry.type == 28"
+      fixed_response = {
+        message_body = "hello"
+        status_code  = 200
+        content_type = "html"
+        location     = "www.example.com"
+      }
+    }
+  ]
+}`,
+			},
+			{
+				Name: "Rules with overrides containing session_affinity_attributes and adaptive_routing",
+				Input: `resource "cloudflare_load_balancer" "example" {
+  zone_id          = "zone-id"
+  name             = "example.com"
+  default_pool_ids = ["pool-id"]
+  fallback_pool_id = "fallback-id"
+
+  rules {
+    name      = "override rule"
+    condition = "dns.qry.type == 28"
+
+    overrides {
+      steering_policy = "geo"
+
+      session_affinity_attributes {
+        samesite               = "Auto"
+        secure                 = "Auto"
+        zero_downtime_failover = "sticky"
+      }
+
+      adaptive_routing {
+        failover_across_pools = true
+      }
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_load_balancer" "example" {
+  zone_id       = "zone-id"
+  name          = "example.com"
+  default_pools = ["pool-id"]
+  fallback_pool = "fallback-id"
+  rules = [
+    {
+      name      = "override rule"
+      condition = "dns.qry.type == 28"
+      overrides = {
+        steering_policy = "geo"
+        session_affinity_attributes = {
+          samesite               = "Auto"
+          secure                 = "Auto"
+          zero_downtime_failover = "sticky"
+        }
+        adaptive_routing = {
+          failover_across_pools = true
+        }
+      }
+    }
+  ]
+}`,
+			},
+			{
+				Name: "Rules with overrides containing location_strategy and random_steering",
+				Input: `resource "cloudflare_load_balancer" "example" {
+  zone_id          = "zone-id"
+  name             = "example.com"
+  default_pool_ids = ["pool-id"]
+  fallback_pool_id = "fallback-id"
+
+  rules {
+    name      = "steering rule"
+    condition = "dns.qry.type == 28"
+
+    overrides {
+      location_strategy {
+        prefer_ecs = "always"
+        mode       = "resolver_ip"
+      }
+
+      random_steering {
+        default_weight = 0.2
+        pool_weights = {
+          "pool-id" = 0.4
+        }
+      }
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_load_balancer" "example" {
+  zone_id       = "zone-id"
+  name          = "example.com"
+  default_pools = ["pool-id"]
+  fallback_pool = "fallback-id"
+  rules = [
+    {
+      name      = "steering rule"
+      condition = "dns.qry.type == 28"
+      overrides = {
+        location_strategy = {
+          prefer_ecs = "always"
+          mode       = "resolver_ip"
+        }
+        random_steering = {
+          default_weight = 0.2
+          pool_weights = {
+            "pool-id" = 0.4
+          }
+        }
+      }
+    }
+  ]
+}`,
+			},
+			{
+				Name: "Rules with overrides containing region_pools",
+				Input: `resource "cloudflare_load_balancer" "example" {
+  zone_id          = "zone-id"
+  name             = "example.com"
+  default_pool_ids = ["pool-id"]
+  fallback_pool_id = "fallback-id"
+
+  rules {
+    name      = "region rule"
+    condition = "dns.qry.type == 28"
+
+    overrides {
+      region_pools {
+        region   = "ENAM"
+        pool_ids = ["pool-id"]
+      }
+
+      region_pools {
+        region   = "WNAM"
+        pool_ids = ["pool-id-2"]
+      }
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_load_balancer" "example" {
+  zone_id       = "zone-id"
+  name          = "example.com"
+  default_pools = ["pool-id"]
+  fallback_pool = "fallback-id"
+  rules = [
+    {
+      name      = "region rule"
+      condition = "dns.qry.type == 28"
+      overrides = {
+        region_pools = {
+          "ENAM" = ["pool-id"]
+          "WNAM" = ["pool-id-2"]
+        }
+      }
+    }
+  ]
+}`,
+			},
+			{
+				Name: "Multiple rules with mixed overrides and fixed_response",
+				Input: `resource "cloudflare_load_balancer" "example" {
+  zone_id          = "zone-id"
+  name             = "example.com"
+  default_pool_ids = ["pool-id"]
+  fallback_pool_id = "fallback-id"
+
+  rules {
+    name      = "rule 1"
+    condition = "dns.qry.type == 28"
+
+    overrides {
+      steering_policy = "geo"
+
+      adaptive_routing {
+        failover_across_pools = true
+      }
+
+      region_pools {
+        region   = "ENAM"
+        pool_ids = ["pool-id"]
+      }
+    }
+  }
+
+  rules {
+    name      = "rule 2"
+    condition = "dns.qry.type == 1"
+
+    fixed_response {
+      message_body = "not found"
+      status_code  = 404
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_load_balancer" "example" {
+  zone_id       = "zone-id"
+  name          = "example.com"
+  default_pools = ["pool-id"]
+  fallback_pool = "fallback-id"
+  rules = [
+    {
+      name      = "rule 1"
+      condition = "dns.qry.type == 28"
+      overrides = {
+        steering_policy = "geo"
+        adaptive_routing = {
+          failover_across_pools = true
+        }
+        region_pools = {
+          "ENAM" = ["pool-id"]
+        }
+      }
+    },
+    {
+      name      = "rule 2"
+      condition = "dns.qry.type == 1"
+      fixed_response = {
+        message_body = "not found"
+        status_code  = 404
+      }
+    }
+  ]
+}`,
+			},
+			{
+				Name: "Rules with all overrides sub-blocks (comprehensive)",
+				Input: `resource "cloudflare_load_balancer" "example" {
+  zone_id          = "zone-id"
+  name             = "example.com"
+  default_pool_ids = ["pool-id"]
+  fallback_pool_id = "fallback-id"
+
+  rules {
+    name      = "comprehensive rule"
+    condition = "dns.qry.type == 28"
+    priority  = 1
+    disabled  = false
+
+    overrides {
+      steering_policy      = "geo"
+      session_affinity     = "cookie"
+      session_affinity_ttl = 3600
+      fallback_pool        = "fallback-override-id"
+      default_pools        = ["pool-override-id"]
+
+      session_affinity_attributes {
+        samesite = "Lax"
+        secure   = "Always"
+      }
+
+      adaptive_routing {
+        failover_across_pools = true
+      }
+
+      location_strategy {
+        prefer_ecs = "always"
+        mode       = "resolver_ip"
+      }
+
+      random_steering {
+        default_weight = 0.3
+      }
+
+      region_pools {
+        region   = "WNAM"
+        pool_ids = ["pool-id"]
+      }
+
+      pop_pools {
+        pop      = "LAX"
+        pool_ids = ["pool-id"]
+      }
+
+      country_pools {
+        country  = "US"
+        pool_ids = ["pool-id"]
+      }
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_load_balancer" "example" {
+  zone_id       = "zone-id"
+  name          = "example.com"
+  default_pools = ["pool-id"]
+  fallback_pool = "fallback-id"
+  rules = [
+    {
+      name      = "comprehensive rule"
+      condition = "dns.qry.type == 28"
+      priority  = 1
+      disabled  = false
+      overrides = {
+        steering_policy      = "geo"
+        session_affinity     = "cookie"
+        session_affinity_ttl = 3600
+        fallback_pool        = "fallback-override-id"
+        default_pools        = ["pool-override-id"]
+        session_affinity_attributes = {
+          samesite = "Lax"
+          secure   = "Always"
+        }
+        adaptive_routing = {
+          failover_across_pools = true
+        }
+        location_strategy = {
+          prefer_ecs = "always"
+          mode       = "resolver_ip"
+        }
+        random_steering = {
+          default_weight = 0.3
+        }
+        region_pools = {
+          "WNAM" = ["pool-id"]
+        }
+        pop_pools = {
+          "LAX" = ["pool-id"]
+        }
+        country_pools = {
+          "US" = ["pool-id"]
+        }
+      }
+    }
+  ]
+}`,
+			},
+		}
+
+		testhelpers.RunConfigTransformTests(t, tests, migrator)
+	})
 }
 
 func TestV4ToV5TransformationState_Removed(t *testing.T) {
