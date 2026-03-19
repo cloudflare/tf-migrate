@@ -452,6 +452,7 @@ func RunE2ETests(cfg *RunConfig) error {
 	if tfConfigFile != "" {
 		v5TF.TFConfigFile = tfConfigFile
 	}
+	v5TF.EnvVars["TF_VAR_account_id"] = os.Getenv("CLOUDFLARE_ACCOUNT_ID")
 
 	// Initialize v5
 	v5InitArgs := []string{"init", "-no-color", "-input=false"}
@@ -971,6 +972,7 @@ func runV4Tests(ctx *testContext) error {
 	// Set R2 credentials
 	v4TF.EnvVars["AWS_ACCESS_KEY_ID"] = r2AccessKey
 	v4TF.EnvVars["AWS_SECRET_ACCESS_KEY"] = r2SecretKey
+	v4TF.EnvVars["TF_VAR_account_id"] = ctx.env.AccountID
 
 	// Create backend config
 	backendConfig := filepath.Join(ctx.v4Dir, "backend.hcl")
