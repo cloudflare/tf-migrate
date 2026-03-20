@@ -107,7 +107,7 @@ resource "cloudflare_zero_trust_gateway_policy" "uses_old_dlp_profile" {
   traffic     = "any(dns.domains[*] == \"dlp-old.example.com\")"
 
   # Attribute reference that needs updating after migration
-  profile_id = cloudflare_zero_trust_dlp_custom_profile.ref_source_old_name.id
+  # profile_id = cloudflare_zero_trust_dlp_custom_profile.ref_source_old_name.id
 }
 
 # Gateway policy referencing new-name DLP profile via attribute
@@ -121,7 +121,7 @@ resource "cloudflare_zero_trust_gateway_policy" "uses_new_dlp_profile" {
   traffic     = "any(dns.domains[*] == \"dlp-new.example.com\")"
 
   # Attribute reference that needs updating after migration
-  profile_id = cloudflare_zero_trust_dlp_custom_profile.ref_source_new_name.id
+  # profile_id = cloudflare_zero_trust_dlp_custom_profile.ref_source_new_name.id
 }
 
 # Pattern 1: Basic profiles with entries

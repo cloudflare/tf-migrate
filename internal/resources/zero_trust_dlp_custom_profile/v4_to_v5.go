@@ -199,8 +199,10 @@ func (m *V4ToV5Migrator) transformPatternBlock(entryBody *hclwrite.Body) {
 
 func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(body *hclwrite.Body) {
 	var enabledEntryIDs []string
+	hasEntryBlocks := false
 	for _, block := range body.Blocks() {
 		if block.Type() == "entry" {
+			hasEntryBlocks = true
 			entryBody := block.Body()
 			enabledAttr := entryBody.GetAttribute("enabled")
 			if enabledAttr != nil {
@@ -220,19 +222,26 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(body *hclwrite.Body) {
 
 	tfhcl.RemoveBlocksByType(body, "entry")
 
-	if len(enabledEntryIDs) > 0 {
-		var stringTokens []hclwrite.Tokens
-		for _, id := range enabledEntryIDs {
-			tokens := hclwrite.Tokens{
-				{Type: hclsyntax.TokenOQuote, Bytes: []byte{'"'}},
-				{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(id)},
-				{Type: hclsyntax.TokenCQuote, Bytes: []byte{'"'}},
+	// If there were entry blocks in v4 config, always add enabled_entries
+	// (even if empty) to prevent drift between state and config
+	if hasEntryBlocks {
+		if len(enabledEntryIDs) > 0 {
+			var stringTokens []hclwrite.Tokens
+			for _, id := range enabledEntryIDs {
+				tokens := hclwrite.Tokens{
+					{Type: hclsyntax.TokenOQuote, Bytes: []byte{'"'}},
+					{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(id)},
+					{Type: hclsyntax.TokenCQuote, Bytes: []byte{'"'}},
+				}
+				stringTokens = append(stringTokens, tokens)
 			}
-			stringTokens = append(stringTokens, tokens)
+			arrayTokens := hclwrite.TokensForTuple(stringTokens)
+			body.SetAttributeRaw("enabled_entries", arrayTokens)
+		} else {
+			// No enabled entries - set to empty array to match state
+			emptyArrayTokens := hclwrite.TokensForTuple(nil)
+			body.SetAttributeRaw("enabled_entries", emptyArrayTokens)
 		}
-
-		arrayTokens := hclwrite.TokensForTuple(stringTokens)
-		body.SetAttributeRaw("enabled_entries", arrayTokens)
 	}
 
 	if idAttr := body.GetAttribute("id"); idAttr != nil {
