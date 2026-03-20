@@ -25,7 +25,15 @@ resource "cloudflare_zero_trust_gateway_certificate" "with_lifecycle" {
   activate             = true
 
   lifecycle {
-    create_before_destroy = true
-    ignore_changes        = [activate]
+    # create_before_destroy is intentionally omitted: the gateway certificate API
+    # returns 500 when attempting to delete an active certificate, so recreation
+    # would leave a deposed object that can never be cleaned up.
+    #
+    # validity_period_days and gateway_managed are both RequiresReplace attributes.
+    # We ignore them in E2E tests to prevent Terraform from planning a replacement
+    # when the existing certificate was created with different values (e.g. from a
+    # prior test run). The migration logic for these attributes is covered by
+    # integration tests which use fixture data.
+    ignore_changes = [activate, validity_period_days, gateway_managed]
   }
 }
