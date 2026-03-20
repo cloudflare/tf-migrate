@@ -5,7 +5,6 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 )
 
 type V4ToV5Migrator struct {
@@ -47,15 +46,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState returns the state unchanged (no-op).
-//
-// State migration is now handled by the provider's StateUpgrader (v5.19+).
-// The provider implements UpgradeState with slot 0 handling v4 SDKv2 state
-// (schema_version=0) and transforming email_address→email, role_ids→roles.
-//
-// tf-migrate only needs to transform the HCL configuration; Terraform will
-// invoke the provider's state upgrader when it detects schema_version mismatch.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// No-op: Provider's StateUpgrader handles v4→v5 state transformation
-	return stateJSON.String(), nil
-}

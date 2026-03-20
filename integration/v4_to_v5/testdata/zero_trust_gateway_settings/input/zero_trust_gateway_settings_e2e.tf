@@ -42,7 +42,7 @@ resource "cloudflare_teams_account" "e2e_comprehensive" {
 
   # Flat boolean fields -> nested structures in v5
   activity_log_enabled       = true
-  tls_decrypt_enabled        = false
+  tls_decrypt_enabled        = false # requires a certificate to be configured; keep false for e2e
   protocol_detection_enabled = true
 
   # Browser isolation fields set to false (no entitlement needed for false values)

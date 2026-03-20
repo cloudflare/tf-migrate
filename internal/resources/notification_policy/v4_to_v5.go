@@ -5,7 +5,6 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -162,21 +161,3 @@ func (m *V4ToV5Migrator) buildIntegrationArray(blocks []*hclwrite.Block) hclwrit
 	return hclwrite.TokensForTuple(arrayElements)
 }
 
-// TransformState is a no-op for notification_policy.
-// State transformation is handled by the provider's StateUpgraders (UpgradeState).
-// The provider's UpgradeFromV4 function handles:
-// - filters: MaxItems:1 array → SingleNestedAttribute object
-// - Three integration Sets → single mechanisms nested object
-// - Integration items: drop "name" field, keep only "id"
-// - Filter fields: Set → List conversion (~35 fields)
-// - Timestamps: String → RFC3339
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State transformation is handled by the provider's StateUpgraders
-	// This function is a no-op for notification_policy migration
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

@@ -831,7 +831,3 @@ moved {
 
 	testhelpers.RunConfigTransformTests(t, testCases, migrator)
 }
-
-func TestStateTransformation_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}

@@ -4,9 +4,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 )
 
 // V4ToV5Migrator handles the migration of cloudflare_tiered_cache from v4 to v5.
@@ -54,15 +52,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	resourceName := tfhcl.GetResourceName(block)
 	valueAttr := body.GetAttribute("value")
 
-	// Try to get the actual value
-	var value string
-	if tfhcl.IsExpressionAttribute(valueAttr) {
-		// It's a variable reference - look up the actual value in state
-		value = state.GetResourceAttribute(ctx.StateJSON, "cloudflare_tiered_cache", resourceName, "cache_type")
-	} else {
-		// It's a literal value
-		value = tfhcl.ExtractStringFromAttribute(valueAttr)
-	}
+	// Get the literal value (variable references cannot be resolved without state)
+	value := tfhcl.ExtractStringFromAttribute(valueAttr)
 
 	if value == "smart" {
 		// cache_type="smart" → value="on" for both resources
@@ -163,17 +154,4 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		Blocks:         blocks,
 		RemoveOriginal: true,
 	}, nil
-}
-
-// TransformState handles state file transformations.
-// State transformation is handled by the provider's StateUpgraders (UpgradeState)
-// The provider transforms cache_type to value when it sees schema_version=0
-// This function is a no-op for tiered_cache migration
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
 }

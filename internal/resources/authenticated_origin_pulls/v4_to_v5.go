@@ -5,7 +5,6 @@ import (
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -144,20 +143,6 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}
 }
 
-// TransformState is disabled - state transformation is handled by provider StateUpgraders.
-// This method is a no-op and returns the state unchanged.
-// Users should use `terraform state mv` or Terraform 1.8+ `moved` blocks for resource renaming,
-// which will trigger the provider's StateUpgrader to handle the schema transformation.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// Return state unchanged - provider StateUpgraders will handle transformation
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}
-
 // updateCertificateReference updates certificate references from
 // cloudflare_authenticated_origin_pulls_certificate to
 // cloudflare_authenticated_origin_pulls_hostname_certificate
@@ -181,28 +166,10 @@ func updateCertificateReference(certTokens hclwrite.Tokens, ctx *transform.Conte
 
 	resourceName := parts[1]
 
-	// Check if this certificate resource has type="per-hostname" by looking at the state
+	// Check if this certificate resource has type="per-hostname" by checking the resource name
+	// (heuristic matching the certificate migrator's Postprocess logic)
 	isPerHostname := false
 
-	if ctx.StateJSON != "" {
-		// Parse state to find the certificate resource
-		state := gjson.Parse(ctx.StateJSON)
-		state.Get("resources").ForEach(func(_, resource gjson.Result) bool {
-			if resource.Get("type").String() == "cloudflare_authenticated_origin_pulls_certificate" &&
-				resource.Get("name").String() == resourceName {
-				// Found the resource - check type attribute in state
-				certType := resource.Get("instances.0.attributes.type").String()
-				if certType == "per-hostname" {
-					isPerHostname = true
-				}
-				return false // Stop iteration
-			}
-			return true
-		})
-	}
-
-	// If we couldn't determine from state, check if the resource name contains "hostname"
-	// This is a fallback heuristic matching the certificate migrator's Postprocess logic
 	if !isPerHostname {
 		lowerName := strings.ToLower(resourceName)
 		if strings.Contains(lowerName, "hostname") || strings.Contains(lowerName, "host") {

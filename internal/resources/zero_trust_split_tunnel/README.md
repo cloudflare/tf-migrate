@@ -320,31 +320,11 @@ Integration tests should be added in a separate test file to verify the end-to-e
 - Builds tunnel objects from `tunnels` blocks
 - Sets appropriate attribute on profile
 
-**State Merging Functions:**
-
-**`ProcessCrossResourceStateMigration(stateJSON string) string`**
-- Scans state for device profiles and split tunnels
-- Matches split tunnels to profiles via policy_id/account_id
-- Merges tunnel state into profile state
-- Removes split tunnel resources from state
-
-**`extractSplitTunnelStateInfo(resource gjson.Result, index int) *splitTunnelStateInfo`**
-- Extracts split tunnel state data from resource instance
-- Parses policy_id, mode, and tunnels array
-
-**`mergeTunnelsIntoProfileState(jsonStr string, profileIndex int, mode string, tunnels []splitTunnelStateInfo) string`**
-- Merges tunnel data into device profile's exclude/include attributes in state
-
-**`removeSplitTunnelResourcesFromState(jsonStr string) string`**
-- Removes all cloudflare_split_tunnel resources from state
-
 ### Design Decisions
 
-1. **Idempotent**: Both config and state migration functions can be called multiple times safely
+1. **Idempotent**: Config migration functions can be called multiple times safely
 2. **Option 2 Warnings**: Adds explicit warnings for unparseable references (doesn't silently drop data)
-3. **Full State Merging**: Split tunnel state is merged into device profile state (matching list_item pattern)
-4. **File-Level Warnings**: Warnings added to default profile or file level comments
-5. **No Refresh Required**: State is correctly merged - users can run `terraform apply` immediately
+3. **File-Level Warnings**: Warnings added to default profile or file level comments
 
 ### Limitations
 

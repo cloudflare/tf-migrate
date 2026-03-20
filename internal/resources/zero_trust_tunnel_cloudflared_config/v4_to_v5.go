@@ -5,12 +5,10 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of zero trust tunnel cloudflared config resources from v4 to v5
@@ -140,7 +138,7 @@ func tryConvertDurationAttribute(attr *hclwrite.Attribute) (int64, bool) {
 	durationStr := exprStr[1 : len(exprStr)-1]
 
 	// Try to parse as a duration string
-	seconds, err := state.ParseDurationStringToSeconds(durationStr)
+	seconds, err := tfhcl.ParseDurationStringToSeconds(durationStr)
 	if err != nil {
 		return 0, false
 	}
@@ -262,16 +260,4 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		Blocks:         resultBlocks,
 		RemoveOriginal: movedBlock != nil,
 	}, nil
-}
-
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State migration is now handled by the provider's UpgradeState mechanism.
-	// The v5 provider transforms v4 state directly when loading it, so tf-migrate
-	// no longer needs to perform state transformation.
-	return instance.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
 }

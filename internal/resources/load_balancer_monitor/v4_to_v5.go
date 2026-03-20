@@ -2,7 +2,6 @@ package load_balancer_monitor
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -105,38 +104,6 @@ func (m *V4ToV5Migrator) buildHeaderMapTokens(body *hclwrite.Body) (hclwrite.Tok
 
 	// Create the object tokens for the header map
 	return hclwrite.TokensForObject(headerAttrs), nil
-}
-
-// TransformState is a no-op for load_balancer_monitor migration.
-//
-// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
-// The provider's UpgradeState handlers perform the actual state migration when
-// Terraform detects a schema version mismatch.
-//
-// tf-migrate's role is limited to:
-// - Transforming HCL configuration syntax (handled by TransformConfig)
-// - Generating moved blocks for renamed resources (not applicable for this resource)
-//
-// This delegation to the provider is the correct architectural pattern because:
-// 1. The provider is the source of truth for state structure
-// 2. Provider has access to proper schema definitions for type-safe parsing
-// 3. Eliminates duplication of transformation logic
-// 4. Ensures migrations work correctly with Terraform's state upgrade mechanisms
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	// Return state unchanged - provider handles all state transformations
-	return instance.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
-//
-// When this returns true, tf-migrate knows that:
-// - State transformation is delegated to the provider's StateUpgraders
-// - The provider's UpgradeState handlers will perform the actual migration
-// - tf-migrate should only handle configuration transformation
-//
-// This is required for the migration to work correctly.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
 }
 
 func init() {

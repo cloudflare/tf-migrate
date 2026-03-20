@@ -43,8 +43,6 @@ func TestV4ToV5Transformation(t *testing.T) {
 		testConfigTransformations(t, migrator)
 	})
 
-	// StateTransformation tests removed - TransformState is now a no-op
-	// State migration is handled by the provider's StateUpgraders (UpgradeState)
 }
 
 func testConfigTransformations(t *testing.T, migrator transform.ResourceTransformer) {

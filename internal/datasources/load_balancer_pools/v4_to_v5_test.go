@@ -114,12 +114,6 @@ data "cloudflare_load_balancer_pools" "example" {
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
 
-// TestStateTransformation_Removed is a marker indicating state transformation tests were removed.
-// State migration is now handled by the provider's StateUpgraders.
-func TestStateTransformation_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}
-
 func TestMigratorMethods(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 
@@ -151,4 +145,3 @@ func TestMigratorMethods(t *testing.T) {
 		assert.Equal(t, input, output)
 	})
 }
-

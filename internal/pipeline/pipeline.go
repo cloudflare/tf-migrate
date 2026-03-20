@@ -31,23 +31,6 @@ func BuildConfigPipeline(log hclog.Logger, providers transform.MigrationProvider
 	}
 }
 
-// BuildStatePipeline creates the standard pipeline for JSON state files
-// Pipeline: Preprocess → Transform → Format
-func BuildStatePipeline(log hclog.Logger, providers transform.MigrationProvider) *Pipeline {
-	preprocess := handlers.NewPreprocessHandler(providers)
-	stateTransformer := handlers.NewStateTransformHandler(log, providers)
-	format := handlers.NewStateFormatterHandler(log)
-
-	// Chain handlers
-	preprocess.SetNext(stateTransformer)
-	stateTransformer.SetNext(format)
-
-	return &Pipeline{
-		handler: preprocess,
-		log:     log,
-	}
-}
-
 // Transform executes the pipeline on the given content
 func (p *Pipeline) Transform(ctx *transform.Context) ([]byte, error) {
 	result, err := p.handler.Handle(ctx)

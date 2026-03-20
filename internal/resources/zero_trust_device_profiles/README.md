@@ -171,8 +171,7 @@ resource "cloudflare_zero_trust_device_profiles" "with_fallback" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   default    = true
 
-  # Note: fallback_domains in v4 state but not in config
-  # (managed by separate cloudflare_zero_trust_local_fallback_domain resource)
+  # Note: fallback_domains managed by separate cloudflare_zero_trust_local_fallback_domain resource
 }
 ```
 
@@ -184,14 +183,14 @@ resource "cloudflare_zero_trust_device_default_profile" "with_fallback" {
   register_interface_ip_with_dns = true
   sccm_vpn_boundary_support      = false
 
-  # fallback_domains removed from state during migration
+  # fallback_domains not present in v5 config
   # Use separate cloudflare_zero_trust_device_default_profile_local_domain_fallback resource
 }
 ```
 
 **Migration Behavior:**
-- `fallback_domains` is removed from state
-- `exclude = []` is removed from state
+- `fallback_domains` is not present in v5 config (managed separately)
+- `exclude = []` is removed from config
 - These fields are `Computed` in v5 - the API manages them
 
 **Post-Migration Action Required:**

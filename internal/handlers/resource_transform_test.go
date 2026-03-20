@@ -7,7 +7,6 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal/handlers"
@@ -15,11 +14,10 @@ import (
 )
 
 type MockResourceTransformer struct {
-	resourceType       string
-	preprocessCalls    int
-	preprocessFunc     func(content string) string
-	transformFunc      func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error)
-	stateTransformFunc func(json gjson.Result, resourcePath string) (string, error)
+	resourceType    string
+	preprocessCalls int
+	preprocessFunc  func(content string) string
+	transformFunc   func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error)
 }
 
 func (m *MockResourceTransformer) CanHandle(resourceType string) bool {
@@ -38,13 +36,6 @@ func (m *MockResourceTransformer) TransformConfig(ctx *transform.Context, block 
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
-}
-
-func (m *MockResourceTransformer) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	if m.stateTransformFunc != nil {
-		return m.stateTransformFunc(stateJSON, resourcePath)
-	}
-	return "", nil
 }
 
 func (m *MockResourceTransformer) Preprocess(content string) string {

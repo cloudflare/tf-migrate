@@ -2,7 +2,6 @@ package zero_trust_device_managed_networks
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -73,18 +72,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState is a no-op for this resource - state transformation is handled by the provider's StateUpgraders.
-// tf-migrate only transforms configs and generates moved blocks.
-// The provider's MoveState and UpgradeState handlers will automatically transform the state when Terraform runs.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// No-op: Return state unchanged
-	// Provider StateUpgraders handle:
-	// 1. MoveState: cloudflare_device_managed_networks → cloudflare_zero_trust_device_managed_networks
-	// 2. UpgradeState: config array → config object, network_id population
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

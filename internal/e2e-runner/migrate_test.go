@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,97 +74,6 @@ module "complex" {
 				t.Errorf("extractModuleBlock() =\n%q\nwant:\n%q", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestFilterStateFile(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create a test state file
-	state := map[string]interface{}{
-		"version": 4,
-		"serial":  1,
-		"resources": []interface{}{
-			map[string]interface{}{
-				"module": "module.zone_dnssec",
-				"type":   "cloudflare_zone_dnssec",
-				"name":   "example",
-				"instances": []interface{}{
-					map[string]interface{}{"attributes": map[string]interface{}{}},
-				},
-			},
-			map[string]interface{}{
-				"module": "module.argo",
-				"type":   "cloudflare_argo",
-				"name":   "example",
-				"instances": []interface{}{
-					map[string]interface{}{"attributes": map[string]interface{}{}},
-				},
-			},
-			map[string]interface{}{
-				"module": "module.other",
-				"type":   "cloudflare_other",
-				"name":   "example",
-				"instances": []interface{}{
-					map[string]interface{}{"attributes": map[string]interface{}{}},
-				},
-			},
-		},
-	}
-
-	stateJSON, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		t.Fatalf("Failed to marshal state: %v", err)
-	}
-
-	stateFile := filepath.Join(tmpDir, "terraform.tfstate")
-	err = os.WriteFile(stateFile, stateJSON, 0644)
-	if err != nil {
-		t.Fatalf("Failed to write state file: %v", err)
-	}
-
-	// Filter to only zone_dnssec and argo
-	resources := []string{"zone_dnssec", "argo"}
-	err = filterStateFile(tmpDir, resources)
-	if err != nil {
-		t.Fatalf("filterStateFile() error = %v", err)
-	}
-
-	// Read filtered state
-	filteredData, err := os.ReadFile(stateFile)
-	if err != nil {
-		t.Fatalf("Failed to read filtered state: %v", err)
-	}
-
-	var filteredState map[string]interface{}
-	err = json.Unmarshal(filteredData, &filteredState)
-	if err != nil {
-		t.Fatalf("Failed to unmarshal filtered state: %v", err)
-	}
-
-	// Verify only 2 resources remain
-	filteredResources := filteredState["resources"].([]interface{})
-	if len(filteredResources) != 2 {
-		t.Errorf("Expected 2 resources after filtering, got %d", len(filteredResources))
-	}
-
-	// Verify the correct resources remain
-	for _, res := range filteredResources {
-		resMap := res.(map[string]interface{})
-		module := resMap["module"].(string)
-		if module != "module.zone_dnssec" && module != "module.argo" {
-			t.Errorf("Unexpected module in filtered state: %s", module)
-		}
-	}
-}
-
-func TestFilterStateFile_NoStateFile(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// filterStateFile should handle missing state file gracefully
-	err := filterStateFile(tmpDir, []string{"test"})
-	if err != nil {
-		t.Errorf("filterStateFile() should not error on missing state file: %v", err)
 	}
 }
 

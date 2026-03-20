@@ -4,7 +4,6 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 )
 
 // V4ToV5Migrator handles the migration of cloudflare_zone_dnssec from v4 to v5.
@@ -61,19 +60,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState handles state file transformations.
-// NOTE: State migration is now delegated to provider StateUpgraders.
-// This function is a passthrough - it returns the state unchanged.
-// The provider's UpgradeState mechanism will handle all state transformations:
-// - Type conversions (Int → Float64 for flags, key_tag)
-// - Date format conversion (RFC1123Z → RFC3339 for modified_on)
-// - Status normalization (pending → active, pending-disabled → disabled)
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// Return state unchanged - provider StateUpgraders will handle migration
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

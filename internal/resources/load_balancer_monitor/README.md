@@ -8,8 +8,8 @@ This guide explains how `cloudflare_load_balancer_monitor` resources migrate fro
 |--------|----|----|--------|
 | Resource name | `cloudflare_load_balancer_monitor` | `cloudflare_load_balancer_monitor` | No change |
 | `header` blocks | Multiple blocks | Map attribute | Structure change |
-| Default values | Not in state | Added to state | Prevents drift |
-| Numeric fields | Int | Int64 (float64 in state) | Type conversion |
+| Default values | - | Provider-managed | Prevents drift |
+| Numeric fields | Int | Int64 | Handled by provider's StateUpgrader |
 
 
 ---
@@ -48,7 +48,7 @@ resource "cloudflare_load_balancer_monitor" "http" {
 
 **What Changed:**
 - Configuration unchanged (numeric fields remain the same)
-- State adds default values internally
+- Default values are managed by the provider's StateUpgrader
 
 ---
 
@@ -147,7 +147,7 @@ resource "cloudflare_load_balancer_monitor" "tcp" {
 
 **What Changed:**
 - Configuration unchanged
-- State handles consecutive_up/down properly
+- consecutive_up/down handled by the provider's StateUpgrader
 
 ---
 

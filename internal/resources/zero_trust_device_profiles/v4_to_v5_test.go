@@ -666,11 +666,6 @@ moved {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-
-	t.Run("StateTransformation_Removed", func(t *testing.T) {
-		t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders (MoveState + UpgradeState)")
-	})
-
 	t.Run("ConfigTransformation_SplitTunnelEmbedding", func(t *testing.T) {
 		migrator := NewV4ToV5Migrator()
 		tests := []testhelpers.ConfigTestCase{
@@ -917,4 +912,4 @@ moved {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-} 
+}

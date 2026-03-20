@@ -5,7 +5,6 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -82,17 +81,3 @@ should be managed through external automation or lifecycle rules.`,
 	}, nil
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	// NO-OP: State transformation is handled by the provider's StateUpgraders.
-	//
-	// The provider implements UpgradeState which automatically transforms v4 state to v5
-	// when Terraform detects a schema version mismatch (v4 schema_version=0 → v5 version=500).
-	//
-	// See: cloudflare-terraform-next/internal/services/origin_ca_certificate/migration/v500/
-	return instance.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

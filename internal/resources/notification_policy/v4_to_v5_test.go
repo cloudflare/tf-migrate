@@ -348,10 +348,3 @@ resource "cloudflare_notification_policy" "empty_filters" {
 
 	testhelpers.RunConfigTransformTests(t, testCases, migrator)
 }
-
-// TestV4ToV5TransformationState_Removed is a skip marker test.
-// State transformation tests have been removed because state migration
-// is now handled by the provider's StateUpgraders (UpgradeFromV4).
-func TestV4ToV5TransformationState_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}

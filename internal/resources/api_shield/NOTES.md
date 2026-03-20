@@ -87,20 +87,14 @@ tfhcl.ConvertBlocksToAttributeList(body, "auth_id_characteristics", nil)
 - No custom logic needed
 
 ### State Transformation (JSON)
-**Approach:** No-op (handled by provider)
-
-**Implementation:**
-```go
-// Return state unchanged - provider handles state migration via StateUpgraders
-return stateJSON.String(), nil
-```
+**Approach:** Handled entirely by the provider's StateUpgraders — tf-migrate does not transform state.
 
 **Rationale:**
 - State migration is handled by the v5 provider's StateUpgraders
 - Provider UpgradeFromV4 handles v4 (schema_version=0) → v5 (version=500) transformation
 - Provider UpgradeFromV5 handles v5 (version=1) → v5 (version=500) version bump
-- tf-migrate only handles config (HCL) transformations
-- State passes through unchanged and is upgraded by provider on next apply
+- tf-migrate only handles config (HCL) transformations via TransformConfig
+- State is upgraded by the provider on first apply/refresh
 
 **Provider StateUpgraders:**
 - Location: `cloudflare-terraform-next/internal/services/api_shield/migration/v500/`
@@ -201,10 +195,9 @@ December 30, 2024
 - The `jwt` type value added in v5 is backward compatible and doesn't require migration logic
 - Consider this migration as a template for other simple block→attribute conversions
 
-**State Migration Architecture (as of February 2026):**
+**State Migration Architecture:**
 - tf-migrate handles **config** (HCL) transformations only (TransformConfig)
 - Provider handles **state** (JSON) transformations via StateUpgraders (UpgradeState)
 - This separation of concerns eliminates duplicate transformation logic
 - State transformation tests are in the provider, not tf-migrate
-- tf-migrate's TransformState is a no-op that passes state through unchanged
-- Provider upgrades state on first apply/refresh with TF_MIG_TEST=1
+- Provider upgrades state on first apply/refresh

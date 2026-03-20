@@ -9,7 +9,6 @@ import (
 	"github.com/tidwall/sjson"
 
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // TransformEmptyValuesToNullOptions contains options for TransformEmptyValuesToNull
@@ -75,7 +74,7 @@ func TransformEmptyValuesToNull(opts TransformEmptyValuesToNullOptions) string {
 		fieldName := key.String()
 
 		// Check if this is an empty value
-		if !state.IsEmptyValue(value) {
+		if !tfhcl.IsEmptyValue(value) {
 			return true // continue iteration
 		}
 

@@ -2,7 +2,6 @@ package custom_ssl
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -23,7 +22,6 @@ import (
 //   - priority: TypeInt (computed) → Float64 (handled by provider StateUpgrader)
 //
 // State transformation is handled by the provider's UpgradeState mechanism.
-// TransformState is a no-op; UsesProviderStateUpgrader returns true.
 type V4ToV5Migrator struct{}
 
 func NewV4ToV5Migrator() transform.ResourceTransformer {
@@ -121,19 +119,4 @@ func buildGeoRestrictionsObject(labelValueTokens hclwrite.Tokens) hclwrite.Token
 		},
 	}
 	return hclwrite.TokensForObject(attrs)
-}
-
-// TransformState is a no-op for cloudflare_custom_ssl.
-//
-// State transformation is handled by the provider's UpgradeState (UpgradeFromV4).
-// tf-migrate transforms the HCL configuration via TransformConfig, and the provider
-// handles the state upgrade automatically when Terraform runs after migration.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	return instance.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
-// This tells tf-migrate not to perform state transformations — the provider handles it.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
 }

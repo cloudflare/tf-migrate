@@ -58,11 +58,3 @@ moved {
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
-
-func TestUsesProviderStateUpgrader(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
-
-	if got := migrator.(*V4ToV5Migrator).UsesProviderStateUpgrader(); !got {
-		t.Fatalf("UsesProviderStateUpgrader() = %v, want true", got)
-	}
-}

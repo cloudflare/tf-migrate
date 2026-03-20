@@ -21,8 +21,7 @@ During migration:
 1. All `cloudflare_list_item` resources are identified
 2. Parent `cloudflare_list` is located via `list_id` reference
 3. Items are merged into parent's `items` array
-4. `cloudflare_list_item` resources are removed from configuration
-5. State is updated to reflect the merge
+   4. `cloudflare_list_item` resources are removed from configuration
 
 ---
 

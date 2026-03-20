@@ -4,7 +4,6 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 )
 
 type V4ToV5Migrator struct {
@@ -46,19 +45,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState is now delegated to provider StateUpgraders
-// This function is a no-op as the provider handles all state transformations
-// The provider's StateUpgraders will:
-// 1. Read v4 state using v4 schema definition
-// 2. Transform to v5 state (pass-through for this resource)
-// 3. Provider will populate supports_url_encoding on first refresh
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// Pass through state unchanged - provider StateUpgraders handle migration
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-// This tells tf-migrate that the provider handles state transformation via StateUpgraders
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}
