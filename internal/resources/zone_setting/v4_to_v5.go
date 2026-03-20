@@ -3,10 +3,10 @@ package zone_setting
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -61,6 +61,31 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// These need to be copied to all generated resources
 	metaArgs := m.extractMetaArguments(block)
 
+	// Emit a warning with the terraform state rm command the user must run before
+	// terraform plan/apply. The v5 provider has no schema for cloudflare_zone_settings_override,
+	// so Terraform cannot read the old state entry to process the removed block.
+	// The user must remove it manually first.
+	stateAddr := "cloudflare_zone_settings_override." + baseName
+	if metaArgs != nil && metaArgs.count != nil {
+		stateAddr += "[0]"
+	}
+	ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+		Severity: hcl.DiagWarning,
+		Summary:  fmt.Sprintf("Action required for %s: remove old state entry and move import blocks", stateAddr),
+		Detail: fmt.Sprintf(
+			"After migration, before running terraform plan/apply:\n\n"+
+				"1. Remove the old state entry (the v5 provider has no schema for this type):\n"+
+				"     terraform state rm '%s'\n"+
+				"   If this resource is inside a Terraform module named \"mymod\":\n"+
+				"     terraform state rm 'module.mymod.%s'\n\n"+
+				"2. The import blocks in the migrated file are only valid in the root module.\n"+
+				"   If this file is used as a child module, move the import blocks to your\n"+
+				"   root module and prefix the 'to' address with the module path:\n"+
+				"     to = module.mymod.cloudflare_zone_setting.%s_<setting>",
+			stateAddr, stateAddr, baseName,
+		),
+	})
+
 	// Find the settings block
 	var settingsBlock *hclwrite.Block
 	for _, b := range block.Body().Blocks() {
@@ -71,9 +96,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}
 
 	if settingsBlock == nil {
-		// No settings block - nothing to migrate
+		// No settings block — emit only the removed block to clean up state.
+		removedBlock := tfhcl.CreateRemovedBlock("cloudflare_zone_settings_override." + baseName)
 		return &transform.TransformResult{
-			Blocks:         nil,
+			Blocks:         []*hclwrite.Block{removedBlock},
 			RemoveOriginal: true,
 		}, nil
 	}
@@ -102,16 +128,20 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 		// Create new cloudflare_zone_setting resource
 		newResource := m.createZoneSettingResource(resourceName, settingID, zoneIDAttr, attr)
-
-		// Copy meta-arguments to the new resource
 		m.copyMetaArguments(newResource, metaArgs)
-
 		newBlocks = append(newBlocks, newResource)
 
-		// Note: Import blocks are NOT generated because:
-		// 1. Import blocks can only be used in root modules, not child modules
-		// 2. Import blocks don't support count/for_each meta-arguments
-		// The state will be recreated when users run `terraform apply` after migration
+		// Generate import block: id = "${zone_id}/{setting_id}"
+		// Import blocks are only valid in the root module, so the e2e runner
+		// hoists them from module subdirectories to root main.tf automatically.
+		// Skip import blocks for count-based resources: count is not supported
+		// on import blocks, and the resource may not exist when count = 0.
+		// for_each is supported (Terraform 1.7+) and is copied to the import block.
+		if metaArgs == nil || metaArgs.count == nil {
+			importBlock := m.createImportBlock(resourceName, settingID, zoneIDAttr)
+			m.copyIterationMetaArguments(importBlock, metaArgs)
+			newBlocks = append(newBlocks, importBlock)
+		}
 	}
 
 	// Process nested blocks (minify, mobile_redirect, security_header, nel, aegis)
@@ -126,51 +156,45 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 		var newResource *hclwrite.Block
 		if settingID == "security_header" {
-			// Special handling: wrap in strict_transport_security
 			newResource = m.transformSecurityHeaderBlock(resourceName, settingID, zoneIDAttr, nestedBlock)
 		} else {
-			// Standard nested block transformation
 			newResource = m.transformNestedBlock(resourceName, settingID, zoneIDAttr, nestedBlock)
 		}
-
-		// Copy meta-arguments to the new resource
 		m.copyMetaArguments(newResource, metaArgs)
-
 		newBlocks = append(newBlocks, newResource)
 
-		// Note: Import blocks are NOT generated (same reasons as above)
-	}
-
-	// Add warning about one-to-many split requiring fresh state
-	if len(newBlocks) > 0 {
-		var resourceNames []string
-		for _, b := range newBlocks {
-			if b.Type() == "resource" && len(b.Labels()) >= 2 {
-				resourceNames = append(resourceNames, fmt.Sprintf("cloudflare_zone_setting.%s", b.Labels()[1]))
-			}
+		if metaArgs == nil || metaArgs.count == nil {
+			importBlock := m.createImportBlock(resourceName, settingID, zoneIDAttr)
+			m.copyIterationMetaArguments(importBlock, metaArgs)
+			newBlocks = append(newBlocks, importBlock)
 		}
-
-		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
-			Severity: hcl.DiagWarning,
-			Summary:  fmt.Sprintf("Resource split: cloudflare_zone_settings_override.%s → %d individual resources", baseName, len(newBlocks)),
-			Detail: fmt.Sprintf(`The cloudflare_zone_settings_override resource has been split into individual cloudflare_zone_setting resources in v5.
-
-Generated resources:
-  %s
-
-IMPORTANT: These resources require fresh state. After migration:
-  1. Remove the old state: terraform state rm cloudflare_zone_settings_override.%s
-  2. Run: terraform apply (Terraform will create new state for each zone setting)
-
-Note: Import blocks cannot be used because:
-  - Import blocks don't support count/for_each meta-arguments
-  - Import blocks only work in root modules, not child modules`, strings.Join(resourceNames, "\n  "), baseName),
-		})
 	}
+
+	// Emit a `removed` block so Terraform drops the old cloudflare_zone_settings_override
+	// state entry without attempting to destroy it (requires Terraform 1.7+).
+	removedBlock := tfhcl.CreateRemovedBlock("cloudflare_zone_settings_override." + baseName)
+
+	// Inject migration notes as comments inside the removed block so they appear
+	// in the generated file and are visible to the user.
+	notes := hclwrite.Tokens{
+		{Type: hclsyntax.TokenComment, Bytes: []byte(
+			"# MIGRATION NOTES:\n" +
+				"# 1. Before running terraform plan/apply, remove the old state entry:\n" +
+				"#      terraform state rm '" + stateAddr + "'\n" +
+				"#    If inside a module named \"mymod\":\n" +
+				"#      terraform state rm 'module.mymod." + stateAddr + "'\n" +
+				"# 2. The import blocks above are only valid in the root Terraform module.\n" +
+				"#    If this file is a child module, move the import blocks to your root\n" +
+				"#    module and prefix 'to' with the module path:\n" +
+				"#      to = module.mymod.cloudflare_zone_setting." + baseName + "_<setting>\n",
+		)},
+	}
+	removedBlock.Body().AppendUnstructuredTokens(notes)
+	newBlocks = append(newBlocks, removedBlock)
 
 	return &transform.TransformResult{
 		Blocks:         newBlocks,
-		RemoveOriginal: true, // Remove the original zone_settings_override resource
+		RemoveOriginal: true,
 	}, nil
 }
 
@@ -316,23 +340,17 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	return []string{"cloudflare_zone_settings_override"}, "cloudflare_zone_setting"
 }
 
-// TransformState handles state transformation
-// For zone_settings_override, this is a complex one-to-many transformation
-// Each v4 instance needs to be split into multiple v5 instances
-//
-// Since import blocks can't be used in modules or with count/for_each,
-// we mark the resource for deletion and rely on a manual import process or
-// a fresh terraform apply to recreate the state
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// For zone_setting migration, we can't programmatically transform the state
-	// because it's a one-to-many transformation (1 v4 resource → N v5 resources)
-	// and we don't know the resource addresses of the generated v5 resources during state transformation
-	//
-	// The user will need to run `terraform apply` after migration to let Terraform
-	// create the new resources based on the migrated configuration
-	//
-	// Return empty string to delete this instance from state
-	return "", nil
+// UsesProviderStateUpgrader indicates that state cleanup is handled via the
+// `removed` block emitted by TransformConfig, not by direct state file manipulation.
+func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
+	return true
+}
+
+func (m *V4ToV5Migrator) TransformState(_ *transform.Context, stateJSON gjson.Result, _, _ string) (string, error) {
+	// State cleanup is handled by the `removed` block emitted in TransformConfig.
+	// Terraform 1.7+ processes the removed block and drops the old
+	// cloudflare_zone_settings_override state entry without destroying it.
+	return stateJSON.String(), nil
 }
 
 // isDeprecatedSetting checks if a setting should be skipped during migration

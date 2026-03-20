@@ -125,3 +125,9 @@ func (tr *TerraformRunner) StatePush(stateFile string) error {
 	_, err := tr.Run("state", "push", stateFile)
 	return err
 }
+
+// StateRm removes a resource from state.
+func (tr *TerraformRunner) StateRm(address string) error {
+	_, err := tr.Run("state", "rm", address)
+	return err
+}
