@@ -1,6 +1,8 @@
 package zero_trust_gateway_policy
 
 import (
+	"time"
+
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 
@@ -124,8 +126,41 @@ func (m *V4ToV5Migrator) processRuleSettingsBlock(ruleSettingsBlock *hclwrite.Bl
 			}
 		}
 
+		// For check_session, normalize duration to match API format BEFORE converting
+		if blockName == "check_session" {
+			if checkSessionBlock := tfhcl.FindBlockByType(ruleSettingsBody, "check_session"); checkSessionBlock != nil {
+				m.normalizeDurationAttribute(checkSessionBlock.Body(), "duration")
+			}
+		}
+
 		// Convert block to attribute syntax
 		tfhcl.ConvertSingleBlockToAttribute(ruleSettingsBody, blockName, blockName)
+	}
+}
+
+// normalizeDurationAttribute normalizes a duration attribute to match API format (e.g., "24h" -> "24h0m0s")
+func (m *V4ToV5Migrator) normalizeDurationAttribute(body *hclwrite.Body, attrName string) {
+	attr := body.GetAttribute(attrName)
+	if attr == nil {
+		return
+	}
+
+	// Extract the string value
+	durationStr := tfhcl.ExtractStringFromAttribute(attr)
+	if durationStr == "" {
+		return
+	}
+
+	// Parse and normalize the duration
+	d, err := time.ParseDuration(durationStr)
+	if err != nil {
+		return // Keep original if parsing fails
+	}
+
+	// time.Duration.String() returns the verbose format (e.g., "24h0m0s")
+	normalized := d.String()
+	if normalized != durationStr {
+		tfhcl.SetAttribute(body, attrName, normalized)
 	}
 }
 

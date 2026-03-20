@@ -220,7 +220,7 @@ resource "cloudflare_zero_trust_gateway_policy" "complex" {
     }
     check_session = {
       enforce  = true
-      duration = "24h"
+      duration = "24h0m0s"
     }
     payload_log = {
       enabled = true
@@ -497,7 +497,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_check_session" {
   rule_settings = {
     check_session = {
       enforce  = true
-      duration = "12h"
+      duration = "12h0m0s"
     }
   }
 }
