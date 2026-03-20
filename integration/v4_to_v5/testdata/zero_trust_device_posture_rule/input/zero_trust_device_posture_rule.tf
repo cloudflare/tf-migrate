@@ -491,12 +491,13 @@ resource "cloudflare_zero_trust_device_posture_rule" "ref_source_new_name" {
 # Using realistic resources that would depend on posture rules
 
 # Gateway policy depending on old-name posture rule
+# Note: Using high precedence values (100000+) to avoid conflicts with zero_trust_gateway_policy tests
 resource "cloudflare_zero_trust_gateway_policy" "depends_on_old_posture" {
   account_id  = var.cloudflare_account_id
   name        = "cftftest Gateway Policy - Old Posture Rule"
   description = "Policy depending on old-name posture rule"
   action      = "block"
-  precedence  = 1000
+  precedence  = 100000
   enabled     = true
   traffic     = "any(dns.domains[*] == \"example-old.com\")"
 
@@ -504,12 +505,13 @@ resource "cloudflare_zero_trust_gateway_policy" "depends_on_old_posture" {
 }
 
 # Gateway policy depending on new-name posture rule
+# Note: Using high precedence values (100000+) to avoid conflicts with zero_trust_gateway_policy tests
 resource "cloudflare_zero_trust_gateway_policy" "depends_on_new_posture" {
   account_id  = var.cloudflare_account_id
   name        = "cftftest Gateway Policy - New Posture Rule"
   description = "Policy depending on new-name posture rule"
   action      = "allow"
-  precedence  = 2000
+  precedence  = 100001
   enabled     = true
   traffic     = "any(dns.domains[*] == \"example-new.com\")"
 

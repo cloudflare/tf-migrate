@@ -67,6 +67,7 @@ resource "cloudflare_zero_trust_dlp_predefined_profile" "all_disabled" {
   allowed_match_count = 0
 
 
+  enabled_entries = []
 }
 
 moved {

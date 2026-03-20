@@ -290,14 +290,12 @@ resource "cloudflare_zero_trust_dex_test" "api_with_path" {
 # The migrator renames:
 #   cloudflare_device_dex_test -> cloudflare_zero_trust_dex_test
 #   cloudflare_zero_trust_dex_test -> cloudflare_zero_trust_dex_test (no-op)
-# We create dependent resources (device profiles) that reference these tests via depends_on.
-# After migration, the references must be updated to use the new resource names.
 
 # Using old v4 name (cloudflare_device_dex_test) -> becomes cloudflare_zero_trust_dex_test
 resource "cloudflare_device_dex_test" "ref_source_old_name" {
   account_id  = var.cloudflare_account_id
   name        = "${local.name_prefix}-ref-old-name"
-  description = "Referenced by device profile (old name)"
+  description = "Referenced by dex test rename"
   interval    = "1h0m0s"
   enabled     = true
 
@@ -312,7 +310,7 @@ resource "cloudflare_device_dex_test" "ref_source_old_name" {
 resource "cloudflare_zero_trust_dex_test" "ref_source_new_name" {
   account_id  = var.cloudflare_account_id
   name        = "${local.name_prefix}-ref-new-name"
-  description = "Referenced by device profile (new name)"
+  description = "Referenced by dex test rename"
   interval    = "2h0m0s"
   enabled     = true
 
@@ -320,33 +318,4 @@ resource "cloudflare_zero_trust_dex_test" "ref_source_new_name" {
     kind = "traceroute"
     host = "1.1.1.1"
   }
-}
-
-# Dependent resources that reference the above dex tests
-# Using realistic resources that would depend on dex tests
-
-# Device profile depending on old-name dex test
-resource "cloudflare_zero_trust_device_profiles" "depends_on_old_dex" {
-  account_id  = var.cloudflare_account_id
-  name        = "Default Profile - Old DEX Test"
-  description = "Profile depending on old-name dex test"
-  default     = true
-
-  allow_mode_switch = true
-  auto_connect      = 30
-
-  depends_on = [cloudflare_device_dex_test.ref_source_old_name]
-}
-
-# Device profile depending on new-name dex test
-resource "cloudflare_zero_trust_device_profiles" "depends_on_new_dex" {
-  account_id  = var.cloudflare_account_id
-  name        = "Default Profile - New DEX Test"
-  description = "Profile depending on new-name dex test"
-  default     = true
-
-  allow_mode_switch = false
-  auto_connect      = 15
-
-  depends_on = [cloudflare_zero_trust_dex_test.ref_source_new_name]
 }

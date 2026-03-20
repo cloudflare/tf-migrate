@@ -307,29 +307,33 @@ moved {
 }
 
 # Dependent resource that references option 1
-resource "cloudflare_zero_trust_device_default_profile" "ref_opt1" {
-  account_id = var.cloudflare_account_id
+resource "cloudflare_zero_trust_device_custom_profile" "ref_opt1" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-profile-opt1"
+  description = "Profile depending on managed network opt1"
+  match       = "identity.email == \"test-opt1@example.com\""
+  precedence  = 1000
 
-  depends_on                     = [cloudflare_zero_trust_device_managed_networks.resourcename_opt1]
-  register_interface_ip_with_dns = true
-  sccm_vpn_boundary_support      = false
+  depends_on = [cloudflare_zero_trust_device_managed_networks.resourcename_opt1]
 }
 
 moved {
   from = cloudflare_zero_trust_device_profiles.ref_opt1
-  to   = cloudflare_zero_trust_device_default_profile.ref_opt1
+  to   = cloudflare_zero_trust_device_custom_profile.ref_opt1
 }
 
 # Dependent resource that references option 2
-resource "cloudflare_zero_trust_device_default_profile" "ref_opt2" {
-  account_id = var.cloudflare_account_id
+resource "cloudflare_zero_trust_device_custom_profile" "ref_opt2" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-profile-opt2"
+  description = "Profile depending on managed network opt2"
+  match       = "identity.email == \"test-opt2@example.com\""
+  precedence  = 1001
 
-  depends_on                     = [cloudflare_zero_trust_device_managed_networks.resourcename_opt2]
-  register_interface_ip_with_dns = true
-  sccm_vpn_boundary_support      = false
+  depends_on = [cloudflare_zero_trust_device_managed_networks.resourcename_opt2]
 }
 
 moved {
   from = cloudflare_zero_trust_device_profiles.ref_opt2
-  to   = cloudflare_zero_trust_device_default_profile.ref_opt2
+  to   = cloudflare_zero_trust_device_custom_profile.ref_opt2
 }
