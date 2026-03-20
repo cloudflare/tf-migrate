@@ -22,6 +22,26 @@ variable "cloudflare_domain" {
 
 
 
+# ============================================================================
+# Pattern Group 9: Cross-File References (Resource Rename Test)
+# ============================================================================
+
+# Pattern 9 tests that cross-file references are updated when resource names change.
+# The migrator renames:
+#   cloudflare_zero_trust_local_fallback_domain -> cloudflare_zero_trust_device_default_profile_local_domain_fallback (default)
+#   cloudflare_zero_trust_local_fallback_domain -> cloudflare_zero_trust_device_custom_profile_local_domain_fallback (custom)
+#   cloudflare_fallback_domain -> cloudflare_zero_trust_device_default_profile_local_domain_fallback (default)
+#   cloudflare_fallback_domain -> cloudflare_zero_trust_device_custom_profile_local_domain_fallback (custom)
+# We create dependent resources (device profiles) that reference these fallback domains via depends_on.
+# After migration, the references must be updated to use the new resource names.
+
+
+
+# Dependent resources that reference the above fallback domains
+# Using realistic resources that would depend on fallback domains
+
+
+
 # Default profile - no policy_id
 resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "default_single" {
   account_id = var.cloudflare_account_id
@@ -135,4 +155,72 @@ resource "cloudflare_zero_trust_device_custom_profile_local_domain_fallback" "de
 moved {
   from = cloudflare_fallback_domain.deprecated_custom
   to   = cloudflare_zero_trust_device_custom_profile_local_domain_fallback.deprecated_custom
+}
+
+# Using old v4 name (cloudflare_fallback_domain) - default profile
+resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "ref_source_old_default" {
+  account_id = var.cloudflare_account_id
+
+  domains = [
+    {
+      suffix      = "ref-old-default.${var.cloudflare_domain}"
+      description = "Referenced by device profile (old name, default)"
+    }
+  ]
+}
+
+moved {
+  from = cloudflare_fallback_domain.ref_source_old_default
+  to   = cloudflare_zero_trust_device_default_profile_local_domain_fallback.ref_source_old_default
+}
+
+# Using new v4 name (cloudflare_zero_trust_local_fallback_domain) - default profile
+resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "ref_source_new_default" {
+  account_id = var.cloudflare_account_id
+
+  domains = [
+    {
+      suffix      = "ref-new-default.${var.cloudflare_domain}"
+      description = "Referenced by device profile (new name, default)"
+    }
+  ]
+}
+
+moved {
+  from = cloudflare_zero_trust_local_fallback_domain.ref_source_new_default
+  to   = cloudflare_zero_trust_device_default_profile_local_domain_fallback.ref_source_new_default
+}
+
+# Device profile depending on old-name fallback domain
+resource "cloudflare_zero_trust_device_default_profile" "depends_on_old_fallback" {
+  account_id = var.cloudflare_account_id
+
+  allow_mode_switch = true
+  auto_connect      = 30
+
+  depends_on                     = [cloudflare_zero_trust_device_default_profile_local_domain_fallback.ref_source_old_default]
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.depends_on_old_fallback
+  to   = cloudflare_zero_trust_device_default_profile.depends_on_old_fallback
+}
+
+# Device profile depending on new-name fallback domain
+resource "cloudflare_zero_trust_device_default_profile" "depends_on_new_fallback" {
+  account_id = var.cloudflare_account_id
+
+  allow_mode_switch = false
+  auto_connect      = 15
+
+  depends_on                     = [cloudflare_zero_trust_device_default_profile_local_domain_fallback.ref_source_new_default]
+  register_interface_ip_with_dns = true
+  sccm_vpn_boundary_support      = false
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.depends_on_new_fallback
+  to   = cloudflare_zero_trust_device_default_profile.depends_on_new_fallback
 }

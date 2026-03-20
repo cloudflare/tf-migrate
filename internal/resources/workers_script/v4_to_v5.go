@@ -1,6 +1,9 @@
 package workers_script
 
 import (
+	"fmt"
+
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 
@@ -34,16 +37,19 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // Handles both cloudflare_worker_script (singular) and cloudflare_workers_script (plural)
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_worker_script", "cloudflare_workers_script"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_workers_script", "cloudflare_worker_script"}, "cloudflare_workers_script"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	// Capture original resource type before any modifications (for moved block generation)
+	originalResourceType := tfhcl.GetResourceType(block)
+
 	body := block.Body()
 	resourceName := tfhcl.GetResourceName(block)
 
 	// Check if this is the singular form (needs rename + moved block)
-	wasSingular := block.Type() == "resource" && len(block.Labels()) > 0 && block.Labels()[0] == "cloudflare_worker_script"
+	wasSingular := originalResourceType == "cloudflare_worker_script"
 
 	// Handle resource rename: cloudflare_worker_script → cloudflare_workers_script
 	tfhcl.RenameResourceType(block, "cloudflare_worker_script", "cloudflare_workers_script")
@@ -51,8 +57,18 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Rename field: name → script_name
 	tfhcl.RenameAttribute(body, "name", "script_name")
 
-	// Remove deprecated fields
+	// Remove deprecated fields and warn
 	// tags - not supported in v5
+	if body.GetAttribute("tags") != nil {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("Deprecated field removed: cloudflare_workers_script.%s", resourceName),
+			Detail: `The 'tags' field has been removed during migration.
+
+Worker script tags are no longer supported in the v5 provider.
+Use resource tags via cloudflare_workers_script_tags if needed.`,
+		})
+	}
 	tfhcl.RemoveAttributes(body, "tags")
 
 	// Transform bindings: Convert 10 different binding blocks + dispatch_namespace attr → unified bindings list
@@ -66,8 +82,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	// Generate moved block if the resource was renamed (singular → plural)
 	if wasSingular {
-		oldType, newType := m.GetResourceRename()
-		from := oldType + "." + resourceName
+		_, newType := m.GetResourceRename()
+		from := originalResourceType + "." + resourceName
 		to := newType + "." + resourceName
 		movedBlock := tfhcl.CreateMovedBlock(from, to)
 

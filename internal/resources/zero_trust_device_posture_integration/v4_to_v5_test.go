@@ -75,11 +75,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "test" {
     client_secret = "secret-456"
   }
 }
-
-moved {
-  from = cloudflare_device_posture_integration.test
-  to   = cloudflare_zero_trust_device_posture_integration.test
-}
 `,
 		},
 		{
@@ -109,11 +104,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "test" {
     client_id     = "client-123"
     client_secret = "secret-456"
   }
-}
-
-moved {
-  from = cloudflare_device_posture_integration.test
-  to   = cloudflare_zero_trust_device_posture_integration.test
 }
 `,
 		},
@@ -146,11 +136,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "test" {
     client_id     = "client-123"
     client_secret = "secret-456"
   }
-}
-
-moved {
-  from = cloudflare_device_posture_integration.test
-  to   = cloudflare_zero_trust_device_posture_integration.test
 }
 `,
 		},
@@ -190,11 +175,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "full" {
     access_client_id      = "cf-access-id"
     access_client_secret  = "cf-access-secret"
   }
-}
-
-moved {
-  from = cloudflare_device_posture_integration.full
-  to   = cloudflare_zero_trust_device_posture_integration.full
 }
 `,
 		},
@@ -239,6 +219,18 @@ resource "cloudflare_device_posture_integration" "uptycs" {
 }
 `,
 			Expected: `
+resource "cloudflare_zero_trust_device_posture_integration" "crowdstrike" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "CrowdStrike"
+  type       = "crowdstrike_s2s"
+  interval   = "24h"
+  config = {
+    client_id     = "cs-client"
+    client_secret = "cs-secret"
+    customer_id   = "cs-customer"
+  }
+}
+
 resource "cloudflare_zero_trust_device_posture_integration" "ws1" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "Workspace One"
@@ -255,23 +247,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "ws1" {
 moved {
   from = cloudflare_device_posture_integration.ws1
   to   = cloudflare_zero_trust_device_posture_integration.ws1
-}
-
-resource "cloudflare_zero_trust_device_posture_integration" "crowdstrike" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
-  name       = "CrowdStrike"
-  type       = "crowdstrike_s2s"
-  interval   = "24h"
-  config = {
-    client_id     = "cs-client"
-    client_secret = "cs-secret"
-    customer_id   = "cs-customer"
-  }
-}
-
-moved {
-  from = cloudflare_device_posture_integration.crowdstrike
-  to   = cloudflare_zero_trust_device_posture_integration.crowdstrike
 }
 
 resource "cloudflare_zero_trust_device_posture_integration" "uptycs" {
@@ -343,11 +318,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "intune" {
   }
 }
 
-moved {
-  from = cloudflare_device_posture_integration.intune
-  to   = cloudflare_zero_trust_device_posture_integration.intune
-}
-
 resource "cloudflare_zero_trust_device_posture_integration" "kolide" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "Kolide"
@@ -361,11 +331,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "kolide" {
   }
 }
 
-moved {
-  from = cloudflare_device_posture_integration.kolide
-  to   = cloudflare_zero_trust_device_posture_integration.kolide
-}
-
 resource "cloudflare_zero_trust_device_posture_integration" "sentinelone" {
   account_id = "f037e56e89293a057740de681ac9abbe"
   name       = "SentinelOne"
@@ -376,11 +341,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "sentinelone" {
     client_id  = "s1-client"
     client_key = "s1-key"
   }
-}
-
-moved {
-  from = cloudflare_device_posture_integration.sentinelone
-  to   = cloudflare_zero_trust_device_posture_integration.sentinelone
 }
 `,
 		},
@@ -454,11 +414,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "commented" {
     client_secret = "secret-456"
   }
 }
-
-moved {
-  from = cloudflare_device_posture_integration.commented
-  to   = cloudflare_zero_trust_device_posture_integration.commented
-}
 `,
 		},
 		{
@@ -489,11 +444,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "vars" {
     client_id     = var.ws1_client_id
     client_secret = var.ws1_client_secret
   }
-}
-
-moved {
-  from = cloudflare_device_posture_integration.vars
-  to   = cloudflare_zero_trust_device_posture_integration.vars
 }
 `,
 		},

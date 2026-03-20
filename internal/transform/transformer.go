@@ -45,10 +45,15 @@ type ResourceTransformer interface {
 
 // ResourceRenamer is an optional interface that migrators can implement
 // to expose resource type renames. This enables global cross-file reference updates.
+//
+// For resources with multiple v4 names (e.g., both "cloudflare_tunnel_route" and
+// "cloudflare_zero_trust_tunnel_route" mapping to the same v5 name), return all old names
+// in the oldTypes slice. This ensures cross-file references using any v4 name are updated.
 type ResourceRenamer interface {
-	// GetResourceRename returns the old and new resource type names
-	// Returns empty strings if this migrator doesn't rename the resource type
-	GetResourceRename() (oldType string, newType string)
+	// GetResourceRename returns the old resource type names and the new type name.
+	// For resources with multiple v4 names, return all of them in oldTypes.
+	// For resources with no rename, return the same name in both oldTypes and newType.
+	GetResourceRename() (oldTypes []string, newType string)
 }
 
 // AttributeRename represents an attribute name change for a specific resource/datasource type

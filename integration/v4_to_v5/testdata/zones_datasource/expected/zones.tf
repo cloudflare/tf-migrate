@@ -21,8 +21,7 @@ variable "cloudflare_domain" {
 # These are only used to test that variable references are preserved during migration
 # They won't be queried in E2E tests
 variable "account_id" {
-  type    = string
-  default = "test-account-abc123"
+  type = string
 }
 
 variable "zone_name" {

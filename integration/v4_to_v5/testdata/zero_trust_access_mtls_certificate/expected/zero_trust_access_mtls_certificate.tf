@@ -104,6 +104,18 @@ variable "enable_backup_cert" {
 ##########################
 
 
+##########################
+# 11. PATTERN 9: CROSS-RESOURCE REFERENCES WITH BOTH V4 NAMES
+##########################
+# This validates that GetResourceRename() returns ALL v4 names for cross-file reference updates
+# v4 name option 1: cloudflare_access_mutual_tls_certificate
+# v4 name option 2: cloudflare_zero_trust_access_mtls_certificate
+# v5 name: cloudflare_zero_trust_access_mtls_certificate
+
+
+
+
+
 # Summary: This file contains 30+ resource instances covering:
 # - Basic configurations (6 resources)
 # - for_each patterns with maps and sets (9 resources)
@@ -115,7 +127,8 @@ variable "enable_backup_cert" {
 # - Edge cases (3 resources)
 # - Lifecycle meta-arguments (2 resources)
 # - Dependencies (1 resource)
-# Total: 30 resource instances
+# - Pattern 9: Cross-resource references with both v4 names (4 resources)
+# Total: 34 resource instances
 
 # Basic certificate with account_id and all fields
 resource "cloudflare_zero_trust_access_mtls_certificate" "basic_account" {
@@ -440,4 +453,57 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "dependent" {
 moved {
   from = cloudflare_access_mutual_tls_certificate.dependent
   to   = cloudflare_zero_trust_access_mtls_certificate.dependent
+}
+
+# Resource using v4 name option 1
+resource "cloudflare_zero_trust_access_mtls_certificate" "resourcename_opt1" {
+  account_id           = var.cloudflare_account_id
+  name                 = "${local.name_prefix}-pattern9-opt1"
+  certificate          = local.test_cert
+  associated_hostnames = ["pattern9-opt1.cf-tf-test.com"]
+}
+
+moved {
+  from = cloudflare_access_mutual_tls_certificate.resourcename_opt1
+  to   = cloudflare_zero_trust_access_mtls_certificate.resourcename_opt1
+}
+
+# Resource using v4 name option 2
+resource "cloudflare_zero_trust_access_mtls_certificate" "resourcename_opt2" {
+  account_id           = var.cloudflare_account_id
+  name                 = "${local.name_prefix}-pattern9-opt2"
+  certificate          = local.test_cert
+  associated_hostnames = ["pattern9-opt2.cf-tf-test.com"]
+}
+
+# Dependent resource that references option 1
+resource "cloudflare_zero_trust_access_application" "ref_opt1" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} App with mTLS opt1"
+  domain     = "mtls-opt1.cf-tf-test.com"
+  type       = "self_hosted"
+
+  depends_on                 = [cloudflare_zero_trust_access_mtls_certificate.resourcename_opt1]
+  http_only_cookie_attribute = "false"
+}
+
+moved {
+  from = cloudflare_access_application.ref_opt1
+  to   = cloudflare_zero_trust_access_application.ref_opt1
+}
+
+# Dependent resource that references option 2
+resource "cloudflare_zero_trust_access_application" "ref_opt2" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} App with mTLS opt2"
+  domain     = "mtls-opt2.cf-tf-test.com"
+  type       = "self_hosted"
+
+  depends_on                 = [cloudflare_zero_trust_access_mtls_certificate.resourcename_opt2]
+  http_only_cookie_attribute = "false"
+}
+
+moved {
+  from = cloudflare_access_application.ref_opt2
+  to   = cloudflare_zero_trust_access_application.ref_opt2
 }

@@ -400,6 +400,134 @@ func (t *DNSRecordTransformer) TransformState(ctx *transform.Context) (*transfor
 - `DeleteAttribute(path)` - Remove attribute
 - `SetResourceType(type)` - Change resource type
 
+### Multi-Name Resources and Cross-File References
+
+Some resources accept multiple v4 resource type names. For example, `zero_trust_tunnel_cloudflared_route` accepts both:
+- `cloudflare_tunnel_route` (deprecated v4 name)
+- `cloudflare_zero_trust_tunnel_route` (preferred v4 name)
+
+Both map to the same v5 name: `cloudflare_zero_trust_tunnel_cloudflared_route`
+
+#### The Solution
+
+The `GetResourceRename()` interface returns ALL v4 names that map to the v5 name:
+
+```go
+type ResourceRenamer interface {
+    GetResourceRename() (oldTypes []string, newType string)
+}
+
+// Example implementation with multiple v4 names
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+    return []string{
+        "cloudflare_tunnel_route",
+        "cloudflare_zero_trust_tunnel_route",
+    }, "cloudflare_zero_trust_tunnel_cloudflared_route"
+}
+
+// Example implementation with single v4 name
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+    return []string{"cloudflare_dns_record"}, "cloudflare_dns_record"
+}
+```
+
+The global postprocessing step in `cmd/tf-migrate/main.go` loops through all old types and updates **all** cross-file references, regardless of which v4 name was used.
+
+**Example that now works correctly:**
+
+```hcl
+# File: virtual_network.tf
+resource "cloudflare_zero_trust_tunnel_virtual_network" "my_vnet" {
+  # ... (using "second" v4 name)
+}
+
+# File: route.tf
+resource "cloudflare_tunnel_route" "my_route" {
+  virtual_network_id = cloudflare_zero_trust_tunnel_virtual_network.my_vnet.id
+  # After migration, this reference WILL be updated! ✅
+}
+```
+
+#### When to Use Multiple Old Names
+
+Return multiple old names in `GetResourceRename()` when:
+- Your migrator calls `internal.RegisterMigrator()` multiple times with different v4 names
+- Users might have cross-file references using any of the v4 names
+- All v4 names map to the same v5 name
+
+**Important:** Include ALL v4 names in the array, even if one of them matches the v5 name. This ensures cross-file references are updated correctly.
+
+#### Resources Using Multiple Old Names
+
+The following resources return multiple old names (21 total):
+
+1. `zero_trust_tunnel_cloudflared_route`
+   - Old names: `cloudflare_tunnel_route`, `cloudflare_zero_trust_tunnel_route`
+
+2. `zero_trust_tunnel_cloudflared_virtual_network`
+   - Old names: `cloudflare_tunnel_virtual_network`, `cloudflare_zero_trust_tunnel_virtual_network`
+
+3. `zero_trust_tunnel_cloudflared`
+   - Old names: `cloudflare_tunnel`, `cloudflare_zero_trust_tunnel_cloudflared`
+
+4. `zero_trust_tunnel_cloudflared_config`
+   - Old names: `cloudflare_tunnel_config`, `cloudflare_zero_trust_tunnel_cloudflared_config`
+
+5. `zero_trust_device_profiles`
+   - Old names: `cloudflare_zero_trust_device_profiles`, `cloudflare_device_settings_policy`
+
+6. `zero_trust_local_fallback_domain`
+   - Old names: `cloudflare_zero_trust_local_fallback_domain`, `cloudflare_fallback_domain`
+
+7. `zero_trust_dlp_custom_profile`
+   - Old names: `cloudflare_dlp_profile`, `cloudflare_zero_trust_dlp_profile`
+
+8. `zero_trust_gateway_settings`
+   - Old names: `cloudflare_teams_account`, `cloudflare_zero_trust_gateway_settings`
+
+9. `zero_trust_organization`
+   - Old names: `cloudflare_access_organization`, `cloudflare_zero_trust_access_organization`
+
+10. `zero_trust_access_application`
+    - Old names: `cloudflare_access_application`, `cloudflare_zero_trust_access_application`
+
+11. `zero_trust_access_group`
+    - Old names: `cloudflare_access_group`, `cloudflare_zero_trust_access_group`
+
+12. `zero_trust_access_identity_provider`
+    - Old names: `cloudflare_access_identity_provider`, `cloudflare_zero_trust_access_identity_provider`
+
+13. `zero_trust_access_mtls_certificate`
+    - Old names: `cloudflare_access_mutual_tls_certificate`, `cloudflare_zero_trust_access_mtls_certificate`
+
+14. `zero_trust_access_service_token`
+    - Old names: `cloudflare_access_service_token`, `cloudflare_zero_trust_access_service_token`
+
+15. `zero_trust_device_managed_networks`
+    - Old names: `cloudflare_device_managed_networks`, `cloudflare_zero_trust_device_managed_networks`
+
+16. `zero_trust_device_posture_integration`
+    - Old names: `cloudflare_device_posture_integration`, `cloudflare_zero_trust_device_posture_integration`
+
+17. `zero_trust_device_posture_rule`
+    - Old names: `cloudflare_device_posture_rule`, `cloudflare_zero_trust_device_posture_rule`
+
+18. `zero_trust_dex_test`
+    - Old names: `cloudflare_device_dex_test`, `cloudflare_zero_trust_dex_test`
+
+19. `worker_route`
+    - Old names: `cloudflare_workers_route`, `cloudflare_worker_route`
+
+20. `workers_script`
+    - Old names: `cloudflare_workers_script`, `cloudflare_worker_script`
+
+21. `workers_for_platforms_dispatch_namespace`
+    - Old names: `cloudflare_workers_for_platforms_namespace`, `cloudflare_workers_for_platforms_dispatch_namespace`
+
+#### Testing
+
+The integration test in `integration/v4_to_v5/testdata/zero_trust_tunnel_cloudflared_virtual_network/` validates that cross-resource references using the "second" v4 name are properly updated (see Pattern 9 in that test).
+
 ### Resource-Specific Documentation
 
 Each resource has a README.md explaining:

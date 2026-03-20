@@ -44,6 +44,8 @@ exemptions:
       - 'status\s*=\s*"disabled"\s*->\s*null'
       - '-\s*status\s*=\s*"pending"'
       - '-\s*status\s*=\s*"active"'
+      # Match the terraform plan format with varying whitespace
+      - '-\s+status\s+=\s+"pending"\s+->\s+null'
     enabled: true
 
 settings:

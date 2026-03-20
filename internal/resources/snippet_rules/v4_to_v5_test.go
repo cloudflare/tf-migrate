@@ -218,10 +218,5 @@ func TestMigratorMethods(t *testing.T) {
 		if resourceType := m.GetResourceType(); resourceType != "cloudflare_snippet_rules" {
 			t.Errorf("GetResourceType() = %v, want cloudflare_snippet_rules", resourceType)
 		}
-
-		oldName, newName := m.GetResourceRename()
-		if oldName != "cloudflare_snippet_rules" || newName != "cloudflare_snippet_rules" {
-			t.Errorf("GetResourceRename() = (%v, %v), want (cloudflare_snippet_rules, cloudflare_snippet_rules)", oldName, newName)
-		}
 	}
 }

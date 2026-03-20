@@ -29,8 +29,8 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 
 // GetResourceRename implements the ResourceRenamer interface
 // This resource does not rename, so we return the same name for both old and new
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_observatory_scheduled_test", "cloudflare_observatory_scheduled_test"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_observatory_scheduled_test"}, "cloudflare_observatory_scheduled_test"
 }
 
 // Preprocess performs any string-level transformations before HCL parsing.

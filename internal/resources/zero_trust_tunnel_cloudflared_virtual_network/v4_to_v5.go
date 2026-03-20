@@ -38,8 +38,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // This allows the migration tool to collect all resource renames and apply them globally
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_tunnel_virtual_network", "cloudflare_zero_trust_tunnel_cloudflared_virtual_network"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_tunnel_virtual_network", "cloudflare_zero_trust_tunnel_virtual_network"}, "cloudflare_zero_trust_tunnel_cloudflared_virtual_network"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

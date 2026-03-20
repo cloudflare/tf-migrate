@@ -81,8 +81,8 @@ func (m *V4ToV5Migrator) Postprocess(content string) string {
 // - per-zone -> cloudflare_authenticated_origin_pulls_certificate
 // - per-hostname -> cloudflare_authenticated_origin_pulls_hostname_certificate
 // We return the v4 name for both to indicate no simple 1:1 rename
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_authenticated_origin_pulls_certificate", "cloudflare_authenticated_origin_pulls_certificate"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_authenticated_origin_pulls_certificate"}, "cloudflare_authenticated_origin_pulls_certificate"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

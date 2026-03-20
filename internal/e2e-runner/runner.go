@@ -452,6 +452,7 @@ func RunE2ETests(cfg *RunConfig) error {
 	if tfConfigFile != "" {
 		v5TF.TFConfigFile = tfConfigFile
 	}
+	v5TF.EnvVars["TF_VAR_account_id"] = os.Getenv("CLOUDFLARE_ACCOUNT_ID")
 
 	// Initialize v5
 	v5InitArgs := []string{"init", "-no-color", "-input=false"}
@@ -971,6 +972,7 @@ func runV4Tests(ctx *testContext) error {
 	// Set R2 credentials
 	v4TF.EnvVars["AWS_ACCESS_KEY_ID"] = r2AccessKey
 	v4TF.EnvVars["AWS_SECRET_ACCESS_KEY"] = r2SecretKey
+	v4TF.EnvVars["TF_VAR_account_id"] = ctx.env.AccountID
 
 	// Create backend config
 	backendConfig := filepath.Join(ctx.v4Dir, "backend.hcl")
@@ -1297,18 +1299,31 @@ func hasProviderStateUpgrader(resourceType string) bool {
 	for _, migrator := range allMigrators {
 		// Check if this migrator's resource type matches what we're looking for
 		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
-			oldType, newType := renamer.GetResourceRename()
+			oldTypes, newType := renamer.GetResourceRename()
 
-			// Check if either the old or new resource type (without cloudflare_ prefix) matches
-			oldTypeShort := strings.TrimPrefix(oldType, "cloudflare_")
+			// Check if either any old type or new resource type (without cloudflare_ prefix) matches
 			newTypeShort := strings.TrimPrefix(newType, "cloudflare_")
 
-			if oldTypeShort == resourceType || newTypeShort == resourceType {
-				// Found a match - check if it uses provider state upgrader
+			// Check new type first
+			if newTypeShort == resourceType {
 				if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
 					if psu.UsesProviderStateUpgrader() {
 						return true
 					}
+				}
+			}
+
+			// Check each old type
+			for _, oldType := range oldTypes {
+				oldTypeShort := strings.TrimPrefix(oldType, "cloudflare_")
+				if oldTypeShort == resourceType {
+					// Found a match - check if it uses provider state upgrader
+					if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
+						if psu.UsesProviderStateUpgrader() {
+							return true
+						}
+					}
+					break
 				}
 			}
 		}

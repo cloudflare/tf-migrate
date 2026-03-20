@@ -24,16 +24,96 @@ locals {
 }
 
 
+# Pattern 4: for_each with sets (3-5 items)
+resource "cloudflare_zero_trust_device_posture_integration" "set_integrations" {
+  for_each = toset(["intune", "kolide", "sentinelone_s2s"])
+
+  account_id = var.cloudflare_account_id
+  name       = "${local.integration_prefix}-${each.key}"
+  type       = each.key
+  interval   = "24h"
+
+  config = {
+    client_id     = "${each.key}-client"
+    client_secret = "${each.key}-secret"
+  }
+}
 
 
+# Pattern 6: Conditional resource creation (count with ternary)
+resource "cloudflare_zero_trust_device_posture_integration" "conditional" {
+  count = var.enable_integrations ? 2 : 0
+
+  account_id = var.cloudflare_account_id
+  name       = "${local.integration_prefix}-conditional-${count.index}"
+  type       = "tanium_s2s"
+
+  interval = "24h"
+  config = {
+    api_url       = "https://tanium-${count.index}.example.com"
+    client_secret = "tanium-secret-${count.index}"
+  }
+}
 
 
+resource "cloudflare_zero_trust_device_posture_integration" "secondary" {
+  # References the primary integration's name
+  account_id = var.cloudflare_account_id
+  name       = "${cloudflare_zero_trust_device_posture_integration.primary.name}-secondary"
+  type       = "crowdstrike_s2s"
+  interval   = cloudflare_zero_trust_device_posture_integration.primary.interval
+
+  config = {
+    client_id     = "secondary-client"
+    client_secret = "secondary-secret"
+    customer_id   = "secondary-customer"
+  }
+}
 
 
+resource "cloudflare_zero_trust_device_posture_integration" "prevent_destroy" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.integration_prefix}-prevent-destroy"
+  type       = "kolide"
+  interval   = "24h"
 
 
+  lifecycle {
+    prevent_destroy = true
+  }
+  config = {
+    client_id            = "prevent-client"
+    client_secret        = "prevent-secret"
+    access_client_id     = "prevent-access-id"
+    access_client_secret = "prevent-access-secret"
+  }
+}
 
 
+# Additional edge cases
+resource "cloudflare_zero_trust_device_posture_integration" "minimal" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.integration_prefix}-minimal"
+  type       = "custom_s2s"
+  interval   = "30m"
+
+  config = {
+    api_url = "https://minimal.example.com"
+  }
+}
+
+
+resource "cloudflare_zero_trust_device_posture_integration" "no_interval" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.integration_prefix}-no-interval"
+  type       = "intune"
+
+  interval = "24h"
+  config = {
+    client_id     = "no-interval-client"
+    client_secret = "no-interval-secret"
+  }
+}
 
 
 # Total resource instances:
@@ -99,26 +179,6 @@ moved {
   to   = cloudflare_zero_trust_device_posture_integration.map_integrations
 }
 
-# Pattern 4: for_each with sets (3-5 items)
-resource "cloudflare_zero_trust_device_posture_integration" "set_integrations" {
-  for_each = toset(["intune", "kolide", "sentinelone_s2s"])
-
-  account_id = var.cloudflare_account_id
-  name       = "${local.integration_prefix}-${each.key}"
-  type       = each.key
-  interval   = "24h"
-
-  config = {
-    client_id     = "${each.key}-client"
-    client_secret = "${each.key}-secret"
-  }
-}
-
-moved {
-  from = cloudflare_device_posture_integration.set_integrations
-  to   = cloudflare_zero_trust_device_posture_integration.set_integrations
-}
-
 # Pattern 5: count-based resources (at least 3)
 resource "cloudflare_zero_trust_device_posture_integration" "count_integrations" {
   count = 3
@@ -140,26 +200,6 @@ moved {
   to   = cloudflare_zero_trust_device_posture_integration.count_integrations
 }
 
-# Pattern 6: Conditional resource creation (count with ternary)
-resource "cloudflare_zero_trust_device_posture_integration" "conditional" {
-  count = var.enable_integrations ? 2 : 0
-
-  account_id = var.cloudflare_account_id
-  name       = "${local.integration_prefix}-conditional-${count.index}"
-  type       = "tanium_s2s"
-
-  interval = "24h"
-  config = {
-    api_url       = "https://tanium-${count.index}.example.com"
-    client_secret = "tanium-secret-${count.index}"
-  }
-}
-
-moved {
-  from = cloudflare_device_posture_integration.conditional
-  to   = cloudflare_zero_trust_device_posture_integration.conditional
-}
-
 # Pattern 7: Cross-resource references
 resource "cloudflare_zero_trust_device_posture_integration" "primary" {
   account_id = var.cloudflare_account_id
@@ -178,25 +218,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "primary" {
 moved {
   from = cloudflare_device_posture_integration.primary
   to   = cloudflare_zero_trust_device_posture_integration.primary
-}
-
-resource "cloudflare_zero_trust_device_posture_integration" "secondary" {
-  # References the primary integration's name
-  account_id = var.cloudflare_account_id
-  name       = "${cloudflare_zero_trust_device_posture_integration.primary.name}-secondary"
-  type       = "crowdstrike_s2s"
-  interval   = cloudflare_zero_trust_device_posture_integration.primary.interval
-
-  config = {
-    client_id     = "secondary-client"
-    client_secret = "secondary-secret"
-    customer_id   = "secondary-customer"
-  }
-}
-
-moved {
-  from = cloudflare_device_posture_integration.secondary
-  to   = cloudflare_zero_trust_device_posture_integration.secondary
 }
 
 # Pattern 8: Lifecycle meta-arguments
@@ -225,29 +246,6 @@ moved {
   to   = cloudflare_zero_trust_device_posture_integration.lifecycle_test
 }
 
-resource "cloudflare_zero_trust_device_posture_integration" "prevent_destroy" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.integration_prefix}-prevent-destroy"
-  type       = "kolide"
-  interval   = "24h"
-
-
-  lifecycle {
-    prevent_destroy = true
-  }
-  config = {
-    client_id            = "prevent-client"
-    client_secret        = "prevent-secret"
-    access_client_id     = "prevent-access-id"
-    access_client_secret = "prevent-access-secret"
-  }
-}
-
-moved {
-  from = cloudflare_device_posture_integration.prevent_destroy
-  to   = cloudflare_zero_trust_device_posture_integration.prevent_destroy
-}
-
 # Pattern 9: Terraform functions
 resource "cloudflare_zero_trust_device_posture_integration" "function_test" {
   account_id = var.cloudflare_account_id
@@ -266,23 +264,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "function_test" {
 moved {
   from = cloudflare_device_posture_integration.function_test
   to   = cloudflare_zero_trust_device_posture_integration.function_test
-}
-
-# Additional edge cases
-resource "cloudflare_zero_trust_device_posture_integration" "minimal" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.integration_prefix}-minimal"
-  type       = "custom_s2s"
-  interval   = "30m"
-
-  config = {
-    api_url = "https://minimal.example.com"
-  }
-}
-
-moved {
-  from = cloudflare_device_posture_integration.minimal
-  to   = cloudflare_zero_trust_device_posture_integration.minimal
 }
 
 resource "cloudflare_zero_trust_device_posture_integration" "all_fields" {
@@ -306,23 +287,6 @@ resource "cloudflare_zero_trust_device_posture_integration" "all_fields" {
 moved {
   from = cloudflare_device_posture_integration.all_fields
   to   = cloudflare_zero_trust_device_posture_integration.all_fields
-}
-
-resource "cloudflare_zero_trust_device_posture_integration" "no_interval" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.integration_prefix}-no-interval"
-  type       = "intune"
-
-  interval = "24h"
-  config = {
-    client_id     = "no-interval-client"
-    client_secret = "no-interval-secret"
-  }
-}
-
-moved {
-  from = cloudflare_device_posture_integration.no_interval
-  to   = cloudflare_zero_trust_device_posture_integration.no_interval
 }
 
 # Dynamic block example

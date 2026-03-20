@@ -87,8 +87,8 @@ resource "cloudflare_access_mutual_tls_certificate" "single_hostname" {
 
 # Certificate with many hostnames
 resource "cloudflare_access_mutual_tls_certificate" "many_hostnames" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-many-hostnames"
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-many-hostnames"
   certificate = local.test_cert
   associated_hostnames = [
     "host1.cf-tf-test.com",
@@ -220,8 +220,8 @@ resource "cloudflare_access_mutual_tls_certificate" "app_cert" {
 }
 
 resource "cloudflare_access_mutual_tls_certificate" "backend_cert" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-backend-cert"
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-backend-cert"
   certificate = local.test_cert
   # Reference the same hostnames as app_cert would in real scenario
   associated_hostnames = ["backend.cf-tf-test.com"]
@@ -297,6 +297,50 @@ resource "cloudflare_access_mutual_tls_certificate" "dependent" {
   ]
 }
 
+##########################
+# 11. PATTERN 9: CROSS-RESOURCE REFERENCES WITH BOTH V4 NAMES
+##########################
+# This validates that GetResourceRename() returns ALL v4 names for cross-file reference updates
+# v4 name option 1: cloudflare_access_mutual_tls_certificate
+# v4 name option 2: cloudflare_zero_trust_access_mtls_certificate
+# v5 name: cloudflare_zero_trust_access_mtls_certificate
+
+# Resource using v4 name option 1
+resource "cloudflare_access_mutual_tls_certificate" "resourcename_opt1" {
+  account_id           = var.cloudflare_account_id
+  name                 = "${local.name_prefix}-pattern9-opt1"
+  certificate          = local.test_cert
+  associated_hostnames = ["pattern9-opt1.cf-tf-test.com"]
+}
+
+# Resource using v4 name option 2
+resource "cloudflare_zero_trust_access_mtls_certificate" "resourcename_opt2" {
+  account_id           = var.cloudflare_account_id
+  name                 = "${local.name_prefix}-pattern9-opt2"
+  certificate          = local.test_cert
+  associated_hostnames = ["pattern9-opt2.cf-tf-test.com"]
+}
+
+# Dependent resource that references option 1
+resource "cloudflare_access_application" "ref_opt1" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} App with mTLS opt1"
+  domain     = "mtls-opt1.cf-tf-test.com"
+  type       = "self_hosted"
+
+  depends_on = [cloudflare_access_mutual_tls_certificate.resourcename_opt1]
+}
+
+# Dependent resource that references option 2
+resource "cloudflare_access_application" "ref_opt2" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} App with mTLS opt2"
+  domain     = "mtls-opt2.cf-tf-test.com"
+  type       = "self_hosted"
+
+  depends_on = [cloudflare_zero_trust_access_mtls_certificate.resourcename_opt2]
+}
+
 # Summary: This file contains 30+ resource instances covering:
 # - Basic configurations (6 resources)
 # - for_each patterns with maps and sets (9 resources)
@@ -308,4 +352,5 @@ resource "cloudflare_access_mutual_tls_certificate" "dependent" {
 # - Edge cases (3 resources)
 # - Lifecycle meta-arguments (2 resources)
 # - Dependencies (1 resource)
-# Total: 30 resource instances
+# - Pattern 9: Cross-resource references with both v4 names (4 resources)
+# Total: 34 resource instances

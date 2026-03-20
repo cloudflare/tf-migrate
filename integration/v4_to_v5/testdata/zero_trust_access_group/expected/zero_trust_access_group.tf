@@ -180,12 +180,12 @@ resource "cloudflare_zero_trust_access_group" "booleans" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix} Boolean Selectors Group"
 
+
   include = [
     {
       everyone = {}
     },
   ]
-
   exclude = [
     {
       certificate = {}
@@ -261,6 +261,8 @@ resource "cloudflare_zero_trust_access_group" "all_rules" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix} All Rules Group"
 
+
+
   include = [
     {
       email = {
@@ -268,7 +270,6 @@ resource "cloudflare_zero_trust_access_group" "all_rules" {
       }
     },
   ]
-
   exclude = [
     {
       ip = {
@@ -276,7 +277,6 @@ resource "cloudflare_zero_trust_access_group" "all_rules" {
       }
     },
   ]
-
   require = [
     {
       email_domain = {
@@ -296,6 +296,7 @@ resource "cloudflare_zero_trust_access_group" "complex" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix} Complex Group"
 
+
   include = [
     {
       email = {
@@ -308,17 +309,16 @@ resource "cloudflare_zero_trust_access_group" "complex" {
       }
     },
     {
-      ip = {
-        ip = "10.0.0.0/8"
-      }
-    },
-    {
       email_domain = {
         domain = "example.com"
       }
     },
+    {
+      ip = {
+        ip = "10.0.0.0/8"
+      }
+    },
   ]
-
   exclude = [
     {
       ip = {
@@ -367,21 +367,6 @@ resource "cloudflare_zero_trust_access_group" "lists" {
 
   include = [
     {
-      email_list = {
-        id = "list-id-1"
-      }
-    },
-    {
-      ip_list = {
-        id = "iplist-id-1"
-      }
-    },
-    {
-      ip_list = {
-        id = "iplist-id-2"
-      }
-    },
-    {
       ip = {
         ip = "192.0.2.10/32"
       }
@@ -394,6 +379,21 @@ resource "cloudflare_zero_trust_access_group" "lists" {
     {
       ip = {
         ip = "198.51.100.1/32"
+      }
+    },
+    {
+      email_list = {
+        id = "list-id-1"
+      }
+    },
+    {
+      ip_list = {
+        id = "iplist-id-1"
+      }
+    },
+    {
+      ip_list = {
+        id = "iplist-id-2"
       }
     },
   ]
@@ -476,6 +476,10 @@ resource "cloudflare_zero_trust_access_group" "lifecycle_test" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix} Lifecycle Test Group"
 
+
+  lifecycle {
+    create_before_destroy = true
+  }
   include = [
     {
       email = {
@@ -483,10 +487,6 @@ resource "cloudflare_zero_trust_access_group" "lifecycle_test" {
       }
     },
   ]
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
 moved {
@@ -534,6 +534,8 @@ resource "cloudflare_zero_trust_access_group" "child" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix} Child Group - References ${cloudflare_zero_trust_access_group.parent.name}"
 
+
+  depends_on = [cloudflare_zero_trust_access_group.parent]
   include = [
     {
       email = {
@@ -541,8 +543,6 @@ resource "cloudflare_zero_trust_access_group" "child" {
       }
     },
   ]
-
-  depends_on = [cloudflare_zero_trust_access_group.parent]
 }
 
 moved {

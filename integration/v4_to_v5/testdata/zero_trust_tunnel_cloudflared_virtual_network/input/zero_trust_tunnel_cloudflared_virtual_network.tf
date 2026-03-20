@@ -76,3 +76,35 @@ resource "cloudflare_zero_trust_tunnel_virtual_network" "new_name" {
   account_id = local.account_id
   name       = "${local.prefix}-new"
 }
+
+# Pattern 9: Cross-resource reference using both v4 names
+# This validates that GetResourceRename() returns ALL v4 names for cross-file reference updates
+# v4 resource name option 1: cloudflare_zero_trust_tunnel_virtual_network
+# v4 resource name option 2: cloudflare_tunnel_virtual_network
+
+# Create a tunnel to reference in the route
+resource "cloudflare_tunnel" "for_route_test" {
+  account_id = local.account_id
+  name       = "${local.prefix}-route-test-tunnel"
+  secret     = base64encode("test-secret-that-is-at-least-32-bytes-long")
+}
+
+# Route using option 1 v4 name that references the virtual network
+# cloudflare_zero_trust_tunnel_virtual_network (the "option 1" v4 name)
+resource "cloudflare_zero_trust_tunnel_route" "test_opt1_v4_name_ref" {
+  account_id         = local.account_id
+  tunnel_id          = cloudflare_tunnel.for_route_test.id
+  network            = "10.254.0.0/16"
+  virtual_network_id = cloudflare_zero_trust_tunnel_virtual_network.new_name.id
+  comment            = "VNet: ${cloudflare_zero_trust_tunnel_virtual_network.new_name.name}"
+}
+
+# Route using option 2 v4 name that references the virtual network
+# cloudflare_tunnel_virtual_network (the "option 2" v4 name)
+resource "cloudflare_tunnel_route" "test_opt2_v4_name_ref" {
+  account_id         = local.account_id
+  tunnel_id          = cloudflare_tunnel.for_route_test.id
+  network            = "10.255.0.0/16"
+  virtual_network_id = cloudflare_tunnel_virtual_network.old_name.id
+  comment            = "VNet: ${cloudflare_tunnel_virtual_network.old_name.name}"
+}

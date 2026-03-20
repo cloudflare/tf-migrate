@@ -410,3 +410,30 @@ resource "cloudflare_zero_trust_access_application" "special_chars" {
   custom_deny_message = "Access denied - contact support"
   type                = "self_hosted"
 }
+
+# ============================================================================
+# Pattern 9: Cross-resource reference using both v4 names
+# ============================================================================
+# This validates that GetResourceRename() returns ALL v4 names for cross-file reference updates
+# v4 name option 1: cloudflare_access_application
+# v4 name option 2: cloudflare_zero_trust_access_application
+# v5 name: cloudflare_zero_trust_access_application
+
+# Resource using v4 name option 1
+resource "cloudflare_access_application" "resourcename_opt1" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} Pattern9 Option1"
+  domain     = "pattern9-opt1.${local.app_domain_suffix}"
+  type       = "self_hosted"
+}
+
+# Resource using v4 name option 2
+resource "cloudflare_zero_trust_access_application" "resourcename_opt2" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} Pattern9 Option2"
+  domain     = "pattern9-opt2.${local.app_domain_suffix}"
+  type       = "self_hosted"
+}
+
+# NOTE: cloudflare_access_policy with application_id CANNOT be migrated to v5.
+# See access_policy.md in the repo root for details.

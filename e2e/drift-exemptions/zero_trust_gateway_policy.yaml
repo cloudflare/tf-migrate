@@ -35,6 +35,13 @@ exemptions:
       - 'precedence\s*=\s*\d{4,}\s*->\s*\d{1,4}'
     enabled: true
 
+  - name: "filters_computed_to_null"
+    description: "The 'filters' field was computed by the v4 provider based on the traffic rule but was not explicitly set in config. After migration, the v5 provider detects that state has a value but config does not specify it, showing 'filters = [\"dns\"] -> null'. This is expected drift when the v4 config relied on implicit filter inference. The policy behavior is unchanged."
+    patterns:
+      - '-\s*filters\s*=\s*\['
+      - 'filters.*->.*null'
+    enabled: true
+
 settings:
   apply_exemptions: true
   verbose_exemptions: false

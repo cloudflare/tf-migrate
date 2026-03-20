@@ -1,6 +1,10 @@
 package certificate_pack
 
 import (
+	"fmt"
+	"strings"
+
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 
@@ -36,12 +40,39 @@ func (m *V4ToV5Migrator) Postprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // cloudflare_certificate_pack doesn't rename, so return the same name
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_certificate_pack", "cloudflare_certificate_pack"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_certificate_pack"}, "cloudflare_certificate_pack"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
+	resourceName := tfhcl.GetResourceName(block)
+
+	// Check for deprecated fields and warn
+	var removedFields []string
+	if body.GetAttribute("wait_for_active_status") != nil {
+		removedFields = append(removedFields, "wait_for_active_status")
+	}
+	if body.GetAttribute("validation_records") != nil {
+		removedFields = append(removedFields, "validation_records")
+	}
+	if body.GetAttribute("validation_errors") != nil {
+		removedFields = append(removedFields, "validation_errors")
+	}
+
+	if len(removedFields) > 0 {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("Deprecated fields removed: cloudflare_certificate_pack.%s", resourceName),
+			Detail: fmt.Sprintf(`The following fields have been removed during migration:
+  %s
+
+These fields are now Computed-only or removed in the v5 provider:
+  - wait_for_active_status: No longer needed (provider waits automatically)
+  - validation_records: Now Computed-only, cannot be set in config
+  - validation_errors: Now Computed-only, cannot be set in config`, strings.Join(removedFields, ", ")),
+		})
+	}
 
 	// wait_for_active_status: removed in v5
 	tfhcl.RemoveAttributes(body, "wait_for_active_status")

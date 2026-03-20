@@ -37,8 +37,8 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 }
 
 // GetResourceRename implements the ResourceRenamer interface
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_access_application", "cloudflare_zero_trust_access_application"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_access_application", "cloudflare_zero_trust_access_application"}, "cloudflare_zero_trust_access_application"
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
@@ -46,20 +46,20 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-	// Get the resource name before renaming (for moved block generation)
+	// Get the resource name/type before renaming (for moved block generation)
+	originalResourceType := tfhcl.GetResourceType(block)
 	resourceName := tfhcl.GetResourceName(block)
-	resourceType := tfhcl.GetResourceType(block)
 
 	// Track if we need to generate a moved block
 	var movedBlock *hclwrite.Block
 
 	// Rename resource type if it's the old name
-	if resourceType == "cloudflare_access_application" {
+	if originalResourceType == "cloudflare_access_application" {
 		tfhcl.RenameResourceType(block, "cloudflare_access_application", "cloudflare_zero_trust_access_application")
 
 		// Generate moved block for state migration
-		oldType, newType := m.GetResourceRename()
-		from := oldType + "." + resourceName
+		_, newType := m.GetResourceRename()
+		from := originalResourceType + "." + resourceName
 		to := newType + "." + resourceName
 		movedBlock = tfhcl.CreateMovedBlock(from, to)
 	}

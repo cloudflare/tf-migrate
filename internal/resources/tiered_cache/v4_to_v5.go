@@ -38,8 +38,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // cloudflare_tiered_cache doesn't rename, so return the same name
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_tiered_cache", "cloudflare_tiered_cache"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_tiered_cache"}, "cloudflare_tiered_cache"
 }
 
 // TransformConfig handles configuration file transformations.

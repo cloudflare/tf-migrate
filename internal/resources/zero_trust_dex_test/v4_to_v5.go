@@ -33,11 +33,13 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 }
 
 // GetResourceRename implements the ResourceRenamer interface
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_device_dex_test", "cloudflare_zero_trust_dex_test"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_device_dex_test", "cloudflare_zero_trust_dex_test"}, "cloudflare_zero_trust_dex_test"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	// Capture original resource type before any modifications (for moved block generation)
+	originalResourceType := tfhcl.GetResourceType(block)
 	resourceName := tfhcl.GetResourceName(block)
 
 	// rename cloudflare_device_dex_test → cloudflare_zero_trust_dex_test
@@ -52,14 +54,21 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	tfhcl.RemoveAttributes(body, "updated", "created")
 
 	// Generate moved block for state migration
-	oldType, newType := m.GetResourceRename()
-	from := oldType + "." + resourceName
-	to := newType + "." + resourceName
-	movedBlock := tfhcl.CreateMovedBlock(from, to)
+	_, newType := m.GetResourceRename()
+	if originalResourceType != newType {
+		from := originalResourceType + "." + resourceName
+		to := newType + "." + resourceName
+		movedBlock := tfhcl.CreateMovedBlock(from, to)
+
+		return &transform.TransformResult{
+			Blocks:         []*hclwrite.Block{block, movedBlock},
+			RemoveOriginal: true,
+		}, nil
+	}
 
 	return &transform.TransformResult{
-		Blocks:         []*hclwrite.Block{block, movedBlock},
-		RemoveOriginal: true,
+		Blocks:         []*hclwrite.Block{block},
+		RemoveOriginal: false,
 	}, nil
 }
 

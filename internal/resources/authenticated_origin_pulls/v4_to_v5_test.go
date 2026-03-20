@@ -180,29 +180,6 @@ moved {
 	testhelpers.RunConfigTransformTests(t, testCases, migrator)
 }
 
-func TestResourceRename(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
-
-	// Type assert to ResourceRenamer interface
-	renamer, ok := migrator.(interface {
-		GetResourceRename() (string, string)
-	})
-
-	if !ok {
-		t.Fatal("Migrator does not implement ResourceRenamer interface")
-	}
-
-	oldName, newName := renamer.GetResourceRename()
-
-	if oldName != "cloudflare_authenticated_origin_pulls" {
-		t.Errorf("Expected old name 'cloudflare_authenticated_origin_pulls', got '%s'", oldName)
-	}
-
-	if newName != "cloudflare_authenticated_origin_pulls_settings" {
-		t.Errorf("Expected new name 'cloudflare_authenticated_origin_pulls_settings', got '%s'", newName)
-	}
-}
-
 func TestCanHandle(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 

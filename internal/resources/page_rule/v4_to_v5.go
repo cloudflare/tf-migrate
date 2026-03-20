@@ -1,8 +1,11 @@
 package page_rule
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
@@ -41,13 +44,14 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // cloudflare_page_rule doesn't rename, so return the same name
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_page_rule", "cloudflare_page_rule"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_page_rule"}, "cloudflare_page_rule"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	// Resource name doesn't change (cloudflare_page_rule in both v4 and v5)
 	body := block.Body()
+	resourceName := tfhcl.GetResourceName(block)
 
 	// Step 0: Add status = "active" if not present (v4 default was "active", v5 default is "disabled")
 	if body.GetAttribute("status") == nil {
@@ -59,7 +63,26 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	if actionsBlock != nil {
 		actionsBody := actionsBlock.Body()
 
-		// Step 1a: Remove deprecated fields
+		// Step 1a: Remove deprecated fields and warn
+		var removedFields []string
+		if actionsBody.GetAttribute("minify") != nil {
+			removedFields = append(removedFields, "minify")
+		}
+		if actionsBody.GetAttribute("disable_railgun") != nil {
+			removedFields = append(removedFields, "disable_railgun")
+		}
+		if len(removedFields) > 0 {
+			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+				Severity: hcl.DiagWarning,
+				Summary:  fmt.Sprintf("Deprecated fields removed: cloudflare_page_rule.%s", resourceName),
+				Detail: fmt.Sprintf(`The following deprecated fields have been removed during migration:
+  %s
+
+These fields are no longer supported in the v5 provider:
+  - minify: Use cloudflare_zone_setting with setting_id = "minify" instead
+  - disable_railgun: Railgun has been discontinued`, strings.Join(removedFields, ", ")),
+			})
+		}
 		tfhcl.RemoveAttributes(actionsBody, "minify", "disable_railgun")
 
 		// Step 1b: Transform cache_ttl_by_status (TypeSet blocks → MapAttribute)
@@ -211,4 +234,3 @@ func (m *V4ToV5Migrator) transformCacheTTLByStatus(body *hclwrite.Body) {
 func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
 	return true
 }
-

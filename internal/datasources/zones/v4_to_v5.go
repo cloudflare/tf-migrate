@@ -49,8 +49,8 @@ func (m *V4ToV5Migrator) GetAttributeRenames() []transform.AttributeRename {
 
 // GetResourceRename implements the ResourceRenamer interface
 // cloudflare_zones datasource doesn't rename, so return the same name
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "data.cloudflare_zones", "data.cloudflare_zones"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"data.cloudflare_zones"}, "data.cloudflare_zones"
 }
 
 // CanHandle determines if this migrator can handle the given datasource type.

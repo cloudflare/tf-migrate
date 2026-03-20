@@ -42,8 +42,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 // GetResourceRename implements the ResourceRenamer interface
 // list_item is removed in v5 (embedded in parent list resource)
 // We use the old name for both to indicate it doesn't have a direct v5 equivalent
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_list_item", "cloudflare_list_item"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_list_item"}, "cloudflare_list_item"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

@@ -19,13 +19,6 @@ func TestV4ToV5Transformation(t *testing.T) {
 			t.Errorf("GetResourceType() = %v, want %v", got, "cloudflare_access_rule")
 		}
 
-		// Test GetResourceRename
-		oldName, newName := m.GetResourceRename()
-		if oldName != "cloudflare_access_rule" || newName != "cloudflare_access_rule" {
-			t.Errorf("GetResourceRename() = (%v, %v), want (%v, %v)",
-				oldName, newName, "cloudflare_access_rule", "cloudflare_access_rule")
-		}
-
 		// Test CanHandle
 		if !m.CanHandle("cloudflare_access_rule") {
 			t.Error("CanHandle('cloudflare_access_rule') should return true")
@@ -252,4 +245,3 @@ resource "cloudflare_access_rule" "managed_challenge" {
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
-

@@ -517,3 +517,72 @@ resource "cloudflare_teams_account" "all_scanning" {
 # - lifecycle: 3 resources (26-28)
 # - combinations: 2 resources (29-30)
 # Total: 29 resource instances created
+
+# ============================================================================
+# Pattern Group 9: Cross-File References (Resource Rename Test)
+# ============================================================================
+
+# Pattern 9 tests that cross-file references are updated when resource names change.
+# The migrator renames cloudflare_teams_account -> cloudflare_zero_trust_gateway_settings
+# and cloudflare_zero_trust_gateway_settings -> cloudflare_zero_trust_gateway_settings (no-op).
+# We create dependent resources (gateway policies) that reference these settings via depends_on.
+# After migration, the references must be updated to use the new resource names.
+
+# 31. Old name v4 resource (cloudflare_teams_account) - will become cloudflare_zero_trust_gateway_settings
+resource "cloudflare_teams_account" "ref_source_old" {
+  account_id           = var.cloudflare_account_id
+  activity_log_enabled = true
+  tls_decrypt_enabled  = true
+
+  block_page {
+    enabled     = true
+    name        = "Cross-Ref Old Name Source"
+    footer_text = "Referenced by gateway policy (old name)"
+  }
+}
+
+# 32. New name v4 resource (cloudflare_zero_trust_gateway_settings) - stays cloudflare_zero_trust_gateway_settings
+resource "cloudflare_zero_trust_gateway_settings" "ref_source_new" {
+  account_id           = var.cloudflare_account_id
+  activity_log_enabled = true
+  tls_decrypt_enabled  = false
+
+  block_page {
+    enabled     = true
+    name        = "Cross-Ref New Name Source"
+    footer_text = "Referenced by gateway policy (new name)"
+  }
+
+  antivirus {
+    enabled_download_phase = true
+    enabled_upload_phase   = false
+    fail_closed            = false
+  }
+}
+
+# Dependent resources that reference the above settings
+# Note: Using realistic resource type that would depend on gateway settings
+
+# 33. Gateway policy depending on old-name settings
+resource "cloudflare_zero_trust_gateway_policy" "depends_on_old_name" {
+  account_id  = var.cloudflare_account_id
+  name        = "cftftest Policy Depending on Old Name Settings"
+  description = "This policy depends on settings created with old resource name"
+  action      = "block"
+  precedence  = 1000
+  enabled     = true
+
+  depends_on = [cloudflare_teams_account.ref_source_old]
+}
+
+# 34. Gateway policy depending on new-name settings
+resource "cloudflare_zero_trust_gateway_policy" "depends_on_new_name" {
+  account_id  = var.cloudflare_account_id
+  name        = "cftftest Policy Depending on New Name Settings"
+  description = "This policy depends on settings created with new resource name"
+  action      = "allow"
+  precedence  = 2000
+  enabled     = true
+
+  depends_on = [cloudflare_zero_trust_gateway_settings.ref_source_new]
+}

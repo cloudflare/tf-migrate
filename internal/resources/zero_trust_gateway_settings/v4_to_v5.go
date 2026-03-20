@@ -37,8 +37,8 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 }
 
 // GetResourceRename implements the ResourceRenamer interface
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_teams_account", "cloudflare_zero_trust_gateway_settings"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_teams_account", "cloudflare_zero_trust_gateway_settings"}, "cloudflare_zero_trust_gateway_settings"
 }
 
 // Preprocess - no preprocessing needed, all transformations done in TransformConfig
@@ -48,7 +48,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // TransformConfig transforms the HCL configuration from v4 to v5
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-	// Get the original resource name for creating related resources
+	// Capture original resource type before any modifications (for moved block generation)
+	originalResourceType := tfhcl.GetResourceType(block)
 	resourceName := tfhcl.GetResourceName(block)
 
 	// Track additional resources to create
@@ -84,9 +85,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	tfhcl.RemoveBlocksByType(body, "ssh_session_log")
 	tfhcl.RemoveBlocksByType(body, "payload_log")
 
-	// Track rename before modifying block type
-	wasRenamed := tfhcl.GetResourceType(block) == "cloudflare_teams_account"
-	if wasRenamed {
+	// Rename resource type if it's the old type
+	if originalResourceType == "cloudflare_teams_account" {
 		tfhcl.RenameResourceType(block, "cloudflare_teams_account", "cloudflare_zero_trust_gateway_settings")
 	}
 
@@ -96,7 +96,6 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	var allBlocks []*hclwrite.Block
 
 	// When we have additional resources, create a fresh block for gateway settings to avoid formatting issues
-	removeOriginal := len(newResourceBlocks) > 0 || wasRenamed
 	if len(newResourceBlocks) > 0 {
 		newGatewayBlock := m.createFreshGatewaySettingsBlock(block, settingsTokens)
 		allBlocks = []*hclwrite.Block{newGatewayBlock}
@@ -105,18 +104,23 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		allBlocks = []*hclwrite.Block{block}
 	}
 
-	// Generate moved block when the resource was renamed from cloudflare_teams_account
-	if wasRenamed {
-		oldType, newType := m.GetResourceRename()
-		from := oldType + "." + resourceName
+	// Generate moved block when the resource was renamed
+	_, newType := m.GetResourceRename()
+	if originalResourceType != newType {
+		from := originalResourceType + "." + resourceName
 		to := newType + "." + resourceName
 		movedBlock := tfhcl.CreateMovedBlock(from, to)
 		allBlocks = append(allBlocks, movedBlock)
+
+		return &transform.TransformResult{
+			Blocks:         allBlocks,
+			RemoveOriginal: true,
+		}, nil
 	}
 
 	return &transform.TransformResult{
 		Blocks:         allBlocks,
-		RemoveOriginal: removeOriginal,
+		RemoveOriginal: len(newResourceBlocks) > 0,
 	}, nil
 }
 

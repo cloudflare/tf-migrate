@@ -31,8 +31,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface.
 // cloudflare_account is not renamed between v4 and v5.
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_account", "cloudflare_account"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_account"}, "cloudflare_account"
 }
 
 // TransformConfig handles HCL configuration transformations for cloudflare_account.

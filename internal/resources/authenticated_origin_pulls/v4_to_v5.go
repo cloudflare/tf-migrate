@@ -56,8 +56,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 // GetResourceRename implements the ResourceRenamer interface.
 // Note: This returns the default rename for resources without hostname.
 // Resources with hostname don't rename (handled conditionally in TransformConfig).
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_authenticated_origin_pulls", "cloudflare_authenticated_origin_pulls_settings"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_authenticated_origin_pulls"}, "cloudflare_authenticated_origin_pulls_settings"
 }
 
 // TransformConfig handles configuration file transformations.

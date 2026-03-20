@@ -40,8 +40,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface
 // cloudflare_healthcheck doesn't rename, so return the same name
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_healthcheck", "cloudflare_healthcheck"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_healthcheck"}, "cloudflare_healthcheck"
 }
 
 // TransformConfig handles HCL configuration transformations
@@ -215,7 +215,6 @@ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.R
 func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
 	return true
 }
-
 
 func init() {
 	// Register the migrator when the package is imported

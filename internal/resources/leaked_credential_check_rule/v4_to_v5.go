@@ -44,8 +44,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 
 // GetResourceRename implements the ResourceRenamer interface.
 // This resource does not rename, so we return the same name for both old and new.
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_leaked_credential_check_rule", "cloudflare_leaked_credential_check_rule"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_leaked_credential_check_rule"}, "cloudflare_leaked_credential_check_rule"
 }
 
 // TransformConfig handles configuration file transformations.

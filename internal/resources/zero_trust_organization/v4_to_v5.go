@@ -37,9 +37,9 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 
 // GetResourceRename implements the ResourceRenamer interface.
 // Both v4 names rename to the same v5 name.
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	// This is called for the registered name, but both v4 names go to the same v5 name
-	return "cloudflare_access_organization", "cloudflare_zero_trust_organization"
+	return []string{"cloudflare_access_organization", "cloudflare_zero_trust_access_organization"}, "cloudflare_zero_trust_organization"
 }
 
 // Preprocess performs any string-level transformations before HCL parsing.

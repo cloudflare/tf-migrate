@@ -80,6 +80,50 @@ locals {
 
 
 
+# ============================================================================
+# Pattern Group 9: Cross-File References (Resource Rename Test)
+# ============================================================================
+
+# Pattern 9 tests that cross-file references are updated when resource names change.
+# The migrator renames:
+#   cloudflare_dlp_profile -> cloudflare_zero_trust_dlp_custom_profile
+#   cloudflare_zero_trust_dlp_profile -> cloudflare_zero_trust_dlp_custom_profile
+# We create dependent resources (gateway policies) that reference these DLP profiles via profile_id attribute.
+# After migration, the attribute references must be updated to use the new resource names.
+
+
+
+# Dependent resources that reference the above DLP profiles
+# Using realistic gateway policies with profile_id references
+
+# Gateway policy referencing old-name DLP profile via attribute
+resource "cloudflare_zero_trust_gateway_policy" "uses_old_dlp_profile" {
+  account_id  = var.cloudflare_account_id
+  name        = "cftftest Gateway Policy - Old DLP Profile"
+  description = "Policy using old-name DLP profile"
+  action      = "block"
+  precedence  = 3000
+  enabled     = true
+  traffic     = "any(dns.domains[*] == \"dlp-old.example.com\")"
+
+  # Attribute reference that needs updating after migration
+  # profile_id = cloudflare_zero_trust_dlp_custom_profile.ref_source_old_name.id
+}
+
+# Gateway policy referencing new-name DLP profile via attribute
+resource "cloudflare_zero_trust_gateway_policy" "uses_new_dlp_profile" {
+  account_id  = var.cloudflare_account_id
+  name        = "cftftest Gateway Policy - New DLP Profile"
+  description = "Policy using new-name DLP profile"
+  action      = "allow"
+  precedence  = 4000
+  enabled     = true
+  traffic     = "any(dns.domains[*] == \"dlp-new.example.com\")"
+
+  # Attribute reference that needs updating after migration
+  # profile_id = cloudflare_zero_trust_dlp_custom_profile.ref_source_new_name.id
+}
+
 # Pattern 1: Basic profiles with entries
 resource "cloudflare_zero_trust_dlp_custom_profile" "credit_cards_basic" {
   account_id          = local.common_account
@@ -343,4 +387,46 @@ resource "cloudflare_zero_trust_dlp_custom_profile" "prevent_destroy" {
 moved {
   from = cloudflare_dlp_profile.prevent_destroy
   to   = cloudflare_zero_trust_dlp_custom_profile.prevent_destroy
+}
+
+# Using old v4 name (cloudflare_dlp_profile) -> becomes cloudflare_zero_trust_dlp_custom_profile
+resource "cloudflare_zero_trust_dlp_custom_profile" "ref_source_old_name" {
+  account_id          = var.cloudflare_account_id
+  name                = "${local.name_prefix}-ref-old-name"
+  description         = "Referenced by gateway policy (old name)"
+  allowed_match_count = 10
+
+  entries = [{
+    name    = "Reference Pattern Old"
+    enabled = true
+    pattern = {
+      regex = "REF-OLD-[0-9]{4}"
+    }
+  }]
+}
+
+moved {
+  from = cloudflare_dlp_profile.ref_source_old_name
+  to   = cloudflare_zero_trust_dlp_custom_profile.ref_source_old_name
+}
+
+# Using second v4 name (cloudflare_zero_trust_dlp_profile) -> becomes cloudflare_zero_trust_dlp_custom_profile
+resource "cloudflare_zero_trust_dlp_custom_profile" "ref_source_new_name" {
+  account_id          = var.cloudflare_account_id
+  name                = "${local.name_prefix}-ref-new-name"
+  description         = "Referenced by gateway policy (new name)"
+  allowed_match_count = 15
+
+  entries = [{
+    name    = "Reference Pattern New"
+    enabled = true
+    pattern = {
+      regex = "REF-NEW-[0-9]{4}"
+    }
+  }]
+}
+
+moved {
+  from = cloudflare_zero_trust_dlp_profile.ref_source_new_name
+  to   = cloudflare_zero_trust_dlp_custom_profile.ref_source_new_name
 }

@@ -18,11 +18,11 @@ variable "cloudflare_domain" {
 # ============================================================================
 
 locals {
-  common_account = var.cloudflare_account_id
-  name_prefix                        = "cftftest"
-  default_schedule = "24h"
+  common_account        = var.cloudflare_account_id
+  name_prefix           = "cftftest"
+  default_schedule      = "24h"
   enable_firewall_rules = true
-  enable_test_rules = false
+  enable_test_rules     = false
 }
 
 # ============================================================================
@@ -32,44 +32,44 @@ locals {
 resource "cloudflare_device_posture_rule" "map_example" {
   for_each = {
     "prod" = {
-      account_id  = var.cloudflare_account_id
-      name = "${local.name_prefix}-prod-posture-rule"
-      type        = "os_version"
-      schedule    = "24h"
-      platform    = "linux"
-      version     = "20.4.0"
+      account_id = var.cloudflare_account_id
+      name       = "${local.name_prefix}-prod-posture-rule"
+      type       = "os_version"
+      schedule   = "24h"
+      platform   = "linux"
+      version    = "20.4.0"
     }
     "staging" = {
-      account_id  = var.cloudflare_account_id
-      name = "${local.name_prefix}-staging-posture-rule"
-      type        = "os_version"
-      schedule    = "12h"
-      platform    = "windows"
-      version     = "10.0.0"
+      account_id = var.cloudflare_account_id
+      name       = "${local.name_prefix}-staging-posture-rule"
+      type       = "os_version"
+      schedule   = "12h"
+      platform   = "windows"
+      version    = "10.0.0"
     }
     "dev" = {
-      account_id  = var.cloudflare_account_id
-      name = "${local.name_prefix}-dev-posture-rule"
-      type        = "os_version"
-      schedule    = "6h"
-      platform    = "mac"
-      version     = "12.0.0"
+      account_id = var.cloudflare_account_id
+      name       = "${local.name_prefix}-dev-posture-rule"
+      type       = "os_version"
+      schedule   = "6h"
+      platform   = "mac"
+      version    = "12.0.0"
     }
     "qa" = {
-      account_id  = var.cloudflare_account_id
-      name = "${local.name_prefix}-qa-posture-rule"
-      type        = "os_version"
-      schedule    = "12h"
-      platform    = "linux"
-      version     = "1.0.0"
+      account_id = var.cloudflare_account_id
+      name       = "${local.name_prefix}-qa-posture-rule"
+      type       = "os_version"
+      schedule   = "12h"
+      platform   = "linux"
+      version    = "1.0.0"
     }
     "perf" = {
-      account_id  = var.cloudflare_account_id
-      name = "${local.name_prefix}-perf-posture-rule"
-      type        = "os_version"
-      schedule    = "24h"
-      platform    = "windows"
-      version     = "11.0.0"
+      account_id = var.cloudflare_account_id
+      name       = "${local.name_prefix}-perf-posture-rule"
+      type       = "os_version"
+      schedule   = "24h"
+      platform   = "windows"
+      version    = "11.0.0"
     }
   }
 
@@ -101,7 +101,7 @@ resource "cloudflare_device_posture_rule" "set_example" {
   ])
 
   account_id = var.cloudflare_account_id
-  name = "${local.name_prefix}-set-${each.value}-rule"
+  name       = "${local.name_prefix}-set-${each.value}-rule"
   type       = "firewall"
   schedule   = "5m"
 
@@ -122,7 +122,7 @@ resource "cloudflare_device_posture_rule" "counted" {
   count = 3
 
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix}-counted-rule-${count.index}"
+  name        = "${local.name_prefix}-counted-rule-${count.index}"
   type        = "os_version"
   schedule    = "24h"
   description = "This is posture rule number ${count.index}"
@@ -145,7 +145,7 @@ resource "cloudflare_device_posture_rule" "conditional_enabled" {
   count = local.enable_firewall_rules ? 1 : 0
 
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix}-conditional-firewall-enabled"
+  name        = "${local.name_prefix}-conditional-firewall-enabled"
   type        = "firewall"
   schedule    = "12h"
   description = "Conditionally enabled firewall rule"
@@ -163,7 +163,7 @@ resource "cloudflare_device_posture_rule" "conditional_disabled" {
   count = local.enable_test_rules ? 1 : 0
 
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix}-conditional-test-disabled"
+  name        = "${local.name_prefix}-conditional-test-disabled"
   type        = "os_version"
   schedule    = "6h"
   description = "Conditionally disabled test rule"
@@ -204,7 +204,7 @@ resource "cloudflare_device_posture_rule" "with_functions" {
 
 resource "cloudflare_device_posture_rule" "with_interpolation" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix}-rule-for-account-${var.cloudflare_account_id}"
+  name        = "${local.name_prefix}-rule-for-account-${var.cloudflare_account_id}"
   type        = "firewall"
   schedule    = "5m"
   description = "Interpolated rule name"
@@ -224,7 +224,7 @@ resource "cloudflare_device_posture_rule" "with_interpolation" {
 
 resource "cloudflare_device_posture_rule" "with_lifecycle" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix}-lifecycle-test-rule"
+  name        = "${local.name_prefix}-lifecycle-test-rule"
   type        = "os_version"
   schedule    = "24h"
   description = "Rule with lifecycle arguments"
@@ -246,7 +246,7 @@ resource "cloudflare_device_posture_rule" "with_lifecycle" {
 
 resource "cloudflare_device_posture_rule" "with_prevent_destroy" {
   account_id = var.cloudflare_account_id
-  name = "${local.name_prefix}-prevent-destroy-rule"
+  name       = "${local.name_prefix}-prevent-destroy-rule"
   type       = "firewall"
   schedule   = "12h"
 
@@ -259,7 +259,7 @@ resource "cloudflare_device_posture_rule" "with_prevent_destroy" {
   }
 
   lifecycle {
-    prevent_destroy = false  # Set to false for testing
+    prevent_destroy = false # Set to false for testing
   }
 }
 
@@ -270,7 +270,7 @@ resource "cloudflare_device_posture_rule" "with_prevent_destroy" {
 # Minimal resource (only required fields)
 resource "cloudflare_device_posture_rule" "minimal" {
   account_id = var.cloudflare_account_id
-  name = "${local.name_prefix}-minimal-rule"
+  name       = "${local.name_prefix}-minimal-rule"
   type       = "firewall"
   schedule   = "5m"
 
@@ -286,7 +286,7 @@ resource "cloudflare_device_posture_rule" "minimal" {
 # Maximal resource (all fields populated)
 resource "cloudflare_device_posture_rule" "maximal" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix}-maximal-rule"
+  name        = "${local.name_prefix}-maximal-rule"
   type        = "os_version"
   description = "All fields populated"
   schedule    = "24h"
@@ -308,7 +308,7 @@ resource "cloudflare_device_posture_rule" "maximal" {
 # Resource with empty/null optional fields
 resource "cloudflare_device_posture_rule" "with_nulls" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix}-with-nulls"
+  name        = "${local.name_prefix}-with-nulls"
   type        = "firewall"
   description = null
   expiration  = null
@@ -330,7 +330,7 @@ resource "cloudflare_device_posture_rule" "with_nulls" {
 # Test case 1: Basic os_version rule with input and match
 resource "cloudflare_device_posture_rule" "basic" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix}-tf-test-posture-basic"
+  name        = "${local.name_prefix}-tf-test-posture-basic"
   type        = "os_version"
   description = "Device posture rule for corporate devices."
   schedule    = "24h"
@@ -352,7 +352,7 @@ resource "cloudflare_device_posture_rule" "basic" {
 # Test case 2: Firewall rule with enabled input
 resource "cloudflare_device_posture_rule" "firewall" {
   account_id = var.cloudflare_account_id
-  name = "${local.name_prefix}-tf-test-firewall"
+  name       = "${local.name_prefix}-tf-test-firewall"
   type       = "firewall"
   schedule   = "5m"
 
@@ -368,7 +368,7 @@ resource "cloudflare_device_posture_rule" "firewall" {
 # Test case 3: Disk encryption with check_disks (Set->List conversion)
 resource "cloudflare_device_posture_rule" "disk_encryption" {
   account_id = var.cloudflare_account_id
-  name = "${local.name_prefix}-tf-test-disk"
+  name       = "${local.name_prefix}-tf-test-disk"
   type       = "disk_encryption"
   schedule   = "5m"
 
@@ -385,7 +385,7 @@ resource "cloudflare_device_posture_rule" "disk_encryption" {
 # Test case 4: Multiple platforms (multiple match blocks)
 resource "cloudflare_device_posture_rule" "multi_platform" {
   account_id = var.cloudflare_account_id
-  name = "${local.name_prefix}-tf-test-multi"
+  name       = "${local.name_prefix}-tf-test-multi"
   type       = "firewall"
   schedule   = "5m"
 
@@ -409,7 +409,7 @@ resource "cloudflare_device_posture_rule" "multi_platform" {
 # Test case 5: Application rule with path and running (removed attribute)
 resource "cloudflare_device_posture_rule" "application" {
   account_id = var.cloudflare_account_id
-  name = "${local.name_prefix}-tf-test-application"
+  name       = "${local.name_prefix}-tf-test-application"
   type       = "application"
   schedule   = "30m"
 
@@ -427,7 +427,7 @@ resource "cloudflare_device_posture_rule" "application" {
 # Test case 6: Domain joined rule
 resource "cloudflare_device_posture_rule" "domain_joined" {
   account_id = var.cloudflare_account_id
-  name = "${local.name_prefix}-tf-test-domain-joined"
+  name       = "${local.name_prefix}-tf-test-domain-joined"
   type       = "domain_joined"
   schedule   = "5m"
 
@@ -438,4 +438,82 @@ resource "cloudflare_device_posture_rule" "domain_joined" {
   input {
     domain = "example.com"
   }
+}
+
+# ============================================================================
+# Pattern Group 9: Cross-File References (Resource Rename Test)
+# ============================================================================
+
+# Pattern 9 tests that cross-file references are updated when resource names change.
+# The migrator renames:
+#   cloudflare_device_posture_rule -> cloudflare_zero_trust_device_posture_rule
+#   cloudflare_zero_trust_device_posture_rule -> cloudflare_zero_trust_device_posture_rule (no-op)
+# We create dependent resources (gateway policies) that reference these posture rules via depends_on.
+# After migration, the references must be updated to use the new resource names.
+
+# Using old v4 name (cloudflare_device_posture_rule) -> becomes cloudflare_zero_trust_device_posture_rule
+resource "cloudflare_device_posture_rule" "ref_source_old_name" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-ref-source-old-name"
+  type        = "os_version"
+  schedule    = "24h"
+  description = "Referenced by gateway policy (old name)"
+
+  match {
+    platform = "linux"
+  }
+
+  input {
+    version        = "22.4.0"
+    operator       = ">="
+    os_distro_name = "ubuntu"
+  }
+}
+
+# Using new v4 name (cloudflare_zero_trust_device_posture_rule) -> stays cloudflare_zero_trust_device_posture_rule
+resource "cloudflare_zero_trust_device_posture_rule" "ref_source_new_name" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-ref-source-new-name"
+  type        = "firewall"
+  schedule    = "12h"
+  description = "Referenced by gateway policy (new name)"
+
+  match {
+    platform = "windows"
+  }
+
+  input {
+    enabled = true
+  }
+}
+
+# Dependent resources that reference the above posture rules
+# Using realistic resources that would depend on posture rules
+
+# Gateway policy depending on old-name posture rule
+# Note: Using high precedence values (100000+) to avoid conflicts with zero_trust_gateway_policy tests
+resource "cloudflare_zero_trust_gateway_policy" "depends_on_old_posture" {
+  account_id  = var.cloudflare_account_id
+  name        = "cftftest Gateway Policy - Old Posture Rule"
+  description = "Policy depending on old-name posture rule"
+  action      = "block"
+  precedence  = 100000
+  enabled     = true
+  traffic     = "any(dns.domains[*] == \"example-old.com\")"
+
+  depends_on = [cloudflare_device_posture_rule.ref_source_old_name]
+}
+
+# Gateway policy depending on new-name posture rule
+# Note: Using high precedence values (100000+) to avoid conflicts with zero_trust_gateway_policy tests
+resource "cloudflare_zero_trust_gateway_policy" "depends_on_new_posture" {
+  account_id  = var.cloudflare_account_id
+  name        = "cftftest Gateway Policy - New Posture Rule"
+  description = "Policy depending on new-name posture rule"
+  action      = "allow"
+  precedence  = 100001
+  enabled     = true
+  traffic     = "any(dns.domains[*] == \"example-new.com\")"
+
+  depends_on = [cloudflare_zero_trust_device_posture_rule.ref_source_new_name]
 }

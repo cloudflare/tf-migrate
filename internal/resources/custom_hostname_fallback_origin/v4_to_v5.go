@@ -30,8 +30,8 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 
 // GetResourceRename implements the ResourceRenamer interface
 // This resource does not rename, so we return the same name for both old and new
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_custom_hostname_fallback_origin", "cloudflare_custom_hostname_fallback_origin"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_custom_hostname_fallback_origin"}, "cloudflare_custom_hostname_fallback_origin"
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {

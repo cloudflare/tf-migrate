@@ -32,8 +32,8 @@ func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 
 // GetResourceRename implements the ResourceRenamer interface
 // Handles both cloudflare_worker_route (singular) and cloudflare_workers_route (plural)
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_worker_route", "cloudflare_workers_route"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_workers_route", "cloudflare_worker_route"}, "cloudflare_workers_route"
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
@@ -42,11 +42,14 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	// Capture original resource type before any modifications (for moved block generation)
+	originalResourceType := tfhcl.GetResourceType(block)
+
 	body := block.Body()
 	resourceName := tfhcl.GetResourceName(block)
 
 	// Check if this is the singular form (needs moved block)
-	wasSingular := block.Type() == "resource" && len(block.Labels()) > 0 && block.Labels()[0] == "cloudflare_worker_route"
+	wasSingular := originalResourceType == "cloudflare_worker_route"
 
 	// Handle resource rename: cloudflare_worker_route → cloudflare_workers_route
 	tfhcl.RenameResourceType(block, "cloudflare_worker_route", "cloudflare_workers_route")
@@ -56,8 +59,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	// Generate moved block if the resource was renamed (singular → plural)
 	if wasSingular {
-		oldType, newType := m.GetResourceRename()
-		from := oldType + "." + resourceName
+		_, newType := m.GetResourceRename()
+		from := originalResourceType + "." + resourceName
 		to := newType + "." + resourceName
 		movedBlock := tfhcl.CreateMovedBlock(from, to)
 

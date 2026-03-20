@@ -236,15 +236,15 @@ resource "cloudflare_zero_trust_dex_test" "internal" {
 
 # Test 13: Long description
 resource "cloudflare_zero_trust_dex_test" "long_description" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-test-with-long-description"
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-test-with-long-description"
   description = <<-EOT
     This is a comprehensive DEX test with a very detailed description
     that spans multiple lines and contains important information about
     what this test does, why it exists, and how it should be monitored.
   EOT
-  interval = "1h0m0s"
-  enabled  = true
+  interval    = "1h0m0s"
+  enabled     = true
 
   data {
     kind   = "http"
@@ -279,5 +279,43 @@ resource "cloudflare_zero_trust_dex_test" "api_with_path" {
     kind   = "http"
     host   = "https://api.example.com/v1/status"
     method = "GET"
+  }
+}
+
+# ============================================================================
+# Pattern Group 9: Cross-File References (Resource Rename Test)
+# ============================================================================
+
+# Pattern 9 tests that cross-file references are updated when resource names change.
+# The migrator renames:
+#   cloudflare_device_dex_test -> cloudflare_zero_trust_dex_test
+#   cloudflare_zero_trust_dex_test -> cloudflare_zero_trust_dex_test (no-op)
+
+# Using old v4 name (cloudflare_device_dex_test) -> becomes cloudflare_zero_trust_dex_test
+resource "cloudflare_device_dex_test" "ref_source_old_name" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-ref-old-name"
+  description = "Referenced by dex test rename"
+  interval    = "1h0m0s"
+  enabled     = true
+
+  data {
+    kind   = "http"
+    host   = "https://test-old.example.com"
+    method = "GET"
+  }
+}
+
+# Using new v4 name (cloudflare_zero_trust_dex_test) -> stays cloudflare_zero_trust_dex_test
+resource "cloudflare_zero_trust_dex_test" "ref_source_new_name" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix}-ref-new-name"
+  description = "Referenced by dex test rename"
+  interval    = "2h0m0s"
+  enabled     = true
+
+  data {
+    kind = "traceroute"
+    host = "1.1.1.1"
   }
 }

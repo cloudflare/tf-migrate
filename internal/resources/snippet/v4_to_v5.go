@@ -44,8 +44,8 @@ func (m *V4ToV5Migrator) Postprocess(content string) string {
 
 // GetResourceRename returns the old and new resource names if renamed
 // Snippet resource is NOT renamed (same name in v4 and v5)
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_snippet", "cloudflare_snippet"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_snippet"}, "cloudflare_snippet"
 }
 
 // TransformConfig transforms the HCL configuration from v4 to v5

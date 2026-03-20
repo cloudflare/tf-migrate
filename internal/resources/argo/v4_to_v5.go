@@ -3,6 +3,7 @@ package argo
 import (
 	"fmt"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 
@@ -42,8 +43,8 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 // GetResourceRename implements the ResourceRenamer interface
 // Argo is special - it splits into multiple resources (argo_smart_routing, argo_tiered_caching)
 // We use the old name for both to indicate it doesn't have a 1:1 rename
-func (m *V4ToV5Migrator) GetResourceRename() (string, string) {
-	return "cloudflare_argo", "cloudflare_argo"
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+	return []string{"cloudflare_argo"}, "cloudflare_argo"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
@@ -64,6 +65,18 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		// tiered_caching is created as new (users must import it)
 		newBlocks = append(newBlocks, m.createSmartRoutingBlock(block, resourceName, true)...)
 		newBlocks = append(newBlocks, m.createTieredCachingBlock(block, resourceName+"_tiered", false)...)
+
+		// Add warning about required manual import for tiered_caching
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("Resource split: cloudflare_argo.%s", resourceName),
+			Detail: fmt.Sprintf(`The cloudflare_argo resource has been split into two separate resources in v5:
+  - cloudflare_argo_smart_routing.%s (migrated via moved block)
+  - cloudflare_argo_tiered_caching.%s_tiered (NEW - requires manual import)
+
+After running terraform apply with the moved block, import the tiered caching resource:
+  terraform import cloudflare_argo_tiered_caching.%s_tiered <zone_id>`, resourceName, resourceName, resourceName),
+		})
 	} else if smartRoutingAttr != nil {
 		// Only smart_routing
 		newBlocks = append(newBlocks, m.createSmartRoutingBlock(block, resourceName, true)...)
