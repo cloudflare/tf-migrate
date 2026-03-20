@@ -2,7 +2,6 @@ package load_balancer
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -191,14 +190,3 @@ func (m *V4ToV5Migrator) transformPoolsBlocks(body *hclwrite.Body, blockName, ke
 	}
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State transformation is handled by the provider's StateUpgraders (UpgradeState)
-	// The provider will automatically upgrade state when it detects v4 schema_version=1 or v5 version=1
-	// This function is a no-op for load_balancer migration
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -29,7 +28,7 @@ func (m *V4ToV5Migrator) GetResourceType() string {
 	// Returns empty string because this resource routes to TWO different types based on type field:
 	// - type="per-hostname" → cloudflare_authenticated_origin_pulls_hostname_certificate (via moved blocks in TransformConfig)
 	// - type="per-zone" (or default) → cloudflare_authenticated_origin_pulls_certificate (no type change)
-	// The actual type is determined dynamically in TransformConfig based on state/config attributes.
+	// The actual type is determined dynamically in TransformConfig based on config attributes.
 	return ""
 }
 
@@ -89,31 +88,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	body := block.Body()
 	resourceName := tfhcl.GetResourceName(block)
 
-	// Determine target resource type by reading from state (more reliable than config)
-	// Config might have variables or expressions for type field
+	// Determine target resource type by reading from config
 	var targetType string
 	var typeFromState string
 
-	if ctx.StateJSON != "" {
-		// Parse state to find this resource
-		state := gjson.Parse(ctx.StateJSON)
-		state.Get("resources").ForEach(func(_, resource gjson.Result) bool {
-			if resource.Get("type").String() == "cloudflare_authenticated_origin_pulls_certificate" &&
-				resource.Get("name").String() == resourceName {
-				// Found the resource - check type attribute in state
-				typeFromState = resource.Get("instances.0.attributes.type").String()
-				return false // Stop iteration
-			}
-			return true
-		})
-	}
-
-	// If we couldn't determine from state, fall back to config
-	if typeFromState == "" {
-		typeAttr := body.GetAttribute("type")
-		if typeAttr != nil {
-			typeFromState = tfhcl.ExtractStringFromAttribute(typeAttr)
-		}
+	typeAttr := body.GetAttribute("type")
+	if typeAttr != nil {
+		typeFromState = tfhcl.ExtractStringFromAttribute(typeAttr)
 	}
 
 	// Determine target type based on type value
@@ -148,18 +129,4 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		Blocks:         blocks,
 		RemoveOriginal: true, // Must be true for blocks to be added
 	}, nil
-}
-
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// Complete pass-through - all transformations handled by:
-	// 1. Moved blocks (generated in TransformConfig) handle resource type routing
-	// 2. Provider StateUpgraders handle field transformations and schema version bumps
-	//
-	// This is the Terraform-native approach: moved blocks + provider state upgraders
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
 }

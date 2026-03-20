@@ -4,7 +4,6 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -158,16 +157,6 @@ func (m *V4ToV5Migrator) setAccountAttribute(body *hclwrite.Body, accountIdAttr 
 	)
 
 	body.SetAttributeRaw("account", tokens)
-}
-
-// TransformState is a no-op for cloudflare_zones datasource migration.
-//
-// Datasources are always re-read from the API on the next plan/apply, so state
-// transformation is unnecessary. tf-migrate's role for datasources is limited to
-// transforming HCL configuration syntax (handled by TransformConfig) and updating
-// cross-file attribute references (handled by GetAttributeRenames).
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	return instance.String(), nil
 }
 
 func init() {

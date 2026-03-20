@@ -15,13 +15,6 @@ func TestV4ToV5Transformation(t *testing.T) {
 	})
 }
 
-func TestUsesProviderStateUpgrader(t *testing.T) {
-	migrator := NewV4ToV5Migrator()
-	if got := migrator.(*V4ToV5Migrator).UsesProviderStateUpgrader(); !got {
-		t.Errorf("UsesProviderStateUpgrader() = %v, want true", got)
-	}
-}
-
 func testBasicConfig(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 

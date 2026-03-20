@@ -2,7 +2,6 @@ package zero_trust_organization
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -83,24 +82,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState is a no-op for zero_trust_organization migration.
-// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
-//
-// Provider StateUpgraders handle:
-// - login_design: []Model → *Model (MaxItems:1 array to SingleNestedAttribute)
-// - custom_pages: []Model → *Model (MaxItems:1 array to SingleNestedAttribute)
-// - Boolean defaults: Add false for allow_authenticate_via_warp, auto_redirect_to_identity, is_ui_read_only
-// - Account/Zone mutual exclusivity: Ensure only one is set
-// - ID attribute removal: Framework manages ID separately
-// - Schema version: Set to appropriate version based on migration path
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State transformation is handled by the provider's StateUpgraders (UpgradeState)
-	// This function is a no-op for zero_trust_organization migration
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
-// This tells tf-migrate that the provider handles state transformation, not tf-migrate.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

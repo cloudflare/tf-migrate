@@ -8,8 +8,6 @@ import (
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
-	"github.com/tidwall/gjson"
-
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
@@ -32,13 +30,12 @@ func (m *MockHandler) Handle(ctx *transform.Context) (*transform.Context, error)
 }
 
 type MockResourceTransformer struct {
-	resourceType        string
-	canHandleFunc       func(string) bool
-	preprocessFunc      func(string) string
-	transformFunc       func(*transform.Context, *hclwrite.Block) (*transform.TransformResult, error)
-	transformStateCalls int
-	preprocessCalls     int
-	transformCalls      int
+	resourceType    string
+	canHandleFunc   func(string) bool
+	preprocessFunc  func(string) string
+	transformFunc   func(*transform.Context, *hclwrite.Block) (*transform.TransformResult, error)
+	preprocessCalls int
+	transformCalls  int
 }
 
 func (m *MockResourceTransformer) CanHandle(resourceType string) bool {
@@ -61,11 +58,6 @@ func (m *MockResourceTransformer) TransformConfig(ctx *transform.Context, block 
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
-}
-
-func (m *MockResourceTransformer) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	m.transformStateCalls++
-	return "", nil
 }
 
 func (m *MockResourceTransformer) Preprocess(content string) string {
@@ -436,25 +428,6 @@ func TestStandardPipelines(t *testing.T) {
 		_, err := p.Transform(ctx)
 		if err != nil {
 			t.Errorf("Config pipeline failed on valid HCL: %v", err)
-		}
-	})
-
-	t.Run("BuildStatePipeline uses correct handlers", func(t *testing.T) {
-		p := pipeline.BuildStatePipeline(log, providers)
-		if p == nil {
-			t.Fatal("BuildStatePipeline returned nil")
-		}
-
-		// Should work on JSON
-		ctx := &transform.Context{
-			Content:       []byte(`{"version":4}`),
-			Filename:      "terraform.tfstate",
-			SourceVersion: sourceVersion,
-			TargetVersion: targetVersion,
-		}
-		_, err := p.Transform(ctx)
-		if err != nil {
-			t.Errorf("State pipeline failed on valid JSON: %v", err)
 		}
 	})
 }

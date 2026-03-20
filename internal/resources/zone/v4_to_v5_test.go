@@ -185,10 +185,6 @@ resource "cloudflare_zone" "type_full" {
 	testhelpers.RunConfigTransformTests(t, testCases, migrator)
 }
 
-func TestStateTransformation_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}
-
 func TestCanHandle(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 
@@ -232,4 +228,3 @@ func TestGetResourceType(t *testing.T) {
 		t.Errorf("GetResourceType() = %q, want %q", result, expected)
 	}
 }
-

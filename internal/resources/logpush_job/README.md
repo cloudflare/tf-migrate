@@ -10,7 +10,7 @@ This guide explains how `cloudflare_logpush_job` resources migrate from v4 to v5
 | `output_options` | Block | Attribute object | Syntax change |
 | `output_options.cve20214428` | `cve20214428 = false` | `cve_2021_44228 = false` | Field renamed |
 | `kind = "instant-logs"` | Supported | Removed | Deprecated |
-| Numeric fields | Int | Int64 (float64 in state) | Type conversion |
+| Numeric fields | Int | Int64 | Handled by provider's StateUpgrader |
 | Computed fields | `error_message`, `last_complete`, `last_error` | Removed | No longer returned |
 
 
@@ -46,7 +46,7 @@ resource "cloudflare_logpush_job" "example" {
 
 **What Changed:**
 - Configuration unchanged for basic jobs
-- State receives default values for output_options internally
+- Default values for output_options are managed by the provider's StateUpgrader
 
 ---
 
@@ -172,7 +172,7 @@ resource "cloudflare_logpush_job" "batched" {
 
 **What Changed:**
 - Configuration unchanged
-- Numeric values converted to float64 in state
+- Numeric values are converted by the provider's StateUpgrader
 
 ---
 

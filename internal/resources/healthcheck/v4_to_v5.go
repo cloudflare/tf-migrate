@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -192,28 +191,6 @@ func (m *V4ToV5Migrator) buildHeaderMapTokens(body *hclwrite.Body) (hclwrite.Tok
 
 	// Create the object tokens for the header map
 	return hclwrite.TokensForObject(headerAttrs), nil
-}
-
-// TransformState is a no-op for healthcheck migration.
-// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
-// The moved block generated in TransformConfig triggers the provider's migration logic.
-//
-// Provider StateUpgraders handle:
-// - Flat structure → Nested http_config/tcp_config based on type
-// - Header Set → Map transformation
-// - CheckRegions List conversion
-// - All field transformations
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State transformation is handled by the provider's StateUpgraders (UpgradeState)
-	// The moved block generated in TransformConfig triggers the provider's migration logic
-	// This function is a no-op for healthcheck migration
-	return instance.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
-// This tells tf-migrate that the provider handles state transformation, not tf-migrate.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
 }
 
 func init() {

@@ -2,7 +2,6 @@ package byo_ip_prefix
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -25,10 +24,6 @@ func (m *V4ToV5Migrator) GetResourceType() string {
 
 func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
 	return resourceType == "cloudflare_byo_ip_prefix"
-}
-
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
@@ -55,8 +50,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-func (m *V4ToV5Migrator) TransformState(_ *transform.Context, stateJSON gjson.Result, _, _ string) (string, error) {
-	// State transformation is handled by the v5 provider's UpgradeState (schema_version 0→1).
-	// tf-migrate only handles HCL config transformation; pass state through unchanged.
-	return stateJSON.String(), nil
-}

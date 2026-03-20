@@ -104,9 +104,4 @@ resource "cloudflare_account" "example" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	// Note: StateTransformation test removed.
-	// State migration is now handled by the provider's StateUpgrader (v5.19+).
-	// The provider implements UpgradeState with slot 0 handling v4 SDKv2 state
-	// (schema_version=0) and transforming enforce_twofactor into settings.enforce_twofactor.
-	// tf-migrate's TransformState returns input unchanged (no-op).
 }

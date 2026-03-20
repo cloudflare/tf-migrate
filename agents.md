@@ -17,13 +17,13 @@ This document provides comprehensive context about the tf-migrate project for AI
 
 ## Project Overview
 
-**tf-migrate** is a CLI tool for automatically migrating Terraform configurations and state files between different versions of the Cloudflare Terraform Provider.
+**tf-migrate** is a CLI tool for automatically migrating Terraform configurations between different versions of the Cloudflare Terraform Provider. State migration is handled by the provider's built-in `UpgradeState`/`MoveState` mechanisms — tf-migrate only transforms config (`.tf` files).
 
 ### What It Does
 
 - **Transforms `.tf` configuration files** - Updates resource types, attribute names, and block structures
-- **Migrates `terraform.tfstate` files** - Updates state to match new provider schemas
 - **Handles complex transformations** - One-to-many resource splits, nested block restructuring, API-based migrations
+- **Generates import blocks** - For new v5 resources that don't exist in state yet
 
 ### Current Support
 
@@ -34,14 +34,13 @@ This document provides comprehensive context about the tf-migrate project for AI
 
 1. **Automated provider upgrades** - Bulk migrate large Terraform codebases
 2. **API-aware migrations** - Fetch data from Cloudflare API when needed (e.g., tunnel route UUIDs)
-3. **State file migration** - Update state in place or to new file
-4. **Testing infrastructure** - Validate migrations with real resources via E2E tests
+3. **Testing infrastructure** - Validate migrations with real resources via E2E tests
 
 ### Technology Stack
 
 - **Language**: Go 1.25+
 - **HCL Parsing**: `github.com/hashicorp/hcl/v2`
-- **State Manipulation**: `github.com/tidwall/gjson`, `github.com/tidwall/sjson`
+- **JSON querying**: `github.com/tidwall/gjson` (used in TransformConfig for config-level decisions)
 - **Cloudflare API**: `github.com/cloudflare/cloudflare-go/v6`
 - **CLI Framework**: `github.com/spf13/cobra`
 
@@ -67,14 +66,13 @@ tf-migrate/
 │
 ├── internal/
 │   ├── pipeline/            # Pipeline orchestration
-│   │   └── pipeline.go      # BuildConfigPipeline, BuildStatePipeline
+│   │   └── pipeline.go      # BuildConfigPipeline
 │   │
 │   ├── handlers/            # Pipeline handlers (chain of responsibility)
-│   │   ├── preprocess.go    # Resource filtering, validation
+│   │   ├── pre_process.go   # Resource filtering, validation
 │   │   ├── parse.go         # HCL parsing
-│   │   ├── transform.go     # Resource transformation orchestration
-│   │   ├── format.go        # HCL formatting
-│   │   └── state.go         # State file transformation
+│   │   ├── resource_transform.go  # Resource transformation orchestration
+│   │   └── formatter.go     # HCL formatting
 │   │
 │   ├── resources/           # Per-resource migration implementations
 │   │   ├── dns_record/      # cloudflare_dns_record v4→v5
@@ -89,10 +87,10 @@ tf-migrate/
 │   ├── registry/            # Resource transformer registry
 │   │   └── registry.go      # Register, GetTransformer
 │   │
-│   ├── transform/           # Transformation interfaces
-│   │   ├── interfaces.go    # ResourceTransformer, StateTransformer
-│   │   ├── context.go       # Transformation context
-│   │   └── result.go        # Transformation result
+│   ├── transform/           # Transformation interfaces and utilities
+│   │   ├── transformer.go   # ResourceTransformer interface, Context, TransformResult
+│   │   ├── hcl/             # HCL manipulation helpers (RenameAttribute, etc.)
+│   │   └── state/           # JSON utilities for reading state in TransformConfig
 │   │
 │   ├── e2e-runner/          # E2E test runner implementation
 │   │   ├── runner.go        # Test orchestration
@@ -136,22 +134,10 @@ tf-migrate/
 2. Parse Handler
    ↓ (HCL → AST)
 3. Resource Transform Handler
-   ↓ (registry.GetTransformer → resource.TransformHCL)
+   ↓ (registry.GetTransformer → resource.TransformConfig)
 4. Formatter Handler
    ↓ (AST → formatted HCL)
 Output: Migrated .tf file
-```
-
-#### State File Pipeline
-
-```
-1. Preprocess Handler
-   ↓ (filters resources, validates)
-2. State Transform Handler
-   ↓ (registry.GetTransformer → resource.TransformState)
-3. State Formatter Handler
-   ↓ (format JSON)
-Output: Migrated .tfstate file
 ```
 
 ### Resource Transformer Registry
@@ -297,53 +283,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_route" "example" {
 }
 ```
 
-The transformer calls the Cloudflare API to fetch the UUID:
-
-```go
-func (t *TunnelRouteTransformer) TransformState(ctx *transform.Context) (*transform.Result, error) {
-    // Fetch tunnel routes from API
-    routes, err := ctx.CloudflareClient.ListTunnelRoutes(...)
-
-    // Find matching route by network
-    for _, route := range routes {
-        if route.Network == network {
-            // Update state ID with API UUID
-            ctx.State.SetID(route.ID)
-        }
-    }
-}
-```
-
-### State Migration
-
-State files are JSON:
-
-```json
-{
-  "version": 4,
-  "terraform_version": "1.5.0",
-  "resources": [
-    {
-      "type": "cloudflare_dns_record",
-      "name": "example",
-      "instances": [
-        {
-          "attributes": {
-            "zone_id": "abc123",
-            "name": "example.com",
-            "value": "192.0.2.1"
-          }
-        }
-      ]
-    }
-  ]
-}
-```
-
-State transformers update:
-- `type` field (resource type rename)
-- `instances[].attributes` (attribute migrations)
-- `instances[].schema_version` (provider schema version)
+The transformer calls the Cloudflare API to fetch the UUID inside `TransformConfig`, resolving the resource ID before writing the import block.
 
 ---
 
@@ -354,10 +294,7 @@ Each resource has a `v4_to_v5.go` file implementing:
 ```go
 type ResourceTransformer interface {
     // Transform HCL configuration
-    TransformHCL(ctx *transform.Context) (*transform.Result, error)
-
-    // Transform state file
-    TransformState(ctx *transform.Context) (*transform.Result, error)
+    TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error)
 }
 ```
 
@@ -367,38 +304,23 @@ type ResourceTransformer interface {
 // internal/resources/dns_record/v4_to_v5.go
 type DNSRecordTransformer struct{}
 
-func (t *DNSRecordTransformer) TransformHCL(ctx *transform.Context) (*transform.Result, error) {
+func (t *DNSRecordTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
     // No changes needed for dns_record in v4→v5
-    return &transform.Result{
-        Content: ctx.OriginalContent,
-    }, nil
-}
-
-func (t *DNSRecordTransformer) TransformState(ctx *transform.Context) (*transform.Result, error) {
-    // Update schema version
-    state := ctx.State
-    state.SetSchemaVersion(1)
-
-    return &transform.Result{
-        Content: state.Bytes(),
+    return &transform.TransformResult{
+        Blocks:         []*hclwrite.Block{block},
+        RemoveOriginal: false,
     }, nil
 }
 ```
 
 ### Common Transformation Utilities
 
-**HCL Utilities** (`internal/transform/hcl_utils.go`):
+**HCL Utilities** (`internal/transform/hcl/`):
 - `RenameAttribute(block, old, new)` - Rename attribute
 - `RenameBlock(block, old, new)` - Rename block type
 - `RemoveAttribute(block, name)` - Remove attribute
 - `GetAttribute(block, name)` - Get attribute value
 - `SetAttribute(block, name, value)` - Set attribute value
-
-**State Utilities** (`internal/transform/state_utils.go`):
-- `GetAttribute(path)` - GJSON path query
-- `SetAttribute(path, value)` - SJSON path update
-- `DeleteAttribute(path)` - Remove attribute
-- `SetResourceType(type)` - Change resource type
 
 ### Multi-Name Resources and Cross-File References
 
@@ -459,7 +381,7 @@ Return multiple old names in `GetResourceRename()` when:
 
 #### Resources Using Multiple Old Names
 
-The following resources return multiple old names (21 total):
+The following resources return multiple old names (22 total):
 
 1. `zero_trust_tunnel_cloudflared_route`
    - Old names: `cloudflare_tunnel_route`, `cloudflare_zero_trust_tunnel_route`
@@ -524,6 +446,9 @@ The following resources return multiple old names (21 total):
 21. `workers_for_platforms_dispatch_namespace`
     - Old names: `cloudflare_workers_for_platforms_namespace`, `cloudflare_workers_for_platforms_dispatch_namespace`
 
+22. `zero_trust_split_tunnel`
+    - Old names: `cloudflare_split_tunnel`, `cloudflare_zero_trust_split_tunnel`
+
 #### Testing
 
 The integration test in `integration/v4_to_v5/testdata/zero_trust_tunnel_cloudflared_virtual_network/` validates that cross-resource references using the "second" v4 name are properly updated (see Pattern 9 in that test).
@@ -533,8 +458,7 @@ The integration test in `integration/v4_to_v5/testdata/zero_trust_tunnel_cloudfl
 Each resource has a README.md explaining:
 - Changes from v4 to v5
 - Configuration examples
-- State migration notes
-- Special cases
+- Special cases and limitations
 
 Example: `internal/resources/zone_setting/README.md`
 
@@ -583,10 +507,10 @@ Located in `integration/v4_to_v5/testdata/`:
 ```
 testdata/
 ├── dns_record/
-│   ├── main.tf           # v4 configuration
-│   ├── expected.tf       # Expected v5 output
-│   ├── state.json        # v4 state
-│   └── expected_state.json  # Expected v5 state
+│   ├── input/            # v4 configuration files
+│   │   └── dns_record.tf
+│   └── expected/         # Expected v5 output files
+│       └── dns_record.tf
 ├── zone_setting/
 │   └── ...
 └── bot_management/
@@ -618,7 +542,7 @@ KEEP_TEMP=true TEST_RESOURCE=dns_record go test -v -run TestSingleResource
 ```
 1. Init      → Copy integration testdata to e2e/tf/v4/
 2. V4 Apply  → Create real resources with v4 provider
-3. Migrate   → Run tf-migrate (config + state)
+3. Migrate   → Run tf-migrate (config only; provider upgrades state on first apply)
 4. V5 Apply  → Apply v5 configs to existing infrastructure
 5. Drift     → Verify v5 plan shows "No changes"
 ```
@@ -1135,21 +1059,13 @@ func init() {
     })
 }
 
-func (t *MyResourceTransformer) TransformHCL(ctx *transform.Context) (*transform.Result, error) {
+func (t *MyResourceTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
     // Transform HCL configuration
-    // Use transform.RenameAttribute, transform.RenameBlock, etc.
+    // Use tfhcl.RenameAttribute, tfhcl.RenameBlock, etc.
 
-    return &transform.Result{
-        Content: ctx.OriginalContent,
-    }, nil
-}
-
-func (t *MyResourceTransformer) TransformState(ctx *transform.Context) (*transform.Result, error) {
-    // Transform state file
-    // Use ctx.State.SetAttribute, ctx.State.SetResourceType, etc.
-
-    return &transform.Result{
-        Content: ctx.State.Bytes(),
+    return &transform.TransformResult{
+        Blocks:         []*hclwrite.Block{block},
+        RemoveOriginal: false,
     }, nil
 }
 ```
@@ -1166,7 +1082,7 @@ import (
     "github.com/cloudflare/tf-migrate/internal/transform"
 )
 
-func TestMyResourceTransformer_TransformHCL(t *testing.T) {
+func TestMyResourceTransformer_TransformConfig(t *testing.T) {
     input := `
 resource "cloudflare_my_resource" "test" {
   name = "example"
@@ -1174,13 +1090,10 @@ resource "cloudflare_my_resource" "test" {
 `
 
     transformer := &MyResourceTransformer{}
-    ctx := &transform.Context{
-        OriginalContent: []byte(input),
-    }
-
-    result, err := transformer.TransformHCL(ctx)
-    assert.NoError(t, err)
-    assert.Contains(t, string(result.Content), "cloudflare_my_resource")
+    // Parse into HCL and call TransformConfig with the resource block
+    // See existing resource test files for the standard test pattern
+    _ = transformer
+    _ = input
 }
 ```
 
@@ -1289,26 +1202,18 @@ settings:
 ### Pattern 1: Simple Attribute Rename
 
 ```go
-func (t *MyTransformer) TransformHCL(ctx *transform.Context) (*transform.Result, error) {
-    for _, block := range ctx.File.Body.Blocks {
-        if block.Type == "resource" {
-            transform.RenameAttribute(block.Body, "old_name", "new_name")
-        }
-    }
-    return &transform.Result{Content: ctx.OriginalContent}, nil
+func (t *MyTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+    tfhcl.RenameAttribute(block.Body(), "old_name", "new_name")
+    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}, RemoveOriginal: false}, nil
 }
 ```
 
 ### Pattern 2: Resource Type Rename
 
 ```go
-func (t *MyTransformer) TransformHCL(ctx *transform.Context) (*transform.Result, error) {
-    for _, block := range ctx.File.Body.Blocks {
-        if block.Type == "resource" && block.Labels[0] == "cloudflare_old_name" {
-            block.Labels[0] = "cloudflare_new_name"
-        }
-    }
-    return &transform.Result{Content: ctx.OriginalContent}, nil
+func (t *MyTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+    tfhcl.RenameResourceType(block, "cloudflare_old_name", "cloudflare_new_name")
+    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}, RemoveOriginal: false}, nil
 }
 ```
 
@@ -1325,9 +1230,10 @@ func (t *MyTransformer) TransformHCL(ctx *transform.Context) (*transform.Result,
 // v5: attribute
 // nested = { value = "foo" }
 
-func (t *MyTransformer) TransformHCL(ctx *transform.Context) (*transform.Result, error) {
+func (t *MyTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
     // Use HCL traversal to restructure
     // See internal/resources/zero_trust_access_policy for examples
+    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}, RemoveOriginal: false}, nil
 }
 ```
 
@@ -1336,57 +1242,47 @@ func (t *MyTransformer) TransformHCL(ctx *transform.Context) (*transform.Result,
 ```go
 // See internal/resources/zone_setting/v4_to_v5.go for full example
 
-func (t *ZoneSettingTransformer) TransformHCL(ctx *transform.Context) (*transform.Result, error) {
-    // 1. Parse original resource
+func (t *ZoneSettingTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+    // 1. Parse original resource block
     // 2. Extract settings from settings block
-    // 3. Generate N new resources (one per setting)
-    // 4. Copy meta-arguments to all resources
-    // 5. Return combined content
+    // 3. Generate N new resource blocks (one per setting)
+    // 4. Copy meta-arguments to all blocks
+    // 5. Return {Blocks: newBlocks, RemoveOriginal: true}
 }
 ```
 
 ### Pattern 5: API-Based Migration
 
+API calls are made inside `TransformConfig` to resolve import IDs or resource references:
+
 ```go
-func (t *TunnelRouteTransformer) TransformState(ctx *transform.Context) (*transform.Result, error) {
-    // 1. Get resource attributes
-    accountID := ctx.State.GetAttribute("account_id")
-    tunnelID := ctx.State.GetAttribute("tunnel_id")
-    network := ctx.State.GetAttribute("network")
+func (t *TunnelRouteTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+    // 1. Read resource attributes from HCL block
+    network := tfhcl.ExtractStringAttribute(block.Body(), "network")
 
-    // 2. Call Cloudflare API
-    routes, err := ctx.CloudflareClient.ListTunnelRoutes(ctx, accountID, tunnelID)
-    if err != nil {
-        return nil, err
-    }
+    // 2. Call Cloudflare API to fetch the UUID
+    routes, err := ctx.CloudflareClient.ListTunnelRoutes(...)
 
-    // 3. Find matching route
+    // 3. Generate import block with the resolved UUID
     for _, route := range routes {
         if route.Network == network {
-            // 4. Update state with API data
-            ctx.State.SetAttribute("id", route.ID)
-            break
+            importBlock := tfhcl.CreateImportBlock(block, route.ID)
+            return &transform.TransformResult{Blocks: []*hclwrite.Block{block, importBlock}}, nil
         }
     }
-
-    return &transform.Result{Content: ctx.State.Bytes()}, nil
+    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}}, nil
 }
 ```
 
 ### Pattern 6: Conditional Transformation
 
 ```go
-func (t *MyTransformer) TransformHCL(ctx *transform.Context) (*transform.Result, error) {
-    for _, block := range ctx.File.Body.Blocks {
-        if block.Type == "resource" {
-            // Check if attribute exists
-            if attr := transform.GetAttribute(block.Body, "old_attr"); attr != nil {
-                // Only transform if attribute is present
-                transform.RenameAttribute(block.Body, "old_attr", "new_attr")
-            }
-        }
+func (t *MyTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+    // Check if attribute exists before transforming
+    if block.Body().GetAttribute("old_attr") != nil {
+        tfhcl.RenameAttribute(block.Body(), "old_attr", "new_attr")
     }
-    return &transform.Result{Content: ctx.OriginalContent}, nil
+    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}, RemoveOriginal: false}, nil
 }
 ```
 
@@ -1492,5 +1388,5 @@ KEEP_TEMP=true TEST_RESOURCE=dns_record go test -v -run TestSingleResource
 
 ---
 
-**Last Updated**: 2026-02-11
+**Last Updated**: 2026-03-20
 **Version**: Based on v4→v5 migration implementation

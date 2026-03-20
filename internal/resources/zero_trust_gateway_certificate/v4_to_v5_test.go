@@ -117,10 +117,6 @@ resource "cloudflare_zero_trust_gateway_certificate" "comprehensive" {
 	testhelpers.RunConfigTransformTests(t, testCases, migrator)
 }
 
-func TestV4ToV5TransformationState_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}
-
 func TestCanHandle(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
 

@@ -6,7 +6,6 @@
 //   - Building the tf-migrate binary with latest code changes
 //   - Copying and preparing source configurations for migration
 //   - Executing the migration tool with appropriate parameters
-//   - Filtering and managing state files for targeted migrations
 //   - Updating provider versions and backend configurations
 //
 // The migration process preserves .terraform directories and lock files
@@ -14,15 +13,11 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/cloudflare/tf-migrate/internal"
-	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 // RunMigrate copies v4/ to migrated-v4_to_v5/ and runs migration
@@ -94,18 +89,9 @@ func RunMigrate(resources string) error {
 		return fmt.Errorf("failed to update provider.tf: %w", err)
 	}
 
-	// Filter state file if targeting specific resources
-	if resources != "" {
-		if err := filterStateFile(generatedDir, resourceList); err != nil {
-			return fmt.Errorf("failed to filter state file: %w", err)
-		}
-	}
-
 	fmt.Println()
 
-	// Run migration
-	// For resources using provider state upgraders, we only migrate config (not state)
-	// The provider's MoveState/UpgradeState handlers will transform the state during terraform apply
+	// Run migration (config only — state is handled by the provider's UpgradeState/MoveState)
 	printYellow("Migrating configuration files...")
 	args := []string{
 		"--config-dir", generatedDir,
@@ -114,14 +100,6 @@ func RunMigrate(resources string) error {
 		"migrate",
 		"--backup=false",
 		"--recursive",
-	}
-
-	// Only include --state-file if there are resources that need tf-migrate state transformation
-	// Resources with UsesProviderStateUpgrader() rely on provider's state upgraders instead
-	if !allResourcesUseProviderStateUpgrader(resources) {
-		args = append([]string{args[0], args[1], "--state-file", filepath.Join(generatedDir, "terraform.tfstate")}, args[2:]...)
-	} else {
-		printYellow("Skipping state transformation - using provider's state upgrader")
 	}
 
 	cmd := exec.Command(binary, args...)
@@ -133,7 +111,7 @@ func RunMigrate(resources string) error {
 		return err
 	}
 
-	printSuccess("Migration complete (config transformed, state will be upgraded by provider)")
+	printSuccess("Migration complete (config transformed; state will be upgraded by the provider)")
 
 	// Apply post-migration patches (e.g., adding required fields that tf-migrate can't auto-generate)
 	// Looks for integration/v4_to_v5/testdata/<resource>/postmigrate/ directories
@@ -342,7 +320,7 @@ func copyAllResources(srcDir, dstDir string) error {
 		printGreen("  Copied %d directories and %d files", dirCount, fileCount)
 	}
 
-	printSuccess("Copied tf/v4/ to migrated-v4_to_v5/ (including state file for migration)")
+	printSuccess("Copied tf/v4/ to migrated-v4_to_v5/")
 	return nil
 }
 
@@ -449,83 +427,6 @@ func updateProviderTF(dir string) error {
 
 	printSuccess("Updated provider.tf to use ~> 5.0 and removed backend config")
 	return nil
-}
-
-// filterStateFile filters terraform.tfstate to only include targeted resources
-func filterStateFile(dir string, resources []string) error {
-	stateFile := filepath.Join(dir, "terraform.tfstate")
-	if _, err := os.Stat(stateFile); os.IsNotExist(err) {
-		return nil // No state file to filter
-	}
-
-	printYellow("Filtering state file to only include targeted resources...")
-
-	// Read state file
-	stateData, err := os.ReadFile(stateFile)
-	if err != nil {
-		return err
-	}
-
-	// Parse JSON
-	var state map[string]interface{}
-	if err := json.Unmarshal(stateData, &state); err != nil {
-		return err
-	}
-
-	// Filter resources
-	if resourcesArray, ok := state["resources"].([]interface{}); ok {
-		var filtered []interface{}
-
-		for _, res := range resourcesArray {
-			resMap, ok := res.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			module, ok := resMap["module"].(string)
-			if !ok {
-				continue
-			}
-
-			// Check if resource belongs to any targeted module
-			shouldKeep := false
-			for _, targetModule := range resources {
-				targetModule = strings.TrimSpace(targetModule)
-				if module == fmt.Sprintf("module.%s", targetModule) ||
-					strings.HasPrefix(module, fmt.Sprintf("module.%s.", targetModule)) {
-					shouldKeep = true
-					break
-				}
-			}
-
-			if shouldKeep {
-				filtered = append(filtered, res)
-			}
-		}
-
-		state["resources"] = filtered
-
-		// Count instances
-		instanceCount := 0
-		for _, res := range filtered {
-			if resMap, ok := res.(map[string]interface{}); ok {
-				if instances, ok := resMap["instances"].([]interface{}); ok {
-					instanceCount += len(instances)
-				}
-			}
-		}
-
-		printSuccess("Filtered state to %d resources from targeted modules", instanceCount)
-	}
-
-	// Write filtered state
-	filteredData, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	// Use restrictive permissions for state files (contain sensitive data)
-	return os.WriteFile(stateFile, filteredData, permSecretFile)
 }
 
 // hoistImportBlocksToRoot extracts import blocks from module subdirectories and
@@ -673,140 +574,6 @@ func extractImportBlocks(content, moduleName string) (cleaned string, blocks []s
 	}
 
 	return strings.Join(cleanedLines, "\n") + "\n", blocks
-}
-
-// removeObsoleteStateEntries removes state entries whose resource type is no longer
-// known to the v5 provider. Without this, terraform plan fails with:
-//
-//	"no schema available for <type> while reading state"
-//
-// This is the automated equivalent of the manual cleanup step that tf-migrate
-// warns about in its output when migrating zone_settings_override resources.
-func removeObsoleteStateEntries(tf *TerraformRunner, obsoleteTypes []string) error {
-	resources, err := tf.StateList()
-	if err != nil {
-		// State list may fail if state is empty or not initialized — not an error
-		return nil
-	}
-
-	obsoleteSet := make(map[string]bool, len(obsoleteTypes))
-	for _, t := range obsoleteTypes {
-		obsoleteSet[t] = true
-	}
-
-	var removed []string
-	for _, addr := range resources {
-		// Extract resource type from address like:
-		//   module.zone_setting.cloudflare_zone_settings_override.minimal
-		//   cloudflare_zone_settings_override.minimal
-		//   module.zone_setting.cloudflare_zone_settings_override.conditional_enabled[0]
-		parts := strings.Split(addr, ".")
-		// Walk parts to find the resource type (skip "module" and module name pairs)
-		resourceType := ""
-		for i := 0; i < len(parts); i++ {
-			if parts[i] == "module" {
-				i++ // skip module name
-				continue
-			}
-			resourceType = parts[i]
-			break
-		}
-
-		if obsoleteSet[resourceType] {
-			printYellow("  Removing obsolete state entry: %s", addr)
-			if err := tf.StateRm(addr); err != nil {
-				printYellow("  Warning: failed to remove %s: %v", addr, err)
-			} else {
-				removed = append(removed, addr)
-			}
-		}
-	}
-
-	if len(removed) > 0 {
-		printSuccess("Removed %d obsolete state entries (resource type no longer in v5 provider)", len(removed))
-	}
-
-	return nil
-}
-
-// allResourcesUseProviderStateUpgrader checks if resources use provider state upgraders
-// In practice, either ALL resources in the list use provider state upgrader (when discovered
-// via --uses-provider-state-upgrader), or NONE of them do (when filtered to exclude provider
-// state upgrader resources). So we only need to check the first resource.
-func allResourcesUseProviderStateUpgrader(resources string) bool {
-	if resources == "" {
-		return false // If no specific resources, assume we need state transformation
-	}
-
-	// Check only the first resource in the comma-separated list
-	// If it uses provider state upgrader, they all do (by discovery logic)
-	resourceList := strings.Split(resources, ",")
-	firstResource := strings.TrimSpace(resourceList[0])
-	return hasProviderStateUpgraderInMigrate(firstResource)
-}
-
-// hasProviderStateUpgraderInMigrate checks if a resource implements UsesProviderStateUpgrader
-// This is a copy of the function from runner.go to avoid circular imports
-func hasProviderStateUpgraderInMigrate(resourceType string) bool {
-	// Strategy 1: Try direct lookup with cloudflare_ prefix
-	fullResourceType := "cloudflare_" + resourceType
-	if migrator := internal.GetMigrator(fullResourceType, "v4", "v5"); migrator != nil {
-		if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
-			if psu.UsesProviderStateUpgrader() {
-				return true
-			}
-		}
-	}
-
-	// Strategy 2: Search through all registered migrators
-	// This handles cases where the testdata name doesn't match the registered name
-	// (e.g., dns_record testdata but registered as cloudflare_record)
-	allMigrators := internal.GetAllMigrators("v4", "v5")
-	for _, migrator := range allMigrators {
-		// Check if this migrator's resource type matches what we're looking for
-		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
-			oldTypes, newType := renamer.GetResourceRename()
-
-			// Check if either any old type or new resource type (without cloudflare_ prefix) matches
-			newTypeShort := strings.TrimPrefix(newType, "cloudflare_")
-
-			// Check new type first
-			if newTypeShort == resourceType {
-				if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
-					if psu.UsesProviderStateUpgrader() {
-						return true
-					}
-				}
-			}
-
-			// Check each old type
-			for _, oldType := range oldTypes {
-				oldTypeShort := strings.TrimPrefix(oldType, "cloudflare_")
-				if oldTypeShort == resourceType {
-					// Found a match - check if it uses provider state upgrader
-					if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
-						if psu.UsesProviderStateUpgrader() {
-							return true
-						}
-					}
-					break
-				}
-			}
-		}
-
-		// Strategy 3: Check CanHandle for split-resource cases
-		// (e.g., cloudflare_dlp_profile migrator handles both custom and predefined profiles,
-		// but GetResourceRename only returns the custom mapping)
-		if migrator.CanHandle(fullResourceType) {
-			if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
-				if psu.UsesProviderStateUpgrader() {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
 }
 
 // completeBYOIPPrefixMigration adds asn and cidr fields to migrated byo_ip_prefix resources.

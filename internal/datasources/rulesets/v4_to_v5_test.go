@@ -161,9 +161,3 @@ data "cloudflare_rulesets" "test" {
 	})
 
 }
-
-// TestV4ToV5TransformationState_Removed is a marker indicating state transformation tests were removed.
-// State migration is now handled by the provider's StateUpgraders.
-func TestV4ToV5TransformationState_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}

@@ -209,9 +209,4 @@ func TestMigratorInterface(t *testing.T) {
 		}
 	})
 
-	t.Run("UsesProviderStateUpgrader", func(t *testing.T) {
-		if got := migrator.(*V4ToV5Migrator).UsesProviderStateUpgrader(); !got {
-			t.Errorf("UsesProviderStateUpgrader() = %v, want true", got)
-		}
-	})
 }
