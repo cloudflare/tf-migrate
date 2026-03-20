@@ -7,6 +7,12 @@
 version: 1
 
 exemptions:
+  - name: "azure_conditional_access_enabled"
+    description: "After migration, the v5 provider's state upgrader does not carry forward the 'conditional_access_enabled' field for Azure AD identity providers when it was set to false in v4. The plan will show this field being added with value false. Your Conditional Access policy enforcement is not affected. This drift resolves after the next terraform apply."
+    patterns:
+      - 'conditional_access_enabled.*false'
+    enabled: true
+
   - name: "azure_support_groups"
     description: "After migration, the v5 provider's state upgrader does not carry forward the 'support_groups' field for Azure identity providers. The plan will show this field being set to false. Your Azure group sync configuration is not affected. This drift resolves after the next terraform apply."
     patterns:
