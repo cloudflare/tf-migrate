@@ -21,9 +21,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/cloudflare/tf-migrate/internal"
-	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 // File permission constants for consistent permission management
@@ -35,15 +32,14 @@ const (
 
 // RunConfig holds configuration for e2e test run
 type RunConfig struct {
-	SkipV4Test                bool
-	ApplyExemptions           bool
-	NoRefreshSnapshot         bool
-	Parallelism               int
-	Resources                 string
-	Exclude                   string // comma-separated resource names to exclude
-	Phase                     string // comma-separated phase numbers (e.g., "0,1")
-	ProviderPath              string
-	UsesProviderStateUpgrader bool
+	SkipV4Test        bool
+	ApplyExemptions   bool
+	NoRefreshSnapshot bool
+	Parallelism       int
+	Resources         string
+	Exclude           string // comma-separated resource names to exclude
+	Phase             string // comma-separated phase numbers (e.g., "0,1")
+	ProviderPath      string
 }
 
 // testContext holds shared state for e2e test execution
@@ -117,109 +113,6 @@ func RunE2ETests(cfg *RunConfig) error {
 		printCyan("Running phase(s): %s", cfg.Phase)
 		printCyan("Resolved to %d resource(s):", len(phaseResources))
 		printCyan("  %s", cfg.Resources)
-		fmt.Println()
-	}
-
-	// Handle --uses-provider-state-upgrader flag
-	// This flag controls which resources to run based on whether they use provider state upgraders
-	if cfg.UsesProviderStateUpgrader {
-		// Run ONLY resources that use provider-based state migration
-		providerResources, err := discoverProviderStateUpgraderResources()
-		if err != nil {
-			return fmt.Errorf("failed to discover provider state upgrader resources: %w", err)
-		}
-		if len(providerResources) == 0 {
-			return fmt.Errorf("no resources found with UsesProviderStateUpgrader")
-		}
-
-		// If --phase or --resources was set, intersect with provider state upgrader resources
-		if cfg.Resources != "" {
-			requestedSet := make(map[string]bool)
-			for _, r := range strings.Split(cfg.Resources, ",") {
-				requestedSet[strings.TrimSpace(r)] = true
-			}
-			var filtered []string
-			for _, r := range providerResources {
-				if requestedSet[r] {
-					filtered = append(filtered, r)
-				}
-			}
-			providerResources = filtered
-		}
-
-		cfg.Resources = strings.Join(providerResources, ",")
-
-		printHeader("State Migration Method: Provider State Upgrader")
-		printCyan("These resources use the provider's built-in state migration:")
-		printCyan("  • State migration: Provider's UpgradeState/MoveState methods")
-		printCyan("  • Config migration: tf-migrate TransformConfig only")
-		printCyan("  • tf-migrate is called WITHOUT --state-file flag")
-		fmt.Println()
-		printCyan("Discovered %d resource(s):", len(providerResources))
-		printCyan("  %s", cfg.Resources)
-		fmt.Println()
-	} else if cfg.Resources == "" {
-		// If no specific resources requested and flag not set, run all resources EXCEPT those using provider state upgrader
-		allResources, err := discoverAllResources()
-		if err != nil {
-			return fmt.Errorf("failed to discover all resources: %w", err)
-		}
-
-		// Separate resources by state upgrade method
-		var nonProviderResources []string
-		var providerResources []string
-		for _, resource := range allResources {
-			if hasProviderStateUpgrader(resource) {
-				providerResources = append(providerResources, resource)
-			} else {
-				nonProviderResources = append(nonProviderResources, resource)
-			}
-		}
-
-		if len(nonProviderResources) > 0 {
-			cfg.Resources = strings.Join(nonProviderResources, ",")
-
-			printHeader("State Migration Method: tf-migrate State Transformation")
-			printCyan("These resources use tf-migrate for state migration:")
-			printCyan("  • State migration: tf-migrate TransformState function")
-			printCyan("  • Config migration: tf-migrate TransformConfig")
-			printCyan("  • tf-migrate is called WITH --state-file flag")
-			fmt.Println()
-			printCyan("Running %d resource(s):", len(nonProviderResources))
-			printCyan("  %s", cfg.Resources)
-			fmt.Println()
-
-			if len(providerResources) > 0 {
-				printYellow("Excluded %d resource(s) that use provider state upgrader:", len(providerResources))
-				printYellow("  %s", strings.Join(providerResources, ", "))
-				printYellow("  (Use --uses-provider-state-upgrader to test these)")
-				fmt.Println()
-			}
-		}
-	} else {
-		// Resources explicitly specified - show which method they use
-		resourceList := strings.Split(cfg.Resources, ",")
-		var providerUpgraderResources []string
-		var tfMigrateResources []string
-
-		for _, resource := range resourceList {
-			resource = strings.TrimSpace(resource)
-			if hasProviderStateUpgrader(resource) {
-				providerUpgraderResources = append(providerUpgraderResources, resource)
-			} else {
-				tfMigrateResources = append(tfMigrateResources, resource)
-			}
-		}
-
-		printHeader("State Migration Methods for Specified Resources")
-		if len(providerUpgraderResources) > 0 {
-			printCyan("Resources using provider's UpgradeState/MoveState:")
-			printCyan("  %s", strings.Join(providerUpgraderResources, ", "))
-		}
-		if len(tfMigrateResources) > 0 {
-			printCyan("Resources using tf-migrate TransformState:")
-			printCyan("  %s", strings.Join(tfMigrateResources, ", "))
-		}
 		fmt.Println()
 	}
 
@@ -466,17 +359,35 @@ func RunE2ETests(cfg *RunConfig) error {
 	}
 	printSuccess("Terraform init successful")
 
-	// Remove state entries for resource types the v5 provider no longer knows.
-	// The v5 provider has no schema for these types, so terraform plan would fail
-	// with "no schema available" errors. The removed blocks in the migrated config
-	// handle the config side; we handle the state side here.
-	//
-	// This is the automated equivalent of the manual step tf-migrate warns about:
-	//   terraform state rm 'cloudflare_zone_settings_override.<name>'
-	if err := removeObsoleteStateEntries(v5TF, []string{
-		"cloudflare_zone_settings_override",
-	}); err != nil {
-		printYellow("Warning: Failed to remove obsolete state entries: %v", err)
+	// Remove state entries for resource types the v5 provider has no schema for.
+	// cloudflare_zone_settings_override does not exist in v5 — attempting a plan
+	// with these entries in state produces:
+	//   "no schema available for cloudflare_zone_settings_override while reading state"
+	// The removed blocks in the migrated config handle the config side; we must
+	// handle the state side here by removing these entries before any plan runs.
+	obsoleteTypes := []string{"cloudflare_zone_settings_override"}
+	if resources, err := v5TF.StateList(); err == nil {
+		for _, addr := range resources {
+			// Extract resource type from address (handles module. prefixes)
+			typePart := addr
+			for strings.HasPrefix(typePart, "module.") {
+				parts := strings.SplitN(typePart, ".", 3)
+				if len(parts) < 3 {
+					break
+				}
+				typePart = parts[2]
+			}
+			resourceType := strings.SplitN(typePart, ".", 2)[0]
+			for _, obsolete := range obsoleteTypes {
+				if resourceType == obsolete {
+					printYellow("Removing obsolete state entry (no v5 schema): %s", addr)
+					if err := v5TF.StateRm(addr); err != nil {
+						printYellow("Warning: failed to remove %s: %v", addr, err)
+					}
+					break
+				}
+			}
+		}
 	}
 
 	// Optional diagnostic snapshot before refresh
@@ -556,18 +467,36 @@ func RunE2ETests(cfg *RunConfig) error {
 	}
 	printSuccess("Terraform apply successful")
 
-	// Capture v5 state
+	// Capture v5 state snapshot for debugging.
+	// This is non-fatal: terraform show -json can fail if any state entry has a
+	// schema version mismatch (e.g. v0 in state vs v500 in provider). The provider's
+	// UpgradeState runs during plan/apply, not during show, so unvisited resources
+	// may still have the old schema_version in state at this point.
 	printYellow("Capturing v5 state...")
 	v5StateOutput, err := v5TF.Run("show", "-no-color", "-json")
 	if err != nil {
-		return fmt.Errorf("failed to capture v5 state: %w", err)
-	}
-	// Save v5 state snapshot for comparison
-	v5StateLog := filepath.Join(tmpDir, "v5-state.json")
-	if err := os.WriteFile(v5StateLog, []byte(v5StateOutput), permFile); err != nil {
-		printYellow("Warning: Failed to save v5 state to %s: %v", v5StateLog, err)
+		// Extract the resource name from the error message for a cleaner warning.
+		// Error format: "schema version 0 for <resource> in state does not match version 500"
+		errMsg := err.Error()
+		resource := ""
+		if i := strings.Index(errMsg, "schema version 0 for "); i >= 0 {
+			rest := errMsg[i+len("schema version 0 for "):]
+			if j := strings.Index(rest, " in state"); j >= 0 {
+				resource = rest[:j]
+			}
+		}
+		if resource != "" {
+			printYellow("Warning: Skipping v5 state snapshot — %s has not been visited by this apply yet (schema upgrade pending)", resource)
+		} else {
+			printYellow("Warning: Skipping v5 state snapshot — schema version mismatch for an unvisited resource")
+		}
 	} else {
-		printSuccess("Saved v5 state to tmp/v5-state.json")
+		v5StateLog := filepath.Join(tmpDir, "v5-state.json")
+		if err := os.WriteFile(v5StateLog, []byte(v5StateOutput), permFile); err != nil {
+			printYellow("Warning: Failed to save v5 state to %s: %v", v5StateLog, err)
+		} else {
+			printSuccess("Saved v5 state to tmp/v5-state.json")
+		}
 	}
 
 	// Step 4: Verify stable state
@@ -1264,83 +1193,4 @@ func discoverAllResources() ([]string, error) {
 	}
 
 	return resources, nil
-}
-
-// discoverProviderStateUpgraderResources finds all resources that implement
-// UsesProviderStateUpgrader and return true
-func discoverProviderStateUpgraderResources() ([]string, error) {
-	repoRoot := getRepoRoot()
-	testdataRoot := filepath.Join(repoRoot, "integration", "v4_to_v5", "testdata")
-
-	// Find all resource directories in testdata
-	entries, err := os.ReadDir(testdataRoot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read testdata directory: %w", err)
-	}
-
-	var providerResources []string
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		resourceType := entry.Name()
-		if hasProviderStateUpgrader(resourceType) {
-			providerResources = append(providerResources, resourceType)
-		}
-	}
-
-	return providerResources, nil
-}
-
-// hasProviderStateUpgrader checks if a resource implements UsesProviderStateUpgrader
-func hasProviderStateUpgrader(resourceType string) bool {
-	// Strategy 1: Try direct lookup with cloudflare_ prefix
-	fullResourceType := "cloudflare_" + resourceType
-	if migrator := internal.GetMigrator(fullResourceType, "v4", "v5"); migrator != nil {
-		if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
-			if psu.UsesProviderStateUpgrader() {
-				return true
-			}
-		}
-	}
-
-	// Strategy 2: Search through all registered migrators
-	// This handles cases where the testdata name doesn't match the registered name
-	// (e.g., dns_record testdata but registered as cloudflare_record)
-	allMigrators := internal.GetAllMigrators("v4", "v5")
-	for _, migrator := range allMigrators {
-		// Check if this migrator's resource type matches what we're looking for
-		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
-			oldTypes, newType := renamer.GetResourceRename()
-
-			// Check if either any old type or new resource type (without cloudflare_ prefix) matches
-			newTypeShort := strings.TrimPrefix(newType, "cloudflare_")
-
-			// Check new type first
-			if newTypeShort == resourceType {
-				if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
-					if psu.UsesProviderStateUpgrader() {
-						return true
-					}
-				}
-			}
-
-			// Check each old type
-			for _, oldType := range oldTypes {
-				oldTypeShort := strings.TrimPrefix(oldType, "cloudflare_")
-				if oldTypeShort == resourceType {
-					// Found a match - check if it uses provider state upgrader
-					if psu, ok := migrator.(transform.ProviderStateUpgrader); ok {
-						if psu.UsesProviderStateUpgrader() {
-							return true
-						}
-					}
-					break
-				}
-			}
-		}
-	}
-
-	return false
 }

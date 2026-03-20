@@ -54,9 +54,4 @@ resource "cloudflare_account_member" "example" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	// Note: StateTransformation test removed.
-	// State migration is now handled by the provider's StateUpgrader (v5.19+).
-	// The provider implements UpgradeState with slot 0 handling v4 SDKv2 state
-	// (schema_version=0) and transforming email_address→email, role_ids→roles.
-	// tf-migrate's TransformState returns input unchanged (no-op).
 }

@@ -15,7 +15,7 @@ This guide explains how `cloudflare_notification_policy_webhooks` resources migr
 
 ## Migration Overview
 
-**This is a version-bump-only migration.** No field or state transformations occur. The v5 schema makes the `url` field explicitly required (it was always required by the API).
+**This is a version-bump-only migration.** No field transformations occur. The v5 schema makes the `url` field explicitly required (it was always required by the API).
 
 ---
 

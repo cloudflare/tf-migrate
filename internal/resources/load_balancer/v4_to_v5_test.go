@@ -546,7 +546,3 @@ func TestV4ToV5Transformation(t *testing.T) {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 }
-
-func TestV4ToV5TransformationState_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}

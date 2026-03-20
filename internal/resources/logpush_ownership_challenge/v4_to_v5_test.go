@@ -70,11 +70,4 @@ resource "cloudflare_logpush_ownership_challenge" "account_challenge" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
-	// tf-migrate's TransformState is a no-op; validate the contract here.
-	t.Run("UsesProviderStateUpgrader", func(t *testing.T) {
-		if got := migrator.(*V4ToV5Migrator).UsesProviderStateUpgrader(); !got {
-			t.Errorf("UsesProviderStateUpgrader() = %v, want true", got)
-		}
-	})
 }

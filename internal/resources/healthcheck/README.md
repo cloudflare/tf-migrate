@@ -10,7 +10,7 @@ This guide explains how `cloudflare_healthcheck` resources migrate from v4 to v5
 | HTTP/HTTPS fields | Root level | `http_config` block | Nested |
 | TCP fields | Root level | `tcp_config` block | Nested |
 | Header blocks | Set of blocks | Map structure | Type change |
-| Numeric fields | Int | Float64 | Type conversion (state) |
+| Numeric fields | Int | Float64 | Handled by provider's StateUpgrader |
 
 
 ---

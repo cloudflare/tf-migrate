@@ -6,7 +6,6 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -264,14 +263,3 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(body *hclwrite.Body) {
 	}
 }
 
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-// via StateUpgraders (MoveState/UpgradeState) rather than tf-migrate state transformation.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}
-
-// TransformState is a no-op - state transformation is handled by the provider's StateUpgraders.
-// The moved block generated in TransformConfig triggers the provider's migration logic.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	return stateJSON.String(), nil
-}

@@ -2,7 +2,6 @@ package custom_hostname_fallback_origin
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -54,24 +53,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// NO-OP: Provider handles all state migration via StateUpgraders
-	//
-	// The provider's UpgradeState handlers (0→500 and 1→500) will:
-	// - Handle schema version transitions (0→500, 1→500)
-	// - Perform any necessary field transformations (none needed for this resource)
-	// - Re-serialize state in the correct format
-	//
-	// For this resource, the migration is particularly simple:
-	// - User fields (zone_id, origin) remain unchanged
-	// - Computed fields (id, status, created_at, updated_at, errors) are API-assigned
-	// - Models are identical between v4 and v5 (direct copy transformation)
-	//
-	// tf-migrate only handles config transformation (which is also a no-op for this resource).
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

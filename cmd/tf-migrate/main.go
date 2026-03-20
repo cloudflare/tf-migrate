@@ -26,11 +26,9 @@ var version = "dev"
 type config struct {
 	// Input paths
 	configDir string
-	stateFile string
 
 	// Output paths
-	outputDir   string
-	outputState string
+	outputDir string
 
 	// Migration options
 	resourcesToMigrate []string
@@ -50,20 +48,19 @@ var (
 	rootCmd = &cobra.Command{
 		Use:   "tf-migrate",
 		Short: "Terraform configuration migration tool",
-		Long: `tf-migrate is a CLI tool for migrating Terraform configurations and state files
-between different provider versions or resource schemas.
+		Long: `tf-migrate is a CLI tool for migrating Terraform configurations between
+different provider versions or resource schemas.
 
 This tool provides automated transformations for:
 - Resource type changes
 - Attribute migrations
-- State file updates
 - Import generation for new resources
 - Moved blocks for resource renames`,
 		Example: `  # Migrate all .tf files in current directory
   tf-migrate migrate
 
-  # Migrate specific directory with state file
-  tf-migrate --config-dir ./terraform --state-file terraform.tfstate migrate
+  # Migrate specific directory
+  tf-migrate --config-dir ./terraform migrate
 
   # Migrate only specific resources
   tf-migrate --resources dns_record,load_balancer migrate
@@ -87,7 +84,6 @@ func main() {
 
 	cfg := &config{}
 	rootCmd.PersistentFlags().StringVar(&cfg.configDir, "config-dir", "", "Directory containing Terraform configuration files")
-	rootCmd.PersistentFlags().StringVar(&cfg.stateFile, "state-file", "", "Path to Terraform state file")
 	rootCmd.PersistentFlags().StringSliceVar(&cfg.resourcesToMigrate, "resources", []string{}, "Comma-separated list of resources to migrate (empty = all)")
 	rootCmd.PersistentFlags().BoolVar(&cfg.dryRun, "dry-run", false, "Perform a dry run without making changes")
 	rootCmd.PersistentFlags().StringVar(&cfg.sourceVersion, "source-version", "", "Source provider version (e.g., v4, v5)")
@@ -108,14 +104,14 @@ func main() {
 func newMigrateCommand(log hclog.Logger, cfg *config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "migrate",
-		Short: "Run the migration on configuration and/or state files",
-		Long: `Migrate Terraform configuration and state files using registered transformers.
-Uses the global flags --config-dir, --state-file, and --resources to determine what to migrate.`,
+		Short: "Run the migration on configuration files",
+		Long: `Migrate Terraform configuration files using registered transformers.
+Uses the global flags --config-dir and --resources to determine what to migrate.`,
 		Example: `  # Migrate configuration files in current directory
   tf-migrate migrate
 
-  # Migrate specific directory with state file
-  tf-migrate --config-dir ./terraform --state-file terraform.tfstate migrate
+  # Migrate specific directory
+  tf-migrate --config-dir ./terraform migrate
 
   # Migrate with output to different directory
   tf-migrate migrate --output-dir ./migrated
@@ -159,7 +155,6 @@ Uses the global flags --config-dir, --state-file, and --resources to determine w
 	}
 
 	cmd.Flags().StringVar(&cfg.outputDir, "output-dir", "", "Output directory for migrated configuration files (default: in-place)")
-	cmd.Flags().StringVar(&cfg.outputState, "output-state", "", "Output path for migrated state file (default: in-place)")
 	cmd.Flags().BoolVar(&cfg.backup, "backup", true, "Create backup of original files before migration")
 	cmd.Flags().BoolVar(&cfg.recursive, "recursive", false, "Recursively process subdirectories (useful for module structures)")
 
@@ -225,41 +220,20 @@ func runMigration(log hclog.Logger, cfg config) error {
 	if cfg.sourceVersion == cfg.targetVersion {
 		fmt.Printf("\n⚠ Same-version migration detected (%s → %s)\n", cfg.sourceVersion, cfg.targetVersion)
 		fmt.Println("Running in bypass mode: Config will be processed but transformations will be minimal")
-		fmt.Println("This triggers provider StateUpgraders via moved blocks for testing purposes")
 		fmt.Println()
-	}
-
-	// Load state file first if present (needed for cross-referencing in config transformations)
-	var stateJSON string
-	if cfg.stateFile != "" {
-		content, err := os.ReadFile(cfg.stateFile)
-		if err != nil {
-			log.Debug("failed to read state file: %w", err)
-		}
-		stateJSON = string(content)
-		log.Debug("Loaded state file for cross-referencing", "file", cfg.stateFile)
 	}
 
 	providers := getProviders(cfg.resourcesToMigrate...)
 	configPipeline := pipeline.BuildConfigPipeline(log, providers)
-	parsedConfigs := make(map[string]*hclwrite.File)
 	var allDiagnostics hcl.Diagnostics
 	if cfg.configDir != "" {
 		var err error
-		parsedConfigs, allDiagnostics, err = processConfigFiles(log, configPipeline, cfg, stateJSON)
+		_, allDiagnostics, err = processConfigFiles(log, configPipeline, cfg)
 		if err != nil {
 			return fmt.Errorf("failed to process configuration files: %w", err)
 		}
 	}
 	log.Debug("Finished processing configuration files")
-
-	statePipeline := pipeline.BuildStatePipeline(log, providers)
-	if cfg.stateFile != "" {
-		if err := processStateFile(log, statePipeline, cfg, parsedConfigs); err != nil {
-			return fmt.Errorf("failed to process state file: %w", err)
-		}
-	}
-	log.Debug("Finished processing state file")
 
 	// Print any warnings collected during migration
 	printDiagnostics(allDiagnostics, cfg)
@@ -267,7 +241,7 @@ func runMigration(log hclog.Logger, cfg config) error {
 	return nil
 }
 
-func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stateJSON string) (map[string]*hclwrite.File, hcl.Diagnostics, error) {
+func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map[string]*hclwrite.File, hcl.Diagnostics, error) {
 	if cfg.outputDir == "" {
 		cfg.outputDir = cfg.configDir
 	}
@@ -316,7 +290,6 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 			SourceVersion: cfg.sourceVersion,
 			TargetVersion: cfg.targetVersion,
 			Resources:     cfg.resourcesToMigrate,
-			StateJSON:     stateJSON, // For cross-referencing in config transformations
 		}
 		transformed, err := p.Transform(ctx)
 		if err != nil {
@@ -586,62 +559,6 @@ func regexReplaceSkippingMovedBlocks(content, pattern, replacement string) strin
 	}
 	result.WriteString(re.ReplaceAllString(content[lastEnd:], replacement))
 	return result.String()
-}
-
-func processStateFile(log hclog.Logger, p *pipeline.Pipeline, cfg config, parsedConfigs map[string]*hclwrite.File) error {
-	if p == nil {
-		return fmt.Errorf("state pipeline is nil")
-	}
-
-	fmt.Printf("\nProcessing state file: %s... ", filepath.Base(cfg.stateFile))
-	log.Debug("Processing state file", "file", cfg.stateFile)
-
-	content, err := os.ReadFile(cfg.stateFile)
-	if err != nil {
-		return fmt.Errorf("failed to read state file: %w", err)
-	}
-
-	// If no output path specified, use input path (in-place)
-	if cfg.outputState == "" {
-		cfg.outputState = cfg.stateFile
-	}
-
-	if cfg.backup && !cfg.dryRun && cfg.outputState == cfg.stateFile {
-		backupPath := cfg.stateFile + ".backup"
-		if err := os.WriteFile(backupPath, content, 0644); err != nil {
-			return fmt.Errorf("failed to create state backup %s: %w", backupPath, err)
-		}
-		log.Debug("Created state backup", "path", backupPath)
-	}
-
-	ctx := &transform.Context{
-		Content:       content,
-		StateJSON:     string(content),
-		Filename:      filepath.Base(cfg.stateFile),
-		Diagnostics:   make(hcl.Diagnostics, 0),
-		Metadata:      make(map[string]interface{}),
-		SourceVersion: cfg.sourceVersion,
-		TargetVersion: cfg.targetVersion,
-		Resources:     cfg.resourcesToMigrate,
-		CFGFiles:      parsedConfigs,
-	}
-	transformedContent, err := p.Transform(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to transform state file: %w", err)
-	}
-
-	if cfg.dryRun {
-		fmt.Println("(dry run)")
-		log.Debug("Would write transformed state", "output", cfg.outputState)
-		return nil
-	}
-
-	if err := os.WriteFile(cfg.outputState, transformedContent, 0644); err != nil {
-		return fmt.Errorf("failed to write state %s: %w", cfg.outputState, err)
-	}
-	fmt.Println("✓")
-	log.Debug("Wrote transformed state", "output", cfg.outputState)
-	return nil
 }
 
 func findTerraformFiles(dir string) ([]string, error) {

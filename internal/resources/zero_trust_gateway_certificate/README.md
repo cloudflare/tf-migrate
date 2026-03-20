@@ -8,7 +8,7 @@ This guide explains how `cloudflare_zero_trust_gateway_certificate` resources mi
 |--------|----|----|--------|
 | Resource name | `cloudflare_zero_trust_gateway_certificate` | `cloudflare_zero_trust_gateway_certificate` | No change |
 | Removed fields | `custom`, `gateway_managed`, `id`, `qs_pack_id` | - | Deprecated |
-| Type conversion | `validity_period_days` int | int64 (float64 in state) | Numeric type |
+| Type conversion | `validity_period_days` int | int64 | Handled by provider's StateUpgrader |
 
 
 ---
@@ -37,7 +37,7 @@ resource "cloudflare_zero_trust_gateway_certificate" "example" {
 
 **What Changed:**
 - Configuration unchanged
-- Deprecated fields removed from state if present
+- Deprecated fields removed from config if present
 
 ---
 

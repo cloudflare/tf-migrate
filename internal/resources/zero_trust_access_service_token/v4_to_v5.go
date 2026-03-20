@@ -3,7 +3,6 @@ package zero_trust_access_service_token
 import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
@@ -74,20 +73,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState is a no-op for this resource.
-// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState).
-// The moved block generated in TransformConfig triggers the provider's migration logic.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State transformation is handled by the provider's StateUpgraders
-	// The provider will handle:
-	// - Resource rename (cloudflare_access_service_token → cloudflare_zero_trust_access_service_token)
-	// - Field removal (min_days_for_renewal)
-	// - Type conversion (client_secret_version: int → float64)
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
-// This tells tf-migrate that the provider handles all state transformations via StateUpgraders.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

@@ -81,8 +81,3 @@ resource "cloudflare_workers_kv" "encoded" {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 }
-
-// State transformation tests removed - state migration is now handled by provider's StateUpgraders
-func TestV4ToV5StateTransformation_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}

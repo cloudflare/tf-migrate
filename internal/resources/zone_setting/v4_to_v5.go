@@ -10,7 +10,6 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -338,19 +337,6 @@ func (m *V4ToV5Migrator) createImportBlock(resourceName, settingID string, zoneI
 // This resource is renamed from cloudflare_zone_settings_override to cloudflare_zone_setting.
 func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	return []string{"cloudflare_zone_settings_override"}, "cloudflare_zone_setting"
-}
-
-// UsesProviderStateUpgrader indicates that state cleanup is handled via the
-// `removed` block emitted by TransformConfig, not by direct state file manipulation.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}
-
-func (m *V4ToV5Migrator) TransformState(_ *transform.Context, stateJSON gjson.Result, _, _ string) (string, error) {
-	// State cleanup is handled by the `removed` block emitted in TransformConfig.
-	// Terraform 1.7+ processes the removed block and drops the old
-	// cloudflare_zone_settings_override state entry without destroying it.
-	return stateJSON.String(), nil
 }
 
 // isDeprecatedSetting checks if a setting should be skipped during migration

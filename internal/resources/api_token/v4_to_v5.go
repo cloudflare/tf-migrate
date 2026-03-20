@@ -8,7 +8,6 @@ import (
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -202,14 +201,3 @@ func (m *V4ToV5Migrator) transformConditionBlock(body *hclwrite.Body) {
 	body.RemoveBlock(conditionBlock)
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State transformation is handled by the provider's StateUpgraders (UpgradeState)
-	// The provider automatically migrates state when users run terraform apply
-	// This function is a no-op for api_token migration
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

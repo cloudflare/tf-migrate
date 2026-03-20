@@ -5,7 +5,6 @@ import (
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -163,20 +162,3 @@ func transformHeaderBlock(body *hclwrite.Body) {
 	}
 }
 
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}
-
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State transformation is now handled by the provider's StateUpgraders (UpgradeState)
-	// The provider's migration/v500 package handles all state transformations:
-	// - load_shedding: array[0] → object
-	// - origin_steering: array[0] → object
-	// - origins.header: array → object with structure change
-	// - check_regions: Set → List
-	//
-	// This function is a no-op for cloudflare_load_balancer_pool migration.
-	// The provider automatically applies state upgrades when users run `terraform apply`.
-	return stateJSON.String(), nil
-}

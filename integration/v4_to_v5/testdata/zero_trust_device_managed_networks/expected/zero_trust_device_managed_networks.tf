@@ -312,7 +312,7 @@ resource "cloudflare_zero_trust_device_custom_profile" "ref_opt1" {
   name        = "${local.name_prefix}-profile-opt1"
   description = "Profile depending on managed network opt1"
   match       = "identity.email == \"test-opt1@example.com\""
-  precedence  = 1000
+  precedence  = 1200
 
   depends_on = [cloudflare_zero_trust_device_managed_networks.resourcename_opt1]
 }
@@ -328,7 +328,7 @@ resource "cloudflare_zero_trust_device_custom_profile" "ref_opt2" {
   name        = "${local.name_prefix}-profile-opt2"
   description = "Profile depending on managed network opt2"
   match       = "identity.email == \"test-opt2@example.com\""
-  precedence  = 1001
+  precedence  = 1201
 
   depends_on = [cloudflare_zero_trust_device_managed_networks.resourcename_opt2]
 }

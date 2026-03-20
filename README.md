@@ -1,6 +1,6 @@
 # tf-migrate - Cloudflare Terraform Provider Migration Tool
 
-A powerful CLI tool for automatically migrating Terraform configurations between different versions of the Cloudflare Terraform Provider.
+A CLI tool for automatically migrating Terraform configurations between different versions of the Cloudflare Terraform Provider. State migration is handled by the provider's built-in `UpgradeState`/`MoveState` mechanisms — tf-migrate only transforms config (`.tf` files).
 
 > **Disclaimer:** Please note that v1.0.0-beta.1 is in Beta and we are still testing it for stability.
 
@@ -8,7 +8,7 @@ A powerful CLI tool for automatically migrating Terraform configurations between
 ## Overview
 
 `tf-migrate` helps you upgrade your Terraform infrastructure code by automatically transforming:
-- **Configuration files** (`.tf`) - Updates resource types, attribute names, and block structures
+- **Configuration files** (`.tf`) - Updates resource types, attribute names, block structures, and generates import blocks for new v5 resources
 
 ### Supported Migration Paths
 
@@ -19,7 +19,7 @@ A powerful CLI tool for automatically migrating Terraform configurations between
 ### Supported Resources (v4 → v5)
 
 <details>
-<summary>50 resources with complete config migration support (click to expand)</summary>
+<summary>60+ resources with complete config migration support (click to expand)</summary>
 
 | Product | Resource | Type |
 |---------|----------|------|
@@ -336,7 +336,7 @@ E2E tests validate the complete migration workflow with real Cloudflare resource
 **What E2E Tests Do:**
 1. **Init**: Sync test resources from integration testdata to `e2e/tf/v4/`
 2. **V4 Apply**: Create real infrastructure using v4 provider
-3. **Migrate**: Run tf-migrate to convert v4 → v5 configurations and state
+3. **Migrate**: Run tf-migrate to convert v4 → v5 configurations (state is upgraded by the v5 provider on first apply)
 4. **V5 Apply**: Apply v5 configs to verify compatibility with existing infrastructure
 5. **Drift Check**: Verify v5 plan shows "No changes" (validates successful migration)
 

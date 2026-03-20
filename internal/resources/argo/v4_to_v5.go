@@ -5,7 +5,6 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -137,21 +136,3 @@ func (m *V4ToV5Migrator) createMovedBlock(fromName, toName, fromType, toType str
 	return tfhcl.CreateMovedBlock(from, to)
 }
 
-// TransformState is a no-op for argo migration
-// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState)
-// The moved blocks generated in TransformConfig trigger the provider's migration logic
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State transformation is delegated to the provider
-	// Provider handles:
-	// - Resource type change (cloudflare_argo → cloudflare_argo_smart_routing or cloudflare_argo_tiered_caching)
-	// - Field transformations (smart_routing/tiered_caching → value)
-	// - ID transformation (checksum → zone_id)
-	// - Computed field initialization (editable, modified_on)
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-// When true, tf-migrate will not perform state transformation - the provider handles it
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

@@ -2,7 +2,6 @@ package zero_trust_tunnel_cloudflared_virtual_network
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -69,14 +68,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// UsesProviderStateUpgrader indicates that the provider's StateUpgrader handles all
-// state migration for this resource. TransformState is a no-op.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}
-
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State migration is handled by the provider's StateUpgrader (MoveState + UpgradeState).
-	// tf-migrate passes state through unchanged.
-	return instance.String(), nil
-}

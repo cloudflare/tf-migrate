@@ -4,7 +4,6 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 )
 
 type V4ToV5Migrator struct {
@@ -46,17 +45,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState is a no-op for r2_bucket.
-// State transformation is handled by the provider's StateUpgraders (UpgradeState).
-// The provider automatically adds new fields (jurisdiction, storage_class, creation_date)
-// with appropriate defaults when it detects the state version upgrade.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State transformation is handled by the provider's StateUpgraders
-	// This function is a no-op for r2_bucket migration
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

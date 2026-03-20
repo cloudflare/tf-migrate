@@ -2,7 +2,6 @@ package rulesets
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -60,36 +59,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState is a no-op for rulesets datasource migration.
-//
-// State transformation is now handled by the provider's StateUpgraders (UpgradeState).
-// The provider's UpgradeState handlers perform the actual state migration when
-// Terraform detects a schema version mismatch.
-//
-// tf-migrate's role is limited to:
-// - Transforming HCL configuration syntax (handled by TransformConfig)
-//
-// This delegation to the provider is the correct architectural pattern because:
-// 1. The provider is the source of truth for state structure
-// 2. Provider has access to proper schema definitions for type-safe parsing
-// 3. Eliminates duplication of transformation logic
-// 4. Ensures migrations work correctly with Terraform's state upgrade mechanisms
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// Return state unchanged - provider handles all state transformations
-	return stateJSON.String(), nil
-}
-
 // GetResourceRename returns the v4 and v5 datasource type names (unchanged).
 func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	return []string{"data.cloudflare_rulesets"}, "data.cloudflare_rulesets"
 }
 
-// UsesProviderStateUpgrader indicates that this datasource uses provider-based state migration.
-//
-// When this returns true, tf-migrate knows that:
-// - State transformation is delegated to the provider's StateUpgraders
-// - The provider's UpgradeState handlers will perform the actual migration
-// - tf-migrate should only handle configuration transformation
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

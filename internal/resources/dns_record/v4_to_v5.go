@@ -3,7 +3,6 @@ package dns_record
 import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 
@@ -173,14 +172,3 @@ func (m *V4ToV5Migrator) processDataAttribute(block *hclwrite.Block, recordType 
 	}
 }
 
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState)
-	// The moved block generated in TransformConfig triggers the provider's migration logic
-	// This function is a no-op for dns_record migration
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

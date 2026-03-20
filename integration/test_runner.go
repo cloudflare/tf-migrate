@@ -122,12 +122,6 @@ func (r *TestRunner) runMigration(dir string) error {
 		"--backup=false",
 	}
 
-	// Only add state-file flag if the file exists
-	stateFile := filepath.Join(dir, "terraform.tfstate")
-	if _, err := os.Stat(stateFile); err == nil {
-		args = append(args, "--state-file", stateFile)
-	}
-
 	// Run migration
 	migrateCmd := exec.Command(filepath.Join(r.TfMigrateDir, "tf-migrate"), args...)
 	// Set GODEBUG to make map iteration deterministic for consistent test output

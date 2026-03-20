@@ -101,7 +101,4 @@ moved {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 
-	// State transformation tests removed - state migration is now handled by provider StateUpgraders
-	// tf-migrate only transforms configs and generates moved blocks
-	// The provider's MoveState and UpgradeState handlers automatically transform state when Terraform runs
 }

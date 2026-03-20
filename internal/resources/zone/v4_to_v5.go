@@ -3,7 +3,6 @@ package zone
 import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -105,15 +104,3 @@ func (m *V4ToV5Migrator) setAccountNestedAttribute(body *hclwrite.Body, accountI
 	body.SetAttributeRaw("account", tokens)
 }
 
-// TransformState handles state file transformations.
-// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState).
-// The moved block generated in TransformConfig triggers the provider's migration logic.
-// This function is a no-op for zone migration.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}
