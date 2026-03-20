@@ -1,9 +1,14 @@
 package zero_trust_access_policy
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestConfigTransformation_Simple(t *testing.T) {
@@ -37,15 +42,15 @@ moved {
 }`,
 		},
 		{
-			Name: "policy with deprecated fields removed",
+			Name: "policy with deprecated fields removed (zone_id, precedence, session_duration)",
 			Input: `
 resource "cloudflare_access_policy" "test" {
-  account_id     = "account-123"
-  zone_id        = "zone-456"
-  application_id = "app-789"
-  precedence     = 1
-  name           = "Test Policy"
-  decision       = "allow"
+  account_id       = "account-123"
+  zone_id          = "zone-456"
+  precedence       = 1
+  session_duration = "24h"
+  name             = "Test Policy"
+  decision         = "allow"
 
   include {
     everyone = true
@@ -468,4 +473,87 @@ moved {
 	}
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
+}
+
+func TestConfigTransformation_ApplicationScopedPolicySkipped(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	input := `
+resource "cloudflare_access_policy" "test" {
+  account_id     = "account-123"
+  application_id = "app-789"
+  name           = "Test Policy"
+  decision       = "allow"
+  precedence     = 1
+
+  include {
+    everyone = true
+  }
+}`
+
+	// Parse the input HCL
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("Failed to parse input HCL: %v", diags)
+	}
+
+	ctx := &transform.Context{
+		Content:     []byte(input),
+		Filename:    "test.tf",
+		CFGFile:     file,
+		Diagnostics: hcl.Diagnostics{},
+	}
+
+	// Get the resource block
+	body := file.Body()
+	var resourceBlock *hclwrite.Block
+	for _, block := range body.Blocks() {
+		if block.Type() == "resource" {
+			resourceBlock = block
+			break
+		}
+	}
+	if resourceBlock == nil {
+		t.Fatal("Resource block not found")
+	}
+
+	// Transform
+	result, err := migrator.TransformConfig(ctx, resourceBlock)
+	if err != nil {
+		t.Fatalf("TransformConfig returned error: %v", err)
+	}
+
+	// Should return the original block unchanged (no transformation, no moved block)
+	if result == nil {
+		t.Fatal("Expected non-nil result")
+	}
+	if len(result.Blocks) != 1 {
+		t.Errorf("Expected 1 block (original only), got %d", len(result.Blocks))
+	}
+	if result.RemoveOriginal {
+		t.Error("Expected RemoveOriginal to be false")
+	}
+
+	// Block should still be cloudflare_access_policy (not renamed)
+	labels := result.Blocks[0].Labels()
+	if len(labels) < 1 || labels[0] != "cloudflare_access_policy" {
+		t.Errorf("Expected resource type to remain 'cloudflare_access_policy', got %v", labels)
+	}
+
+	// Should have a warning diagnostic
+	if len(ctx.Diagnostics) != 1 {
+		t.Fatalf("Expected 1 diagnostic, got %d", len(ctx.Diagnostics))
+	}
+	if ctx.Diagnostics[0].Severity != hcl.DiagWarning {
+		t.Errorf("Expected DiagWarning severity, got %v", ctx.Diagnostics[0].Severity)
+	}
+	if ctx.Diagnostics[0].Summary != "Application-scoped access policy cannot be automatically migrated" {
+		t.Errorf("Unexpected diagnostic summary: %s", ctx.Diagnostics[0].Summary)
+	}
+	if !strings.Contains(ctx.Diagnostics[0].Detail, "application_id") {
+		t.Errorf("Expected diagnostic detail to mention 'application_id', got: %s", ctx.Diagnostics[0].Detail)
+	}
+	if !strings.Contains(ctx.Diagnostics[0].Detail, "cloudflare_access_policy.test") {
+		t.Errorf("Expected diagnostic detail to mention resource name, got: %s", ctx.Diagnostics[0].Detail)
+	}
 }

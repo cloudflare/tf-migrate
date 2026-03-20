@@ -440,7 +440,8 @@ resource "cloudflare_zero_trust_access_application" "resourcename_opt2" {
   http_only_cookie_attribute = "false"
 }
 
-
+# NOTE: cloudflare_access_policy with application_id CANNOT be migrated to v5.
+# See access_policy.md in the repo root for details.
 
 # Resource using v4 name option 1
 resource "cloudflare_zero_trust_access_application" "resourcename_opt1" {
@@ -454,32 +455,4 @@ resource "cloudflare_zero_trust_access_application" "resourcename_opt1" {
 moved {
   from = cloudflare_access_application.resourcename_opt1
   to   = cloudflare_zero_trust_access_application.resourcename_opt1
-}
-
-# Dependent resource that references option 1
-resource "cloudflare_zero_trust_access_policy" "ref_opt1" {
-  account_id = var.cloudflare_account_id
-  name       = "Policy referencing pattern9 opt1"
-  decision   = "allow"
-
-  include = [{ email = { email = "user@example.com" } }]
-}
-
-moved {
-  from = cloudflare_access_policy.ref_opt1
-  to   = cloudflare_zero_trust_access_policy.ref_opt1
-}
-
-# Dependent resource that references option 2
-resource "cloudflare_zero_trust_access_policy" "ref_opt2" {
-  account_id = var.cloudflare_account_id
-  name       = "Policy referencing pattern9 opt2"
-  decision   = "allow"
-
-  include = [{ email = { email = "admin@example.com" } }]
-}
-
-moved {
-  from = cloudflare_access_policy.ref_opt2
-  to   = cloudflare_zero_trust_access_policy.ref_opt2
 }

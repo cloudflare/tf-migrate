@@ -435,28 +435,5 @@ resource "cloudflare_zero_trust_access_application" "resourcename_opt2" {
   type       = "self_hosted"
 }
 
-# Dependent resource that references option 1
-resource "cloudflare_access_policy" "ref_opt1" {
-  account_id     = var.cloudflare_account_id
-  application_id = cloudflare_access_application.resourcename_opt1.id
-  name           = "Policy referencing pattern9 opt1"
-  precedence     = 1
-  decision       = "allow"
-
-  include {
-    email = ["user@example.com"]
-  }
-}
-
-# Dependent resource that references option 2
-resource "cloudflare_access_policy" "ref_opt2" {
-  account_id     = var.cloudflare_account_id
-  application_id = cloudflare_zero_trust_access_application.resourcename_opt2.id
-  name           = "Policy referencing pattern9 opt2"
-  precedence     = 1
-  decision       = "allow"
-
-  include {
-    email = ["admin@example.com"]
-  }
-}
+# NOTE: cloudflare_access_policy with application_id CANNOT be migrated to v5.
+# See access_policy.md in the repo root for details.

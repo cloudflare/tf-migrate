@@ -1,6 +1,7 @@
 package zero_trust_access_policy
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -61,6 +62,33 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	originalResourceType := tfhcl.GetResourceType(block)
 	resourceName := tfhcl.GetResourceName(block)
 
+	body := block.Body()
+
+	// Check if this is an application-scoped policy (has application_id)
+	// These cannot be automatically migrated - they use a different API endpoint
+	// and must be converted to inline policies in cloudflare_zero_trust_access_application
+	if originalResourceType == "cloudflare_access_policy" && body.GetAttribute("application_id") != nil {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  "Application-scoped access policy cannot be automatically migrated",
+			Detail: fmt.Sprintf(
+				"Resource cloudflare_access_policy.%s has 'application_id' and cannot be automatically migrated to v5.\n\n"+
+					"Application-scoped policies use a different API endpoint than account-level policies. "+
+					"In v5, these must be converted to inline policies within cloudflare_zero_trust_access_application.\n\n"+
+					"Manual steps required:\n"+
+					"1. Remove this resource from state: terraform state rm cloudflare_access_policy.%s\n"+
+					"2. Add the policy inline in the application's 'policies' attribute\n"+
+					"3. Run terraform apply\n\n"+
+					"See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade#cloudflare_access_policy",
+				resourceName, resourceName),
+		})
+		// Return original block unchanged, no moved block
+		return &transform.TransformResult{
+			Blocks:         []*hclwrite.Block{block},
+			RemoveOriginal: false,
+		}, nil
+	}
+
 	// Track if we need to generate a moved block
 	var movedBlock *hclwrite.Block
 
@@ -74,8 +102,6 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		to := newType + "." + resourceName
 		movedBlock = tfhcl.CreateMovedBlock(from, to)
 	}
-
-	body := block.Body()
 
 	// 2. Simple field operations
 	// Remove deprecated fields

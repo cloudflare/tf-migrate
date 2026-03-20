@@ -57,11 +57,11 @@ resource "cloudflare_zero_trust_access_policy" "example" {
   decision   = "allow"
 
 
-  include = [{ everyone = {} }]
   approval_groups = [{
     approvals_needed = 1
     email_addresses  = ["approver@example.com"]
   }]
+  include = [{ everyone = {} }]
 }
 
 moved {
@@ -74,13 +74,13 @@ resource "cloudflare_zero_trust_access_policy" "complex" {
   name       = "${local.name_prefix}-complex-policy"
   decision   = "allow"
 
+
+
   include = [{ email = { email = "user@example.com" } },
     { email = { email = "admin@example.com" } },
   { email_domain = { domain = "example.com" } }]
-
   exclude = [{ ip = { ip = "192.168.1.1/32" } },
   { ip = { ip = "10.0.0.0/8" } }]
-
   require = [{ email = { email = "required@example.com" } }]
 }
 
@@ -253,21 +253,21 @@ resource "cloudflare_zero_trust_access_policy" "maximal" {
   decision   = "allow"
 
 
-  include = [{ email = { email = "maximal1@example.com" } },
-    { email = { email = "maximal2@example.com" } },
-    { ip = { ip = "203.0.113.0/24" } },
-    { email_domain = { domain = "maximal.example.com" } },
-    { geo = { country_code = "US" } },
-  { geo = { country_code = "CA" } }]
 
-  exclude = [{ email = { email = "blocked@example.com" } },
-  { ip = { ip = "203.0.113.100/32" } }]
 
-  require = [{ email = { email = "required@example.com" } }]
   approval_groups = [{
     approvals_needed = 2
     email_addresses  = ["approver1@example.com", "approver2@example.com"]
   }]
+  include = [{ email = { email = "maximal1@example.com" } },
+    { email = { email = "maximal2@example.com" } },
+    { email_domain = { domain = "maximal.example.com" } },
+    { geo = { country_code = "US" } },
+    { geo = { country_code = "CA" } },
+  { ip = { ip = "203.0.113.0/24" } }]
+  exclude = [{ email = { email = "blocked@example.com" } },
+  { ip = { ip = "203.0.113.100/32" } }]
+  require = [{ email = { email = "required@example.com" } }]
 }
 
 moved {
