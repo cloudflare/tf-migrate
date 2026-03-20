@@ -64,7 +64,7 @@ A powerful CLI tool for automatically migrating Terraform configurations between
 | | `cloudflare_zero_trust_access_identity_provider` | resource |
 | | `cloudflare_zero_trust_access_mtls_certificate` | resource |
 | | `cloudflare_zero_trust_access_mtls_hostname_settings` | resource |
-| | `cloudflare_zero_trust_access_policy` | resource |
+| | `cloudflare_zero_trust_access_policy` | resource | \* |
 | | `cloudflare_zero_trust_access_service_token` | resource |
 | | `cloudflare_zero_trust_device_posture_rule` | resource |
 | | `cloudflare_zero_trust_dlp_custom_profile` | resource |
@@ -74,6 +74,13 @@ A powerful CLI tool for automatically migrating Terraform configurations between
 | | `cloudflare_zero_trust_gateway_policy` | resource |
 | | `cloudflare_zero_trust_list` | resource |
 | | `cloudflare_zero_trust_tunnel_cloudflared_route` | resource |
+
+\* **Limitation**: `cloudflare_access_policy` resources with `application_id`
+(application-scoped policies) cannot be automatically migrated. These use a
+different API endpoint and must be manually converted to inline `policies`
+within `cloudflare_zero_trust_access_application`. See the
+[migration guide](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-migration#application-scoped-access-policies)
+for details.
 
 </details>
 

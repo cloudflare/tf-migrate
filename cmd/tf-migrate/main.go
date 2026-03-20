@@ -235,8 +235,10 @@ func runMigration(log hclog.Logger, cfg config) error {
 	providers := getProviders(cfg.resourcesToMigrate...)
 	configPipeline := pipeline.BuildConfigPipeline(log, providers)
 	parsedConfigs := make(map[string]*hclwrite.File)
+	var allDiagnostics hcl.Diagnostics
 	if cfg.configDir != "" {
-		parsedConfigs, err = processConfigFiles(log, configPipeline, cfg, stateJSON)
+		var err error
+		parsedConfigs, allDiagnostics, err = processConfigFiles(log, configPipeline, cfg, stateJSON)
 		if err != nil {
 			return fmt.Errorf("failed to process configuration files: %w", err)
 		}
@@ -251,28 +253,34 @@ func runMigration(log hclog.Logger, cfg config) error {
 	}
 	log.Debug("Finished processing state file")
 
+	// Print any warnings collected during migration
+	printDiagnostics(allDiagnostics)
+
 	return nil
 }
 
-func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stateJSON string) (map[string]*hclwrite.File, error) {
+func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stateJSON string) (map[string]*hclwrite.File, hcl.Diagnostics, error) {
 	if cfg.outputDir == "" {
 		cfg.outputDir = cfg.configDir
 	}
 
 	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list .tf files: %w", err)
+		return nil, nil, fmt.Errorf("failed to list .tf files: %w", err)
 	}
 
 	if len(files) == 0 {
 		fmt.Printf("No .tf files found in %s\n", cfg.configDir)
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	fmt.Printf("\nFound %d configuration files to migrate\n", len(files))
 
 	// Store file paths for global postprocessing
 	outputPaths := make([]string, 0, len(files))
+
+	// Collect diagnostics from all files
+	var allDiagnostics hcl.Diagnostics
 
 	parsedConfigs := make(map[string]*hclwrite.File)
 	for i, file := range files {
@@ -281,13 +289,13 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 
 		content, err := os.ReadFile(file)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read %s: %w", file, err)
+			return nil, allDiagnostics, fmt.Errorf("failed to read %s: %w", file, err)
 		}
 
 		if cfg.backup && !cfg.dryRun && cfg.outputDir == cfg.configDir {
 			backupPath := file + ".backup"
 			if err := os.WriteFile(backupPath, content, 0644); err != nil {
-				return nil, fmt.Errorf("failed to create backup %s: %w", backupPath, err)
+				return nil, allDiagnostics, fmt.Errorf("failed to create backup %s: %w", backupPath, err)
 			}
 			log.Debug("Created backup", "path", backupPath)
 		}
@@ -304,8 +312,11 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 		}
 		transformed, err := p.Transform(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to transform %s: %w", file, err)
+			return nil, allDiagnostics, fmt.Errorf("failed to transform %s: %w", file, err)
 		}
+
+		// Collect diagnostics from this file's context
+		allDiagnostics = append(allDiagnostics, ctx.Diagnostics...)
 
 		if ctx.CFGFile != nil {
 			parsedConfigs[file] = ctx.CFGFile
@@ -317,7 +328,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 			// Preserve directory structure relative to config dir
 			relPath, err := filepath.Rel(cfg.configDir, file)
 			if err != nil {
-				return nil, fmt.Errorf("failed to compute relative path: %w", err)
+				return nil, allDiagnostics, fmt.Errorf("failed to compute relative path: %w", err)
 			}
 			outputPath = filepath.Join(cfg.outputDir, relPath)
 		} else {
@@ -334,11 +345,11 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 		// Create output directory (including subdirectories if needed)
 		outputDir := filepath.Dir(outputPath)
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create output directory: %w", err)
+			return nil, allDiagnostics, fmt.Errorf("failed to create output directory: %w", err)
 		}
 
 		if err := os.WriteFile(outputPath, transformed, 0644); err != nil {
-			return nil, fmt.Errorf("failed to write %s: %w", outputPath, err)
+			return nil, allDiagnostics, fmt.Errorf("failed to write %s: %w", outputPath, err)
 		}
 		fmt.Println("✓")
 		log.Debug("Migrated file", "output", outputPath)
@@ -349,11 +360,11 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config, stat
 	// Apply global postprocessing for cross-file reference updates
 	if !cfg.dryRun && len(outputPaths) > 0 {
 		if err := applyGlobalPostprocessing(log, cfg, outputPaths); err != nil {
-			return nil, fmt.Errorf("failed to apply global postprocessing: %w", err)
+			return nil, allDiagnostics, fmt.Errorf("failed to apply global postprocessing: %w", err)
 		}
 	}
 
-	return parsedConfigs, nil
+	return parsedConfigs, allDiagnostics, nil
 }
 
 func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []string) error {
@@ -645,4 +656,38 @@ func getProviders(resources ...string) transform.MigrationProvider {
 		return internal.GetAllMigrators(source, target, resources...)
 	}
 	return transform.NewMigrationProvider(getFunc, getAllFunc)
+}
+
+// printDiagnostics prints warning diagnostics to the user
+func printDiagnostics(diags hcl.Diagnostics) {
+	if diags == nil {
+		return
+	}
+
+	// Filter for warnings only
+	var warnings []*hcl.Diagnostic
+	for _, diag := range diags {
+		if diag.Severity == hcl.DiagWarning {
+			warnings = append(warnings, diag)
+		}
+	}
+
+	if len(warnings) == 0 {
+		return
+	}
+
+	fmt.Println()
+	fmt.Printf("⚠ %d warning(s) during migration:\n", len(warnings))
+	fmt.Println(strings.Repeat("─", 70))
+
+	for i, diag := range warnings {
+		if i > 0 {
+			fmt.Println()
+		}
+		fmt.Printf("\n%s\n", diag.Summary)
+		if diag.Detail != "" {
+			fmt.Printf("\n%s\n", diag.Detail)
+		}
+	}
+	fmt.Println(strings.Repeat("─", 70))
 }
