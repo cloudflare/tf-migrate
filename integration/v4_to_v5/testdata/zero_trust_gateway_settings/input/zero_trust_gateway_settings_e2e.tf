@@ -30,6 +30,11 @@ variable "cloudflare_domain" {
 # - antivirus (requires entitlement)
 # - extended_email_matching (may require entitlement)
 # - certificate/custom_certificate (requires real cert IDs)
+#
+# Note: tls_decrypt_enabled is set to false because the Cloudflare API now
+# requires a certificate to be configured when TLS decryption is enabled
+# (API error 2211). fips.tls is also set to false since FIPS TLS mode
+# depends on TLS decryption being active.
 # ============================================================================
 
 resource "cloudflare_teams_account" "e2e_comprehensive" {
@@ -37,7 +42,7 @@ resource "cloudflare_teams_account" "e2e_comprehensive" {
 
   # Flat boolean fields -> nested structures in v5
   activity_log_enabled       = true
-  tls_decrypt_enabled        = true
+  tls_decrypt_enabled        = false
   protocol_detection_enabled = true
 
   # Browser isolation fields set to false (no entitlement needed for false values)
@@ -60,7 +65,7 @@ resource "cloudflare_teams_account" "e2e_comprehensive" {
   }
 
   fips {
-    tls = true
+    tls = false
   }
 
   # Deprecated blocks - these will create separate resources in v5
