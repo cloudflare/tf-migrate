@@ -1,6 +1,9 @@
 package workers_script
 
 import (
+	"fmt"
+
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 
@@ -54,8 +57,18 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Rename field: name → script_name
 	tfhcl.RenameAttribute(body, "name", "script_name")
 
-	// Remove deprecated fields
+	// Remove deprecated fields and warn
 	// tags - not supported in v5
+	if body.GetAttribute("tags") != nil {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("Deprecated field removed: cloudflare_workers_script.%s", resourceName),
+			Detail: `The 'tags' field has been removed during migration.
+
+Worker script tags are no longer supported in the v5 provider.
+Use resource tags via cloudflare_workers_script_tags if needed.`,
+		})
+	}
 	tfhcl.RemoveAttributes(body, "tags")
 
 	// Transform bindings: Convert 10 different binding blocks + dispatch_namespace attr → unified bindings list

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
@@ -41,6 +42,23 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 // split tunnels into profiles and removes the split_tunnel blocks.
 // We return RemoveOriginal=false because the cross-resource handler manages removal.
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	resourceName := tfhcl.GetResourceName(block)
+
+	// Add warning about resource removal
+	ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+		Severity: hcl.DiagWarning,
+		Summary:  fmt.Sprintf("Resource removed: cloudflare_split_tunnel.%s", resourceName),
+		Detail: `The cloudflare_split_tunnel resource has been removed in v5.
+
+Split tunnel configuration is now managed directly within device profile resources:
+  - cloudflare_zero_trust_device_default_profile.exclude/include
+  - cloudflare_zero_trust_device_custom_profile.exclude/include
+
+The migrator will attempt to merge split_tunnel entries into associated device profiles.
+After migration, remove the old state:
+  terraform state rm cloudflare_split_tunnel.` + resourceName,
+	})
+
 	// Don't mark for removal - ProcessCrossResourceConfigMigration handles it
 	return &transform.TransformResult{
 		Blocks:         nil,

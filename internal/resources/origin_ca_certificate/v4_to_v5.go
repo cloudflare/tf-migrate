@@ -1,11 +1,15 @@
 package origin_ca_certificate
 
 import (
+	"fmt"
+
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
 
 type V4ToV5Migrator struct {
@@ -56,9 +60,21 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// - request_type: String
 	// - Computed fields (id, certificate, expires_on): Not in config
 
-	// Remove min_days_for_renewal attribute if present
 	body := block.Body()
-	body.RemoveAttribute("min_days_for_renewal")
+	resourceName := tfhcl.GetResourceName(block)
+
+	// Remove min_days_for_renewal attribute if present and warn
+	if body.GetAttribute("min_days_for_renewal") != nil {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("Deprecated field removed: cloudflare_origin_ca_certificate.%s", resourceName),
+			Detail: `The 'min_days_for_renewal' field has been removed during migration.
+
+This field is no longer supported in the v5 provider. Certificate renewal
+should be managed through external automation or lifecycle rules.`,
+		})
+		body.RemoveAttribute("min_days_for_renewal")
+	}
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},

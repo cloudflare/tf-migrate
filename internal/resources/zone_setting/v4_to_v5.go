@@ -3,9 +3,11 @@ package zone_setting
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
@@ -137,6 +139,33 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		newBlocks = append(newBlocks, newResource)
 
 		// Note: Import blocks are NOT generated (same reasons as above)
+	}
+
+	// Add warning about one-to-many split requiring fresh state
+	if len(newBlocks) > 0 {
+		var resourceNames []string
+		for _, b := range newBlocks {
+			if b.Type() == "resource" && len(b.Labels()) >= 2 {
+				resourceNames = append(resourceNames, fmt.Sprintf("cloudflare_zone_setting.%s", b.Labels()[1]))
+			}
+		}
+
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("Resource split: cloudflare_zone_settings_override.%s → %d individual resources", baseName, len(newBlocks)),
+			Detail: fmt.Sprintf(`The cloudflare_zone_settings_override resource has been split into individual cloudflare_zone_setting resources in v5.
+
+Generated resources:
+  %s
+
+IMPORTANT: These resources require fresh state. After migration:
+  1. Remove the old state: terraform state rm cloudflare_zone_settings_override.%s
+  2. Run: terraform apply (Terraform will create new state for each zone setting)
+
+Note: Import blocks cannot be used because:
+  - Import blocks don't support count/for_each meta-arguments
+  - Import blocks only work in root modules, not child modules`, strings.Join(resourceNames, "\n  "), baseName),
+		})
 	}
 
 	return &transform.TransformResult{

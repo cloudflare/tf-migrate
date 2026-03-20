@@ -813,6 +813,23 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	body := block.Body()
 
+	// Check for dynamic blocks for include/exclude/require which can't be auto-migrated
+	dynamicConditions := m.detectDynamicConditionBlocks(body)
+	if len(dynamicConditions) > 0 {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("Dynamic block requires manual migration: cloudflare_zero_trust_access_group.%s", resourceName),
+			Detail: fmt.Sprintf(`Dynamic blocks for %s cannot be automatically migrated to v5.
+
+The v5 provider uses list attributes for include/exclude/require instead of blocks.
+Dynamic blocks are not supported with list attributes.
+
+To migrate manually:
+  1. Convert dynamic blocks to static lists, OR
+  2. Use for_each at the resource level instead of dynamic blocks`, strings.Join(dynamicConditions, ", ")),
+		})
+	}
+
 	// 1. First convert include/exclude/require blocks to attributes
 	// This handles both v4 formats:
 	// - Format A: include { email = ["a@example.com"] }
@@ -836,6 +853,23 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		Blocks:         blocks,
 		RemoveOriginal: movedBlock != nil, // Remove original if we generated a moved block
 	}, nil
+}
+
+// detectDynamicConditionBlocks checks for dynamic blocks for include/exclude/require
+// Returns the list of dynamic block names found
+func (m *V4ToV5Migrator) detectDynamicConditionBlocks(body *hclwrite.Body) []string {
+	var dynamicConditions []string
+	conditionNames := map[string]bool{"include": true, "exclude": true, "require": true}
+
+	for _, block := range body.Blocks() {
+		if block.Type() == "dynamic" && len(block.Labels()) > 0 {
+			if conditionNames[block.Labels()[0]] {
+				dynamicConditions = append(dynamicConditions, block.Labels()[0])
+			}
+		}
+	}
+
+	return dynamicConditions
 }
 
 // convertConditionBlocksToAttributes converts include/exclude/require blocks to attribute arrays

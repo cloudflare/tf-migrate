@@ -1,0 +1,1888 @@
+diff --git a/integration/v4_to_v5/testdata/zero_trust_access_application/expected/zero_trust_access_application.tf b/integration/v4_to_v5/testdata/zero_trust_access_application/expected/zero_trust_access_application.tf
+index 783da5f..c47fcde 100644
+--- a/integration/v4_to_v5/testdata/zero_trust_access_application/expected/zero_trust_access_application.tf
++++ b/integration/v4_to_v5/testdata/zero_trust_access_application/expected/zero_trust_access_application.tf
+@@ -456,30 +456,5 @@ moved {
+   to   = cloudflare_zero_trust_access_application.resourcename_opt1
+ }
+ 
+-# Dependent resource that references option 1
+-resource "cloudflare_zero_trust_access_policy" "ref_opt1" {
+-  account_id = var.cloudflare_account_id
+-  name       = "Policy referencing pattern9 opt1"
+-  decision   = "allow"
+-
+-  include = [{ email = { email = "user@example.com" } }]
+-}
+-
+-moved {
+-  from = cloudflare_access_policy.ref_opt1
+-  to   = cloudflare_zero_trust_access_policy.ref_opt1
+-}
+-
+-# Dependent resource that references option 2
+-resource "cloudflare_zero_trust_access_policy" "ref_opt2" {
+-  account_id = var.cloudflare_account_id
+-  name       = "Policy referencing pattern9 opt2"
+-  decision   = "allow"
+-
+-  include = [{ email = { email = "admin@example.com" } }]
+-}
+-
+-moved {
+-  from = cloudflare_access_policy.ref_opt2
+-  to   = cloudflare_zero_trust_access_policy.ref_opt2
+-}
++# NOTE: cloudflare_access_policy with application_id CANNOT be migrated to v5.
++# See access_policy.md in the repo root for details.
+diff --git a/integration/v4_to_v5/testdata/zero_trust_access_application/input/zero_trust_access_application.tf b/integration/v4_to_v5/testdata/zero_trust_access_application/input/zero_trust_access_application.tf
+index 756b034..b701601 100644
+--- a/integration/v4_to_v5/testdata/zero_trust_access_application/input/zero_trust_access_application.tf
++++ b/integration/v4_to_v5/testdata/zero_trust_access_application/input/zero_trust_access_application.tf
+@@ -435,28 +435,5 @@ resource "cloudflare_zero_trust_access_application" "resourcename_opt2" {
+   type       = "self_hosted"
+ }
+ 
+-# Dependent resource that references option 1
+-resource "cloudflare_access_policy" "ref_opt1" {
+-  account_id     = var.cloudflare_account_id
+-  application_id = cloudflare_access_application.resourcename_opt1.id
+-  name           = "Policy referencing pattern9 opt1"
+-  precedence     = 1
+-  decision       = "allow"
+-
+-  include {
+-    email = ["user@example.com"]
+-  }
+-}
+-
+-# Dependent resource that references option 2
+-resource "cloudflare_access_policy" "ref_opt2" {
+-  account_id     = var.cloudflare_account_id
+-  application_id = cloudflare_zero_trust_access_application.resourcename_opt2.id
+-  name           = "Policy referencing pattern9 opt2"
+-  precedence     = 1
+-  decision       = "allow"
+-
+-  include {
+-    email = ["admin@example.com"]
+-  }
+-}
++# NOTE: cloudflare_access_policy with application_id CANNOT be migrated to v5.
++# See access_policy.md in the repo root for details.
+diff --git a/integration/v4_to_v5/testdata/zero_trust_access_group/expected/zero_trust_access_group.tf b/integration/v4_to_v5/testdata/zero_trust_access_group/expected/zero_trust_access_group.tf
+index 570fdf8..ba218ea 100644
+--- a/integration/v4_to_v5/testdata/zero_trust_access_group/expected/zero_trust_access_group.tf
++++ b/integration/v4_to_v5/testdata/zero_trust_access_group/expected/zero_trust_access_group.tf
+@@ -180,12 +180,12 @@ resource "cloudflare_zero_trust_access_group" "booleans" {
+   account_id = var.cloudflare_account_id
+   name       = "${local.name_prefix} Boolean Selectors Group"
+ 
++
+   include = [
+     {
+       everyone = {}
+     },
+   ]
+-
+   exclude = [
+     {
+       certificate = {}
+@@ -261,6 +261,8 @@ resource "cloudflare_zero_trust_access_group" "all_rules" {
+   account_id = var.cloudflare_account_id
+   name       = "${local.name_prefix} All Rules Group"
+ 
++
++
+   include = [
+     {
+       email = {
+@@ -268,7 +270,6 @@ resource "cloudflare_zero_trust_access_group" "all_rules" {
+       }
+     },
+   ]
+-
+   exclude = [
+     {
+       ip = {
+@@ -276,7 +277,6 @@ resource "cloudflare_zero_trust_access_group" "all_rules" {
+       }
+     },
+   ]
+-
+   require = [
+     {
+       email_domain = {
+@@ -296,6 +296,7 @@ resource "cloudflare_zero_trust_access_group" "complex" {
+   account_id = var.cloudflare_account_id
+   name       = "${local.name_prefix} Complex Group"
+ 
++
+   include = [
+     {
+       email = {
+@@ -308,17 +309,16 @@ resource "cloudflare_zero_trust_access_group" "complex" {
+       }
+     },
+     {
+-      ip = {
+-        ip = "10.0.0.0/8"
++      email_domain = {
++        domain = "example.com"
+       }
+     },
+     {
+-      email_domain = {
+-        domain = "example.com"
++      ip = {
++        ip = "10.0.0.0/8"
+       }
+     },
+   ]
+-
+   exclude = [
+     {
+       ip = {
+@@ -367,33 +367,33 @@ resource "cloudflare_zero_trust_access_group" "lists" {
+ 
+   include = [
+     {
+-      email_list = {
+-        id = "list-id-1"
++      ip = {
++        ip = "192.0.2.10/32"
+       }
+     },
+     {
+-      ip_list = {
+-        id = "iplist-id-1"
++      ip = {
++        ip = "192.0.2.11/32"
+       }
+     },
+     {
+-      ip_list = {
+-        id = "iplist-id-2"
++      ip = {
++        ip = "198.51.100.1/32"
+       }
+     },
+     {
+-      ip = {
+-        ip = "192.0.2.10/32"
++      email_list = {
++        id = "list-id-1"
+       }
+     },
+     {
+-      ip = {
+-        ip = "192.0.2.11/32"
++      ip_list = {
++        id = "iplist-id-1"
+       }
+     },
+     {
+-      ip = {
+-        ip = "198.51.100.1/32"
++      ip_list = {
++        id = "iplist-id-2"
+       }
+     },
+   ]
+@@ -476,6 +476,10 @@ resource "cloudflare_zero_trust_access_group" "lifecycle_test" {
+   account_id = var.cloudflare_account_id
+   name       = "${local.name_prefix} Lifecycle Test Group"
+ 
++
++  lifecycle {
++    create_before_destroy = true
++  }
+   include = [
+     {
+       email = {
+@@ -483,10 +487,6 @@ resource "cloudflare_zero_trust_access_group" "lifecycle_test" {
+       }
+     },
+   ]
+-
+-  lifecycle {
+-    create_before_destroy = true
+-  }
+ }
+ 
+ moved {
+@@ -534,6 +534,8 @@ resource "cloudflare_zero_trust_access_group" "child" {
+   account_id = var.cloudflare_account_id
+   name       = "${local.name_prefix} Child Group - References ${cloudflare_zero_trust_access_group.parent.name}"
+ 
++
++  depends_on = [cloudflare_zero_trust_access_group.parent]
+   include = [
+     {
+       email = {
+@@ -541,8 +543,6 @@ resource "cloudflare_zero_trust_access_group" "child" {
+       }
+     },
+   ]
+-
+-  depends_on = [cloudflare_zero_trust_access_group.parent]
+ }
+ 
+ moved {
+diff --git a/integration/v4_to_v5/testdata/zero_trust_device_posture_rule/expected/zero_trust_device_posture_rule.tf b/integration/v4_to_v5/testdata/zero_trust_device_posture_rule/expected/zero_trust_device_posture_rule.tf
+index 3895783..d60aee0 100644
+--- a/integration/v4_to_v5/testdata/zero_trust_device_posture_rule/expected/zero_trust_device_posture_rule.tf
++++ b/integration/v4_to_v5/testdata/zero_trust_device_posture_rule/expected/zero_trust_device_posture_rule.tf
+@@ -92,12 +92,13 @@ locals {
+ # Using realistic resources that would depend on posture rules
+ 
+ # Gateway policy depending on old-name posture rule
++# Note: Using high precedence values (100000+) to avoid conflicts with zero_trust_gateway_policy tests
+ resource "cloudflare_zero_trust_gateway_policy" "depends_on_old_posture" {
+   account_id  = var.cloudflare_account_id
+   name        = "cftftest Gateway Policy - Old Posture Rule"
+   description = "Policy depending on old-name posture rule"
+   action      = "block"
+-  precedence  = 1000
++  precedence  = 100000
+   enabled     = true
+   traffic     = "any(dns.domains[*] == \"example-old.com\")"
+ 
+@@ -105,12 +106,13 @@ resource "cloudflare_zero_trust_gateway_policy" "depends_on_old_posture" {
+ }
+ 
+ # Gateway policy depending on new-name posture rule
++# Note: Using high precedence values (100000+) to avoid conflicts with zero_trust_gateway_policy tests
+ resource "cloudflare_zero_trust_gateway_policy" "depends_on_new_posture" {
+   account_id  = var.cloudflare_account_id
+   name        = "cftftest Gateway Policy - New Posture Rule"
+   description = "Policy depending on new-name posture rule"
+   action      = "allow"
+-  precedence  = 2000
++  precedence  = 100001
+   enabled     = true
+   traffic     = "any(dns.domains[*] == \"example-new.com\")"
+ 
+diff --git a/integration/v4_to_v5/testdata/zero_trust_device_posture_rule/input/zero_trust_device_posture_rule.tf b/integration/v4_to_v5/testdata/zero_trust_device_posture_rule/input/zero_trust_device_posture_rule.tf
+index 7177d9f..716b6f0 100644
+--- a/integration/v4_to_v5/testdata/zero_trust_device_posture_rule/input/zero_trust_device_posture_rule.tf
++++ b/integration/v4_to_v5/testdata/zero_trust_device_posture_rule/input/zero_trust_device_posture_rule.tf
+@@ -491,12 +491,13 @@ resource "cloudflare_zero_trust_device_posture_rule" "ref_source_new_name" {
+ # Using realistic resources that would depend on posture rules
+ 
+ # Gateway policy depending on old-name posture rule
++# Note: Using high precedence values (100000+) to avoid conflicts with zero_trust_gateway_policy tests
+ resource "cloudflare_zero_trust_gateway_policy" "depends_on_old_posture" {
+   account_id  = var.cloudflare_account_id
+   name        = "cftftest Gateway Policy - Old Posture Rule"
+   description = "Policy depending on old-name posture rule"
+   action      = "block"
+-  precedence  = 1000
++  precedence  = 100000
+   enabled     = true
+   traffic     = "any(dns.domains[*] == \"example-old.com\")"
+ 
+@@ -504,12 +505,13 @@ resource "cloudflare_zero_trust_gateway_policy" "depends_on_old_posture" {
+ }
+ 
+ # Gateway policy depending on new-name posture rule
++# Note: Using high precedence values (100000+) to avoid conflicts with zero_trust_gateway_policy tests
+ resource "cloudflare_zero_trust_gateway_policy" "depends_on_new_posture" {
+   account_id  = var.cloudflare_account_id
+   name        = "cftftest Gateway Policy - New Posture Rule"
+   description = "Policy depending on new-name posture rule"
+   action      = "allow"
+-  precedence  = 2000
++  precedence  = 100001
+   enabled     = true
+   traffic     = "any(dns.domains[*] == \"example-new.com\")"
+ 
+diff --git a/internal/resources/zero_trust_access_group/v4_to_v5.go b/internal/resources/zero_trust_access_group/v4_to_v5.go
+index 21bd420..2fb7e3c 100644
+--- a/internal/resources/zero_trust_access_group/v4_to_v5.go
++++ b/internal/resources/zero_trust_access_group/v4_to_v5.go
+@@ -5,10 +5,12 @@ import (
+ 	"regexp"
+ 	"strings"
+ 
++	"github.com/hashicorp/hcl/v2"
+ 	"github.com/hashicorp/hcl/v2/hclparse"
+ 	"github.com/hashicorp/hcl/v2/hclsyntax"
+ 	"github.com/hashicorp/hcl/v2/hclwrite"
+ 	"github.com/tidwall/gjson"
++	"github.com/zclconf/go-cty/cty"
+ 
+ 	"github.com/cloudflare/tf-migrate/internal"
+ 	"github.com/cloudflare/tf-migrate/internal/transform"
+@@ -48,19 +50,20 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+ 	return []string{"cloudflare_access_group", "cloudflare_zero_trust_access_group"}, m.newType
+ }
+ 
+-// Preprocess transforms v4 block syntax to v5 attribute syntax with array explosion
+-// This is the most complex part of the migration
++// Preprocess is now a no-op - all transformations are done in TransformConfig using HCL AST manipulation
++// This approach properly handles both v4 formats:
++// - Format A (original v4): Single block with arrays: include { email = ["a@example.com"] }
++// - Format B (cf-terraforming): Multiple blocks with nested objects: include { email = { email = "a@example.com" } }
++// The old regex-based approach is kept below as preprocessRuleBlocksLegacy for reference/fallback
+ func (m *V4ToV5Migrator) Preprocess(content string) string {
+-	// Process each rule type (include, exclude, require)
+-	content = m.preprocessRuleBlocks(content, "include")
+-	content = m.preprocessRuleBlocks(content, "exclude")
+-	content = m.preprocessRuleBlocks(content, "require")
+-
++	// No preprocessing needed - all transformations done in TransformConfig with HCL AST
+ 	return content
+ }
+ 
+-// preprocessRuleBlocks finds and transforms rule blocks (include/exclude/require)
+-func (m *V4ToV5Migrator) preprocessRuleBlocks(content, ruleName string) string {
++// preprocessRuleBlocksLegacy is the old regex-based approach - kept as fallback/reference
++// This function has a bug: it processes each block independently, causing "Attribute redefined" errors
++// when there are multiple include/exclude/require blocks (like cf-terraforming generates)
++func (m *V4ToV5Migrator) preprocessRuleBlocksLegacy(content, ruleName string) string {
+ 	// Find all rule blocks for this rule type
+ 	// Pattern: ruleName { ... }
+ 	// We need to match the entire block including nested content
+@@ -794,32 +797,1039 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
+ 	originalResourceType := tfhcl.GetResourceType(block)
+ 	resourceName := tfhcl.GetResourceName(block)
+ 
++	// Track if we need to generate a moved block
++	var movedBlock *hclwrite.Block
++
+ 	// Rename resource type: cloudflare_access_group → cloudflare_zero_trust_access_group
+-	tfhcl.RenameResourceType(block, m.oldType, m.newType)
++	if originalResourceType == m.oldType {
++		tfhcl.RenameResourceType(block, m.oldType, m.newType)
+ 
+-	// Generate moved block for resource rename if type changed
+-	// This triggers the provider's MoveState handler which calls the StateUpgrader
+-	_, newType := m.GetResourceRename()
+-	if originalResourceType != newType {
++		// Generate moved block for state migration
++		_, newType := m.GetResourceRename()
+ 		from := originalResourceType + "." + resourceName
+ 		to := newType + "." + resourceName
+-		movedBlock := tfhcl.CreateMovedBlock(from, to)
++		movedBlock = tfhcl.CreateMovedBlock(from, to)
++	}
++
++	body := block.Body()
++
++	// 1. First convert include/exclude/require blocks to attributes
++	// This handles both v4 formats:
++	// - Format A: include { email = ["a@example.com"] }
++	// - Format B: include { email = { email = "a@example.com" } } (cf-terraforming)
++	// ConvertBlocksToArrayAttribute collects ALL blocks first, then creates single attribute
++	m.convertConditionBlocksToAttributes(body)
+ 
+-		// Note: Most config transformation happens in Preprocess() due to complexity
+-		// This function handles resource renaming and moved block generation
++	// 2. Transform condition attributes (boolean selectors, array expansion, etc.)
++	m.transformConditionAttributes(body)
+ 
+-		return &transform.TransformResult{
+-			Blocks:         []*hclwrite.Block{block, movedBlock},
+-			RemoveOriginal: true, // Remove original block since we're renaming
+-		}, nil
++	// 3. Remove empty exclude and require arrays (v5 provider normalizes them to null)
++	m.removeEmptyConditionArrays(body)
++
++	// Build result blocks
++	blocks := []*hclwrite.Block{block}
++	if movedBlock != nil {
++		blocks = append(blocks, movedBlock)
+ 	}
+ 
+ 	return &transform.TransformResult{
+-		Blocks:         []*hclwrite.Block{block},
+-		RemoveOriginal: false,
++		Blocks:         blocks,
++		RemoveOriginal: movedBlock != nil, // Remove original if we generated a moved block
+ 	}, nil
+ }
+ 
++// convertConditionBlocksToAttributes converts include/exclude/require blocks to attribute arrays
++// This handles both v4 formats by collecting ALL blocks of the same type first
++// It also handles nested blocks (like github, gsuite, etc.) by converting them to attributes
++func (m *V4ToV5Migrator) convertConditionBlocksToAttributes(body *hclwrite.Body) {
++	conditionNames := []string{"include", "exclude", "require"}
++
++	for _, condName := range conditionNames {
++		blocks := tfhcl.FindBlocksByType(body, condName)
++		if len(blocks) == 0 {
++			continue
++		}
++
++		// Build array of objects from blocks, handling nested blocks
++		var objectTokens []hclwrite.Tokens
++		for _, block := range blocks {
++			// Convert nested blocks to attributes first (github, gsuite, azure, okta, saml)
++			m.convertNestedBlocksToAttributes(block.Body())
++
++			// Now build object from the block (which only has attributes now)
++			objTokens := tfhcl.BuildObjectFromBlock(block)
++			objectTokens = append(objectTokens, objTokens)
++		}
++
++		// Build array from objects and set as attribute
++		arrayTokens := tfhcl.BuildArrayFromObjects(objectTokens)
++		body.SetAttributeRaw(condName, arrayTokens)
++
++		// Remove original blocks
++		tfhcl.RemoveBlocksByType(body, condName)
++	}
++}
++
++// convertNestedBlocksToAttributes converts nested blocks (github, gsuite, etc.) to attributes
++// These blocks have array semantics in v4 but are represented as blocks
++func (m *V4ToV5Migrator) convertNestedBlocksToAttributes(body *hclwrite.Body) {
++	// List of block types that should be converted to array attributes
++	nestedBlockTypes := []string{"github", "gsuite", "azure", "okta", "saml", "external_evaluation"}
++
++	for _, blockType := range nestedBlockTypes {
++		blocks := tfhcl.FindBlocksByType(body, blockType)
++		if len(blocks) == 0 {
++			continue
++		}
++
++		// Convert blocks to array of objects
++		var objectTokens []hclwrite.Tokens
++		for _, block := range blocks {
++			objTokens := tfhcl.BuildObjectFromBlock(block)
++			objectTokens = append(objectTokens, objTokens)
++		}
++
++		// Build array and set as attribute
++		arrayTokens := tfhcl.BuildArrayFromObjects(objectTokens)
++		body.SetAttributeRaw(blockType, arrayTokens)
++
++		// Remove original blocks
++		tfhcl.RemoveBlocksByType(body, blockType)
++	}
++}
++
++// removeEmptyConditionArrays removes empty exclude and require arrays
++// The v5 provider normalizes empty arrays to null, so we should omit them
++func (m *V4ToV5Migrator) removeEmptyConditionArrays(body *hclwrite.Body) {
++	// Only remove exclude and require, keep include even if empty
++	conditionsToCheck := []string{"exclude", "require"}
++
++	for _, attrName := range conditionsToCheck {
++		attr := body.GetAttribute(attrName)
++		if attr == nil {
++			continue
++		}
++
++		// Parse the attribute expression to check if it's an empty array
++		expr := attr.Expr()
++		src := hclwrite.Format(expr.BuildTokens(nil).Bytes())
++
++		// Parse as syntax expression
++		syntaxExpr, diags := hclsyntax.ParseExpression(src, attrName, hcl.InitialPos)
++		if diags.HasErrors() {
++			continue
++		}
++
++		// Check if it's an empty tuple (array)
++		if tup, ok := syntaxExpr.(*hclsyntax.TupleConsExpr); ok {
++			if len(tup.Exprs) == 0 {
++				// It's an empty array, remove the attribute
++				body.RemoveAttribute(attrName)
++			}
++		}
++	}
++}
++
++// transformConditionAttributes transforms include/exclude/require attributes
++// Handles:
++// 1. Boolean attributes (everyone, certificate, any_valid_service_token) -> empty objects
++// 2. Array attributes (email, group, ip, email_domain, geo) -> split into multiple objects
++// 3. Nested object attributes (cf-terraforming format) -> preserve and normalize
++// 4. For expressions inside selectors -> transform to wrap values in v5 structure
++func (m *V4ToV5Migrator) transformConditionAttributes(body *hclwrite.Body) {
++	conditionAttrs := []string{"include", "exclude", "require"}
++
++	for _, attrName := range conditionAttrs {
++		attr := body.GetAttribute(attrName)
++		if attr == nil {
++			continue
++		}
++
++		// Parse the attribute expression
++		expr := attr.Expr()
++		originalTokens := expr.BuildTokens(nil)
++		src := hclwrite.Format(originalTokens.Bytes())
++
++		// Normalize IP addresses in the source before parsing
++		src = []byte(m.normalizeIPsInSource(string(src)))
++
++		// Parse as syntax expression to manipulate
++		syntaxExpr, diags := hclsyntax.ParseExpression(src, attrName, hcl.InitialPos)
++		if diags.HasErrors() {
++			// Can't parse - leave as is
++			continue
++		}
++
++		// Check if this contains a for expression that needs special handling
++		// e.g., [{email = [for i in range(2) : "user${i}@example.com"]}]
++		if forExprTransformed := m.tryTransformForExpressionInCondition(syntaxExpr, string(src)); forExprTransformed != "" {
++			// Successfully transformed a for expression - use the result
++			body.SetAttributeRaw(attrName, hclwrite.Tokens{
++				&hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(forExprTransformed)},
++			})
++			continue
++		}
++
++		// Check if this is a simple tuple/array that we can transform
++		// For other complex expressions, preserve as-is
++		if !m.canTransformConditionExpression(syntaxExpr) {
++			continue
++		}
++
++		// Transform the expression
++		transformedExpr := m.transformConditionExpression(syntaxExpr)
++		if transformedExpr == nil {
++			continue
++		}
++
++		// Convert back to tokens and set the attribute
++		tokens := m.exprToTokens(transformedExpr)
++		body.SetAttributeRaw(attrName, tokens)
++	}
++}
++
++// tryTransformForExpressionInCondition checks if the condition contains an object
++// with a for expression selector value and transforms it if so.
++// Input: [{email = [for i in range(2) : "user${i}@example.com"]}]
++// Output: [for i in range(2) : { email = { email = "user${i}@example.com" } }]
++func (m *V4ToV5Migrator) tryTransformForExpressionInCondition(expr hclsyntax.Expression, src string) string {
++	tup, ok := expr.(*hclsyntax.TupleConsExpr)
++	if !ok || len(tup.Exprs) != 1 {
++		// Only handle single-element arrays with for expressions
++		return ""
++	}
++
++	obj, ok := tup.Exprs[0].(*hclsyntax.ObjectConsExpr)
++	if !ok || len(obj.Items) != 1 {
++		// Only handle objects with a single attribute
++		return ""
++	}
++
++	item := obj.Items[0]
++	selectorName := m.getKeyString(item.KeyExpr)
++
++	// Check if the value is a for expression (directly, not wrapped in tuple)
++	forExpr, ok := item.ValueExpr.(*hclsyntax.ForExpr)
++	if !ok {
++		return ""
++	}
++
++	// Get the inner field name for this selector
++	innerFieldName := m.getSelectorInnerFieldName(selectorName)
++	if innerFieldName == "" {
++		return ""
++	}
++
++	// Extract components from the for expression
++	varName := forExpr.ValVar
++	if varName == "" {
++		varName = forExpr.KeyVar
++	}
++
++	// Get the collection expression as string from the source
++	collectionBytes := forExpr.CollExpr.Range().SliceBytes([]byte(src))
++	collectionStr := string(collectionBytes)
++
++	// Get the value expression as string from the source
++	valueBytes := forExpr.ValExpr.Range().SliceBytes([]byte(src))
++	valueStr := string(valueBytes)
++
++	// Build the transformed for expression
++	// [for VAR in COLLECTION : { selector = { field = VALUE } }]
++	return fmt.Sprintf(`[for %s in %s : {
++%s = {
++%s = %s
++}
++}]`, varName, collectionStr, selectorName, innerFieldName, valueStr)
++}
++
++// getSelectorInnerFieldName returns the inner field name for a selector type
++func (m *V4ToV5Migrator) getSelectorInnerFieldName(selectorName string) string {
++	mapping := map[string]string{
++		"email":          "email",
++		"group":          "id",
++		"ip":             "ip",
++		"ip_list":        "id",
++		"email_domain":   "domain",
++		"email_list":     "id",
++		"geo":            "country_code",
++		"common_name":    "common_name",
++		"auth_method":    "auth_method",
++		"login_method":   "id",
++		"device_posture": "integration_uid",
++		"service_token":  "token_id",
++	}
++	return mapping[selectorName]
++}
++
++// canTransformConditionExpression checks if an expression can be safely transformed
++// Returns false for complex expressions like for expressions that should be preserved
++func (m *V4ToV5Migrator) canTransformConditionExpression(expr hclsyntax.Expression) bool {
++	tup, ok := expr.(*hclsyntax.TupleConsExpr)
++	if !ok {
++		// Not a tuple/array - can't transform
++		return false
++	}
++
++	// Check each element - if any is complex (not an object literal), don't transform
++	for _, itemExpr := range tup.Exprs {
++		if !m.isSimpleObjectExpression(itemExpr) {
++			return false
++		}
++	}
++
++	return true
++}
++
++// isSimpleObjectExpression checks if an expression is a simple object literal
++// that can be safely transformed. Returns false for complex expressions.
++func (m *V4ToV5Migrator) isSimpleObjectExpression(expr hclsyntax.Expression) bool {
++	obj, ok := expr.(*hclsyntax.ObjectConsExpr)
++	if !ok {
++		return false
++	}
++
++	// Check each value in the object
++	for _, item := range obj.Items {
++		if !m.isSimpleValue(item.ValueExpr) {
++			return false
++		}
++	}
++
++	return true
++}
++
++// isSimpleValue checks if a value expression is simple enough to transform
++func (m *V4ToV5Migrator) isSimpleValue(expr hclsyntax.Expression) bool {
++	switch e := expr.(type) {
++	case *hclsyntax.LiteralValueExpr:
++		// Simple literals are fine
++		return true
++	case *hclsyntax.TemplateExpr:
++		// Template expressions (string interpolations) are fine
++		return true
++	case *hclsyntax.ScopeTraversalExpr:
++		// Variable references are fine
++		return true
++	case *hclsyntax.TupleConsExpr:
++		// Arrays are fine if all elements are simple
++		for _, elem := range e.Exprs {
++			if !m.isSimpleValue(elem) {
++				return false
++			}
++		}
++		return true
++	case *hclsyntax.ObjectConsExpr:
++		// Objects are fine if all values are simple
++		for _, item := range e.Items {
++			if !m.isSimpleValue(item.ValueExpr) {
++				return false
++			}
++		}
++		return true
++	case *hclsyntax.ForExpr:
++		// For expressions are complex - don't transform
++		return false
++	case *hclsyntax.FunctionCallExpr:
++		// Function calls are complex - don't transform
++		return false
++	case *hclsyntax.ConditionalExpr:
++		// Conditionals are complex - don't transform
++		return false
++	default:
++		// Unknown types - be conservative, don't transform
++		return false
++	}
++}
++
++// transformConditionExpression transforms a condition list expression
++// Input: [{everyone = true, email = ["a", "b"]}]
++// Output: [{everyone = {}}, {email = {email = "a"}}, {email = {email = "b"}}]
++// Also handles cf-terraforming format where values are already nested objects
++func (m *V4ToV5Migrator) transformConditionExpression(expr hclsyntax.Expression) hclsyntax.Expression {
++	tup, ok := expr.(*hclsyntax.TupleConsExpr)
++	if !ok {
++		// Not a tuple/array, can't transform
++		return nil
++	}
++
++	var newExprs []hclsyntax.Expression
++
++	for _, itemExpr := range tup.Exprs {
++		obj, ok := itemExpr.(*hclsyntax.ObjectConsExpr)
++		if !ok {
++			// Keep non-object expressions as-is
++			newExprs = append(newExprs, itemExpr)
++			continue
++		}
++
++		// First, transform booleans in place
++		obj = m.transformBooleans(obj)
++
++		// Then check if we need to expand arrays or handle cf-terraforming format
++		expanded := m.expandObject(obj)
++		if len(expanded) > 0 {
++			// Object was expanded into multiple objects
++			newExprs = append(newExprs, expanded...)
++		} else {
++			// No expansion needed, keep original object
++			newExprs = append(newExprs, obj)
++		}
++	}
++
++	// Return the modified tuple
++	return &hclsyntax.TupleConsExpr{
++		Exprs:     newExprs,
++		SrcRange:  tup.SrcRange,
++		OpenRange: tup.OpenRange,
++	}
++}
++
++// transformBooleans transforms boolean attributes to empty objects
++// everyone = true -> everyone = {}
++// certificate = false -> (removed)
++func (m *V4ToV5Migrator) transformBooleans(obj *hclsyntax.ObjectConsExpr) *hclsyntax.ObjectConsExpr {
++	boolAttrs := map[string]bool{
++		"everyone":                true,
++		"certificate":             true,
++		"any_valid_service_token": true,
++	}
++
++	var newItems []hclsyntax.ObjectConsItem
++
++	for _, item := range obj.Items {
++		key := m.getKeyString(item.KeyExpr)
++
++		if boolAttrs[key] {
++			// Check if it's a boolean literal
++			lit, ok := item.ValueExpr.(*hclsyntax.LiteralValueExpr)
++			if ok && lit.Val.Type() == cty.Bool {
++				if lit.Val.False() {
++					// Remove false values
++					continue
++				}
++				// Replace true with empty object
++				newItems = append(newItems, hclsyntax.ObjectConsItem{
++					KeyExpr:   item.KeyExpr,
++					ValueExpr: &hclsyntax.ObjectConsExpr{},
++				})
++				continue
++			}
++		}
++
++		// Keep other items as-is
++		newItems = append(newItems, item)
++	}
++
++	return &hclsyntax.ObjectConsExpr{
++		Items:    newItems,
++		SrcRange: obj.SrcRange,
++	}
++}
++
++// expandObject checks if an object needs expansion and returns expanded objects
++// Returns nil if no expansion needed
++func (m *V4ToV5Migrator) expandObject(obj *hclsyntax.ObjectConsExpr) []hclsyntax.Expression {
++	var allExpanded []hclsyntax.Expression
++	var remainingItems []hclsyntax.ObjectConsItem
++
++	for _, item := range obj.Items {
++		key := m.getKeyString(item.KeyExpr)
++
++		// Handle github specially
++		if key == "github" {
++			expanded := m.expandGithub(item)
++			if len(expanded) > 0 {
++				allExpanded = append(allExpanded, expanded...)
++				continue
++			}
++		}
++
++		// Handle gsuite specially
++		if key == "gsuite" {
++			expanded := m.expandGsuite(item)
++			if len(expanded) > 0 {
++				allExpanded = append(allExpanded, expanded...)
++				continue
++			}
++		}
++
++		// Handle okta specially
++		if key == "okta" {
++			expanded := m.expandOkta(item)
++			if len(expanded) > 0 {
++				allExpanded = append(allExpanded, expanded...)
++				continue
++			}
++		}
++
++		// Handle saml specially
++		if key == "saml" {
++			expanded := m.expandSaml(item)
++			if len(expanded) > 0 {
++				allExpanded = append(allExpanded, expanded...)
++				continue
++			}
++		}
++
++		// Handle azure specially
++		if key == "azure" {
++			expanded := m.expandAzure(item)
++			if len(expanded) > 0 {
++				allExpanded = append(allExpanded, expanded...)
++				continue
++			}
++		}
++
++		// Handle simple array attributes
++		expanded := m.expandArrayAttribute(key, item)
++		if len(expanded) > 0 {
++			allExpanded = append(allExpanded, expanded...)
++			continue
++		}
++
++		// Keep other attributes as-is
++		remainingItems = append(remainingItems, item)
++	}
++
++	// If we expanded some attributes, each remaining item becomes its own object
++	if len(allExpanded) > 0 {
++		for _, item := range remainingItems {
++			singleItemObj := &hclsyntax.ObjectConsExpr{
++				Items: []hclsyntax.ObjectConsItem{item},
++			}
++			allExpanded = append(allExpanded, singleItemObj)
++		}
++		return allExpanded
++	}
++
++	// No expansion happened
++	return nil
++}
++
++// expandArrayAttribute expands array attributes like email, group, ip
++// email = ["a", "b"] -> [{email = {email = "a"}}, {email = {email = "b"}}]
++// Also handles cf-terraforming format where value is already nested: email = { email = "a" }
++func (m *V4ToV5Migrator) expandArrayAttribute(key string, item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
++	// Map of attribute names to their inner field names
++	arrayAttrs := map[string]string{
++		"email":          "email",
++		"group":          "id",
++		"ip":             "ip",
++		"ip_list":        "id",
++		"email_domain":   "domain",
++		"email_list":     "id",
++		"geo":            "country_code",
++		"common_name":    "common_name",
++		"auth_method":    "auth_method",
++		"login_method":   "id",
++		"device_posture": "integration_uid",
++		"service_token":  "token_id",
++	}
++
++	innerFieldName, isArrayAttr := arrayAttrs[key]
++	if !isArrayAttr {
++		return nil
++	}
++
++	// Check if already transformed: if value is an object with a single item matching innerFieldName, skip
++	if obj, ok := item.ValueExpr.(*hclsyntax.ObjectConsExpr); ok {
++		if len(obj.Items) == 1 {
++			itemKey := m.getKeyString(obj.Items[0].KeyExpr)
++			if itemKey == innerFieldName {
++				// Already in cf-terraforming format (nested object), keep as-is
++				// Just wrap it properly: {email = {email = "x"}} is correct v5 format
++				return nil
++			}
++		}
++		// It's an object but not in the expected format - might be cf-terraforming format
++		// where the value is already { email = "x" }, wrap it
++		return nil
++	}
++
++	var result []hclsyntax.Expression
++
++	// Check if the value is a tuple/array
++	if tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr); ok {
++		// Create a new object for each item in the array
++		for _, elem := range tup.Exprs {
++			// Normalize IP addresses: add /32 suffix if missing
++			valueExpr := elem
++			if key == "ip" {
++				valueExpr = m.normalizeIPExpression(elem)
++			}
++
++			newObj := &hclsyntax.ObjectConsExpr{
++				Items: []hclsyntax.ObjectConsItem{
++					{
++						KeyExpr: m.newKeyExpr(key),
++						ValueExpr: &hclsyntax.ObjectConsExpr{
++							Items: []hclsyntax.ObjectConsItem{
++								{
++									KeyExpr:   m.newKeyExpr(innerFieldName),
++									ValueExpr: valueExpr,
++								},
++							},
++						},
++					},
++				},
++			}
++			result = append(result, newObj)
++		}
++		return result
++	}
++
++	// Handle single string value (not an array)
++	// common_name = "device" -> {common_name = {common_name = "device"}}
++	newObj := &hclsyntax.ObjectConsExpr{
++		Items: []hclsyntax.ObjectConsItem{
++			{
++				KeyExpr: m.newKeyExpr(key),
++				ValueExpr: &hclsyntax.ObjectConsExpr{
++					Items: []hclsyntax.ObjectConsItem{
++						{
++							KeyExpr:   m.newKeyExpr(innerFieldName),
++							ValueExpr: item.ValueExpr,
++						},
++					},
++				},
++			},
++		},
++	}
++	return []hclsyntax.Expression{newObj}
++}
++
++// expandGithub handles the special case of github blocks
++// github = [{name = "org", teams = ["t1", "t2"], identity_provider_id = "id"}]
++// -> Multiple github_organization objects, one per team
++func (m *V4ToV5Migrator) expandGithub(item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
++	// Check if the value is a tuple/array
++	tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr)
++	if !ok {
++		return nil
++	}
++
++	var result []hclsyntax.Expression
++
++	for _, githubExpr := range tup.Exprs {
++		githubObj, ok := githubExpr.(*hclsyntax.ObjectConsExpr)
++		if !ok {
++			continue
++		}
++
++		// Extract fields
++		var nameExpr hclsyntax.Expression
++		var teamsExpr *hclsyntax.TupleConsExpr
++		var identityProviderExpr hclsyntax.Expression
++		var otherItems []hclsyntax.ObjectConsItem
++
++		for _, githubItem := range githubObj.Items {
++			itemKey := m.getKeyString(githubItem.KeyExpr)
++			switch itemKey {
++			case "name":
++				nameExpr = githubItem.ValueExpr
++			case "teams":
++				teamsExpr, _ = githubItem.ValueExpr.(*hclsyntax.TupleConsExpr)
++			case "identity_provider_id":
++				identityProviderExpr = githubItem.ValueExpr
++			default:
++				otherItems = append(otherItems, githubItem)
++			}
++		}
++
++		// Expand teams array
++		if teamsExpr != nil && len(teamsExpr.Exprs) > 0 {
++			for _, teamExpr := range teamsExpr.Exprs {
++				items := m.buildGithubOrgItems(nameExpr, teamExpr, identityProviderExpr, otherItems)
++				newObj := &hclsyntax.ObjectConsExpr{
++					Items: []hclsyntax.ObjectConsItem{
++						{
++							KeyExpr: m.newKeyExpr("github_organization"),
++							ValueExpr: &hclsyntax.ObjectConsExpr{
++								Items: items,
++							},
++						},
++					},
++				}
++				result = append(result, newObj)
++			}
++		} else {
++			// No teams array, create single github_organization
++			items := m.buildGithubOrgItems(nameExpr, nil, identityProviderExpr, otherItems)
++			newObj := &hclsyntax.ObjectConsExpr{
++				Items: []hclsyntax.ObjectConsItem{
++					{
++						KeyExpr: m.newKeyExpr("github_organization"),
++						ValueExpr: &hclsyntax.ObjectConsExpr{
++							Items: items,
++						},
++					},
++				},
++			}
++			result = append(result, newObj)
++		}
++	}
++
++	return result
++}
++
++// buildGithubOrgItems builds the items for a github_organization object
++func (m *V4ToV5Migrator) buildGithubOrgItems(nameExpr, teamExpr, identityProviderExpr hclsyntax.Expression, otherItems []hclsyntax.ObjectConsItem) []hclsyntax.ObjectConsItem {
++	var items []hclsyntax.ObjectConsItem
++
++	if nameExpr != nil {
++		items = append(items, hclsyntax.ObjectConsItem{
++			KeyExpr:   m.newKeyExpr("name"),
++			ValueExpr: nameExpr,
++		})
++	}
++
++	if teamExpr != nil {
++		items = append(items, hclsyntax.ObjectConsItem{
++			KeyExpr:   m.newKeyExpr("team"),
++			ValueExpr: teamExpr,
++		})
++	}
++
++	if identityProviderExpr != nil {
++		items = append(items, hclsyntax.ObjectConsItem{
++			KeyExpr:   m.newKeyExpr("identity_provider_id"),
++			ValueExpr: identityProviderExpr,
++		})
++	}
++
++	items = append(items, otherItems...)
++	return items
++}
++
++// expandGsuite handles gsuite blocks
++// gsuite = [{email = "group@example.com", identity_provider_id = "id"}]
++// -> {gsuite = {email = "group@example.com", identity_provider_id = "id"}}
++func (m *V4ToV5Migrator) expandGsuite(item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
++	tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr)
++	if !ok {
++		return nil
++	}
++
++	var result []hclsyntax.Expression
++
++	for _, gsuiteExpr := range tup.Exprs {
++		gsuiteObj, ok := gsuiteExpr.(*hclsyntax.ObjectConsExpr)
++		if !ok {
++			continue
++		}
++
++		newObj := &hclsyntax.ObjectConsExpr{
++			Items: []hclsyntax.ObjectConsItem{
++				{
++					KeyExpr:   m.newKeyExpr("gsuite"),
++					ValueExpr: gsuiteObj,
++				},
++			},
++		}
++		result = append(result, newObj)
++	}
++
++	return result
++}
++
++// expandOkta handles okta blocks
++// okta = [{name = "group", identity_provider_id = "id"}]
++// -> {okta = {name = "group", identity_provider_id = "id"}}
++func (m *V4ToV5Migrator) expandOkta(item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
++	tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr)
++	if !ok {
++		return nil
++	}
++
++	var result []hclsyntax.Expression
++
++	for _, oktaExpr := range tup.Exprs {
++		oktaObj, ok := oktaExpr.(*hclsyntax.ObjectConsExpr)
++		if !ok {
++			continue
++		}
++
++		newObj := &hclsyntax.ObjectConsExpr{
++			Items: []hclsyntax.ObjectConsItem{
++				{
++					KeyExpr:   m.newKeyExpr("okta"),
++					ValueExpr: oktaObj,
++				},
++			},
++		}
++		result = append(result, newObj)
++	}
++
++	return result
++}
++
++// expandSaml handles saml blocks
++// saml = [{attribute_name = "name", attribute_value = "value", identity_provider_id = "id"}]
++// -> {saml = {attribute_name = "name", attribute_value = "value", identity_provider_id = "id"}}
++func (m *V4ToV5Migrator) expandSaml(item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
++	tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr)
++	if !ok {
++		return nil
++	}
++
++	var result []hclsyntax.Expression
++
++	for _, samlExpr := range tup.Exprs {
++		samlObj, ok := samlExpr.(*hclsyntax.ObjectConsExpr)
++		if !ok {
++			continue
++		}
++
++		newObj := &hclsyntax.ObjectConsExpr{
++			Items: []hclsyntax.ObjectConsItem{
++				{
++					KeyExpr:   m.newKeyExpr("saml"),
++					ValueExpr: samlObj,
++				},
++			},
++		}
++		result = append(result, newObj)
++	}
++
++	return result
++}
++
++// expandAzure handles azure blocks
++// azure = [{id = "group-id", identity_provider_id = "id"}]
++// -> {azure_ad = {id = "group-id", identity_provider_id = "id"}}
++func (m *V4ToV5Migrator) expandAzure(item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
++	tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr)
++	if !ok {
++		return nil
++	}
++
++	var result []hclsyntax.Expression
++
++	for _, azureExpr := range tup.Exprs {
++		azureObj, ok := azureExpr.(*hclsyntax.ObjectConsExpr)
++		if !ok {
++			continue
++		}
++
++		// Rename azure to azure_ad for v5
++		newObj := &hclsyntax.ObjectConsExpr{
++			Items: []hclsyntax.ObjectConsItem{
++				{
++					KeyExpr:   m.newKeyExpr("azure_ad"),
++					ValueExpr: azureObj,
++				},
++			},
++		}
++		result = append(result, newObj)
++	}
++
++	return result
++}
++
++// Helper functions
++
++// getKeyString extracts the string value from a key expression
++func (m *V4ToV5Migrator) getKeyString(keyExpr hclsyntax.Expression) string {
++	switch k := keyExpr.(type) {
++	case *hclsyntax.ObjectConsKeyExpr:
++		if k.ForceNonLiteral {
++			return ""
++		}
++		// Extract the key from the wrapped expression
++		if scope, ok := k.Wrapped.(*hclsyntax.ScopeTraversalExpr); ok {
++			if len(scope.Traversal) > 0 {
++				if root, ok := scope.Traversal[0].(hcl.TraverseRoot); ok {
++					return root.Name
++				}
++			}
++		}
++	case *hclsyntax.ScopeTraversalExpr:
++		if len(k.Traversal) > 0 {
++			if root, ok := k.Traversal[0].(hcl.TraverseRoot); ok {
++				return root.Name
++			}
++		}
++	}
++	return ""
++}
++
++// newKeyExpr creates a new key expression for an object item
++func (m *V4ToV5Migrator) newKeyExpr(key string) hclsyntax.Expression {
++	return &hclsyntax.ObjectConsKeyExpr{
++		Wrapped: &hclsyntax.ScopeTraversalExpr{
++			Traversal: hcl.Traversal{
++				hcl.TraverseRoot{Name: key},
++			},
++		},
++	}
++}
++
++// exprToTokens converts a syntax expression to write tokens
++func (m *V4ToV5Migrator) exprToTokens(expr hclsyntax.Expression) hclwrite.Tokens {
++	if expr == nil {
++		return nil
++	}
++	return m.buildExprTokens(expr)
++}
++
++// buildExprTokens recursively builds hclwrite tokens from hclsyntax expression
++func (m *V4ToV5Migrator) buildExprTokens(expr hclsyntax.Expression) hclwrite.Tokens {
++	var tokens hclwrite.Tokens
++
++	if expr == nil {
++		return tokens
++	}
++
++	switch e := expr.(type) {
++	case *hclsyntax.TupleConsExpr:
++		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")})
++		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
++		for i, item := range e.Exprs {
++			if i > 0 {
++				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenComma, Bytes: []byte(",")})
++				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
++			}
++			tokens = append(tokens, m.buildExprTokens(item)...)
++		}
++		// Add trailing comma for HCL formatting convention
++		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenComma, Bytes: []byte(",")})
++		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
++		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
++
++	case *hclsyntax.ObjectConsExpr:
++		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrace, Bytes: []byte("{")})
++		if len(e.Items) == 0 {
++			// Empty object: {}
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrace, Bytes: []byte("}")})
++		} else {
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
++			for i, item := range e.Items {
++				if i > 0 {
++					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
++				}
++				tokens = append(tokens, m.buildExprTokens(item.KeyExpr)...)
++				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenEqual, Bytes: []byte("=")})
++				tokens = append(tokens, m.buildExprTokens(item.ValueExpr)...)
++			}
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrace, Bytes: []byte("}")})
++		}
++
++	case *hclsyntax.ObjectConsKeyExpr:
++		if e.ForceNonLiteral {
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOParen, Bytes: []byte("(")})
++			tokens = append(tokens, m.buildExprTokens(e.Wrapped)...)
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCParen, Bytes: []byte(")")})
++		} else {
++			tokens = append(tokens, m.buildExprTokens(e.Wrapped)...)
++		}
++
++	case *hclsyntax.ScopeTraversalExpr:
++		if len(e.Traversal) > 0 {
++			if root, ok := e.Traversal[0].(hcl.TraverseRoot); ok {
++				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(root.Name)})
++			}
++		}
++
++	case *hclsyntax.LiteralValueExpr:
++		if e.Val.Type() == cty.String {
++			strVal := e.Val.AsString()
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOQuote, Bytes: []byte("\"")})
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(strVal)})
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCQuote, Bytes: []byte("\"")})
++		} else if e.Val.Type() == cty.Number {
++			bf := e.Val.AsBigFloat()
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNumberLit, Bytes: []byte(bf.Text('f', -1))})
++		} else if e.Val.Type() == cty.Bool {
++			if e.Val.True() {
++				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("true")})
++			} else {
++				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("false")})
++			}
++		} else {
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(e.Val.GoString())})
++		}
++
++	case *hclsyntax.TemplateExpr:
++		if len(e.Parts) == 1 {
++			tokens = append(tokens, m.buildExprTokens(e.Parts[0])...)
++		} else {
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOQuote, Bytes: []byte("\"")})
++			for _, part := range e.Parts {
++				switch p := part.(type) {
++				case *hclsyntax.LiteralValueExpr:
++					if p.Val.Type() == cty.String {
++						tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(p.Val.AsString())})
++					}
++				case *hclsyntax.ScopeTraversalExpr:
++					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenTemplateInterp, Bytes: []byte("${")})
++					for _, part := range p.Traversal {
++						switch t := part.(type) {
++						case hcl.TraverseRoot:
++							tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(t.Name)})
++						case hcl.TraverseAttr:
++							tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenDot, Bytes: []byte(".")})
++							tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(t.Name)})
++						case hcl.TraverseIndex:
++							tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")})
++							if t.Key.Type() == cty.String {
++								tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOQuote, Bytes: []byte("\"")})
++								tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(t.Key.AsString())})
++								tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCQuote, Bytes: []byte("\"")})
++							} else if t.Key.Type() == cty.Number {
++								bf := t.Key.AsBigFloat()
++								tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNumberLit, Bytes: []byte(bf.String())})
++							}
++							tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
++						}
++					}
++					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenTemplateSeqEnd, Bytes: []byte("}")})
++				default:
++					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenTemplateInterp, Bytes: []byte("${")})
++					tokens = append(tokens, m.buildExprTokens(p)...)
++					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenTemplateSeqEnd, Bytes: []byte("}")})
++				}
++			}
++			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCQuote, Bytes: []byte("\"")})
++		}
++
++	default:
++		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenComment, Bytes: []byte("/* UNKNOWN TYPE */")})
++		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("null")})
++	}
++
++	return tokens
++}
++
++// normalizeIPExpression normalizes IP address literals in HCL expressions
++func (m *V4ToV5Migrator) normalizeIPExpression(expr hclsyntax.Expression) hclsyntax.Expression {
++	if lit, ok := expr.(*hclsyntax.LiteralValueExpr); ok {
++		if lit.Val.Type() == cty.String {
++			ipStr := lit.Val.AsString()
++			if !strings.Contains(ipStr, "/") {
++				return &hclsyntax.LiteralValueExpr{
++					Val:      cty.StringVal(ipStr + "/32"),
++					SrcRange: lit.SrcRange,
++				}
++			}
++		}
++	}
++	return expr
++}
++
++// normalizeIPsInSource normalizes IP addresses in HCL source code
++func (m *V4ToV5Migrator) normalizeIPsInSource(src string) string {
++	ipPattern := regexp.MustCompile(`"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d+)?)"`)
++	return ipPattern.ReplaceAllStringFunc(src, func(match string) string {
++		ipWithCIDR := match[1 : len(match)-1]
++		if strings.Contains(ipWithCIDR, "/") {
++			return match
++		}
++		return `"` + ipWithCIDR + `/32"`
++	})
++}
++
+ func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
+ 	// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState)
+ 	// The moved block generated in TransformConfig triggers the provider's migration logic
+diff --git a/internal/resources/zero_trust_access_group/v4_to_v5_test.go b/internal/resources/zero_trust_access_group/v4_to_v5_test.go
+index 1d573cd..7741c30 100644
+--- a/internal/resources/zero_trust_access_group/v4_to_v5_test.go
++++ b/internal/resources/zero_trust_access_group/v4_to_v5_test.go
+@@ -507,13 +507,13 @@ resource "cloudflare_zero_trust_access_group" "test" {
+       }
+     },
+     {
+-      ip = {
+-        ip = "10.0.0.0/8"
++      email_domain = {
++        domain = "example.com"
+       }
+     },
+     {
+-      email_domain = {
+-        domain = "example.com"
++      ip = {
++        ip = "10.0.0.0/8"
+       }
+     },
+     {
+@@ -543,6 +543,465 @@ moved {
+   from = cloudflare_access_group.test
+   to   = cloudflare_zero_trust_access_group.test
+ }
++`,
++		},
++		// ============================================================================
++		// cf-terraforming format tests (multiple blocks with nested object syntax)
++		// These test the format generated by cf-terraforming which uses multiple
++		// include/exclude/require blocks instead of a single block with arrays
++		// ============================================================================
++		{
++			Name: "cf_terraforming_multiple_include_blocks",
++			Input: `
++resource "cloudflare_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include {
++    email = {
++      email = "user1@example.com"
++    }
++  }
++  include {
++    email = {
++      email = "user2@example.com"
++    }
++  }
++  include {
++    ip = {
++      ip = "192.168.1.0/24"
++    }
++  }
++}
++`,
++			Expected: `
++resource "cloudflare_zero_trust_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include = [
++    {
++      email = {
++        email = "user1@example.com"
++      }
++    },
++    {
++      email = {
++        email = "user2@example.com"
++      }
++    },
++    {
++      ip = {
++        ip = "192.168.1.0/24"
++      }
++    },
++  ]
++}
++moved {
++  from = cloudflare_access_group.test
++  to   = cloudflare_zero_trust_access_group.test
++}
++`,
++		},
++		{
++			Name: "cf_terraforming_mixed_conditions",
++			Input: `
++resource "cloudflare_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include {
++    email = {
++      email = "user@example.com"
++    }
++  }
++  exclude {
++    ip = {
++      ip = "10.0.0.0/8"
++    }
++  }
++  exclude {
++    geo = {
++      country_code = "CN"
++    }
++  }
++  require {
++    email_domain = {
++      domain = "company.com"
++    }
++  }
++}
++`,
++			Expected: `
++resource "cloudflare_zero_trust_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include = [
++    {
++      email = {
++        email = "user@example.com"
++      }
++    },
++  ]
++  exclude = [
++    {
++      ip = {
++        ip = "10.0.0.0/8"
++      }
++    },
++    {
++      geo = {
++        country_code = "CN"
++      }
++    },
++  ]
++  require = [
++    {
++      email_domain = {
++        domain = "company.com"
++      }
++    },
++  ]
++}
++moved {
++  from = cloudflare_access_group.test
++  to   = cloudflare_zero_trust_access_group.test
++}
++`,
++		},
++		{
++			Name: "cf_terraforming_boolean_selectors_empty_objects",
++			Input: `
++resource "cloudflare_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include {
++    everyone = {}
++  }
++  exclude {
++    certificate = {}
++  }
++}
++`,
++			Expected: `
++resource "cloudflare_zero_trust_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include = [
++    {
++      everyone = {}
++    },
++  ]
++  exclude = [
++    {
++      certificate = {}
++    },
++  ]
++}
++moved {
++  from = cloudflare_access_group.test
++  to   = cloudflare_zero_trust_access_group.test
++}
++`,
++		},
++		{
++			Name: "cf_terraforming_email_domain_selector",
++			Input: `
++resource "cloudflare_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include {
++    email_domain = {
++      domain = "company.com"
++    }
++  }
++  include {
++    email_domain = {
++      domain = "partner.com"
++    }
++  }
++}
++`,
++			Expected: `
++resource "cloudflare_zero_trust_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include = [
++    {
++      email_domain = {
++        domain = "company.com"
++      }
++    },
++    {
++      email_domain = {
++        domain = "partner.com"
++      }
++    },
++  ]
++}
++moved {
++  from = cloudflare_access_group.test
++  to   = cloudflare_zero_trust_access_group.test
++}
++`,
++		},
++		{
++			Name: "cf_terraforming_geo_selector",
++			Input: `
++resource "cloudflare_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include {
++    geo = {
++      country_code = "US"
++    }
++  }
++  include {
++    geo = {
++      country_code = "CA"
++    }
++  }
++  include {
++    geo = {
++      country_code = "GB"
++    }
++  }
++}
++`,
++			Expected: `
++resource "cloudflare_zero_trust_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include = [
++    {
++      geo = {
++        country_code = "US"
++      }
++    },
++    {
++      geo = {
++        country_code = "CA"
++      }
++    },
++    {
++      geo = {
++        country_code = "GB"
++      }
++    },
++  ]
++}
++moved {
++  from = cloudflare_access_group.test
++  to   = cloudflare_zero_trust_access_group.test
++}
++`,
++		},
++		{
++			Name: "cf_terraforming_login_method_device_posture",
++			Input: `
++resource "cloudflare_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include {
++    login_method = {
++      id = "method-id-1"
++    }
++  }
++  include {
++    login_method = {
++      id = "method-id-2"
++    }
++  }
++  include {
++    device_posture = {
++      integration_uid = "posture-id-1"
++    }
++  }
++}
++`,
++			Expected: `
++resource "cloudflare_zero_trust_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include = [
++    {
++      login_method = {
++        id = "method-id-1"
++      }
++    },
++    {
++      login_method = {
++        id = "method-id-2"
++      }
++    },
++    {
++      device_posture = {
++        integration_uid = "posture-id-1"
++      }
++    },
++  ]
++}
++moved {
++  from = cloudflare_access_group.test
++  to   = cloudflare_zero_trust_access_group.test
++}
++`,
++		},
++		{
++			Name: "cf_terraforming_any_valid_service_token",
++			Input: `
++resource "cloudflare_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include {
++    any_valid_service_token = {}
++  }
++}
++`,
++			Expected: `
++resource "cloudflare_zero_trust_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include = [
++    {
++      any_valid_service_token = {}
++    },
++  ]
++}
++moved {
++  from = cloudflare_access_group.test
++  to   = cloudflare_zero_trust_access_group.test
++}
++`,
++		},
++		{
++			Name: "cf_terraforming_common_name_auth_method",
++			Input: `
++resource "cloudflare_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include {
++    common_name = {
++      common_name = "client.example.com"
++    }
++  }
++  include {
++    auth_method = {
++      auth_method = "email"
++    }
++  }
++}
++`,
++			Expected: `
++resource "cloudflare_zero_trust_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include = [
++    {
++      common_name = {
++        common_name = "client.example.com"
++      }
++    },
++    {
++      auth_method = {
++        auth_method = "email"
++      }
++    },
++  ]
++}
++moved {
++  from = cloudflare_access_group.test
++  to   = cloudflare_zero_trust_access_group.test
++}
++`,
++		},
++		{
++			Name: "cf_terraforming_ip_list_email_list",
++			Input: `
++resource "cloudflare_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include {
++    ip_list = {
++      id = "iplist-id-1"
++    }
++  }
++  include {
++    ip_list = {
++      id = "iplist-id-2"
++    }
++  }
++  include {
++    email_list = {
++      id = "emaillist-id-1"
++    }
++  }
++}
++`,
++			Expected: `
++resource "cloudflare_zero_trust_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include = [
++    {
++      ip_list = {
++        id = "iplist-id-1"
++      }
++    },
++    {
++      ip_list = {
++        id = "iplist-id-2"
++      }
++    },
++    {
++      email_list = {
++        id = "emaillist-id-1"
++      }
++    },
++  ]
++}
++moved {
++  from = cloudflare_access_group.test
++  to   = cloudflare_zero_trust_access_group.test
++}
++`,
++		},
++		{
++			Name: "cf_terraforming_group_service_token",
++			Input: `
++resource "cloudflare_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include {
++    group = {
++      id = "group-id-1"
++    }
++  }
++  include {
++    service_token = {
++      token_id = "token-id-1"
++    }
++  }
++}
++`,
++			Expected: `
++resource "cloudflare_zero_trust_access_group" "test" {
++  account_id = "abc123"
++  name       = "Test Group"
++  include = [
++    {
++      group = {
++        id = "group-id-1"
++      }
++    },
++    {
++      service_token = {
++        token_id = "token-id-1"
++      }
++    },
++  ]
++}
++moved {
++  from = cloudflare_access_group.test
++  to   = cloudflare_zero_trust_access_group.test
++}
+ `,
+ 		},
+ 	}

@@ -40,6 +40,10 @@ type config struct {
 	backup             bool
 	recursive          bool
 	logLevel           string
+
+	// Diagnostic output options
+	quiet   bool // Suppress warnings, only show errors
+	verbose bool // Show all diagnostics including informational messages
 }
 
 var (
@@ -159,6 +163,10 @@ Uses the global flags --config-dir, --state-file, and --resources to determine w
 	cmd.Flags().BoolVar(&cfg.backup, "backup", true, "Create backup of original files before migration")
 	cmd.Flags().BoolVar(&cfg.recursive, "recursive", false, "Recursively process subdirectories (useful for module structures)")
 
+	// Diagnostic output options
+	cmd.Flags().BoolVarP(&cfg.quiet, "quiet", "q", false, "Suppress warnings, only show errors")
+	cmd.Flags().BoolVar(&cfg.verbose, "verbose", false, "Show all diagnostics including informational messages")
+
 	return cmd
 }
 
@@ -254,7 +262,7 @@ func runMigration(log hclog.Logger, cfg config) error {
 	log.Debug("Finished processing state file")
 
 	// Print any warnings collected during migration
-	printDiagnostics(allDiagnostics)
+	printDiagnostics(allDiagnostics, cfg)
 
 	return nil
 }
@@ -426,6 +434,22 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 
 	totalUpdates := len(renames) + len(attributeRenames)
 	fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
+
+	// Print summary of resource type renames (always shown)
+	if len(renames) > 0 {
+		fmt.Println("\nResource type renames:")
+		for oldType, newType := range renames {
+			fmt.Printf("  %s → %s\n", oldType, newType)
+		}
+	}
+
+	// Print summary of attribute renames (always shown)
+	if len(attributeRenames) > 0 {
+		fmt.Println("\nAttribute renames:")
+		for _, rename := range attributeRenames {
+			fmt.Printf("  %s.*.%s → %s.*.%s\n", rename.ResourceType, rename.OldAttribute, rename.ResourceType, rename.NewAttribute)
+		}
+	}
 
 	// Apply renames to all files
 	for _, outputPath := range outputPaths {
@@ -658,33 +682,85 @@ func getProviders(resources ...string) transform.MigrationProvider {
 	return transform.NewMigrationProvider(getFunc, getAllFunc)
 }
 
-// printDiagnostics prints warning diagnostics to the user
-func printDiagnostics(diags hcl.Diagnostics) {
-	if diags == nil {
+// printDiagnostics prints diagnostics to the user based on verbosity settings
+// Default (medium verbosity): show warnings and errors
+// Quiet mode (--quiet): only show errors
+// Verbose mode (--verbose): show all diagnostics including informational messages
+func printDiagnostics(diags hcl.Diagnostics, cfg config) {
+	if diags == nil || len(diags) == 0 {
 		return
 	}
 
-	// Filter for warnings only
-	var warnings []*hcl.Diagnostic
+	// Filter diagnostics based on verbosity level
+	var filtered []*hcl.Diagnostic
+	var errors, warnings, infos int
+
 	for _, diag := range diags {
-		if diag.Severity == hcl.DiagWarning {
-			warnings = append(warnings, diag)
+		switch diag.Severity {
+		case hcl.DiagError:
+			errors++
+			// Errors are always shown
+			filtered = append(filtered, diag)
+		case hcl.DiagWarning:
+			warnings++
+			// Warnings are shown unless quiet mode is enabled
+			if !cfg.quiet {
+				filtered = append(filtered, diag)
+			}
+		default:
+			// Informational messages (DiagInvalid or any other)
+			infos++
+			// Only shown in verbose mode
+			if cfg.verbose {
+				filtered = append(filtered, diag)
+			}
 		}
 	}
 
-	if len(warnings) == 0 {
+	if len(filtered) == 0 {
+		// In quiet mode, still show a summary if there were warnings
+		if cfg.quiet && warnings > 0 {
+			fmt.Printf("\n⚠ %d warning(s) suppressed (use without --quiet to see details)\n", warnings)
+		}
 		return
 	}
 
 	fmt.Println()
-	fmt.Printf("⚠ %d warning(s) during migration:\n", len(warnings))
+	// Print summary header
+	var parts []string
+	if errors > 0 {
+		parts = append(parts, fmt.Sprintf("%d error(s)", errors))
+	}
+	if warnings > 0 {
+		if cfg.quiet {
+			parts = append(parts, fmt.Sprintf("%d warning(s) suppressed", warnings))
+		} else {
+			parts = append(parts, fmt.Sprintf("%d warning(s)", warnings))
+		}
+	}
+	if cfg.verbose && infos > 0 {
+		parts = append(parts, fmt.Sprintf("%d info message(s)", infos))
+	}
+	fmt.Printf("Migration diagnostics: %s\n", strings.Join(parts, ", "))
 	fmt.Println(strings.Repeat("─", 70))
 
-	for i, diag := range warnings {
+	for i, diag := range filtered {
 		if i > 0 {
 			fmt.Println()
 		}
-		fmt.Printf("\n%s\n", diag.Summary)
+
+		// Print severity icon
+		var icon string
+		switch diag.Severity {
+		case hcl.DiagError:
+			icon = "✗"
+		case hcl.DiagWarning:
+			icon = "⚠"
+		default:
+			icon = "ℹ"
+		}
+
+		fmt.Printf("\n%s %s\n", icon, diag.Summary)
 		if diag.Detail != "" {
 			fmt.Printf("\n%s\n", diag.Detail)
 		}

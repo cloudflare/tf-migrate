@@ -3,6 +3,7 @@ package zero_trust_dlp_custom_profile
 import (
 	"fmt"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/tidwall/gjson"
@@ -75,7 +76,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		}
 		tfhcl.RemoveAttributes(body, "type")
 		//m.ensureContextAwareness(body)
-		m.transformCustomEntryBlocks(body)
+		m.transformCustomEntryBlocks(ctx, body, resourceName)
 
 	case "predefined":
 		newType = "cloudflare_zero_trust_dlp_predefined_profile"
@@ -107,7 +108,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-func (m *V4ToV5Migrator) transformCustomEntryBlocks(body *hclwrite.Body) {
+func (m *V4ToV5Migrator) transformCustomEntryBlocks(ctx *transform.Context, body *hclwrite.Body, resourceName string) {
 	var entryBlocks []*hclwrite.Block
 	var hasDynamicEntry bool
 
@@ -150,6 +151,20 @@ func (m *V4ToV5Migrator) transformCustomEntryBlocks(body *hclwrite.Body) {
 		for _, token := range commentTokens {
 			body.AppendUnstructuredTokens(hclwrite.Tokens{token})
 		}
+
+		// Add diagnostic warning
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("Dynamic block requires manual migration: cloudflare_zero_trust_dlp_custom_profile.%s", resourceName),
+			Detail: `Dynamic entry blocks cannot be automatically migrated to v5.
+
+The v5 provider uses 'entries' as a list attribute instead of blocks.
+Dynamic blocks are not supported with list attributes.
+
+To migrate manually:
+  1. Convert dynamic entries to a static list, OR
+  2. Use for_each at the resource level instead of dynamic blocks`,
+		})
 	}
 }
 
