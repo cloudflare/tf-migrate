@@ -2,7 +2,6 @@ package logpush_job
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -99,20 +98,3 @@ func (m *V4ToV5Migrator) ensureV4SchemaDefaults(body *hclwrite.Body) {
 	}
 }
 
-// TransformState is a no-op for logpush_job migration.
-// State transformation is handled by the provider's StateUpgraders (UpgradeState).
-// The provider's migration logic automatically transforms:
-// - output_options array → object
-// - cve20214428 → cve_2021_44228 field rename
-// - Empty strings → null (filter, logpull_options, name)
-// - Zero values → null (max_upload_*)
-// - kind="instant-logs" → removed
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath string, resourceName string) (string, error) {
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
-// This tells tf-migrate that the provider handles state transformation, not tf-migrate.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

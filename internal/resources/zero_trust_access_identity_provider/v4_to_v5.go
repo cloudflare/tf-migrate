@@ -2,7 +2,6 @@ package zero_trust_access_identity_provider
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -103,13 +102,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState is a no-op - state transformation is handled by the provider's StateUpgraders.
-// The moved block generated in TransformConfig triggers the provider's migration logic.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

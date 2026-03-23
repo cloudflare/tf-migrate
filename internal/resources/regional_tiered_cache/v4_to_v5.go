@@ -2,7 +2,6 @@ package regional_tiered_cache
 
 import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -53,15 +52,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
-// TransformState is a no-op for regional_tiered_cache.
-// State migration is now handled by the provider's StateUpgraders.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath, resourceName string) (string, error) {
-	// No-op: return state unchanged
-	// The provider's StateUpgraders handle all state transformations
-	return instance.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates this resource uses provider-side state migration.
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
-}

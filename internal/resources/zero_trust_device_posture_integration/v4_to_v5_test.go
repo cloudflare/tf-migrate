@@ -451,7 +451,3 @@ resource "cloudflare_zero_trust_device_posture_integration" "vars" {
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
-
-func TestV4ToV5TransformationState_Removed(t *testing.T) {
-	t.Skip("State transformation tests removed - state migration is now handled by provider's StateUpgraders")
-}

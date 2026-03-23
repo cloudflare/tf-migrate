@@ -7,7 +7,6 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -21,6 +20,7 @@ type V4ToV5Migrator struct{}
 func NewV4ToV5Migrator() transform.ResourceTransformer {
 	migrator := &V4ToV5Migrator{}
 	internal.RegisterMigrator("cloudflare_split_tunnel", "v4", "v5", migrator)
+	internal.RegisterMigrator("cloudflare_zero_trust_split_tunnel", "v4", "v5", migrator)
 	return migrator
 }
 
@@ -70,18 +70,6 @@ After migration, remove the old state:
 // cloudflare_split_tunnel is removed in v5 (merged into device profile resources).
 func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	return []string{"cloudflare_split_tunnel"}, ""
-}
-
-// TransformState is a no-op — state transformation is handled by the provider's StateUpgraders.
-// cloudflare_split_tunnel does not exist in v5; users must run `terraform state rm` for each
-// split tunnel entry after migration. The provider's MoveState + UpgradeState handlers on
-// device profile resources handle the device profile state migration.
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State transformation is handled by the provider's StateUpgraders (MoveState/UpgradeState).
-	// The moved blocks generated in TransformConfig (on device profiles) trigger the provider's
-	// migration logic. split_tunnel has no v5 equivalent resource; its state entries are removed
-	// by the user via `terraform state rm` after migration.
-	return stateJSON.String(), nil
 }
 
 // ProcessCrossResourceConfigMigration merges split_tunnel resources into device profile resources.

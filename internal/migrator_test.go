@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal/transform"
 )
@@ -19,10 +18,6 @@ func (m *mockMigrator) CanHandle(resourceType string) bool {
 
 func (m *mockMigrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	return nil, nil
-}
-
-func (m *mockMigrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	return "", nil
 }
 
 func (m *mockMigrator) GetResourceType() string {

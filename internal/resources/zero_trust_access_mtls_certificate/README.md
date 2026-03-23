@@ -9,7 +9,7 @@ This guide explains how `cloudflare_access_mutual_tls_certificate` / `cloudflare
 | Resource name | `cloudflare_access_mutual_tls_certificate` | `cloudflare_zero_trust_access_mtls_certificate` | Renamed |
 | Alt resource name | `cloudflare_zero_trust_access_mtls_certificate` | `cloudflare_zero_trust_access_mtls_certificate` | No change |
 | Fields | All preserved | All preserved | No change |
-| State default | - | `associated_hostnames = []` | Added if missing |
+| Provider default | - | `associated_hostnames = []` | Added by StateUpgrader |
 
 
 ---

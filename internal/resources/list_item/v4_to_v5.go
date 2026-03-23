@@ -7,14 +7,11 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/cloudflare/tf-migrate/internal/transform/state"
 )
 
 // V4ToV5Migrator handles migration of cloudflare_list_item resources from v4 to v5.
@@ -149,17 +146,6 @@ func transformRedirectBlock(body *hclwrite.Body) {
 			break
 		}
 	}
-}
-
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// State transformation is handled by the provider's StateUpgraders
-	// list_item resources are merged into parent list by cross-resource migration
-	return stateJSON.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
 }
 
 func (m *V4ToV5Migrator) GetCrossResourceDependency() string {
@@ -489,56 +475,6 @@ func setItemsAttributeFromString(body *hclwrite.Body, exprStr string) {
 	}
 }
 
-// ProcessCrossResourceStateMigration merges list_item state into parent list state.
-func ProcessCrossResourceStateMigration(stateJSON string) string {
-	result := stateJSON
-
-	lists := make(map[string]int)
-	var listItems []listItemStateInfo
-
-	resources := gjson.Get(stateJSON, "resources")
-	if resources.Exists() && resources.IsArray() {
-		for i, resource := range resources.Array() {
-			resourceType := resource.Get("type").String()
-
-			if resourceType == "cloudflare_list" {
-				listID := resource.Get("instances.0.attributes.id").String()
-				if listID != "" {
-					lists[listID] = i
-				}
-			} else if resourceType == "cloudflare_list_item" {
-				item := extractListItemStateInfo(resource, i)
-				if item != nil {
-					listItems = append(listItems, *item)
-				}
-			}
-		}
-	}
-
-	for listID, listIndex := range lists {
-		var itemsForList []listItemStateInfo
-		for _, item := range listItems {
-			if item.listID == listID {
-				itemsForList = append(itemsForList, item)
-			}
-		}
-
-		if len(itemsForList) > 0 {
-			result = mergeItemsIntoListState(result, listIndex, itemsForList)
-		}
-	}
-
-	result = removeListItemResourcesFromState(result)
-
-	return result
-}
-
-type listItemStateInfo struct {
-	listID    string
-	accountID string
-	itemData  map[string]interface{}
-}
-
 func extractParentListName(itemBlock *hclwrite.Block) string {
 	body := itemBlock.Body()
 	listIdAttr := body.GetAttribute("list_id")
@@ -755,148 +691,6 @@ func extractNumberValue(hclStr, fieldName string) int64 {
 	}
 
 	return n
-}
-
-func extractListItemStateInfo(resource gjson.Result, index int) *listItemStateInfo {
-	attrs := resource.Get("instances.0.attributes")
-	if !attrs.Exists() {
-		return nil
-	}
-
-	listID := attrs.Get("list_id").String()
-	if listID == "" {
-		return nil
-	}
-
-	info := &listItemStateInfo{
-		listID:    listID,
-		accountID: attrs.Get("account_id").String(),
-		itemData:  make(map[string]interface{}),
-	}
-
-	if ip := attrs.Get("ip"); ip.Exists() && ip.String() != "" {
-		info.itemData["ip"] = ip.String()
-	}
-
-	if asn := attrs.Get("asn"); asn.Exists() && asn.Type == gjson.Number {
-		info.itemData["asn"] = asn.Int()
-	}
-
-	if hostname := attrs.Get("hostname"); hostname.Exists() {
-		if hostname.IsArray() && len(hostname.Array()) > 0 {
-			info.itemData["hostname"] = hostname.Array()[0].Value()
-		} else if hostname.IsObject() {
-			info.itemData["hostname"] = hostname.Value()
-		}
-	}
-
-	if redirect := attrs.Get("redirect"); redirect.Exists() {
-		var redirectObj map[string]interface{}
-
-		if redirect.IsArray() && len(redirect.Array()) > 0 {
-			redirectData := redirect.Array()[0]
-			redirectObj = transformRedirectData(redirectData)
-		} else if redirect.IsObject() {
-			redirectObj = transformRedirectData(redirect)
-		}
-
-		if redirectObj != nil {
-			info.itemData["redirect"] = redirectObj
-		}
-	}
-
-	if comment := attrs.Get("comment"); comment.Exists() && comment.String() != "" {
-		info.itemData["comment"] = comment.String()
-	}
-
-	return info
-}
-
-func mergeItemsIntoListState(jsonStr string, listIndex int, items []listItemStateInfo) string {
-	result := jsonStr
-
-	itemsPath := fmt.Sprintf("resources.%d.instances.0.attributes.items", listIndex)
-	existingItems := gjson.Get(jsonStr, itemsPath)
-
-	var allItems []interface{}
-
-	if existingItems.Exists() && existingItems.IsArray() {
-		for _, item := range existingItems.Array() {
-			allItems = append(allItems, item.Value())
-		}
-	}
-
-	for _, item := range items {
-		allItems = append(allItems, item.itemData)
-	}
-
-	if len(allItems) > 0 {
-		result, _ = sjson.Set(result, itemsPath, allItems)
-		numItemsPath := fmt.Sprintf("resources.%d.instances.0.attributes.num_items", listIndex)
-		result, _ = sjson.Set(result, numItemsPath, float64(len(allItems)))
-	}
-
-	return result
-}
-
-func removeListItemResourcesFromState(jsonStr string) string {
-	result := jsonStr
-
-	resources := gjson.Get(jsonStr, "resources")
-	if !resources.Exists() || !resources.IsArray() {
-		return result
-	}
-
-	var indicesToRemove []int
-	for i, resource := range resources.Array() {
-		resourceType := resource.Get("type").String()
-		if resourceType == "cloudflare_list_item" {
-			indicesToRemove = append(indicesToRemove, i)
-		}
-	}
-
-	// Remove in reverse order to preserve indices
-	for i := len(indicesToRemove) - 1; i >= 0; i-- {
-		path := fmt.Sprintf("resources.%d", indicesToRemove[i])
-		result, _ = sjson.Delete(result, path)
-	}
-
-	return result
-}
-
-func transformRedirectData(data gjson.Result) map[string]interface{} {
-	redirectObj := make(map[string]interface{})
-
-	if sourceURL := data.Get("source_url"); sourceURL.Exists() {
-		redirectObj["source_url"] = sourceURL.String()
-	}
-	if targetURL := data.Get("target_url"); targetURL.Exists() {
-		redirectObj["target_url"] = targetURL.String()
-	}
-	if statusCode := data.Get("status_code"); statusCode.Exists() {
-		redirectObj["status_code"] = state.ConvertToInt64(statusCode)
-	}
-
-	boolFields := []string{
-		"include_subdomains",
-		"subpath_matching",
-		"preserve_query_string",
-		"preserve_path_suffix",
-	}
-
-	for _, field := range boolFields {
-		if fieldVal := data.Get(field); fieldVal.Exists() {
-			if fieldVal.String() == "enabled" {
-				redirectObj[field] = true
-			} else if fieldVal.String() == "disabled" {
-				redirectObj[field] = false
-			} else if fieldVal.Type == gjson.True || fieldVal.Type == gjson.False {
-				redirectObj[field] = fieldVal.Bool()
-			}
-		}
-	}
-
-	return redirectObj
 }
 
 func parseNumber(s string) int64 {

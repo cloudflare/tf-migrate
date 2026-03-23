@@ -36,8 +36,8 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 }
 
 func (m *V4ToV5Migrator) GetResourceType() string {
-	// Return empty string - the actual type will be determined per-resource in TransformState
-	// and set via ctx.StateTypeRenames to avoid state bleeding between resources
+	// Return empty string — this resource type splits into multiple v5 types depending on
+	// the profile kind; the actual type rename is handled per-instance in TransformConfig.
 	return ""
 }
 
@@ -193,71 +193,4 @@ func (m *V4ToV5Migrator) createMovedBlock(fromType, fromName, toType, toName str
 	from := fmt.Sprintf("%s.%s", fromType, fromName)
 	to := fmt.Sprintf("%s.%s", toType, toName)
 	return tfhcl.CreateMovedBlock(from, to)
-}
-
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error) {
-	// STATE TRANSFORMATION DISABLED - Provider handles state migration via MoveState + UpgradeState
-	//
-	// This migrator now uses Provider StateUpgraders (NEW pattern):
-	// - tf-migrate generates moved blocks (handled in TransformConfig)
-	// - Terraform 1.8+ triggers provider's MoveState when it sees moved blocks
-	// - Provider's MoveState + UpgradeState handle all state transformations:
-	//   * Type conversions (Int64 → Float64)
-	//   * Structure changes (flatten → nested)
-	//   * ID extraction (custom profile)
-	//   * Field removals/additions
-	//
-	// State is passed through UNCHANGED - provider will migrate it when user runs terraform apply.
-
-	result := stateJSON.String()
-	attrs := stateJSON.Get("attributes")
-
-	if !attrs.Exists() {
-		// No attributes - return as-is
-		return result, nil
-	}
-
-	// ROUTING LOGIC - Determine target resource type for moved blocks
-	// This logic is still needed to generate correct moved blocks in TransformConfig
-	defaultAttr := attrs.Get("default")
-	matchAttr := attrs.Get("match")
-	precedenceAttr := attrs.Get("precedence")
-
-	// Check if default is explicitly set to true
-	isExplicitDefault := defaultAttr.Exists() && defaultAttr.Bool()
-
-	// If default=true explicitly, it's a default profile (even if match/precedence present)
-	// Otherwise, if it has match AND precedence, it's a custom profile
-	isCustomProfile := !isExplicitDefault && matchAttr.Exists() && precedenceAttr.Exists()
-
-	// Store the determined type in StateTypeRenames for the pipeline to apply
-	// This tells TransformConfig which resource type to use in moved blocks
-	var newResourceType string
-	if isCustomProfile {
-		newResourceType = m.newTypeCustom
-	} else {
-		newResourceType = m.newTypeDefault
-	}
-
-	// Initialize StateTypeRenames map if needed
-	if ctx.StateTypeRenames == nil {
-		ctx.StateTypeRenames = make(map[string]interface{})
-	}
-
-	// Store the type rename using the format expected by state_transform.go
-	// The key format is "resourceType.resourceName"
-	// We need to store for BOTH old resource type names since we don't know which one is being used
-	stateTypeRenameKey1 := fmt.Sprintf("%s.%s", m.oldType, resourceName)
-	stateTypeRenameKey2 := fmt.Sprintf("%s.%s", m.oldTypeDeprecated, resourceName)
-	ctx.StateTypeRenames[stateTypeRenameKey1] = newResourceType
-	ctx.StateTypeRenames[stateTypeRenameKey2] = newResourceType
-
-	// Return state UNCHANGED - provider will handle all transformations
-	return result, nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-// When true, tf-migrate will not perform state transformation - the provider handles it via MoveState + UpgradeState
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
 }

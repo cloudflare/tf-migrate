@@ -3,22 +3,19 @@ package transform
 import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 )
 
 // Context carries data through the transformation pipeline
 type Context struct {
-	Content          []byte
-	Filename         string
-	CFGFile          *hclwrite.File
-	CFGFiles         map[string]*hclwrite.File
-	StateJSON        string
-	Diagnostics      hcl.Diagnostics
-	Metadata         map[string]interface{}
-	Resources        []string
-	SourceVersion    string // Source provider version (e.g., "v4")
-	TargetVersion    string // Target provider version (e.g., "v5")
-	StateTypeRenames map[string]interface{}
+	Content       []byte
+	Filename      string
+	CFGFile       *hclwrite.File
+	CFGFiles      map[string]*hclwrite.File
+	Diagnostics   hcl.Diagnostics
+	Metadata      map[string]interface{}
+	Resources     []string
+	SourceVersion string // Source provider version (e.g., "v4")
+	TargetVersion string // Target provider version (e.g., "v5")
 }
 
 // TransformResult represents the result of a resource transformation
@@ -37,7 +34,6 @@ type ResourceTransformer interface {
 	// - Split: return {Blocks: newBlocks, RemoveOriginal: true}
 	// - Remove: return {Blocks: nil, RemoveOriginal: true}
 	TransformConfig(ctx *Context, block *hclwrite.Block) (*TransformResult, error)
-	TransformState(ctx *Context, stateJSON gjson.Result, resourcePath, resourceName string) (string, error)
 	GetResourceType() string
 	// Preprocess for string-level transformations before parsing
 	Preprocess(content string) string
@@ -69,16 +65,6 @@ type AttributeRenamer interface {
 	// GetAttributeRenames returns a list of attribute renames for this migrator
 	// Each rename specifies the resource type and the old/new attribute names
 	GetAttributeRenames() []AttributeRename
-}
-
-// ProviderStateUpgrader is an optional interface that migrators can implement
-// to indicate that state migration is handled by the provider's StateUpgrader
-// rather than by tf-migrate's TransformState. Resources implementing this interface
-// should have a stub TransformState that returns the state unchanged.
-type ProviderStateUpgrader interface {
-	// UsesProviderStateUpgrader returns true if this resource relies on the provider's
-	// UpgradeState implementation for state migration
-	UsesProviderStateUpgrader() bool
 }
 
 // MigrationProvider specifies the interface for a migrator provider

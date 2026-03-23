@@ -9,7 +9,6 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 )
 
 type V4ToV5Migrator struct{}
@@ -396,17 +395,6 @@ func convertStringArrayToNameObjectArray(body *hclwrite.Body, fieldName string) 
 
 	// Set the new attribute value
 	body.SetAttributeRaw(fieldName, tokens)
-}
-
-func (m *V4ToV5Migrator) TransformState(ctx *transform.Context, instance gjson.Result, resourcePath string, resourceName string) (string, error) {
-	// State migration is now handled by the Terraform provider's UpgradeState handler.
-	// The provider will transform the state when users upgrade to v5.
-	return instance.String(), nil
-}
-
-// UsesProviderStateUpgrader indicates that this resource uses provider-based state migration
-func (m *V4ToV5Migrator) UsesProviderStateUpgrader() bool {
-	return true
 }
 
 // convertDynamicRulesToForExpression converts dynamic "rules" blocks to rules = [for ...] syntax

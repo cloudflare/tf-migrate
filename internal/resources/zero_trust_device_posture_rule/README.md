@@ -11,7 +11,7 @@ This guide explains how `cloudflare_device_posture_rule` resources migrate to `c
 | `match` | Multiple blocks | Array attribute | Structure change |
 | `input.enabled = false` | Configurable | Removed | Deprecated |
 | `input.running` | Supported | Removed | Deprecated field |
-| Numeric fields | Int | Int64 (float64 in state) | Type conversion |
+| Numeric fields | Int | Int64 | Handled by provider's StateUpgrader |
 
 
 ---
@@ -281,7 +281,7 @@ resource "cloudflare_zero_trust_device_posture_rule" "sentinelone" {
 ```
 
 **What Changed:**
-- `active_threats` converted to float64 in state
+- `active_threats` type conversion handled by provider's StateUpgrader
 
 ---
 

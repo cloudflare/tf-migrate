@@ -9,7 +9,7 @@ This guide explains how `cloudflare_page_rule` resources migrate from v4 to v5.
 | Resource name | `cloudflare_page_rule` | `cloudflare_page_rule` | No change |
 | `actions` | Block (MaxItems:1) | Attribute object | Syntax change |
 | `status` default | "active" | "disabled" | Default changed (migration preserves "active") |
-| Numeric fields | Int | Int64 (float64 in state) | Type conversion |
+| Numeric fields | Int | Int64 | Handled by provider's StateUpgrader |
 | `minify` | Supported | Removed | Deprecated action |
 | `disable_railgun` | Supported | Removed | Deprecated action |
 | `cache_ttl_by_status` | Multiple blocks | Map attribute | Structure change |
