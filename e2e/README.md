@@ -1,0 +1,187 @@
+# E2E Tests
+
+End-to-end tests validate the complete migration workflow against real Cloudflare infrastructure.
+
+## What E2E Tests Do
+
+1. **Init** — Sync test resources from integration testdata to `e2e/tf/v4/`
+2. **V4 Apply** — Create real infrastructure using the v4 provider
+3. **Migrate** — Run `tf-migrate` to convert v4 → v5 configurations (state is upgraded by the v5 provider on first apply)
+4. **V5 Apply** — Apply v5 configs to verify compatibility with existing infrastructure
+5. **Drift Check** — Verify the v5 plan shows "No changes"
+
+> **Warning:** E2E tests create and destroy real Cloudflare resources. Always use a dedicated test account — never production infrastructure.
+
+## Prerequisites
+
+```bash
+export CLOUDFLARE_ACCOUNT_ID="your-account-id"
+export CLOUDFLARE_ZONE_ID="your-zone-id"
+export CLOUDFLARE_DOMAIN="your-test-domain.com"
+
+# Authentication (choose one)
+export CLOUDFLARE_API_TOKEN="your-api-token"   # Recommended
+# OR
+export CLOUDFLARE_EMAIL="your-email@example.com"
+export CLOUDFLARE_API_KEY="your-api-key"
+```
+
+## Quick Start
+
+```bash
+# Build binaries and run the full E2E suite
+./scripts/run-e2e-tests.sh --apply-exemptions
+
+# Or build and run manually
+make build-all
+./bin/e2e-runner run --apply-exemptions
+```
+
+## CLI Reference
+
+### `run`
+
+```bash
+# Full suite
+./bin/e2e-runner run
+
+# Specific resources only
+./bin/e2e-runner run --resources custom_pages,load_balancer_monitor
+
+# With drift exemptions applied
+./bin/e2e-runner run --apply-exemptions
+
+# With parallelism (0 = Terraform default)
+./bin/e2e-runner run --parallelism 5
+
+# Optional no-refresh diagnostic snapshot before the authoritative plan
+./bin/e2e-runner run --no-refresh-snapshot
+```
+
+### `init`
+
+Sync test resources from integration testdata to `e2e/tf/v4/`:
+
+```bash
+./bin/e2e-runner init
+./bin/e2e-runner init --resources dns_record
+```
+
+### `migrate`
+
+Run the migration step only:
+
+```bash
+./bin/e2e-runner migrate
+./bin/e2e-runner migrate --resources zero_trust_tunnel_cloudflared_route
+```
+
+### `bootstrap`
+
+One-time setup: migrate local state to R2 remote backend.
+
+```bash
+./bin/e2e-runner bootstrap
+```
+
+### `clean`
+
+Remove specific modules from remote state:
+
+```bash
+./bin/e2e-runner clean --modules module.dns_record,module.load_balancer
+```
+
+## Drift Exemptions
+
+Some changes between v4 and v5 are expected and safe. Exemptions prevent these from failing the drift check.
+
+Configuration is hierarchical:
+
+- `e2e/global-drift-exemptions.yaml` — Applies to all resources
+- `e2e/drift-exemptions/{resource}.yaml` — Overrides for a specific resource
+
+Pass `--apply-exemptions` to enable exemptions during a run.
+
+### Example: Global Exemption
+
+```yaml
+# e2e/global-drift-exemptions.yaml
+version: 1
+exemptions:
+  - name: "computed_value_refreshes"
+    description: "Ignore attributes that refresh to 'known after apply'"
+    patterns:
+      - '\(known after apply\)'
+    enabled: true
+```
+
+### Example: Resource-Specific Exemption
+
+```yaml
+# e2e/drift-exemptions/zone_setting.yaml
+version: 1
+exemptions:
+  - name: "allow_zone_setting_creation"
+    description: "zone_settings_override splits into multiple zone_setting resources"
+    allow_resource_creation: true
+    enabled: true
+```
+
+## Import Annotations (Import-Only Resources)
+
+Some Cloudflare resources cannot be created via Terraform and must be imported from existing infrastructure (e.g., `zero_trust_organization`). The E2E runner generates import blocks automatically from annotations in `*_e2e.tf` files:
+
+```hcl
+# tf-migrate:import-address=${var.cloudflare_account_id}
+resource "cloudflare_access_organization" "test" {
+  account_id  = var.cloudflare_account_id
+  name        = "Test Organization"
+  auth_domain = "test.cloudflareaccess.com"
+}
+```
+
+During `init`, the runner generates native Terraform import blocks in root `main.tf`:
+
+```hcl
+import {
+  to = module.zero_trust_organization.cloudflare_access_organization.test
+  id = var.cloudflare_account_id
+}
+```
+
+Supported variable substitutions: `${var.cloudflare_account_id}`, `${var.cloudflare_zone_id}`, `${var.cloudflare_domain}`
+
+## Skipping Resources (E2E-SKIP)
+
+Some resources cannot be tested end-to-end (e.g., they require manual provisioning or cannot be destroyed). Mark them by adding an `E2E-SKIP` comment in the first 20 lines of their `*_e2e.tf` file:
+
+```hcl
+# E2E-SKIP: Cannot be created or destroyed via Terraform — requires manual account provisioning.
+```
+
+The runner prints a `⊗ Skipped` line for these during `init` and excludes them from all E2E steps. Integration tests continue to run normally.
+
+## CI/CD
+
+E2E tests run automatically in GitHub Actions on push to `main` or manual workflow dispatch. See `.github/workflows/e2e-tests.yml`.
+
+## Testing the E2E Runner Itself
+
+```bash
+# Run the e2e-runner's own unit tests
+make test-e2e
+
+# Run all tests (tf-migrate + e2e-runner)
+make test
+```
+
+## Directory Structure
+
+```
+e2e/
+├── global-drift-exemptions.yaml    # Global drift exemptions
+├── drift-exemptions/               # Per-resource drift exemption configs
+├── tf/v4/                          # v4 test fixtures (generated by init)
+└── migrated-v4_to_v5/             # v5 migration output (generated by migrate)
+```

@@ -2,85 +2,116 @@
 
 A CLI tool for automatically migrating Terraform configurations between different versions of the Cloudflare Terraform Provider. State migration is handled by the provider's built-in `UpgradeState`/`MoveState` mechanisms — tf-migrate only transforms config (`.tf` files).
 
-> **Disclaimer:** Please note that v1.0.0-beta.1 is in Beta and we are still testing it for stability.
-
-
 ## Overview
 
 `tf-migrate` helps you upgrade your Terraform infrastructure code by automatically transforming:
-- **Configuration files** (`.tf`) - Updates resource types, attribute names, block structures, and generates import blocks for new v5 resources
+- **Configuration files** (`.tf`) — Updates resource types, attribute names, block structures, and generates import blocks for new v5 resources
+
+> **Note:** tf-migrate does not modify Terraform state. State is upgraded automatically by the v5 provider on first `terraform apply` via its built-in `UpgradeState`/`MoveState` support.
 
 ### Supported Migration Paths
 
 | Source Version | Target Version |
 |----------------|----------------|
-| Cloudflare Provider v4.52.5 | Cloudflare Provider v5.19 |
+| Cloudflare Provider v4 | Cloudflare Provider v5 |
 
 ### Supported Resources (v4 → v5)
 
 <details>
-<summary>60+ resources with complete config migration support (click to expand)</summary>
+<summary>80+ resources with complete config migration support (click to expand)</summary>
 
-| Product | Resource | Type |
-|---------|----------|------|
-| **Zones** | `cloudflare_zone` | resource |
-| | `cloudflare_zone` | data |
-| | `cloudflare_zones` | data |
-| | `cloudflare_zone_setting` | resource |
-| | `cloudflare_zone_subscription` | resource |
-| **DNS** | `cloudflare_dns_record` | resource |
-| | `cloudflare_zone_dnssec` | resource |
-| **Load Balancers** | `cloudflare_load_balancer` | resource |
-| | `cloudflare_load_balancer_monitor` | resource |
-| | `cloudflare_load_balancer_pool` | resource |
-| **Rulesets** | `cloudflare_ruleset` | resource |
-| **Page Rules** | `cloudflare_page_rule` | resource |
-| **Managed Transforms** | `cloudflare_managed_transforms` | resource |
-| **URL Normalization** | `cloudflare_url_normalization_settings` | resource |
-| **Snippets** | `cloudflare_snippet` | resource |
-| | `cloudflare_snippet_rules` | resource |
-| **Workers** | `cloudflare_worker_script` | resource |
-| | `cloudflare_worker_route` | resource |
-| **KV** | `cloudflare_workers_kv` | resource |
-| | `cloudflare_workers_kv_namespace` | resource |
-| **Pages** | `cloudflare_pages_project` | resource |
-| **Cache** | `cloudflare_tiered_cache` | resource |
-| **Argo** | `cloudflare_argo_smart_routing` | resource |
-| | `cloudflare_argo_tiered_caching` | resource |
-| **Spectrum** | `cloudflare_spectrum_application` | resource |
-| **Addressing** | `cloudflare_regional_hostname` | resource |
-| **Bot Management** | `cloudflare_bot_management` | resource |
-| **Healthchecks** | `cloudflare_healthcheck` | resource |
-| **Custom Pages** | `cloudflare_custom_pages` | resource |
-| **Rules** | `cloudflare_list` | resource |
-| | `cloudflare_list_item` | resource |
-| **Logpush** | `cloudflare_logpush_job` | resource |
-| **Logs** | `cloudflare_logpull_retention` | resource |
-| **Alerting** | `cloudflare_notification_policy_webhooks` | resource |
-| **R2** | `cloudflare_r2_bucket` | resource |
-| **User** | `cloudflare_api_token` | resource |
-| **Zero Trust** | `cloudflare_zero_trust_access_application` | resource |
-| | `cloudflare_zero_trust_access_group` | resource |
-| | `cloudflare_zero_trust_access_identity_provider` | resource |
-| | `cloudflare_zero_trust_access_mtls_certificate` | resource |
-| | `cloudflare_zero_trust_access_mtls_hostname_settings` | resource |
-| | `cloudflare_zero_trust_access_policy` | resource | \* |
-| | `cloudflare_zero_trust_access_service_token` | resource |
-| | `cloudflare_zero_trust_device_posture_rule` | resource |
-| | `cloudflare_zero_trust_dlp_custom_profile` | resource |
-| | `cloudflare_zero_trust_dlp_custom_entry` | resource |
-| | `cloudflare_zero_trust_dlp_predefined_entry` | resource |
-| | `cloudflare_zero_trust_dlp_integration_entry` | resource |
-| | `cloudflare_zero_trust_gateway_policy` | resource |
-| | `cloudflare_zero_trust_list` | resource |
-| | `cloudflare_zero_trust_tunnel_cloudflared_route` | resource |
+| Product | v4 Resource Type | v5 Resource Type | Kind |
+|---------|-----------------|-----------------|------|
+| **Accounts** | `cloudflare_account` | `cloudflare_account` | resource |
+| | `cloudflare_account_member` | `cloudflare_account_member` | resource |
+| **Addressing** | `cloudflare_byo_ip_prefix` | `cloudflare_byo_ip_prefix` | resource ⚠ |
+| | `cloudflare_regional_hostname` | `cloudflare_regional_hostname` | resource |
+| | `cloudflare_regional_tiered_cache` | `cloudflare_regional_tiered_cache` | resource |
+| **API Shield** | `cloudflare_api_shield` | `cloudflare_api_shield` | resource |
+| | `cloudflare_api_shield_operation` | `cloudflare_api_shield_operation` | resource |
+| **API Tokens** | `cloudflare_api_token` | `cloudflare_api_token` | resource |
+| **Argo** | `cloudflare_argo` | `cloudflare_argo_smart_routing` / `cloudflare_argo_tiered_caching` | resource |
+| **Bot Management** | `cloudflare_bot_management` | `cloudflare_bot_management` | resource |
+| **Cache** | `cloudflare_tiered_cache` | `cloudflare_tiered_cache` | resource |
+| **Certificate Packs** | `cloudflare_certificate_pack` | `cloudflare_certificate_pack` | resource |
+| **Custom Hostnames** | `cloudflare_custom_hostname` | `cloudflare_custom_hostname` | resource |
+| | `cloudflare_custom_hostname_fallback_origin` | `cloudflare_custom_hostname_fallback_origin` | resource |
+| **Custom Pages** | `cloudflare_custom_pages` | `cloudflare_custom_pages` | resource |
+| **Custom SSL** | `cloudflare_custom_ssl` | `cloudflare_custom_ssl` | resource |
+| **DNS** | `cloudflare_record` | `cloudflare_dns_record` | resource |
+| | `cloudflare_zone_dnssec` | `cloudflare_zone_dnssec` | resource |
+| **Healthchecks** | `cloudflare_healthcheck` | `cloudflare_healthcheck` | resource |
+| **IP Access Rules** | `cloudflare_access_rule` | `cloudflare_access_rule` | resource |
+| **Leaked Credentials** | `cloudflare_leaked_credential_check` | `cloudflare_leaked_credential_check` | resource |
+| | `cloudflare_leaked_credential_check_rule` | `cloudflare_leaked_credential_check_rule` | resource |
+| **Lists** | `cloudflare_list` | `cloudflare_list` | resource ⚠ |
+| | `cloudflare_list_item` | merged into `cloudflare_list` | resource ⚠ |
+| **Load Balancers** | `cloudflare_load_balancer` | `cloudflare_load_balancer` | resource |
+| | `cloudflare_load_balancer_monitor` | `cloudflare_load_balancer_monitor` | resource |
+| | `cloudflare_load_balancer_pool` | `cloudflare_load_balancer_pool` | resource |
+| | `data.cloudflare_load_balancer_pools` | `data.cloudflare_load_balancer_pools` | data source |
+| **Logpush** | `cloudflare_logpull_retention` | `cloudflare_logpull_retention` | resource |
+| | `cloudflare_logpush_job` | `cloudflare_logpush_job` | resource |
+| | `cloudflare_logpush_ownership_challenge` | `cloudflare_logpush_ownership_challenge` | resource |
+| **Managed Transforms** | `cloudflare_managed_headers` | `cloudflare_managed_transforms` | resource |
+| **mTLS** | `cloudflare_mtls_certificate` | `cloudflare_mtls_certificate` | resource |
+| **Notifications** | `cloudflare_notification_policy` | `cloudflare_notification_policy` | resource |
+| | `cloudflare_notification_policy_webhooks` | `cloudflare_notification_policy_webhooks` | resource |
+| **Observatory** | `cloudflare_observatory_scheduled_test` | `cloudflare_observatory_scheduled_test` | resource |
+| **Origin CA** | `cloudflare_origin_ca_certificate` | `cloudflare_origin_ca_certificate` | resource |
+| **Origin Pulls** | `cloudflare_authenticated_origin_pulls` | `cloudflare_authenticated_origin_pulls` | resource |
+| | `cloudflare_authenticated_origin_pulls_certificate` | `cloudflare_authenticated_origin_pulls_certificate` | resource |
+| **Page Rules** | `cloudflare_page_rule` | `cloudflare_page_rule` | resource |
+| **Pages** | `cloudflare_pages_domain` | `cloudflare_pages_domain` | resource |
+| | `cloudflare_pages_project` | `cloudflare_pages_project` | resource |
+| **Queues** | `cloudflare_queue` | `cloudflare_queue` | resource |
+| **R2** | `cloudflare_r2_bucket` | `cloudflare_r2_bucket` | resource |
+| **Rulesets** | `cloudflare_ruleset` | `cloudflare_ruleset` | resource |
+| | `data.cloudflare_rulesets` | `data.cloudflare_rulesets` | data source |
+| **Snippets** | `cloudflare_snippet` | `cloudflare_snippet` | resource |
+| | `cloudflare_snippet_rules` | `cloudflare_snippet_rules` | resource |
+| **Spectrum** | `cloudflare_spectrum_application` | `cloudflare_spectrum_application` | resource |
+| **Turnstile** | `cloudflare_turnstile_widget` | `cloudflare_turnstile_widget` | resource |
+| **URL Normalization** | `cloudflare_url_normalization_settings` | `cloudflare_url_normalization_settings` | resource |
+| **Workers** | `cloudflare_worker_script` / `cloudflare_workers_script` | `cloudflare_workers_script` | resource |
+| | `cloudflare_worker_route` / `cloudflare_workers_route` | `cloudflare_worker_route` | resource |
+| | `cloudflare_worker_domain` | `cloudflare_workers_custom_domain` | resource |
+| | `cloudflare_workers_kv` | `cloudflare_workers_kv` | resource |
+| | `cloudflare_workers_kv_namespace` | `cloudflare_workers_kv_namespace` | resource |
+| | `cloudflare_workers_for_platforms_namespace` / `cloudflare_workers_for_platforms_dispatch_namespace` | `cloudflare_workers_for_platforms_dispatch_namespace` | resource |
+| **Zero Trust** | `cloudflare_access_application` / `cloudflare_zero_trust_access_application` | `cloudflare_zero_trust_access_application` | resource |
+| | `cloudflare_access_group` / `cloudflare_zero_trust_access_group` | `cloudflare_zero_trust_access_group` | resource ⚠ |
+| | `cloudflare_access_identity_provider` / `cloudflare_zero_trust_access_identity_provider` | `cloudflare_zero_trust_access_identity_provider` | resource |
+| | `cloudflare_access_mutual_tls_certificate` / `cloudflare_zero_trust_access_mtls_certificate` | `cloudflare_zero_trust_access_mtls_certificate` | resource |
+| | `cloudflare_zero_trust_access_mtls_hostname_settings` | `cloudflare_zero_trust_access_mtls_hostname_settings` | resource |
+| | `cloudflare_access_policy` | `cloudflare_zero_trust_access_policy` | resource ⚠ |
+| | `cloudflare_access_service_token` / `cloudflare_zero_trust_access_service_token` | `cloudflare_zero_trust_access_service_token` | resource |
+| | `cloudflare_access_organization` / `cloudflare_zero_trust_access_organization` | `cloudflare_zero_trust_organization` | resource |
+| | `cloudflare_device_managed_networks` / `cloudflare_zero_trust_device_managed_networks` | `cloudflare_zero_trust_device_managed_networks` | resource |
+| | `cloudflare_device_posture_integration` / `cloudflare_zero_trust_device_posture_integration` | `cloudflare_zero_trust_device_posture_integration` | resource |
+| | `cloudflare_device_posture_rule` / `cloudflare_zero_trust_device_posture_rule` | `cloudflare_zero_trust_device_posture_rule` | resource |
+| | `cloudflare_device_settings_policy` / `cloudflare_zero_trust_device_profiles` | `cloudflare_zero_trust_device_profiles` | resource |
+| | `cloudflare_device_dex_test` / `cloudflare_zero_trust_dex_test` | `cloudflare_zero_trust_dex_test` | resource |
+| | `cloudflare_dlp_profile` / `cloudflare_zero_trust_dlp_profile` | `cloudflare_zero_trust_dlp_custom_profile` | resource |
+| | `cloudflare_zero_trust_dlp_predefined_profile` | `cloudflare_zero_trust_dlp_custom_profile` | resource |
+| | `cloudflare_zero_trust_gateway_certificate` | `cloudflare_zero_trust_gateway_certificate` | resource |
+| | `cloudflare_teams_rule` | `cloudflare_zero_trust_gateway_policy` | resource |
+| | `cloudflare_teams_account` / `cloudflare_zero_trust_gateway_settings` | `cloudflare_zero_trust_gateway_settings` | resource |
+| | `cloudflare_teams_list` | `cloudflare_zero_trust_list` | resource |
+| | `cloudflare_fallback_domain` / `cloudflare_zero_trust_local_fallback_domain` | `cloudflare_zero_trust_local_fallback_domain` | resource |
+| | `cloudflare_split_tunnel` / `cloudflare_zero_trust_split_tunnel` | `cloudflare_zero_trust_split_tunnel` | resource |
+| | `cloudflare_tunnel` / `cloudflare_zero_trust_tunnel_cloudflared` | `cloudflare_zero_trust_tunnel_cloudflared` | resource |
+| | `cloudflare_tunnel_config` / `cloudflare_zero_trust_tunnel_cloudflared_config` | `cloudflare_zero_trust_tunnel_cloudflared_config` | resource |
+| | `cloudflare_tunnel_route` / `cloudflare_zero_trust_tunnel_route` | `cloudflare_zero_trust_tunnel_cloudflared_route` | resource |
+| | `cloudflare_tunnel_virtual_network` / `cloudflare_zero_trust_tunnel_virtual_network` | `cloudflare_zero_trust_tunnel_cloudflared_virtual_network` | resource |
+| **Zones** | `cloudflare_zone` | `cloudflare_zone` | resource |
+| | `cloudflare_zone_settings_override` | `cloudflare_zone_setting` (one per setting) | resource |
+| | `cloudflare_zone_subscription` | `cloudflare_zone_subscription` | resource |
+| | `data.cloudflare_zone` | `data.cloudflare_zone` | data source |
+| | `data.cloudflare_zones` | `data.cloudflare_zones` | data source |
+| | `data.cloudflare_accounts` | `data.cloudflare_accounts` | data source |
 
-\* **Limitation**: `cloudflare_access_policy` resources with `application_id`
-(application-scoped policies) cannot be automatically migrated. These use a
-different API endpoint and must be manually converted to inline `policies`
-within `cloudflare_zero_trust_access_application`. See the
-[migration guide](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-migration#application-scoped-access-policies)
-for details.
+⚠ Resources marked with this symbol require manual steps after migration. See [Manual Migration Steps](#manual-migration-steps) below.
 
 </details>
 
@@ -93,20 +124,13 @@ Download the latest release from the [GitHub Releases](https://github.com/cloudf
 ### Building from Source
 
 ```bash
-# Clone the repository
-git clone <repository-url>
+git clone https://github.com/cloudflare/tf-migrate
 cd tf-migrate
-
-# Build the binary
 make
-
-# The binary will be available at ./bin/tf-migrate
+# Binary is available at ./bin/tf-migrate
 ```
 
-### Requirements
-- Go 1.25 or later
-- Make
-- Terraform (for testing migrated configurations)
+**Requirements:** Go 1.25+, Make
 
 ## Usage
 
@@ -118,15 +142,15 @@ Migrate all Terraform files in the current directory:
 tf-migrate migrate --source-version v4 --target-version v5
 ```
 
-### Migrate Specific Directory
+### Migrate a Specific Directory
 
 ```bash
 tf-migrate migrate --config-dir ./terraform --source-version v4 --target-version v5
 ```
 
-### Dry Run Mode
+### Dry Run (Preview Only)
 
-Preview changes without modifying files:
+Preview changes without modifying any files:
 
 ```bash
 tf-migrate migrate --dry-run --source-version v4 --target-version v5
@@ -141,7 +165,7 @@ tf-migrate migrate \
   --target-version v5
 ```
 
-### Output to Different Directory
+### Output to a Different Directory
 
 ```bash
 tf-migrate migrate \
@@ -151,11 +175,44 @@ tf-migrate migrate \
   --target-version v5
 ```
 
+### Recursive Migration (Module Structures)
+
+```bash
+tf-migrate migrate --recursive --source-version v4 --target-version v5
+```
+
+## Manual Migration Steps
+
+tf-migrate automates the vast majority of migrations, but some resources cannot be fully migrated automatically. When manual intervention is required, tf-migrate:
+
+1. **Prints a warning to stdout** during the migration run describing what needs to be done and where to find the required values.
+2. **Leaves a `# MIGRATION WARNING:` comment** directly in the affected `.tf` file at the exact location that needs attention.
+
+Example warning in a migrated file:
+
+```hcl
+resource "cloudflare_byo_ip_prefix" "example" {
+  account_id = var.account_id
+  # MIGRATION WARNING: This resource requires manual intervention to add v5
+  # required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard →
+  # Manage Account → IP Addresses → IP Prefixes. See migration documentation
+  # for details.
+}
+```
+
+Search your migrated files for `MIGRATION WARNING` to find all locations that need attention:
+
+```bash
+grep -rn "MIGRATION WARNING" ./terraform
+```
+
+For full details on what changed between v4 and v5, refer to the [Cloudflare Provider v5 Migration Guide](https://github.com/cloudflare/terraform-provider-cloudflare/blob/main/docs/guides/version-5-migration.md).
+
 ## Verifying Drift After Migration
 
-After running `tf-migrate migrate` and switching to the v5 provider, run `terraform plan` to see what changes Terraform detects. Some changes are **expected** — they are known, safe differences between how the v4 and v5 providers represent state. Others are **unexpected** and require your attention before applying.
+After running `tf-migrate migrate` and switching to the v5 provider, run `terraform plan` to see what changes Terraform detects. Some changes are **expected** — known, safe differences between how v4 and v5 providers represent state. Others are **unexpected** and require attention before applying.
 
-`tf-migrate verify-drift` reads your plan output and tells you which changes are expected (exempted) and which are not.
+`tf-migrate verify-drift` reads your plan output and classifies each change.
 
 ### Workflow
 
@@ -224,7 +281,7 @@ Result: MIGRATION NEEDS ATTENTION
 | Section | Meaning |
 |---------|---------|
 | **Exempted Changes** | Known, safe differences between v4 and v5 providers. These do not require action — they will stabilise on the next `terraform apply`. |
-| **Unexpected Drift** | Changes that are not accounted for by any known exemption. Review each one before applying. |
+| **Unexpected Drift** | Changes not accounted for by any known exemption. Review each one before applying. |
 
 ### Exit Codes
 
@@ -233,9 +290,10 @@ Result: MIGRATION NEEDS ATTENTION
 | `0` | All drift is expected, or no changes detected. Safe to proceed. |
 | `1` | Unexpected drift found. Review the output before running `terraform apply`. |
 
-This makes `verify-drift` suitable for use in CI pipelines:
+Use in CI pipelines:
 
 ```bash
+terraform plan > plan.txt
 tf-migrate verify-drift --file plan.txt || exit 1
 ```
 
@@ -245,252 +303,27 @@ tf-migrate verify-drift --file plan.txt || exit 1
 
 ### Global Flags
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--config-dir` | Directory containing Terraform configuration files | Current directory |
-| `--source-version` | Source provider version (e.g., v4) | Required |
-| `--target-version` | Target provider version (e.g., v5) | Required |
-| `--resources` | Comma-separated list of resources to migrate | All resources |
-| `--dry-run` | Preview changes without modifying files | false |
-| `--log-level` | Set log level (debug, info, warn, error, off) | warn |
-
-### Migrate Command Flags
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--output-dir` | Output directory for migrated configuration files | In-place |
-| `--backup` | Create backup of original files before migration | true |
-
-### Verify-Drift Command Flags
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--file` | Path to `terraform plan` output file | Required |
-
-### Development Tools
-
-#### Linting Testdata
-
-The project includes a linter to ensure all integration test resources follow naming conventions (prefixed with `cftftest`):
-
-```bash
-make lint-testdata
-```
-
-See [scripts/README.md](scripts/README.md) for more details on the testdata linter.
-
-### Running Tests
-
-#### Unit Tests
-
-Run all unit tests:
-```bash
-go test ./...
-```
-
-Run tests for a specific package:
-```bash
-go test ./internal/resources/dns_record -v
-```
-
-Run with coverage:
-```bash
-go test ./... -cover
-```
-
-#### Integration Tests
-
-Integration tests verify the complete migration workflow using real configuration files.
-
-```bash
-# Run all v4 to v5 integration tests
-make test-integration
-
-# Run tests for a specific resource
-go test -v -run TestV4ToV5Migration/DNSRecord
-
-# Test a single resource using environment variable
-TEST_RESOURCE=dns_record go test -v -run TestSingleResource
-
-# Run with detailed diff output (set KEEP_TEMP to see test directory)
-KEEP_TEMP=true TEST_RESOURCE=dns_record go test -v -run TestSingleResource
-```
-
-##### Test Organization
-
-Integration tests are organized by version migration path:
-- `integration/test_runner.go` - Shared test runner used by all version tests
-- `integration/v4_to_v5/` - Tests for v4 to v5 migrations
-  - `integration_test.go` - Test suite specific to v4→v5
-  - `testdata/` - Test fixtures for each resource
-- Future: `integration/v5_to_v6/` - Tests for v5 to v6 migrations
-  - `integration_test.go` - Test suite specific to v5→v6
-  - `testdata/` - Test fixtures for each resource
-
-Each version migration has its own test suite with explicit migration registration, while sharing the common test runner infrastructure.
-
-#### End-to-End Tests
-
-E2E tests validate the complete migration workflow with real Cloudflare resources using a Go-based CLI test runner.
-
-**What E2E Tests Do:**
-1. **Init**: Sync test resources from integration testdata to `e2e/tf/v4/`
-2. **V4 Apply**: Create real infrastructure using v4 provider
-3. **Migrate**: Run tf-migrate to convert v4 → v5 configurations (state is upgraded by the v5 provider on first apply)
-4. **V5 Apply**: Apply v5 configs to verify compatibility with existing infrastructure
-5. **Drift Check**: Verify v5 plan shows "No changes" (validates successful migration)
-
-**Key Features:**
-- ✅ **Credential sanitization** - Prevents API keys/secrets from leaking in logs
-- ✅ **Drift detection** - Hierarchical exemptions via global + resource-specific configs
-- ✅ **Colored output** - Clear success/failure indicators
-- ✅ **Resource filtering** - Test specific resources: `--resources custom_pages,load_balancer_monitor`
-- ✅ **88 unit tests** - Comprehensive coverage of the e2e-runner itself
-
-**Prerequisites:**
-
-Set required environment variables:
-
-```bash
-export CLOUDFLARE_ACCOUNT_ID="your-account-id"
-export CLOUDFLARE_ZONE_ID="your-zone-id"
-export CLOUDFLARE_DOMAIN="your-test-domain.com"
-
-# Authentication (choose one)
-export CLOUDFLARE_API_TOKEN="your-api-token"  # Recommended
-# OR
-export CLOUDFLARE_EMAIL="your-email@example.com"
-export CLOUDFLARE_API_KEY="your-api-key"
-```
-
-**Quick Start:**
-
-```bash
-# Build binaries and run full E2E test suite
-./scripts/run-e2e-tests.sh --apply-exemptions
-
-# Or build and run manually
-make build-all
-./bin/e2e-runner run --apply-exemptions
-```
-
-**CLI Commands:**
-
-```bash
-# Run full e2e test suite
-./bin/e2e-runner run
-
-# Test specific resources only
-./bin/e2e-runner run --resources custom_pages,load_balancer_monitor
-
-# Run with drift exemptions applied
-./bin/e2e-runner run --apply-exemptions
-
-# Optional diagnostic no-refresh snapshot before authoritative plan
-./bin/e2e-runner run --no-refresh-snapshot
-
-# Set terraform plan/apply parallelism (0 uses Terraform default)
-./bin/e2e-runner run --parallelism 5
-
-# Initialize test resources from integration testdata
-./bin/e2e-runner init
-./bin/e2e-runner init --resources dns_record
-
-# Run migration only
-./bin/e2e-runner migrate
-./bin/e2e-runner migrate --resources zero_trust_tunnel_cloudflared_route
-
-# Bootstrap: Migrate local state to R2 remote backend (one-time setup)
-./bin/e2e-runner bootstrap
-
-# Clean up: Remove modules from remote state
-./bin/e2e-runner clean --modules module.dns_record,module.load_balancer
-```
-
-**Notable `run` options:**
-
-- `--parallelism <n>`: Applies to all Terraform `plan`/`apply` calls in the run. Use `0` to use Terraform's default.
-- `--no-refresh-snapshot`: Runs an extra diagnostic `terraform plan -refresh=false` before the authoritative refresh plan.
-- `--apply-exemptions`: Enables global + resource-specific drift exemption matching.
-
-**Testing the E2E Runner:**
-
-```bash
-# Run e2e-runner's own unit tests (88 tests)
-make test-e2e
-
-# Run all tests (tf-migrate + e2e-runner)
-make test
-```
-
-**Drift Exemptions:**
-
-Configure acceptable drift patterns using hierarchical YAML configuration:
-
-- `e2e/global-drift-exemptions.yaml` - Global exemptions for all resources
-- `e2e/drift-exemptions/{resource}.yaml` - Resource-specific exemptions
-
-Use `--apply-exemptions` to apply exemptions during testing. See **[CLAUDE.md](./CLAUDE.md#drift-exemptions-system)** for complete documentation.
-
-**Import Annotations (Import-Only Resources):**
-
-Some Cloudflare resources cannot be created via Terraform and must be imported from existing infrastructure (e.g., `zero_trust_organization`). The E2E runner supports automatic import block generation via annotations in `_e2e.tf` files:
-
-```hcl
-# tf-migrate:import-address=${var.cloudflare_account_id}
-resource "cloudflare_access_organization" "test" {
-  account_id  = var.cloudflare_account_id
-  name        = "Test Organization"
-  auth_domain = "test.cloudflareaccess.com"
-}
-```
-
-**How It Works:**
-1. E2E runner scans module files for `# tf-migrate:import-address=<address>` annotations during init
-2. Converts variable syntax: `${var.cloudflare_account_id}` → `var.cloudflare_account_id`
-3. Generates native Terraform import blocks in root `main.tf`:
-   ```hcl
-   import {
-     to = module.zero_trust_organization.cloudflare_access_organization.test
-     id = var.cloudflare_account_id
-   }
-   ```
-4. Terraform resolves variables at runtime from `terraform.tfvars` and imports resources during `terraform apply`
-
-**Why This Approach:**
-- ✅ Uses native Terraform import blocks (Terraform 1.5+)
-- ✅ Import blocks in root module (where they're allowed)
-- ✅ Resource definitions in child modules (organized structure)
-- ✅ Automatic generation from annotations (no manual import block maintenance)
-
-**Supported Variables:**
-- `${var.cloudflare_account_id}` - Account ID from environment
-- `${var.cloudflare_zone_id}` - Zone ID from environment
-- `${var.cloudflare_domain}` - Domain from environment
-
-**Multiple Imports:**
-Multiple resources can be annotated in different modules - all will have import blocks generated in root main.tf.
-
-**Project Structure:**
-
-```
-cmd/
-├── tf-migrate/       # Main migration binary
-└── e2e-runner/       # E2E test runner binary
-internal/
-├── resources/        # Migration implementations
-└── e2e-runner/       # E2E runner implementation (88 unit tests)
-e2e/
-├── global-drift-exemptions.yaml
-├── drift-exemptions/
-├── tf/v4/           # Test fixtures
-└── migrated-v4_to_v5/  # Migration output
-bin/                 # Built binaries
-```
-
-**CI/CD:**
-
-- **E2E tests** run automatically in GitHub Actions on push to `main` or manual workflow dispatch. See `.github/workflows/e2e-tests.yml`.
-- **Releases** are automated via GoReleaser. Pushing a `v*` tag triggers `.github/workflows/release.yml`, which cross-compiles binaries and creates a GitHub Release with archives and checksums.
-
-**⚠️ Important:** E2E tests create and destroy real Cloudflare resources. Always use a dedicated test account, never production infrastructure.
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--config-dir` | Current directory | Directory containing Terraform configuration files |
+| `--source-version` | Required | Source provider version (e.g., `v4`) |
+| `--target-version` | Required | Target provider version (e.g., `v5`) |
+| `--resources` | All resources | Comma-separated list of resources to migrate |
+| `--dry-run` | `false` | Preview changes without modifying files |
+| `--log-level` | `warn` | Log level: `debug`, `info`, `warn`, `error`, `off` |
+
+### `migrate` Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output-dir` | In-place | Output directory for migrated files |
+| `--backup` | `true` | Create backups of original files before migration |
+| `--recursive` | `false` | Recursively process subdirectories |
+| `--verbose` | `false` | Show all diagnostics including informational messages |
+| `--quiet` / `-q` | `false` | Suppress warnings, only show errors |
+
+### `verify-drift` Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--file` | Required | Path to `terraform plan` output file |
