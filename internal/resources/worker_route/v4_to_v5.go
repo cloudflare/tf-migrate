@@ -1,12 +1,23 @@
 package worker_route
 
 import (
+	"regexp"
+
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
+
+// Matches cloudflare_worker_script or cloudflare_workers_script references
+// with .name suffix and optional index accessor:
+//   - cloudflare_worker_script.example.name
+//   - cloudflare_workers_script.example.name
+//   - cloudflare_workers_script.example[0].name       (bracket syntax)
+//   - cloudflare_workers_script.example[each.key].name (bracket syntax with expression)
+//   - cloudflare_workers_script.example.0.name         (legacy dot-index syntax)
+var scriptNameRefRe = regexp.MustCompile(`(cloudflare_workers?_script\.\w+(?:\[[^\]]*\]|\.\d+)?)\.name\b`)
 
 type V4ToV5Migrator struct {
 }
@@ -56,6 +67,11 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Rename field: script_name → script
 	tfhcl.RenameAttribute(body, "script_name", "script")
 
+	// Replace cloudflare_workers_script.*.name -> cloudflare_workers_script.*.id
+	if err := replaceScriptReferenceAttribute(body); err != nil {
+		return nil, err
+	}
+
 	// Generate moved block if the resource was renamed (singular → plural)
 	if wasSingular {
 		_, newType := m.GetResourceRename()
@@ -75,3 +91,19 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}, nil
 }
 
+// replaceScriptReferenceAttribute updates `script` references from
+// cloudflare_workers_script.*.name to cloudflare_workers_script.*.id.
+func replaceScriptReferenceAttribute(blockBody *hclwrite.Body) error {
+	scriptAttr := blockBody.GetAttribute("script")
+	if scriptAttr == nil {
+		return nil
+	}
+
+	scriptExpr := string(scriptAttr.Expr().BuildTokens(nil).Bytes())
+	updated := scriptNameRefRe.ReplaceAllString(scriptExpr, "${1}.id")
+	if updated == scriptExpr {
+		return nil
+	}
+
+	return tfhcl.SetAttributeFromExpressionString(blockBody, "script", updated)
+}
