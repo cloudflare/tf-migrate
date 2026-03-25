@@ -18,6 +18,7 @@ variable "cloudflare_domain" {
 
 
 
+
 # Pattern 1: Basic predefined profile with entries
 resource "cloudflare_zero_trust_dlp_predefined_profile" "aws_keys" {
   account_id          = var.cloudflare_account_id
@@ -73,4 +74,20 @@ resource "cloudflare_zero_trust_dlp_predefined_profile" "all_disabled" {
 moved {
   from = cloudflare_dlp_profile.all_disabled
   to   = cloudflare_zero_trust_dlp_predefined_profile.all_disabled
+}
+
+# Pattern 5: Predefined profile with profile_id from import-address annotation
+# tf-migrate:import-address=${var.cloudflare_account_id}/c8932cc4-3312-4152-8041-f3f257122dc4
+resource "cloudflare_zero_trust_dlp_predefined_profile" "with_import_annotation" {
+  account_id          = var.cloudflare_account_id
+  allowed_match_count = 0
+
+
+  enabled_entries = []
+  profile_id      = "c8932cc4-3312-4152-8041-f3f257122dc4"
+}
+
+moved {
+  from = cloudflare_dlp_profile.with_import_annotation
+  to   = cloudflare_zero_trust_dlp_predefined_profile.with_import_annotation
 }
