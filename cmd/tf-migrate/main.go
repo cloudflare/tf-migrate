@@ -158,6 +158,15 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 	cmd.Flags().StringVar(&cfg.outputDir, "output-dir", "", "Output directory for migrated configuration files (default: in-place)")
 	cmd.Flags().BoolVar(&cfg.backup, "backup", true, "Create backup of original files before migration")
 	cmd.Flags().BoolVar(&cfg.recursive, "recursive", false, "Recursively process subdirectories (useful for module structures)")
+
+	// --no-backup is a convenience alias for --backup=false
+	var noBackup bool
+	cmd.Flags().BoolVar(&noBackup, "no-backup", false, "Skip creating backup files before migration (alias for --backup=false)")
+	cmd.PreRun = func(cmd *cobra.Command, args []string) {
+		if noBackup {
+			cfg.backup = false
+		}
+	}
 	cmd.Flags().BoolVarP(&cfg.yes, "yes", "y", false, "Skip interactive prompts and assume yes (for CI/non-interactive use)")
 
 	// Diagnostic output options
@@ -251,12 +260,23 @@ func runMigration(log hclog.Logger, cfg config) error {
 				return promptErr
 			}
 			if confirmed {
+				// Delete all cleanup files so the original resource blocks can
+				// coexist cleanly with the full migration output.
+				for file := range phaseOneResources {
+					cleanupPath := filepath.Join(filepath.Dir(file), phaseOneCleanupFilename)
+					if err := os.Remove(cleanupPath); err != nil && !os.IsNotExist(err) {
+						return fmt.Errorf("failed to delete %s: %w", cleanupPath, err)
+					}
+				}
 				// User confirms state is clean — run the full v5 migration.
 				return runPhaseTwo(log, cfg)
 			}
 			// User says not yet — remind them what to do and exit.
 			fmt.Println()
-			fmt.Println("No problem. Once the apply completes successfully, re-run tf-migrate:")
+			fmt.Printf("No problem. Once the apply completes, delete the %s file(s) and re-run tf-migrate:\n", phaseOneCleanupFilename)
+			for file := range phaseOneResources {
+				fmt.Printf("  rm %s\n", filepath.Join(filepath.Dir(file), phaseOneCleanupFilename))
+			}
 			fmt.Printf("  tf-migrate migrate --config-dir %s\n", cfg.configDir)
 			return nil
 		}
@@ -286,23 +306,15 @@ func runFullMigration(log hclog.Logger, cfg config) error {
 	return nil
 }
 
-// filesAlreadyHaveRemovedBlocks returns true if any of the files in
-// phaseOneResources already contain a removed {} block targeting one of the
-// phase-1 resource addresses. This detects re-runs after phase 1 was written
-// but before the marker was created (e.g. marker was deleted).
+// filesAlreadyHaveRemovedBlocks returns true if any _phase1_cleanup.tf file
+// exists in the directories containing phase-1 resources. This detects re-runs
+// after phase 1 has written the cleanup files but before the user has deleted
+// them and confirmed the apply succeeded.
 func filesAlreadyHaveRemovedBlocks(phaseOneResources map[string][]string) bool {
-	for file, addrs := range phaseOneResources {
-		content, err := os.ReadFile(file)
-		if err != nil {
-			continue
-		}
-		contentStr := string(content)
-		for _, addr := range addrs {
-			// Look for a removed block referencing this address.
-			// A simple string search is sufficient — the address is unique.
-			if strings.Contains(contentStr, "removed {") && strings.Contains(contentStr, addr) {
-				return true
-			}
+	for file := range phaseOneResources {
+		cleanupPath := filepath.Join(filepath.Dir(file), phaseOneCleanupFilename)
+		if _, err := os.Stat(cleanupPath); err == nil {
+			return true
 		}
 	}
 	return false
@@ -316,9 +328,10 @@ func confirmPhaseOneApplied(cfg config) (bool, error) {
 	}
 
 	fmt.Println()
-	fmt.Println("It looks like the removed {} blocks have already been added to your config.")
+	fmt.Printf("It looks like %s already exists from a previous phase-1 run.\n", phaseOneCleanupFilename)
 	fmt.Println()
-	fmt.Print("Did you apply the v4 config and remove the resources from state? [y/N]: ")
+	fmt.Printf("Did you commit %s, apply it via Atlantis/CI, and confirm the\n", phaseOneCleanupFilename)
+	fmt.Print("zone_settings_override entries were removed from state? [y/N]: ")
 
 	var answer string
 	if _, err := fmt.Scanln(&answer); err != nil {
@@ -374,9 +387,29 @@ func detectPhaseOneResources(log hclog.Logger, cfg config) (map[string][]string,
 	return found, nil
 }
 
-// runPhaseOne appends removed {} blocks to files containing PhaseOneTransformer
-// resources, leaving the rest of the v4 config untouched. Prints clear
-// next-step instructions for the user.
+// phaseOneCleanupFilename is the name of the temporary file written during
+// phase 1 that contains the removed {} blocks. It is written into the same
+// directory as the source .tf file (which may be a module subdirectory), so
+// that the removed {} block addresses match the resources exactly — no module
+// prefix needed since Terraform resolves addresses relative to the module.
+// The file must be deleted before re-running tf-migrate for the full migration.
+const phaseOneCleanupFilename = "_phase1_cleanup.tf"
+
+// runPhaseOne writes removed {} blocks for all PhaseOneTransformer resources
+// into _phase1_cleanup.tf files co-located with the source .tf files.
+// Writing the cleanup file into the same directory as the resources ensures the
+// removed {} addresses are correct (bare resource addresses, no module prefix),
+// and that Terraform processes them in the right module context.
+//
+// The original .tf files are left completely untouched — this is essential so
+// that tf-migrate can perform the full v5 migration in phase 2 using the
+// original resource definitions.
+//
+// User workflow:
+//  1. Commit and push _phase1_cleanup.tf files (originals unchanged)
+//  2. Atlantis applies with v4 provider → state entries dropped
+//  3. Delete _phase1_cleanup.tf files
+//  4. Re-run tf-migrate → full v5 migration from intact original files
 func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]string) error {
 	fmt.Println("Phased Migration — Phase 1: State Cleanup")
 	fmt.Println("==========================================")
@@ -385,18 +418,27 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 	fmt.Println("removed from Terraform state before the full migration can proceed:")
 	fmt.Println()
 
-	var totalResources int
 	for _, addrs := range phaseOneResources {
 		for _, addr := range addrs {
 			fmt.Printf("  • %s\n", addr)
-			totalResources++
 		}
 	}
 	fmt.Println()
 
 	providers := getProviders(cfg.resourcesToMigrate...)
 
-	for file, _ := range phaseOneResources {
+	// Group removed {} blocks by directory so each dir gets its own cleanup file.
+	// This ensures the removed {} addresses are correct within each module context.
+	type dirCleanup struct {
+		file  *hclwrite.File
+		body  *hclwrite.Body
+		count int
+	}
+	byDir := make(map[string]*dirCleanup)
+
+	totalBlocks := 0
+
+	for file := range phaseOneResources {
 		content, err := os.ReadFile(file)
 		if err != nil {
 			return fmt.Errorf("failed to read %s: %w", file, err)
@@ -417,11 +459,14 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 			Resources:     cfg.resourcesToMigrate,
 		}
 
-		body := parsed.Body()
-		var blocksToAppend []*hclwrite.Block
-		var blocksToRemove []*hclwrite.Block
+		dir := filepath.Dir(file)
+		if _, ok := byDir[dir]; !ok {
+			f := hclwrite.NewEmptyFile()
+			byDir[dir] = &dirCleanup{file: f, body: f.Body()}
+		}
+		dc := byDir[dir]
 
-		for _, block := range body.Blocks() {
+		for _, block := range parsed.Body().Blocks() {
 			if block.Type() != "resource" || len(block.Labels()) < 2 {
 				continue
 			}
@@ -439,70 +484,64 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 				return fmt.Errorf("phase-1 transform failed for %s in %s: %w", block.Labels()[1], file, err)
 			}
 			if result != nil {
-				blocksToAppend = append(blocksToAppend, result.Blocks...)
-				if result.RemoveOriginal {
-					blocksToRemove = append(blocksToRemove, block)
+				for _, b := range result.Blocks {
+					dc.body.AppendNewline()
+					dc.body.AppendBlock(b)
+					dc.count++
+					totalBlocks++
 				}
 			}
 		}
-
-		if len(blocksToAppend) == 0 {
-			continue
-		}
-
-		// Remove original blocks first (Terraform errors if removed {} and
-		// its resource {} coexist in the same config).
-		for _, b := range blocksToRemove {
-			body.RemoveBlock(b)
-		}
-
-		for _, b := range blocksToAppend {
-			body.AppendNewline()
-			body.AppendBlock(b)
-		}
-
-		formatted := hclwrite.Format(parsed.Bytes())
-
-		if cfg.dryRun {
-			fmt.Printf("[%s] (dry run — would append %d removed block(s))\n", filepath.Base(file), len(blocksToAppend))
-			continue
-		}
-
-		if cfg.backup {
-			if err := os.WriteFile(file+".backup", content, 0644); err != nil {
-				return fmt.Errorf("failed to create backup for %s: %w", file, err)
-			}
-		}
-
-		if err := os.WriteFile(file, formatted, 0644); err != nil {
-			return fmt.Errorf("failed to write %s: %w", file, err)
-		}
-		fmt.Printf("✓ %s — appended %d removed block(s)\n", filepath.Base(file), len(blocksToAppend))
 	}
 
-	if cfg.dryRun {
-		fmt.Println()
-		fmt.Println("(dry run — no files written)")
+	if totalBlocks == 0 {
 		return nil
 	}
 
+	if cfg.dryRun {
+		fmt.Printf("(dry run — would write %d %s file(s) with %d removed block(s) total)\n",
+			len(byDir), phaseOneCleanupFilename, totalBlocks)
+		fmt.Println("Original .tf files would NOT be modified.")
+		return nil
+	}
+
+	var cleanupPaths []string
+	for dir, dc := range byDir {
+		if dc.count == 0 {
+			continue
+		}
+		cleanupPath := filepath.Join(dir, phaseOneCleanupFilename)
+		formatted := hclwrite.Format(dc.file.Bytes())
+		if err := os.WriteFile(cleanupPath, formatted, 0644); err != nil {
+			return fmt.Errorf("failed to write cleanup file in %s: %w", dir, err)
+		}
+		fmt.Printf("✓ Written %s with %d removed block(s)\n",
+			filepath.Join(filepath.Base(dir), phaseOneCleanupFilename), dc.count)
+		cleanupPaths = append(cleanupPaths, cleanupPath)
+	}
+	fmt.Println("  Original .tf files are unchanged.")
 	fmt.Println()
 	fmt.Println("Phase 1 complete.")
 	fmt.Println()
 	fmt.Println("Next steps:")
 	fmt.Println()
-	fmt.Println("  1. Commit and push the updated .tf files (with the new removed {} blocks).")
+	fmt.Printf("  1. Commit and push %s (your other .tf files are unchanged).\n", phaseOneCleanupFilename)
 	fmt.Println("     Your CI/Atlantis pipeline will run terraform plan and apply using the")
 	fmt.Println("     CURRENT (v4) provider. Terraform will process the removed {} blocks")
 	fmt.Println("     and drop the old state entries without destroying any infrastructure.")
 	fmt.Println()
 	fmt.Println("  2. Wait for the apply to complete successfully.")
 	fmt.Println()
-	fmt.Println("  3. Re-run tf-migrate to complete the full migration:")
+	fmt.Printf("  3. Delete the %s file(s):\n", phaseOneCleanupFilename)
+	for _, p := range cleanupPaths {
+		fmt.Printf("       rm %s\n", p)
+	}
+	fmt.Println()
+	fmt.Println("  4. Re-run tf-migrate to complete the full migration:")
 	fmt.Printf("       tf-migrate migrate --config-dir %s\n", cfg.configDir)
 	fmt.Println()
 	fmt.Println("     tf-migrate will ask you to confirm the apply succeeded, then run the")
-	fmt.Println("     full v5 migration.")
+	fmt.Println("     full v5 migration from your original (unchanged) config files.")
 
 	return nil
 }

@@ -20,8 +20,10 @@ import (
 	"strings"
 )
 
-// RunMigrate copies v4/ to migrated-v4_to_v5/ and runs migration
-func RunMigrate(resources string) error {
+// RunMigrate copies v4/ to migrated-v4_to_v5/ and runs migration.
+// When yes is true, --yes is passed to tf-migrate to auto-confirm the phase-1
+// completion prompt (used for the phase-2 call in the e2e runner).
+func RunMigrate(resources string, yes bool) error {
 	repoRoot := getRepoRoot()
 	e2eRoot := filepath.Join(repoRoot, "e2e")
 	v4Dir := filepath.Join(e2eRoot, "tf", "v4")
@@ -100,6 +102,9 @@ func RunMigrate(resources string) error {
 		"migrate",
 		"--backup=false",
 		"--recursive",
+	}
+	if yes {
+		args = append(args, "--yes")
 	}
 
 	cmd := exec.Command(binary, args...)

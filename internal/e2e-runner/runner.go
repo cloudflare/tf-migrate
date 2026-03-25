@@ -312,11 +312,45 @@ func RunE2ETests(cfg *RunConfig) error {
 	printCyan("Step 2: Running migration")
 	printYellow("Running ./scripts/migrate...")
 
-	if err := RunMigrate(cfg.Resources); err != nil {
+	// Run the full migration directly (--yes bypasses phased migration detection).
+	// The e2e runner handles state cleanup itself below via terraform state rm,
+	// which is simpler and reliable. The phased migration (_phase1_cleanup.tf)
+	// is for real Atlantis users who cannot run terraform state rm.
+	if err := RunMigrate(cfg.Resources, true); err != nil {
 		printError("Migration failed")
 		return err
 	}
 	printSuccess("Migration successful")
+
+	// Remove state entries for resource types the v5 provider has no schema for.
+	// cloudflare_zone_settings_override does not exist in v5 — attempting a plan
+	// with these entries in state produces schema errors. We remove them from the
+	// local state file directly since the e2e runner has full shell access.
+	// (Real Atlantis users use the _phase1_cleanup.tf phased approach instead.)
+	v5StateTF := NewTerraformRunner(v5Dir)
+	obsoleteTypes := []string{"cloudflare_zone_settings_override"}
+	if resources, err := v5StateTF.StateList(); err == nil {
+		for _, addr := range resources {
+			typePart := addr
+			for strings.HasPrefix(typePart, "module.") {
+				parts := strings.SplitN(typePart, ".", 3)
+				if len(parts) < 3 {
+					break
+				}
+				typePart = parts[2]
+			}
+			resourceType := strings.SplitN(typePart, ".", 2)[0]
+			for _, obsolete := range obsoleteTypes {
+				if resourceType == obsolete {
+					printYellow("Removing obsolete state entry (no v5 schema): %s", addr)
+					if err := v5StateTF.StateRm(addr); err != nil {
+						printYellow("Warning: failed to remove %s: %v", addr, err)
+					}
+					break
+				}
+			}
+		}
+	}
 
 	// Step 3: Test v5 configurations
 	fmt.Println()
@@ -358,37 +392,6 @@ func RunE2ETests(cfg *RunConfig) error {
 		return err
 	}
 	printSuccess("Terraform init successful")
-
-	// Remove state entries for resource types the v5 provider has no schema for.
-	// cloudflare_zone_settings_override does not exist in v5 — attempting a plan
-	// with these entries in state produces:
-	//   "no schema available for cloudflare_zone_settings_override while reading state"
-	// The removed blocks in the migrated config handle the config side; we must
-	// handle the state side here by removing these entries before any plan runs.
-	obsoleteTypes := []string{"cloudflare_zone_settings_override"}
-	if resources, err := v5TF.StateList(); err == nil {
-		for _, addr := range resources {
-			// Extract resource type from address (handles module. prefixes)
-			typePart := addr
-			for strings.HasPrefix(typePart, "module.") {
-				parts := strings.SplitN(typePart, ".", 3)
-				if len(parts) < 3 {
-					break
-				}
-				typePart = parts[2]
-			}
-			resourceType := strings.SplitN(typePart, ".", 2)[0]
-			for _, obsolete := range obsoleteTypes {
-				if resourceType == obsolete {
-					printYellow("Removing obsolete state entry (no v5 schema): %s", addr)
-					if err := v5TF.StateRm(addr); err != nil {
-						printYellow("Warning: failed to remove %s: %v", addr, err)
-					}
-					break
-				}
-			}
-		}
-	}
 
 	// Optional diagnostic snapshot before refresh
 	if cfg.NoRefreshSnapshot {
@@ -894,7 +897,6 @@ func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string, resou
 	return result
 }
 
-// runV4Tests executes Step 1: Test v4 configurations
 func runV4Tests(ctx *testContext) error {
 	printYellow("Step 1: Testing v4 configurations")
 

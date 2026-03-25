@@ -57,7 +57,7 @@ func (m *V4ToV5Migrator) TransformPhaseOne(ctx *transform.Context, block *hclwri
 	removedBlock := tfhcl.CreateRemovedBlock(removedAddr)
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{removedBlock},
-		RemoveOriginal: true, // resource block must be removed — removed {} and resource {} cannot coexist
+		RemoveOriginal: false, // originals stay untouched — removed {} go to a separate cleanup file
 	}, nil
 }
 

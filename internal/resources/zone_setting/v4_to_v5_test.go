@@ -691,9 +691,9 @@ func TestTransformPhaseOne(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, result)
 
-			// Phase 1 must remove the original resource block — Terraform errors
-			// if a removed {} block and its resource {} block coexist in config.
-			assert.True(t, result.RemoveOriginal, "TransformPhaseOne must remove the original resource block")
+			// Phase 1 must NOT remove the original block — removed {} blocks go
+			// to a separate _phase1_cleanup.tf, originals stay intact for phase 2.
+			assert.False(t, result.RemoveOriginal, "TransformPhaseOne must not remove the original resource block")
 
 			// Must produce exactly one block (the removed {} block)
 			require.Len(t, result.Blocks, 1)

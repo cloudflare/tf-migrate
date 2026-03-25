@@ -324,16 +324,25 @@ tf-migrate migrate \
   --target-version v5
 ```
 
-tf-migrate transforms all `.tf` files in-place (with `.backup` files alongside each original) and prints a summary of:
+tf-migrate transforms all `.tf` files in-place and prints a summary of:
 - Resources renamed
 - Cross-file references updated
 - Warnings for anything requiring manual follow-up
 
 Review the warnings carefully before proceeding.
 
+> **Tip:** Use `--no-backup` to skip creating `.backup` files entirely:
+> ```bash
+> tf-migrate migrate \
+>   --config-dir ./tf/your-workspace \
+>   --source-version v4 \
+>   --target-version v5 \
+>   --no-backup
+> ```
+
 #### 2. Clean up backup files
 
-tf-migrate creates `.backup` files alongside every modified file. Delete them before committing:
+By default tf-migrate creates `.backup` files alongside every modified file. Delete them before committing, or use `--no-backup` (see step 1) to skip creating them entirely:
 
 ```bash
 find ./tf/your-workspace -name "*.backup" -delete
@@ -446,7 +455,9 @@ This is the most common mistake when migrating an Atlantis workspace. Always reg
 |------|---------|-------------|
 | `--output-dir` | In-place | Output directory for migrated files |
 | `--backup` | `true` | Create backups of original files before migration |
+| `--no-backup` | `false` | Skip creating backup files (alias for `--backup=false`) |
 | `--recursive` | `false` | Recursively process subdirectories |
+| `--yes` / `-y` | `false` | Skip interactive prompts and assume yes (for CI/non-interactive use) |
 | `--verbose` | `false` | Show all diagnostics including informational messages |
 | `--quiet` / `-q` | `false` | Suppress warnings, only show errors |
 
