@@ -94,3 +94,24 @@ resource "cloudflare_dlp_profile" "all_disabled" {
     enabled = false
   }
 }
+
+# Pattern 5: Predefined profile with profile_id from import-address annotation
+# tf-migrate:import-address=${var.cloudflare_account_id}/c8932cc4-3312-4152-8041-f3f257122dc4
+resource "cloudflare_dlp_profile" "with_import_annotation" {
+  account_id          = var.cloudflare_account_id
+  name                = "Credentials and Secrets"
+  type                = "predefined"
+  allowed_match_count = 0
+
+  entry {
+    id      = "d8fcfc9c-773c-405e-8426-21ecbb67ba93"
+    name    = "Amazon AWS Access Key ID"
+    enabled = false
+  }
+
+  entry {
+    id      = "2c0e33e1-71da-40c8-aad3-32e674ad3d96"
+    name    = "Amazon AWS Secret Access Key"
+    enabled = false
+  }
+}

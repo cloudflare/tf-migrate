@@ -299,6 +299,134 @@ tf-migrate verify-drift --file plan.txt || exit 1
 
 ---
 
+## Migrating an Atlantis-Managed Workspace
+
+This section covers migrating a Terraform workspace that uses [Atlantis](https://www.runatlantis.io/) for CI/CD. The key constraints are:
+
+- **You cannot run `terraform init -upgrade` in Atlantis** — Atlantis runs its own `terraform init` as part of its workflow and does not support remote flags.
+- **The remote state backend is typically unreachable from your local machine** — running `terraform init` locally will fail if the backend requires network access inside a private environment.
+- **The `.terraform.lock.hcl` must be committed with v5 hashes** — Atlantis uses the lock file as-is and will not upgrade providers on its own.
+
+### Prerequisites
+
+- `tf-migrate` binary (see [Installation](#installation))
+- Terraform CLI installed locally (same version as used in Atlantis — check `terraform_version` in `atlantis.yaml`)
+- Access to the Git repository
+
+### Step-by-step
+
+#### 1. Run tf-migrate against your config directory
+
+```bash
+tf-migrate migrate \
+  --config-dir ./tf/your-workspace \
+  --source-version v4 \
+  --target-version v5
+```
+
+tf-migrate transforms all `.tf` files in-place (with `.backup` files alongside each original) and prints a summary of:
+- Resources renamed
+- Cross-file references updated
+- Warnings for anything requiring manual follow-up
+
+Review the warnings carefully before proceeding.
+
+#### 2. Clean up backup files
+
+tf-migrate creates `.backup` files alongside every modified file. Delete them before committing:
+
+```bash
+find ./tf/your-workspace -name "*.backup" -delete
+```
+
+#### 3. Update the provider version in `main.tf`
+
+tf-migrate does not modify `required_providers`. Update the Cloudflare provider version constraint manually:
+
+```hcl
+# Before
+cloudflare = {
+  source  = "cloudflare/cloudflare"
+  version = "4.x.x"
+}
+
+# After
+cloudflare = {
+  source  = "cloudflare/cloudflare"
+  version = "5.x.x"   # target v5 version
+}
+```
+
+#### 4. Regenerate `.terraform.lock.hcl` locally with `-backend=false`
+
+Because the remote backend is not reachable locally, use `-backend=false` to skip it. This still downloads the v5 provider and regenerates the lock file with v5 hashes:
+
+```bash
+terraform -chdir=./tf/your-workspace init -upgrade -backend=false
+```
+
+> **Why `-backend=false`?** Without it, Terraform tries to initialise the remote backend, which fails if the backend endpoint (e.g. an internal HTTP state server) is only reachable from within your CI environment.
+
+#### 5. Handle `zone_settings_override` state removal (if applicable)
+
+If your workspace uses `cloudflare_zone_settings_override`, tf-migrate splits each instance into multiple `cloudflare_zone_setting` resources and emits `removed {}` blocks and `import {}` blocks in the migrated file.
+
+The v5 provider has no schema for `cloudflare_zone_settings_override`, so the old state entries must be removed **before the first `terraform plan/apply`** against the v5 provider. tf-migrate prints the exact `terraform state rm` commands needed — run them before Atlantis processes the plan:
+
+```bash
+terraform state rm 'cloudflare_zone_settings_override.your_resource_name'
+# repeat for each instance listed in the tf-migrate warnings
+```
+
+After removal, the `import {}` blocks in the migrated file will import each setting's current value from the Cloudflare API on the first `terraform apply`.
+
+#### 6. Commit everything together
+
+```bash
+git add tf/your-workspace/
+git commit -m "migrate your-workspace from cloudflare provider v4 to v5"
+```
+
+The commit should include:
+- All modified `.tf` files
+- Updated `main.tf` with the new provider version
+- Updated `.terraform.lock.hcl` with v5 hashes
+
+> **Do not commit `.backup` files** — delete them in step 2.
+
+#### 7. Push and let Atlantis plan
+
+Atlantis will pick up the committed lock file, download the v5 provider, and run `terraform plan`. The plan output will reflect the migrated v5 config.
+
+---
+
+### Why the lock file matters
+
+Atlantis uses the committed `.terraform.lock.hcl` to pin provider versions. If the lock file still references the old v4 provider (e.g. `constraints = "4.52.5"`), Atlantis will download and use the v4 provider even if `main.tf` specifies a v5 version — causing the entire plan to fail with schema errors like:
+
+```
+Error: Invalid resource type
+  The provider cloudflare/cloudflare does not support resource type "cloudflare_dns_record".
+```
+
+This is the most common mistake when migrating an Atlantis workspace. Always regenerate and commit the lock file as part of the migration.
+
+---
+
+### Summary
+
+| Step | Where | What |
+|------|-------|------|
+| 1. Run tf-migrate | Local | Transform `.tf` files |
+| 2. Delete `.backup` files | Local | Clean up before commit |
+| 3. Update `main.tf` | Local | Set v5 provider version |
+| 4. `terraform init -upgrade -backend=false` | Local | Regenerate lock file with v5 hashes |
+| 5. `terraform state rm` (if needed) | Local / CI pre-plan | Remove old `zone_settings_override` state entries |
+| 6. Commit all changes | Local | `.tf` files + `main.tf` + `.terraform.lock.hcl` |
+| 7. Push | Git | Atlantis picks up the v5 lock file and plans |
+
+---
+
 ## Command Reference
 
 ### Global Flags

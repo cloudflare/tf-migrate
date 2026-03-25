@@ -1,0 +1,30 @@
+# Drift Exemptions for zero_trust_dlp_custom_profile resource
+#
+# This module contains cloudflare_zero_trust_gateway_policy resources that
+# reference DLP profiles, and those policies exhibit the same drift patterns
+# as the standalone zero_trust_gateway_policy module.
+
+version: 1
+
+exemptions:
+  - name: "precedence_normalization"
+    description: "The v5 provider respects the config-specified precedence value and plans to send it to the API, replacing the server-assigned collision-avoidance value stored in v4 state (e.g. 3000433 -> 3000). This is one-time drift that resolves after the first terraform apply — the API accepts the config value and the plan stabilises."
+    resource_types:
+      - "cloudflare_zero_trust_gateway_policy"
+    patterns:
+      - '~ precedence\s*='
+      - 'precedence\s*=\s*\d{4,}\s*->\s*\d{1,4}'
+    enabled: true
+
+  - name: "filters_computed_to_null"
+    description: "The 'filters' field was written to state by the v4 provider based on the API response but was not explicitly set in the config. The v5 provider schema marks 'filters' as Computed+Optional, so the value is now preserved from state. This exemption covers any residual drift during the transition period."
+    resource_types:
+      - "cloudflare_zero_trust_gateway_policy"
+    patterns:
+      - '-\s*filters\s*=\s*\['
+      - 'filters.*->.*null'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

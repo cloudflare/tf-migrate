@@ -2,6 +2,8 @@ package zero_trust_dlp_custom_profile
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -82,7 +84,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.RenameResourceType(block, currentType, newType)
 		tfhcl.RemoveAttributes(body, "type")
 		tfhcl.RemoveAttributes(body, "name") // name is read-only (Computed) in v5 predefined profiles
-		m.transformPredefinedEntryBlocks(body)
+		m.transformPredefinedEntryBlocks(body, ctx.Content, resourceName)
 
 	default:
 		return &transform.TransformResult{
@@ -211,7 +213,42 @@ func (m *V4ToV5Migrator) transformPatternBlock(entryBody *hclwrite.Body) {
 	entryBody.RemoveBlock(patternBlock)
 }
 
-func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(body *hclwrite.Body) {
+// importAddressProfileIDRe matches a tf-migrate:import-address annotation of the form
+// # tf-migrate:import-address=<account_id>/<profile_id>
+// and captures the profile UUID (the second path segment).
+var importAddressProfileIDRe = regexp.MustCompile(`#\s*tf-migrate:import-address=[^/\s]+/([0-9a-f-]{36})`)
+
+// extractProfileIDFromImportAddress scans the raw file content for a
+// tf-migrate:import-address annotation that appears immediately before the given
+// resource declaration and returns the profile UUID (second path segment), or "".
+func extractProfileIDFromImportAddress(content []byte, resourceName string) string {
+	resourceDecl := regexp.MustCompile(
+		`resource\s+"cloudflare_(?:dlp_profile|zero_trust_dlp_profile|zero_trust_dlp_predefined_profile)"\s+"` +
+			regexp.QuoteMeta(resourceName) + `"`)
+
+	lines := strings.Split(string(content), "\n")
+	for i, line := range lines {
+		if resourceDecl.MatchString(line) {
+			// Search backwards through the preceding comment block for the annotation.
+			for j := i - 1; j >= 0; j-- {
+				trimmed := strings.TrimSpace(lines[j])
+				if trimmed == "" {
+					continue
+				}
+				if !strings.HasPrefix(trimmed, "#") {
+					break
+				}
+				if m := importAddressProfileIDRe.FindStringSubmatch(trimmed); m != nil {
+					return m[1]
+				}
+			}
+			break
+		}
+	}
+	return ""
+}
+
+func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(body *hclwrite.Body, fileContent []byte, resourceName string) {
 	var enabledEntryIDs []string
 	hasEntryBlocks := false
 	for _, block := range body.Blocks() {
@@ -258,8 +295,11 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(body *hclwrite.Body) {
 		}
 	}
 
+	// Resolve profile_id: prefer the resource-level id attribute (v4 state import
+	// pattern), then fall back to the tf-migrate:import-address annotation comment.
 	if idAttr := body.GetAttribute("id"); idAttr != nil {
 		tfhcl.RenameAttribute(body, "id", "profile_id")
+	} else if profileID := extractProfileIDFromImportAddress(fileContent, resourceName); profileID != "" {
+		body.SetAttributeValue("profile_id", cty.StringVal(profileID))
 	}
 }
-

@@ -212,7 +212,7 @@ moved {
 }`,
 			},
 			{
-				Name: "Predefined profile migration",
+				Name: "Predefined profile migration - profile_id from resource id attribute",
 				Input: `resource "cloudflare_dlp_profile" "predefined" {
   id                  = "aws-keys-uuid"
   account_id          = "123456789"
@@ -249,6 +249,41 @@ moved {
 moved {
   from = cloudflare_dlp_profile.predefined
   to   = cloudflare_zero_trust_dlp_predefined_profile.predefined
+}`,
+			},
+			{
+				Name: "Predefined profile migration - profile_id from import-address annotation",
+				Input: `# tf-migrate:import-address=123456789/c8932cc4-3312-4152-8041-f3f257122dc4
+resource "cloudflare_dlp_profile" "creds" {
+  account_id          = "123456789"
+  name                = "Credentials and Secrets"
+  type                = "predefined"
+  allowed_match_count = 0
+
+  entry {
+    id      = "d8fcfc9c-773c-405e-8426-21ecbb67ba93"
+    name    = "Amazon AWS Access Key ID"
+    enabled = false
+  }
+
+  entry {
+    id      = "2c0e33e1-71da-40c8-aad3-32e674ad3d96"
+    name    = "Amazon AWS Secret Access Key"
+    enabled = false
+  }
+}`,
+				Expected: `# tf-migrate:import-address=123456789/c8932cc4-3312-4152-8041-f3f257122dc4
+resource "cloudflare_zero_trust_dlp_predefined_profile" "creds" {
+  account_id          = "123456789"
+  profile_id          = "c8932cc4-3312-4152-8041-f3f257122dc4"
+  allowed_match_count = 0
+
+  enabled_entries = []
+}
+
+moved {
+  from = cloudflare_dlp_profile.creds
+  to   = cloudflare_zero_trust_dlp_predefined_profile.creds
 }`,
 			},
 		}
