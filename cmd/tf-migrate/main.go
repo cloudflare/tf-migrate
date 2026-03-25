@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2"
@@ -291,6 +294,152 @@ func runFullMigration(log hclog.Logger, cfg config) error {
 	}
 	log.Debug("Finished processing configuration files")
 	printDiagnostics(allDiagnostics, cfg)
+
+	// Update the provider version constraint in required_providers blocks
+	// and print instructions for regenerating the lock file.
+	if cfg.configDir != "" && !cfg.dryRun {
+		if err := updateProviderVersionConstraint(log, cfg); err != nil {
+			log.Warn("Failed to update provider version constraint", "error", err)
+		}
+	}
+
+	return nil
+}
+
+// fallbackProviderVersions maps migration target versions to known-good
+// provider versions, used when the GitHub API is unavailable.
+var fallbackProviderVersions = map[string]string{
+	"v5": "5.19.0-beta.2",
+}
+
+// targetProviderVersion fetches the latest provider release for the given
+// target migration version from the GitHub releases API. Falls back to a
+// hardcoded version if the fetch fails or times out.
+func targetProviderVersion(targetVersion string) string {
+	majorPrefix := strings.TrimPrefix(targetVersion, "v") + "."
+
+	type release struct {
+		TagName string `json:"tag_name"`
+		Draft   bool   `json:"draft"`
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("https://api.github.com/repos/cloudflare/terraform-provider-cloudflare/releases?per_page=50")
+	if err == nil && resp.StatusCode == http.StatusOK {
+		defer resp.Body.Close()
+		var releases []release
+		if json.NewDecoder(resp.Body).Decode(&releases) == nil {
+			for _, r := range releases {
+				if r.Draft {
+					continue
+				}
+				version := strings.TrimPrefix(r.TagName, "v")
+				if strings.HasPrefix(version, majorPrefix) {
+					return version
+				}
+			}
+		}
+	}
+
+	// Fall back to hardcoded version
+	if v, ok := fallbackProviderVersions[targetVersion]; ok {
+		return v
+	}
+	return ""
+}
+
+// updateProviderVersionConstraint scans all .tf files for a required_providers
+// block containing cloudflare/cloudflare and updates the version constraint to
+// match the target provider version. Prints next-step instructions if updated.
+func updateProviderVersionConstraint(log hclog.Logger, cfg config) error {
+	targetVersion := targetProviderVersion(cfg.targetVersion)
+	if targetVersion == "" {
+		return nil
+	}
+
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+
+		parsed, diags := hclwrite.ParseConfig(content, filepath.Base(file), hcl.InitialPos)
+		if diags.HasErrors() {
+			continue
+		}
+
+		updated := false
+		for _, block := range parsed.Body().Blocks() {
+			if block.Type() != "terraform" {
+				continue
+			}
+			for _, inner := range block.Body().Blocks() {
+				if inner.Type() != "required_providers" {
+					continue
+				}
+				cfAttr := inner.Body().GetAttribute("cloudflare")
+				if cfAttr == nil {
+					continue
+				}
+				// The attribute value is an object expression — check if it
+				// contains source = "cloudflare/cloudflare"
+				attrStr := string(cfAttr.BuildTokens(nil).Bytes())
+				if !strings.Contains(attrStr, "cloudflare/cloudflare") {
+					continue
+				}
+				// Rewrite the version value using raw token replacement.
+				// We replace any existing version = "..." with the target.
+				newAttrStr := regexp.MustCompile(`version\s*=\s*"[^"]*"`).
+					ReplaceAllString(attrStr, `version = "`+targetVersion+`"`)
+				if newAttrStr == attrStr {
+					// No version constraint existed — add one
+					newAttrStr = strings.Replace(attrStr,
+						`source  = "cloudflare/cloudflare"`,
+						`source  = "cloudflare/cloudflare"`+"\n      version = \""+targetVersion+`"`,
+						1)
+					if newAttrStr == attrStr {
+						// Try without double space
+						newAttrStr = strings.Replace(attrStr,
+							`source = "cloudflare/cloudflare"`,
+							`source  = "cloudflare/cloudflare"`+"\n      version = \""+targetVersion+`"`,
+							1)
+					}
+				}
+				if newAttrStr != attrStr {
+					// Re-parse the file with the updated attribute text and write it.
+					newContent := strings.Replace(string(content), attrStr, newAttrStr, 1)
+					if err := os.WriteFile(file, []byte(newContent), 0644); err != nil {
+						log.Warn("Failed to write updated provider version", "file", file, "error", err)
+						continue
+					}
+					updated = true
+					fmt.Printf("✓ Updated cloudflare provider version to %s in %s\n",
+						targetVersion, filepath.Base(file))
+				}
+			}
+		}
+		_ = updated
+	}
+
+	fmt.Println()
+	fmt.Printf("Provider version updated to %s.\n", targetVersion)
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println()
+	fmt.Println("  1. Regenerate the lock file locally:")
+	fmt.Printf("       cd %s\n", cfg.configDir)
+	fmt.Println("       terraform init -upgrade -backend=false")
+	fmt.Println()
+	fmt.Println("  2. Commit and push all changed files:")
+	fmt.Println("       main.tf (or wherever required_providers lives)")
+	fmt.Println("       .terraform.lock.hcl")
+	fmt.Println("       all migrated .tf files")
+
 	return nil
 }
 
