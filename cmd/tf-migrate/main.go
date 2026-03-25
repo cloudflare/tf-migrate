@@ -482,9 +482,10 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 			continue
 		}
 
-		// Build new file content: for each phase-1 resource block, comment it
-		// out (with the marker prefix) and append a removed {} block after it.
-		newContent := string(content)
+		// Use the parsed (normalized) file bytes as the base — both blockText
+		// from BuildTokens and the file bytes come from the same hclwrite
+		// tokenizer, so replacements match exactly.
+		newContent := string(parsed.Bytes())
 		for _, pair := range pairs {
 			commented := commentOutBlock(pair.blockText)
 			// Build the removed {} block text
