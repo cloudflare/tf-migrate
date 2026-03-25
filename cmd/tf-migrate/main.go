@@ -38,6 +38,7 @@ type config struct {
 	backup             bool
 	recursive          bool
 	logLevel           string
+	yes                bool // skip interactive prompts, assume yes (for CI/e2e)
 
 	// Diagnostic output options
 	quiet   bool // Suppress warnings, only show errors
@@ -157,6 +158,7 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 	cmd.Flags().StringVar(&cfg.outputDir, "output-dir", "", "Output directory for migrated configuration files (default: in-place)")
 	cmd.Flags().BoolVar(&cfg.backup, "backup", true, "Create backup of original files before migration")
 	cmd.Flags().BoolVar(&cfg.recursive, "recursive", false, "Recursively process subdirectories (useful for module structures)")
+	cmd.Flags().BoolVarP(&cfg.yes, "yes", "y", false, "Skip interactive prompts and assume yes (for CI/non-interactive use)")
 
 	// Diagnostic output options
 	cmd.Flags().BoolVarP(&cfg.quiet, "quiet", "q", false, "Suppress warnings, only show errors")
@@ -209,7 +211,10 @@ Exit code 1: unexpected drift requires attention.`,
 	return cmd
 }
 
-// runMigration performs the actual migration using the pipeline
+// runMigration performs the actual migration using the pipeline.
+// It automatically detects whether a phased migration is needed (e.g. for
+// cloudflare_zone_settings_override in Atlantis-managed workspaces) and handles
+// it transparently without requiring any additional flags from the user.
 func runMigration(log hclog.Logger, cfg config) error {
 	err := validateVersions(cfg)
 	if err != nil {
@@ -223,6 +228,49 @@ func runMigration(log hclog.Logger, cfg config) error {
 		fmt.Println()
 	}
 
+	// --yes with no removed blocks present means: skip straight to full migration.
+	// This is the e2e runner's second-call path: fresh v4 files, state already
+	// cleaned by the phase-1 apply, just run the full migration.
+	if cfg.yes {
+		return runFullMigration(log, cfg)
+	}
+
+	// Scan for resources that require phased migration.
+	phaseOneResources, err := detectPhaseOneResources(log, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to scan for phase-1 resources: %w", err)
+	}
+
+	if len(phaseOneResources) > 0 {
+		// Check whether removed {} blocks have already been written to the files,
+		// meaning phase 1 ran previously. Ask the user whether they have committed
+		// and applied those blocks so we know if state is clean.
+		if filesAlreadyHaveRemovedBlocks(phaseOneResources) {
+			confirmed, promptErr := confirmPhaseOneApplied(cfg)
+			if promptErr != nil {
+				return promptErr
+			}
+			if confirmed {
+				// User confirms state is clean — run the full v5 migration.
+				return runPhaseTwo(log, cfg)
+			}
+			// User says not yet — remind them what to do and exit.
+			fmt.Println()
+			fmt.Println("No problem. Once the apply completes successfully, re-run tf-migrate:")
+			fmt.Printf("  tf-migrate migrate --config-dir %s\n", cfg.configDir)
+			return nil
+		}
+
+		// No removed blocks yet — run phase 1.
+		return runPhaseOne(log, cfg, phaseOneResources)
+	}
+
+	// No phase-1 resources — run the standard full migration.
+	return runFullMigration(log, cfg)
+}
+
+// runFullMigration runs the standard pipeline migration without any phasing.
+func runFullMigration(log hclog.Logger, cfg config) error {
 	providers := getProviders(cfg.resourcesToMigrate...)
 	configPipeline := pipeline.BuildConfigPipeline(log, providers)
 	var allDiagnostics hcl.Diagnostics
@@ -234,11 +282,241 @@ func runMigration(log hclog.Logger, cfg config) error {
 		}
 	}
 	log.Debug("Finished processing configuration files")
-
-	// Print any warnings collected during migration
 	printDiagnostics(allDiagnostics, cfg)
+	return nil
+}
+
+// filesAlreadyHaveRemovedBlocks returns true if any of the files in
+// phaseOneResources already contain a removed {} block targeting one of the
+// phase-1 resource addresses. This detects re-runs after phase 1 was written
+// but before the marker was created (e.g. marker was deleted).
+func filesAlreadyHaveRemovedBlocks(phaseOneResources map[string][]string) bool {
+	for file, addrs := range phaseOneResources {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+		contentStr := string(content)
+		for _, addr := range addrs {
+			// Look for a removed block referencing this address.
+			// A simple string search is sufficient — the address is unique.
+			if strings.Contains(contentStr, "removed {") && strings.Contains(contentStr, addr) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// confirmPhaseOneApplied asks the user whether they have committed and applied
+// the phase-1 removed {} blocks. When --yes is set it auto-confirms (for CI).
+func confirmPhaseOneApplied(cfg config) (bool, error) {
+	if cfg.yes {
+		return true, nil
+	}
+
+	fmt.Println()
+	fmt.Println("It looks like the removed {} blocks have already been added to your config.")
+	fmt.Println()
+	fmt.Print("Did you apply the v4 config and remove the resources from state? [y/N]: ")
+
+	var answer string
+	if _, err := fmt.Scanln(&answer); err != nil {
+		// Non-interactive environment (e.g. piped input) — treat as "no"
+		return false, nil
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "y" || answer == "yes", nil
+}
+
+// detectPhaseOneResources scans all .tf files and returns a map of
+// filename → resource addresses for resources whose migrator implements PhaseOneTransformer.
+func detectPhaseOneResources(log hclog.Logger, cfg config) (map[string][]string, error) {
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
+	if err != nil {
+		return nil, err
+	}
+
+	providers := getProviders(cfg.resourcesToMigrate...)
+	found := make(map[string][]string)
+
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			log.Warn("Failed to read file during phase-1 scan", "file", file, "error", err)
+			continue
+		}
+
+		parsed, diags := hclwrite.ParseConfig(content, filepath.Base(file), hcl.InitialPos)
+		if diags.HasErrors() {
+			log.Warn("Failed to parse file during phase-1 scan", "file", file, "error", diags)
+			continue
+		}
+
+		for _, block := range parsed.Body().Blocks() {
+			if block.Type() != "resource" || len(block.Labels()) < 2 {
+				continue
+			}
+			resourceType := block.Labels()[0]
+			resourceName := block.Labels()[1]
+
+			migrator := providers.GetMigrator(resourceType, cfg.sourceVersion, cfg.targetVersion)
+			if migrator == nil {
+				continue
+			}
+			if _, ok := migrator.(transform.PhaseOneTransformer); ok {
+				addr := resourceType + "." + resourceName
+				found[file] = append(found[file], addr)
+			}
+		}
+	}
+
+	return found, nil
+}
+
+// runPhaseOne appends removed {} blocks to files containing PhaseOneTransformer
+// resources, leaving the rest of the v4 config untouched. Prints clear
+// next-step instructions for the user.
+func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]string) error {
+	fmt.Println("Phased Migration — Phase 1: State Cleanup")
+	fmt.Println("==========================================")
+	fmt.Println()
+	fmt.Println("The following resources have no schema in the v5 provider and must be")
+	fmt.Println("removed from Terraform state before the full migration can proceed:")
+	fmt.Println()
+
+	var totalResources int
+	for _, addrs := range phaseOneResources {
+		for _, addr := range addrs {
+			fmt.Printf("  • %s\n", addr)
+			totalResources++
+		}
+	}
+	fmt.Println()
+
+	providers := getProviders(cfg.resourcesToMigrate...)
+
+	for file, _ := range phaseOneResources {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", file, err)
+		}
+
+		parsed, diags := hclwrite.ParseConfig(content, filepath.Base(file), hcl.InitialPos)
+		if diags.HasErrors() {
+			return fmt.Errorf("failed to parse %s: %w", file, diags)
+		}
+
+		ctx := &transform.Context{
+			Content:       content,
+			Filename:      filepath.Base(file),
+			Diagnostics:   make(hcl.Diagnostics, 0),
+			Metadata:      make(map[string]interface{}),
+			SourceVersion: cfg.sourceVersion,
+			TargetVersion: cfg.targetVersion,
+			Resources:     cfg.resourcesToMigrate,
+		}
+
+		body := parsed.Body()
+		var blocksToAppend []*hclwrite.Block
+		var blocksToRemove []*hclwrite.Block
+
+		for _, block := range body.Blocks() {
+			if block.Type() != "resource" || len(block.Labels()) < 2 {
+				continue
+			}
+			resourceType := block.Labels()[0]
+			migrator := providers.GetMigrator(resourceType, cfg.sourceVersion, cfg.targetVersion)
+			if migrator == nil {
+				continue
+			}
+			p1, ok := migrator.(transform.PhaseOneTransformer)
+			if !ok {
+				continue
+			}
+			result, err := p1.TransformPhaseOne(ctx, block)
+			if err != nil {
+				return fmt.Errorf("phase-1 transform failed for %s in %s: %w", block.Labels()[1], file, err)
+			}
+			if result != nil {
+				blocksToAppend = append(blocksToAppend, result.Blocks...)
+				if result.RemoveOriginal {
+					blocksToRemove = append(blocksToRemove, block)
+				}
+			}
+		}
+
+		if len(blocksToAppend) == 0 {
+			continue
+		}
+
+		// Remove original blocks first (Terraform errors if removed {} and
+		// its resource {} coexist in the same config).
+		for _, b := range blocksToRemove {
+			body.RemoveBlock(b)
+		}
+
+		for _, b := range blocksToAppend {
+			body.AppendNewline()
+			body.AppendBlock(b)
+		}
+
+		formatted := hclwrite.Format(parsed.Bytes())
+
+		if cfg.dryRun {
+			fmt.Printf("[%s] (dry run — would append %d removed block(s))\n", filepath.Base(file), len(blocksToAppend))
+			continue
+		}
+
+		if cfg.backup {
+			if err := os.WriteFile(file+".backup", content, 0644); err != nil {
+				return fmt.Errorf("failed to create backup for %s: %w", file, err)
+			}
+		}
+
+		if err := os.WriteFile(file, formatted, 0644); err != nil {
+			return fmt.Errorf("failed to write %s: %w", file, err)
+		}
+		fmt.Printf("✓ %s — appended %d removed block(s)\n", filepath.Base(file), len(blocksToAppend))
+	}
+
+	if cfg.dryRun {
+		fmt.Println()
+		fmt.Println("(dry run — no files written)")
+		return nil
+	}
+
+	fmt.Println()
+	fmt.Println("Phase 1 complete.")
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println()
+	fmt.Println("  1. Commit and push the updated .tf files (with the new removed {} blocks).")
+	fmt.Println("     Your CI/Atlantis pipeline will run terraform plan and apply using the")
+	fmt.Println("     CURRENT (v4) provider. Terraform will process the removed {} blocks")
+	fmt.Println("     and drop the old state entries without destroying any infrastructure.")
+	fmt.Println()
+	fmt.Println("  2. Wait for the apply to complete successfully.")
+	fmt.Println()
+	fmt.Println("  3. Re-run tf-migrate to complete the full migration:")
+	fmt.Printf("       tf-migrate migrate --config-dir %s\n", cfg.configDir)
+	fmt.Println()
+	fmt.Println("     tf-migrate will ask you to confirm the apply succeeded, then run the")
+	fmt.Println("     full v5 migration.")
 
 	return nil
+}
+
+// runPhaseTwo runs the standard full migration after the user has confirmed
+// that the phase-1 removed {} blocks were applied successfully.
+func runPhaseTwo(log hclog.Logger, cfg config) error {
+	fmt.Println("Phased Migration — Phase 2: Full Migration")
+	fmt.Println("===========================================")
+	fmt.Println()
+	fmt.Println("Running full v4 → v5 migration...")
+	fmt.Println()
+
+	return runFullMigration(log, cfg)
 }
 
 func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map[string]*hclwrite.File, hcl.Diagnostics, error) {

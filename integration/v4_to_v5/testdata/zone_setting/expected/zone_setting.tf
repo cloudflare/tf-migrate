@@ -71,15 +71,10 @@ removed {
   lifecycle {
     destroy = false
   }
-  # MIGRATION NOTES:
-  # 1. Before running terraform plan/apply, remove the old state entry:
-  #      terraform state rm 'cloudflare_zone_settings_override.minimal'
-  #    If inside a module named "mymod":
-  #      terraform state rm 'module.mymod.cloudflare_zone_settings_override.minimal'
-  # 2. The import blocks above are only valid in the root Terraform module.
-  #    If this file is a child module, move the import blocks to your root
-  #    module and prefix 'to' with the module path:
-  #      to = module.mymod.cloudflare_zone_setting.minimal_<setting>
+  # NOTE: The import blocks above are only valid in the root Terraform module.
+  # If this file is a child module, move the import blocks to your root
+  # module and prefix 'to' with the module path:
+  #   to = module.mymod.cloudflare_zone_setting.minimal_<setting>
 }
 
 resource "cloudflare_zone_setting" "with_integers_browser_cache_ttl" {
@@ -109,15 +104,10 @@ removed {
   lifecycle {
     destroy = false
   }
-  # MIGRATION NOTES:
-  # 1. Before running terraform plan/apply, remove the old state entry:
-  #      terraform state rm 'cloudflare_zone_settings_override.with_integers'
-  #    If inside a module named "mymod":
-  #      terraform state rm 'module.mymod.cloudflare_zone_settings_override.with_integers'
-  # 2. The import blocks above are only valid in the root Terraform module.
-  #    If this file is a child module, move the import blocks to your root
-  #    module and prefix 'to' with the module path:
-  #      to = module.mymod.cloudflare_zone_setting.with_integers_<setting>
+  # NOTE: The import blocks above are only valid in the root Terraform module.
+  # If this file is a child module, move the import blocks to your root
+  # module and prefix 'to' with the module path:
+  #   to = module.mymod.cloudflare_zone_setting.with_integers_<setting>
 }
 
 resource "cloudflare_zone_setting" "with_security_header_ssl" {
@@ -155,15 +145,10 @@ removed {
   lifecycle {
     destroy = false
   }
-  # MIGRATION NOTES:
-  # 1. Before running terraform plan/apply, remove the old state entry:
-  #      terraform state rm 'cloudflare_zone_settings_override.with_security_header'
-  #    If inside a module named "mymod":
-  #      terraform state rm 'module.mymod.cloudflare_zone_settings_override.with_security_header'
-  # 2. The import blocks above are only valid in the root Terraform module.
-  #    If this file is a child module, move the import blocks to your root
-  #    module and prefix 'to' with the module path:
-  #      to = module.mymod.cloudflare_zone_setting.with_security_header_<setting>
+  # NOTE: The import blocks above are only valid in the root Terraform module.
+  # If this file is a child module, move the import blocks to your root
+  # module and prefix 'to' with the module path:
+  #   to = module.mymod.cloudflare_zone_setting.with_security_header_<setting>
 }
 
 resource "cloudflare_zone_setting" "conditional_enabled_rocket_loader" {
@@ -185,15 +170,10 @@ removed {
   lifecycle {
     destroy = false
   }
-  # MIGRATION NOTES:
-  # 1. Before running terraform plan/apply, remove the old state entry:
-  #      terraform state rm 'cloudflare_zone_settings_override.conditional_enabled[0]'
-  #    If inside a module named "mymod":
-  #      terraform state rm 'module.mymod.cloudflare_zone_settings_override.conditional_enabled[0]'
-  # 2. The import blocks above are only valid in the root Terraform module.
-  #    If this file is a child module, move the import blocks to your root
-  #    module and prefix 'to' with the module path:
-  #      to = module.mymod.cloudflare_zone_setting.conditional_enabled_<setting>
+  # NOTE: The import blocks above are only valid in the root Terraform module.
+  # If this file is a child module, move the import blocks to your root
+  # module and prefix 'to' with the module path:
+  #   to = module.mymod.cloudflare_zone_setting.conditional_enabled_<setting>
 }
 
 resource "cloudflare_zone_setting" "conditional_disabled_browser_check" {
@@ -208,15 +188,10 @@ removed {
   lifecycle {
     destroy = false
   }
-  # MIGRATION NOTES:
-  # 1. Before running terraform plan/apply, remove the old state entry:
-  #      terraform state rm 'cloudflare_zone_settings_override.conditional_disabled[0]'
-  #    If inside a module named "mymod":
-  #      terraform state rm 'module.mymod.cloudflare_zone_settings_override.conditional_disabled[0]'
-  # 2. The import blocks above are only valid in the root Terraform module.
-  #    If this file is a child module, move the import blocks to your root
-  #    module and prefix 'to' with the module path:
-  #      to = module.mymod.cloudflare_zone_setting.conditional_disabled_<setting>
+  # NOTE: The import blocks above are only valid in the root Terraform module.
+  # If this file is a child module, move the import blocks to your root
+  # module and prefix 'to' with the module path:
+  #   to = module.mymod.cloudflare_zone_setting.conditional_disabled_<setting>
 }
 
 resource "cloudflare_zone_setting" "with_functions_browser_cache_ttl" {
@@ -246,15 +221,10 @@ removed {
   lifecycle {
     destroy = false
   }
-  # MIGRATION NOTES:
-  # 1. Before running terraform plan/apply, remove the old state entry:
-  #      terraform state rm 'cloudflare_zone_settings_override.with_functions'
-  #    If inside a module named "mymod":
-  #      terraform state rm 'module.mymod.cloudflare_zone_settings_override.with_functions'
-  # 2. The import blocks above are only valid in the root Terraform module.
-  #    If this file is a child module, move the import blocks to your root
-  #    module and prefix 'to' with the module path:
-  #      to = module.mymod.cloudflare_zone_setting.with_functions_<setting>
+  # NOTE: The import blocks above are only valid in the root Terraform module.
+  # If this file is a child module, move the import blocks to your root
+  # module and prefix 'to' with the module path:
+  #   to = module.mymod.cloudflare_zone_setting.with_functions_<setting>
 }
 
 resource "cloudflare_zone_setting" "with_interpolation_automatic_https_rewrites" {
@@ -284,15 +254,10 @@ removed {
   lifecycle {
     destroy = false
   }
-  # MIGRATION NOTES:
-  # 1. Before running terraform plan/apply, remove the old state entry:
-  #      terraform state rm 'cloudflare_zone_settings_override.with_interpolation'
-  #    If inside a module named "mymod":
-  #      terraform state rm 'module.mymod.cloudflare_zone_settings_override.with_interpolation'
-  # 2. The import blocks above are only valid in the root Terraform module.
-  #    If this file is a child module, move the import blocks to your root
-  #    module and prefix 'to' with the module path:
-  #      to = module.mymod.cloudflare_zone_setting.with_interpolation_<setting>
+  # NOTE: The import blocks above are only valid in the root Terraform module.
+  # If this file is a child module, move the import blocks to your root
+  # module and prefix 'to' with the module path:
+  #   to = module.mymod.cloudflare_zone_setting.with_interpolation_<setting>
 }
 
 resource "cloudflare_zone_setting" "with_lifecycle_always_online" {
@@ -328,15 +293,10 @@ removed {
   lifecycle {
     destroy = false
   }
-  # MIGRATION NOTES:
-  # 1. Before running terraform plan/apply, remove the old state entry:
-  #      terraform state rm 'cloudflare_zone_settings_override.with_lifecycle'
-  #    If inside a module named "mymod":
-  #      terraform state rm 'module.mymod.cloudflare_zone_settings_override.with_lifecycle'
-  # 2. The import blocks above are only valid in the root Terraform module.
-  #    If this file is a child module, move the import blocks to your root
-  #    module and prefix 'to' with the module path:
-  #      to = module.mymod.cloudflare_zone_setting.with_lifecycle_<setting>
+  # NOTE: The import blocks above are only valid in the root Terraform module.
+  # If this file is a child module, move the import blocks to your root
+  # module and prefix 'to' with the module path:
+  #   to = module.mymod.cloudflare_zone_setting.with_lifecycle_<setting>
 }
 
 resource "cloudflare_zone_setting" "with_ignore_changes_email_obfuscation" {
@@ -366,15 +326,10 @@ removed {
   lifecycle {
     destroy = false
   }
-  # MIGRATION NOTES:
-  # 1. Before running terraform plan/apply, remove the old state entry:
-  #      terraform state rm 'cloudflare_zone_settings_override.with_ignore_changes'
-  #    If inside a module named "mymod":
-  #      terraform state rm 'module.mymod.cloudflare_zone_settings_override.with_ignore_changes'
-  # 2. The import blocks above are only valid in the root Terraform module.
-  #    If this file is a child module, move the import blocks to your root
-  #    module and prefix 'to' with the module path:
-  #      to = module.mymod.cloudflare_zone_setting.with_ignore_changes_<setting>
+  # NOTE: The import blocks above are only valid in the root Terraform module.
+  # If this file is a child module, move the import blocks to your root
+  # module and prefix 'to' with the module path:
+  #   to = module.mymod.cloudflare_zone_setting.with_ignore_changes_<setting>
 }
 
 resource "cloudflare_zone_setting" "with_name_mapping_http2" {
@@ -404,15 +359,10 @@ removed {
   lifecycle {
     destroy = false
   }
-  # MIGRATION NOTES:
-  # 1. Before running terraform plan/apply, remove the old state entry:
-  #      terraform state rm 'cloudflare_zone_settings_override.with_name_mapping'
-  #    If inside a module named "mymod":
-  #      terraform state rm 'module.mymod.cloudflare_zone_settings_override.with_name_mapping'
-  # 2. The import blocks above are only valid in the root Terraform module.
-  #    If this file is a child module, move the import blocks to your root
-  #    module and prefix 'to' with the module path:
-  #      to = module.mymod.cloudflare_zone_setting.with_name_mapping_<setting>
+  # NOTE: The import blocks above are only valid in the root Terraform module.
+  # If this file is a child module, move the import blocks to your root
+  # module and prefix 'to' with the module path:
+  #   to = module.mymod.cloudflare_zone_setting.with_name_mapping_<setting>
 }
 
 resource "cloudflare_zone_setting" "with_deprecated_always_online" {
@@ -442,13 +392,8 @@ removed {
   lifecycle {
     destroy = false
   }
-  # MIGRATION NOTES:
-  # 1. Before running terraform plan/apply, remove the old state entry:
-  #      terraform state rm 'cloudflare_zone_settings_override.with_deprecated'
-  #    If inside a module named "mymod":
-  #      terraform state rm 'module.mymod.cloudflare_zone_settings_override.with_deprecated'
-  # 2. The import blocks above are only valid in the root Terraform module.
-  #    If this file is a child module, move the import blocks to your root
-  #    module and prefix 'to' with the module path:
-  #      to = module.mymod.cloudflare_zone_setting.with_deprecated_<setting>
+  # NOTE: The import blocks above are only valid in the root Terraform module.
+  # If this file is a child module, move the import blocks to your root
+  # module and prefix 'to' with the module path:
+  #   to = module.mymod.cloudflare_zone_setting.with_deprecated_<setting>
 }
