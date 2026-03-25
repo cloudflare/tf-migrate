@@ -6,7 +6,7 @@ GO := go
 MAIN_PACKAGE := ./cmd/tf-migrate
 E2E_PACKAGE := ./cmd/e2e-runner
 
-.PHONY: all build build-e2e build-all test test-unit test-integration lint-testdata clean release-snapshot sync-exemptions
+.PHONY: all build build-e2e build-all test test-unit test-integration lint-testdata clean release-snapshot sync-exemptions test-state-upgrader
 
 # Default target: build all binaries
 all: build-all
