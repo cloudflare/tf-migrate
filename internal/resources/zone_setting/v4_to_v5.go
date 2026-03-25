@@ -39,11 +39,11 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 }
 
 // TransformPhaseOne implements the PhaseOneTransformer interface.
-// It replaces the cloudflare_zone_settings_override resource block with a
-// removed {} block. Terraform requires that a resource declared in a removed {}
-// block is no longer present in config — having both is an error. By removing
-// the resource block and replacing it with removed { lifecycle { destroy = false } },
-// the v4 provider will drop the state entry without destroying the infrastructure.
+// It returns a removed {} block for the cloudflare_zone_settings_override resource.
+// The caller (runPhaseOne) comments out the original resource block in the file
+// and appends this removed {} block after it. Terraform only sees the removed {}
+// block (the resource block is a comment), so no coexistence error occurs, and
+// the v4 provider drops the state entry without destroying infrastructure.
 func (m *V4ToV5Migrator) TransformPhaseOne(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	if len(block.Labels()) < 2 {
 		return nil, fmt.Errorf("invalid resource block: expected 2 labels, got %d", len(block.Labels()))

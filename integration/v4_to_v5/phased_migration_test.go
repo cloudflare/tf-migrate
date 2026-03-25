@@ -16,16 +16,14 @@ import (
 // TestPhasedMigration_ZoneSettingsOverride tests the two-phase migration workflow
 // for cloudflare_zone_settings_override in an Atlantis-managed workspace.
 //
-// Phase 1: tf-migrate writes removed {} blocks to a separate _phase1_cleanup.tf
+// Phase 1: tf-migrate comments out the resource blocks (with a marker prefix)
+// and appends removed {} blocks in the same file. Terraform only sees the
+// removed {} blocks — no coexistence error. Atlantis applies with the v4
+// provider, dropping the state entries.
 //
-//	file, leaving the original .tf files completely untouched. The user commits
-//	_phase1_cleanup.tf; Atlantis applies it with the v4 provider, dropping the
-//	old state entries. The user then deletes _phase1_cleanup.tf.
-//
-// Phase 2: the user re-runs tf-migrate (original files intact). The tool detects
-//
-//	that _phase1_cleanup.tf no longer exists and that the state is clean,
-//	confirms with the user (or --yes), and runs the full v4→v5 migration.
+// Phase 2: the user re-runs tf-migrate. The tool detects the commented-out
+// blocks, asks for confirmation, uncomments them, removes the removed {}
+// blocks, and runs the full v4→v5 migration.
 func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration tests in short mode")
@@ -43,6 +41,7 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
   }
 }
 `
+	const markerPrefix = "# tf-migrate: "
 
 	// Build the binary once — reused across sub-tests
 	binaryPath := filepath.Join(runner.TfMigrateDir, "tf-migrate-phased-test")
@@ -52,12 +51,10 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 	require.NoError(t, err, "Failed to build tf-migrate binary: %s", out)
 	defer os.Remove(binaryPath)
 
-	cleanupFilename := "_phase1_cleanup.tf"
-
 	// -------------------------------------------------------------------------
-	// Phase 1: _phase1_cleanup.tf written, original file untouched
+	// Phase 1: resource blocks commented out, removed {} blocks added
 	// -------------------------------------------------------------------------
-	t.Run("Phase1_WritesCleanupFileOriginalUntouched", func(t *testing.T) {
+	t.Run("Phase1_CommentsOutResourceAddsRemovedBlock", func(t *testing.T) {
 		dir := t.TempDir()
 		inputFile := filepath.Join(dir, "zone_setting.tf")
 		require.NoError(t, os.WriteFile(inputFile, []byte(inputTF), 0644))
@@ -73,39 +70,42 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 		cmdOut, err := migrateCmd.CombinedOutput()
 		require.NoError(t, err, "tf-migrate phase 1 failed: %s", string(cmdOut))
 
-		// Original file must be completely unchanged
-		original, err := os.ReadFile(inputFile)
+		content, err := os.ReadFile(inputFile)
 		require.NoError(t, err)
-		assert.Equal(t, inputTF, string(original),
-			"original .tf file must be completely unchanged after phase 1")
+		out := string(content)
 
-		// _phase1_cleanup.tf must have been written
-		cleanupPath := filepath.Join(dir, cleanupFilename)
-		cleanupContent, err := os.ReadFile(cleanupPath)
-		require.NoError(t, err, "_phase1_cleanup.tf should exist after phase 1")
-		cleanupStr := string(cleanupContent)
+		// Resource block must be commented out with the marker prefix
+		assert.Contains(t, out, markerPrefix+`resource "cloudflare_zone_settings_override" "example" {`,
+			"resource block should be commented out with marker prefix")
 
-		// Cleanup file must contain the removed {} block
-		assert.Contains(t, cleanupStr, `removed {`,
-			"cleanup file should contain a removed block")
-		assert.Contains(t, cleanupStr, `cloudflare_zone_settings_override.example`,
-			"cleanup file removed block should reference the correct resource")
-		assert.Contains(t, cleanupStr, `destroy = false`,
-			"cleanup file removed block must set destroy = false")
+		// A removed {} block must be present
+		assert.Contains(t, out, `removed {`)
+		assert.Contains(t, out, `cloudflare_zone_settings_override.example`)
+		assert.Contains(t, out, `destroy = false`)
 
-		// Cleanup file must NOT contain v5 resources
-		assert.NotContains(t, cleanupStr, `resource "cloudflare_zone_setting"`,
-			"v5 resources should not appear in the cleanup file")
+		// No uncommented resource block visible to Terraform
+		for _, line := range strings.Split(out, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, `resource "cloudflare_zone_settings_override"`) {
+				t.Errorf("resource block must be commented out, found uncommented: %s", line)
+			}
+		}
+
+		// No v5 resources yet
+		assert.NotContains(t, out, `resource "cloudflare_zone_setting"`)
+		assert.NotContains(t, out, `import {`)
+
+		// No separate cleanup file
+		_, statErr := os.Stat(filepath.Join(dir, "_phase1_cleanup.tf"))
+		assert.True(t, os.IsNotExist(statErr), "no separate cleanup file should be created")
 	})
 
 	// -------------------------------------------------------------------------
-	// Phase 2: full migration runs with --yes (original files intact)
+	// Phase 2 with --yes: full migration runs directly
 	// -------------------------------------------------------------------------
 	t.Run("Phase2_RunsFullMigrationWithYesFlag", func(t *testing.T) {
 		dir := t.TempDir()
 		inputFile := filepath.Join(dir, "zone_setting.tf")
-		// Original v4 file intact — as it would be after the user deletes
-		// _phase1_cleanup.tf following a successful Atlantis apply.
 		require.NoError(t, os.WriteFile(inputFile, []byte(inputTF), 0644))
 
 		migrateCmd := exec.Command(binaryPath,
@@ -114,157 +114,115 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 			"--source-version", "v4",
 			"--target-version", "v5",
 			"--backup=false",
-			"--yes", // skip phase detection — go straight to full migration
+			"--yes",
 		)
 		migrateCmd.Dir = dir
 		cmdOut, err := migrateCmd.CombinedOutput()
-		require.NoError(t, err, "tf-migrate phase 2 failed: %s", string(cmdOut))
+		require.NoError(t, err, "tf-migrate --yes failed: %s", string(cmdOut))
 
 		content, err := os.ReadFile(inputFile)
 		require.NoError(t, err)
 		out := string(content)
 
-		// v4 resource must be gone
-		assert.NotContains(t, out, `resource "cloudflare_zone_settings_override"`,
-			"original v4 resource block should be removed after phase 2")
-
-		// v5 resources must be present
-		assert.Contains(t, out, `resource "cloudflare_zone_setting" "example_always_online"`,
-			"v5 zone_setting for always_online should be present")
-		assert.Contains(t, out, `resource "cloudflare_zone_setting" "example_ssl"`,
-			"v5 zone_setting for ssl should be present")
-
-		// import blocks must be present
-		assert.Contains(t, out, `import {`,
-			"import blocks should be present after phase 2")
-
-		// removed block should be in the final output
-		assert.True(t, strings.Contains(out, "removed {"),
-			"removed block should be in the migrated config")
-
-		// No cleanup file should be left (--yes bypasses phase detection entirely)
-		cleanupPath := filepath.Join(dir, cleanupFilename)
-		_, statErr := os.Stat(cleanupPath)
-		assert.True(t, os.IsNotExist(statErr), "no cleanup file should exist after phase 2 with --yes")
-	})
-
-	// -------------------------------------------------------------------------
-	// Phase 2 prompt: cleanup file present, user confirms → full migration
-	// -------------------------------------------------------------------------
-	t.Run("Phase2_PromptConfirmed_RunsFullMigration", func(t *testing.T) {
-		dir := t.TempDir()
-		inputFile := filepath.Join(dir, "zone_setting.tf")
-		require.NoError(t, os.WriteFile(inputFile, []byte(inputTF), 0644))
-
-		// Simulate: phase 1 already ran (cleanup file exists), user re-runs
-		// tf-migrate and is asked whether the apply succeeded.
-		cleanupPath := filepath.Join(dir, cleanupFilename)
-		require.NoError(t, os.WriteFile(cleanupPath, []byte(`
-removed {
-  from = cloudflare_zone_settings_override.example
-  lifecycle { destroy = false }
-}
-`), 0644))
-
-		migrateCmd := exec.Command(binaryPath,
-			"migrate",
-			"--config-dir", dir,
-			"--source-version", "v4",
-			"--target-version", "v5",
-			"--backup=false",
-		)
-		migrateCmd.Dir = dir
-		migrateCmd.Stdin = strings.NewReader("y\n") // confirm the apply succeeded
-		cmdOut, err := migrateCmd.CombinedOutput()
-		require.NoError(t, err, "tf-migrate phase 2 (prompt) failed: %s", string(cmdOut))
-
-		// Cleanup file must be deleted
-		_, statErr := os.Stat(cleanupPath)
-		assert.True(t, os.IsNotExist(statErr), "cleanup file should be deleted after confirmed phase 2")
-
-		// Full migration must have run
-		content, err := os.ReadFile(inputFile)
-		require.NoError(t, err)
-		out := string(content)
 		assert.NotContains(t, out, `resource "cloudflare_zone_settings_override"`)
-		assert.Contains(t, out, `resource "cloudflare_zone_setting"`)
+		assert.Contains(t, out, `resource "cloudflare_zone_setting" "example_always_online"`)
+		assert.Contains(t, out, `resource "cloudflare_zone_setting" "example_ssl"`)
+		assert.Contains(t, out, `import {`)
 	})
 
 	// -------------------------------------------------------------------------
-	// Phase 2 prompt: cleanup file present, user declines → no migration
+	// Phase 1 then phase 2 via prompt (y)
 	// -------------------------------------------------------------------------
-	t.Run("Phase2_PromptDeclined_NoMigration", func(t *testing.T) {
+	t.Run("Phase2_PromptConfirmed_UncommentsAndMigrates", func(t *testing.T) {
 		dir := t.TempDir()
 		inputFile := filepath.Join(dir, "zone_setting.tf")
 		require.NoError(t, os.WriteFile(inputFile, []byte(inputTF), 0644))
 
-		cleanupPath := filepath.Join(dir, cleanupFilename)
-		require.NoError(t, os.WriteFile(cleanupPath, []byte(`
-removed {
-  from = cloudflare_zone_settings_override.example
-  lifecycle { destroy = false }
-}
-`), 0644))
-
-		migrateCmd := exec.Command(binaryPath,
-			"migrate",
-			"--config-dir", dir,
-			"--source-version", "v4",
-			"--target-version", "v5",
-			"--backup=false",
+		// Phase 1
+		p1 := exec.Command(binaryPath,
+			"migrate", "--config-dir", dir,
+			"--source-version", "v4", "--target-version", "v5", "--backup=false",
 		)
-		migrateCmd.Dir = dir
-		migrateCmd.Stdin = strings.NewReader("n\n") // decline
-		cmdOut, err := migrateCmd.CombinedOutput()
-		require.NoError(t, err, "tf-migrate should exit cleanly on 'n': %s", string(cmdOut))
-
-		// Original file must be unchanged
-		original, err := os.ReadFile(inputFile)
+		p1.Dir = dir
+		_, err := p1.CombinedOutput()
 		require.NoError(t, err)
-		assert.Equal(t, inputTF, string(original), "original file must be unchanged when user declines")
 
-		// Cleanup file must still exist
-		_, statErr := os.Stat(cleanupPath)
-		assert.NoError(t, statErr, "cleanup file should still exist when user declines")
+		// Phase 2 — confirm with "y"
+		p2 := exec.Command(binaryPath,
+			"migrate", "--config-dir", dir,
+			"--source-version", "v4", "--target-version", "v5", "--backup=false",
+		)
+		p2.Dir = dir
+		p2.Stdin = strings.NewReader("y\n")
+		cmdOut, err := p2.CombinedOutput()
+		require.NoError(t, err, "phase 2 prompt failed: %s", string(cmdOut))
 
-		// No v5 resources
-		assert.NotContains(t, string(original), `resource "cloudflare_zone_setting"`)
+		content, err := os.ReadFile(inputFile)
+		require.NoError(t, err)
+		out := string(content)
+
+		assert.NotContains(t, out, `resource "cloudflare_zone_settings_override"`)
+		assert.NotContains(t, out, markerPrefix, "no phase-1 markers should remain")
+		assert.Contains(t, out, `resource "cloudflare_zone_setting"`)
+		assert.Contains(t, out, `import {`)
 	})
 
 	// -------------------------------------------------------------------------
-	// No phase-1 resources → runs normal migration without any prompt
+	// Phase 1 then decline (n) → file unchanged
+	// -------------------------------------------------------------------------
+	t.Run("Phase2_PromptDeclined_FileUnchanged", func(t *testing.T) {
+		dir := t.TempDir()
+		inputFile := filepath.Join(dir, "zone_setting.tf")
+		require.NoError(t, os.WriteFile(inputFile, []byte(inputTF), 0644))
+
+		p1 := exec.Command(binaryPath,
+			"migrate", "--config-dir", dir,
+			"--source-version", "v4", "--target-version", "v5", "--backup=false",
+		)
+		p1.Dir = dir
+		_, err := p1.CombinedOutput()
+		require.NoError(t, err)
+
+		afterPhase1, _ := os.ReadFile(inputFile)
+
+		p2 := exec.Command(binaryPath,
+			"migrate", "--config-dir", dir,
+			"--source-version", "v4", "--target-version", "v5", "--backup=false",
+		)
+		p2.Dir = dir
+		p2.Stdin = strings.NewReader("n\n")
+		cmdOut, err := p2.CombinedOutput()
+		require.NoError(t, err, "should exit cleanly on 'n': %s", string(cmdOut))
+
+		afterDecline, _ := os.ReadFile(inputFile)
+		assert.Equal(t, string(afterPhase1), string(afterDecline),
+			"file must be unchanged when user declines")
+	})
+
+	// -------------------------------------------------------------------------
+	// No phase-1 resources → normal migration
 	// -------------------------------------------------------------------------
 	t.Run("NoPhaseOneResources_RunsNormalMigration", func(t *testing.T) {
 		dir := t.TempDir()
 		inputFile := filepath.Join(dir, "dns.tf")
-		dnsInput := `resource "cloudflare_record" "example" {
+		require.NoError(t, os.WriteFile(inputFile, []byte(`resource "cloudflare_record" "example" {
   zone_id = "abc123"
   name    = "test"
   type    = "A"
   content = "1.2.3.4"
 }
-`
-		require.NoError(t, os.WriteFile(inputFile, []byte(dnsInput), 0644))
+`), 0644))
 
 		migrateCmd := exec.Command(binaryPath,
-			"migrate",
-			"--config-dir", dir,
-			"--source-version", "v4",
-			"--target-version", "v5",
-			"--backup=false",
+			"migrate", "--config-dir", dir,
+			"--source-version", "v4", "--target-version", "v5", "--backup=false",
 		)
 		migrateCmd.Dir = dir
 		cmdOut, err := migrateCmd.CombinedOutput()
 		require.NoError(t, err, "tf-migrate failed: %s", string(cmdOut))
 
-		content, err := os.ReadFile(inputFile)
-		require.NoError(t, err)
-		assert.Contains(t, string(content), `resource "cloudflare_dns_record"`,
-			"cloudflare_record should be migrated to cloudflare_dns_record")
-
-		// No cleanup file should exist
-		cleanupPath := filepath.Join(dir, cleanupFilename)
-		_, statErr := os.Stat(cleanupPath)
-		assert.True(t, os.IsNotExist(statErr), "no cleanup file for non-phased resources")
+		content, _ := os.ReadFile(inputFile)
+		assert.Contains(t, string(content), `resource "cloudflare_dns_record"`)
+		assert.NotContains(t, string(content), markerPrefix)
 	})
 }
