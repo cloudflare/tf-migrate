@@ -139,15 +139,17 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 				cfg.targetVersion = "v5"
 			}
 
-			fmt.Println("Cloudflare Terraform Provider Migration Tool")
-			fmt.Println("============================================")
-			fmt.Println()
-
-			fmt.Printf("Configuration directory: %s\n", cfg.configDir)
-			if cfg.outputDir != "" {
-				fmt.Printf("Output directory: %s\n", cfg.outputDir)
-			} else {
-				fmt.Println("Output directory: in-place")
+			if cfg.verbose {
+				fmt.Println("Cloudflare Terraform Provider Migration Tool")
+				fmt.Println("============================================")
+				fmt.Println()
+				fmt.Printf("Configuration directory: %s\n", cfg.configDir)
+				if cfg.outputDir != "" {
+					fmt.Printf("Output directory: %s\n", cfg.outputDir)
+				} else {
+					fmt.Println("Output directory: in-place")
+				}
+				fmt.Println()
 			}
 
 			if cfg.dryRun {
@@ -174,7 +176,7 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 
 	// Diagnostic output options
 	cmd.Flags().BoolVarP(&cfg.quiet, "quiet", "q", false, "Suppress warnings, only show errors")
-	cmd.Flags().BoolVar(&cfg.verbose, "verbose", false, "Show all diagnostics including informational messages")
+	cmd.Flags().BoolVarP(&cfg.verbose, "verbose", "v", false, "Show verbose output: per-file progress, rename tables, and all diagnostics")
 
 	return cmd
 }
@@ -418,8 +420,10 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config) error {
 						continue
 					}
 					updated = true
-					fmt.Printf("✓ Updated cloudflare provider version to %s in %s\n",
-						targetVersion, filepath.Base(file))
+					if cfg.verbose {
+						fmt.Printf("✓ Updated cloudflare provider version to %s in %s\n",
+							targetVersion, filepath.Base(file))
+					}
 				}
 			}
 		}
@@ -707,7 +711,9 @@ func commentOutBlock(blockText string) string {
 // runs the full v5 migration.
 func runPhaseTwo(log hclog.Logger, cfg config, commentedFiles []string) error {
 	fmt.Println("Phased Migration — Phase 2: Full Migration")
-	fmt.Println("===========================================")
+	if cfg.verbose {
+		fmt.Println("===========================================")
+	}
 	fmt.Println()
 	fmt.Println("Restoring commented-out resource blocks and running full v5 migration...")
 	fmt.Println()
@@ -800,7 +806,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		return nil, nil, nil
 	}
 
-	fmt.Printf("\nFound %d configuration files to migrate\n", len(files))
+	fmt.Printf("Found %d configuration files to migrate\n", len(files))
 
 	// Store file paths for global postprocessing
 	outputPaths := make([]string, 0, len(files))
@@ -810,7 +816,9 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 
 	parsedConfigs := make(map[string]*hclwrite.File)
 	for i, file := range files {
-		fmt.Printf("[%d/%d] Processing %s... ", i+1, len(files), filepath.Base(file))
+		if cfg.verbose {
+			fmt.Printf("[%d/%d] Processing %s... ", i+1, len(files), filepath.Base(file))
+		}
 		log.Debug("Processing file", "file", file, "index", i+1)
 
 		content, err := os.ReadFile(file)
@@ -861,7 +869,9 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		}
 
 		if cfg.dryRun {
-			fmt.Println("(dry run)")
+			if cfg.verbose {
+				fmt.Println("(dry run)")
+			}
 			log.Debug("Would write file", "output", outputPath)
 			outputPaths = append(outputPaths, outputPath)
 			continue
@@ -876,7 +886,9 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		if err := os.WriteFile(outputPath, transformed, 0644); err != nil {
 			return nil, allDiagnostics, fmt.Errorf("failed to write %s: %w", outputPath, err)
 		}
-		fmt.Println("✓")
+		if cfg.verbose {
+			fmt.Println("✓")
+		}
 		log.Debug("Migrated file", "output", outputPath)
 		outputPaths = append(outputPaths, outputPath)
 
@@ -907,9 +919,7 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
 			oldTypes, newType := renamer.GetResourceRename()
 			if len(oldTypes) > 0 && newType != "" {
-				// Process each old type
 				for _, oldType := range oldTypes {
-					// Only add to renames map if the types are different (actual rename)
 					if oldType != newType {
 						renames[oldType] = newType
 						log.Debug("Collected resource rename", "old", oldType, "new", newType)
@@ -918,13 +928,11 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 					}
 				}
 			} else {
-				// Warn if migrator implements interface but returned empty values
-				log.Warn("Migrator implements ResourceRenamer but returned empty type names",
+				log.Debug("Migrator implements ResourceRenamer but returned empty type names",
 					"oldTypes", oldTypes, "newType", newType)
 			}
 		} else {
-			// Warn if migrator doesn't implement ResourceRenamer interface
-			log.Warn("Migrator does not implement ResourceRenamer interface - cross-file references may not be updated",
+			log.Debug("Migrator does not implement ResourceRenamer interface - cross-file references may not be updated",
 				"migrator", fmt.Sprintf("%T", migrator))
 		}
 
@@ -949,22 +957,22 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		return nil
 	}
 
-	totalUpdates := len(renames) + len(attributeRenames)
-	fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
+	if cfg.verbose {
+		totalUpdates := len(renames) + len(attributeRenames)
+		fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
 
-	// Print summary of resource type renames (always shown)
-	if len(renames) > 0 {
-		fmt.Println("\nResource type renames:")
-		for oldType, newType := range renames {
-			fmt.Printf("  %s → %s\n", oldType, newType)
+		if len(renames) > 0 {
+			fmt.Println("\nResource type renames:")
+			for oldType, newType := range renames {
+				fmt.Printf("  %s → %s\n", oldType, newType)
+			}
 		}
-	}
 
-	// Print summary of attribute renames (always shown)
-	if len(attributeRenames) > 0 {
-		fmt.Println("\nAttribute renames:")
-		for _, rename := range attributeRenames {
-			fmt.Printf("  %s.*.%s → %s.*.%s\n", rename.ResourceType, rename.OldAttribute, rename.ResourceType, rename.NewAttribute)
+		if len(attributeRenames) > 0 {
+			fmt.Println("\nAttribute renames:")
+			for _, rename := range attributeRenames {
+				fmt.Printf("  %s.*.%s → %s.*.%s\n", rename.ResourceType, rename.OldAttribute, rename.ResourceType, rename.NewAttribute)
+			}
 		}
 	}
 
@@ -1018,7 +1026,9 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		}
 	}
 
-	fmt.Printf("✓ Updated cross-file references (%d updates applied)\n", totalUpdates)
+	if cfg.verbose {
+		fmt.Printf("✓ Updated cross-file references (%d rule(s) applied)\n", len(renames)+len(attributeRenames))
+	}
 	return nil
 }
 
