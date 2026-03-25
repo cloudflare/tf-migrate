@@ -843,8 +843,7 @@ func RunV5UpgradeClean(cfg *V5UpgradeConfig, modules []string) error {
 		initArgs := []string{"init", "-no-color", "-input=false", "-backend-config=backend.configured.hcl", "-upgrade"}
 		if err := tf.RunToFile(filepath.Join(tmpDir, "clean-init.log"), initArgs...); err != nil {
 			printError("Terraform init for destroy failed")
-			content, _ := os.ReadFile(filepath.Join(tmpDir, "clean-init.log"))
-			fmt.Println(string(content))
+			printYellow("See log: %s", filepath.Join(tmpDir, "clean-init.log"))
 			return err
 		}
 		printSuccess("Provider and lockfile initialized for destroy")
@@ -853,8 +852,7 @@ func RunV5UpgradeClean(cfg *V5UpgradeConfig, modules []string) error {
 		initArgs := []string{"init", "-no-color", "-input=false", "-backend-config=backend.configured.hcl", "-upgrade"}
 		if err := tf.RunToFile(filepath.Join(tmpDir, "clean-init.log"), initArgs...); err != nil {
 			printError("Terraform init -upgrade for destroy failed")
-			content, _ := os.ReadFile(filepath.Join(tmpDir, "clean-init.log"))
-			fmt.Println(string(content))
+			printYellow("See log: %s", filepath.Join(tmpDir, "clean-init.log"))
 			return err
 		}
 		printSuccess("Provider updated to target version for destroy")
@@ -863,10 +861,10 @@ func RunV5UpgradeClean(cfg *V5UpgradeConfig, modules []string) error {
 	// Run terraform destroy
 	destroyArgs := []string{"destroy", "-no-color", "-input=false", "-auto-approve"}
 	printYellow("Running terraform destroy...")
-	output, err := tf.Run(destroyArgs...)
-	if err != nil {
+	destroyLog := filepath.Join(tmpDir, "clean-destroy.log")
+	if err := tf.RunToFile(destroyLog, destroyArgs...); err != nil {
 		printError("Terraform destroy failed")
-		fmt.Println(output)
+		printYellow("See log: %s", destroyLog)
 		return err
 	}
 	printSuccess("Resources destroyed")
