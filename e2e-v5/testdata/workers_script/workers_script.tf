@@ -1,3 +1,4 @@
+
 variable "cloudflare_account_id" {
   description = "Cloudflare account ID"
   type        = string
@@ -51,10 +52,12 @@ resource "cloudflare_r2_bucket" "test_r2" {
 # ========================================
 
 locals {
-  name_prefix    = "v5-upgrade-${replace(var.from_version, ".", "-")}"
-  worker_prefix  = local.name_prefix
-  common_content = "addEventListener('fetch', event => { event.respondWith(new Response('Hello World')); });"
-  script_names   = ["worker-1", "worker-2", "worker-3"]
+  name_prefix                   = "v5-upgrade-${replace(var.from_version, ".", "-")}"
+  worker_prefix                 = local.name_prefix
+  common_content                = "addEventListener('fetch', event => { event.respondWith(new Response('Hello World')); });"
+  script_names                  = ["worker-1", "worker-2", "worker-3"]
+  legacy_module_upload_versions = ["5.17.0", "5.18.0"]
+  use_legacy_worker_upload      = contains(local.legacy_module_upload_versions, var.from_version)
 
   # Complex expression
   full_worker_name = "${local.worker_prefix}-main"
@@ -227,12 +230,12 @@ resource "cloudflare_workers_script" "module_false" {
 
 resource "cloudflare_workers_script" "placement" {
   account_id = var.cloudflare_account_id
-  content    = "export default { fetch(request) { return new Response('Hello World'); } }"
+  content    = local.use_legacy_worker_upload ? local.common_content : "export default { fetch(request) { return new Response('Hello World'); } }"
 
   script_name        = "${local.name_prefix}-placement-worker"
-  main_module        = "worker.js"
+  main_module        = local.use_legacy_worker_upload ? null : "worker.js"
   compatibility_date = "2025-01-01"
-  placement = var.from_version == "5.18.0" ? null : {
+  placement = local.use_legacy_worker_upload ? null : {
     mode = "smart"
   }
 }
@@ -261,7 +264,7 @@ resource "cloudflare_workers_script" "tags" {
 
 resource "cloudflare_workers_script" "comprehensive" {
   account_id = var.cloudflare_account_id
-  content    = "export default { fetch(request) { return new Response('Hello World'); } }"
+  content    = local.use_legacy_worker_upload ? local.common_content : "export default { fetch(request) { return new Response('Hello World'); } }"
 
 
 
@@ -282,9 +285,9 @@ resource "cloudflare_workers_script" "comprehensive" {
       namespace_id = cloudflare_workers_kv_namespace.test_kv.id
     }
   ]
-  main_module        = "worker.js"
+  main_module        = local.use_legacy_worker_upload ? null : "worker.js"
   compatibility_date = "2025-01-01"
-  placement = var.from_version == "5.18.0" ? null : {
+  placement = local.use_legacy_worker_upload ? null : {
     mode = "smart"
   }
 }
