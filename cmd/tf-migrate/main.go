@@ -167,12 +167,20 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 	// --no-backup is a convenience alias for --backup=false
 	var noBackup bool
 	cmd.Flags().BoolVar(&noBackup, "no-backup", false, "Skip creating backup files before migration (alias for --backup=false)")
+	cmd.Flags().BoolVar(&cfg.skipPhaseCheck, "skip-phase-check", false, "Skip the phased migration confirmation prompt and run the full migration directly (for CI/non-interactive use)")
+	// --yes is a hidden alias for --skip-phase-check kept for backward compatibility
+	// with provider test harnesses and CI scripts that predate the rename.
+	var yesAlias bool
+	cmd.Flags().BoolVar(&yesAlias, "yes", false, "")
+	_ = cmd.Flags().MarkHidden("yes")
 	cmd.PreRun = func(cmd *cobra.Command, args []string) {
 		if noBackup {
 			cfg.backup = false
 		}
+		if yesAlias {
+			cfg.skipPhaseCheck = true
+		}
 	}
-	cmd.Flags().BoolVar(&cfg.skipPhaseCheck, "skip-phase-check", false, "Skip the phased migration confirmation prompt and run the full migration directly (for CI/non-interactive use)")
 
 	// Diagnostic output options
 	cmd.Flags().BoolVarP(&cfg.quiet, "quiet", "q", false, "Suppress warnings, only show errors")
