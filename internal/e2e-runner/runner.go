@@ -16,6 +16,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -324,31 +325,22 @@ func RunE2ETests(cfg *RunConfig) error {
 
 	// Remove state entries for resource types the v5 provider has no schema for.
 	// cloudflare_zone_settings_override does not exist in v5 — attempting a plan
-	// with these entries in state produces schema errors. We remove them from the
-	// local state file directly since the e2e runner has full shell access.
+	// with these entries in state produces schema errors.
+	//
+	// We manipulate the local state JSON file directly rather than running
+	// `terraform state rm`, which requires `terraform init` to have been run
+	// first (modules must be installed). Direct JSON manipulation works on the
+	// local state file before init, avoiding the "Module not installed" error.
 	// (Real Atlantis users use the _phase1_cleanup.tf phased approach instead.)
-	v5StateTF := NewTerraformRunner(v5Dir)
-	obsoleteTypes := []string{"cloudflare_zone_settings_override"}
-	if resources, err := v5StateTF.StateList(); err == nil {
-		for _, addr := range resources {
-			typePart := addr
-			for strings.HasPrefix(typePart, "module.") {
-				parts := strings.SplitN(typePart, ".", 3)
-				if len(parts) < 3 {
-					break
-				}
-				typePart = parts[2]
-			}
-			resourceType := strings.SplitN(typePart, ".", 2)[0]
-			for _, obsolete := range obsoleteTypes {
-				if resourceType == obsolete {
-					printYellow("Removing obsolete state entry (no v5 schema): %s", addr)
-					if err := v5StateTF.StateRm(addr); err != nil {
-						printYellow("Warning: failed to remove %s: %v", addr, err)
-					}
-					break
-				}
-			}
+	obsoleteTypes := map[string]bool{
+		"cloudflare_zone_settings_override": true,
+	}
+	stateFilePath := filepath.Join(v5Dir, "terraform.tfstate")
+	if removed, err := removeObsoleteStateEntries(stateFilePath, obsoleteTypes); err != nil {
+		printYellow("Warning: failed to clean obsolete state entries: %v", err)
+	} else {
+		for _, addr := range removed {
+			printYellow("Removing obsolete state entry (no v5 schema): %s", addr)
 		}
 	}
 
@@ -895,6 +887,67 @@ func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string, resou
 	}
 
 	return result
+}
+
+// removeObsoleteStateEntries removes resource entries of the given types directly
+// from the local terraform.tfstate JSON file. This avoids running `terraform state rm`
+// which requires modules to be installed (terraform init). Returns the list of
+// removed resource addresses.
+func removeObsoleteStateEntries(stateFilePath string, obsoleteTypes map[string]bool) ([]string, error) {
+	data, err := os.ReadFile(stateFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var state map[string]interface{}
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, fmt.Errorf("failed to parse state file: %w", err)
+	}
+
+	resources, ok := state["resources"].([]interface{})
+	if !ok {
+		return nil, nil
+	}
+
+	var kept []interface{}
+	var removed []string
+
+	for _, r := range resources {
+		res, ok := r.(map[string]interface{})
+		if !ok {
+			kept = append(kept, r)
+			continue
+		}
+		rType, _ := res["type"].(string)
+		if obsoleteTypes[rType] {
+			rModule, _ := res["module"].(string)
+			rName, _ := res["name"].(string)
+			addr := rType + "." + rName
+			if rModule != "" {
+				addr = rModule + "." + addr
+			}
+			removed = append(removed, addr)
+		} else {
+			kept = append(kept, r)
+		}
+	}
+
+	if len(removed) == 0 {
+		return nil, nil
+	}
+
+	state["resources"] = kept
+	updated, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize state: %w", err)
+	}
+	if err := os.WriteFile(stateFilePath, updated, permFile); err != nil {
+		return nil, fmt.Errorf("failed to write state file: %w", err)
+	}
+	return removed, nil
 }
 
 func runV4Tests(ctx *testContext) error {
