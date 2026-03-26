@@ -12,7 +12,7 @@ resource "cloudflare_authenticated_origin_pulls" "zone_wide" {
   enabled = true
 }
 
-# TKT-001: cert_id should reference the renamed resource type
+# cert_id must reference the hostname certificate resource type
 # In v4: cloudflare_authenticated_origin_pulls_certificate (per-hostname type)
 # In v5: cloudflare_authenticated_origin_pulls_hostname_certificate
 resource "cloudflare_authenticated_origin_pulls_certificate" "hostname_cert" {
@@ -29,7 +29,7 @@ resource "cloudflare_authenticated_origin_pulls" "hostname_aop" {
   enabled                                = true
 }
 
-# TKT-001: for_each variant — cert_id referencing per-hostname cert
+# for_each variant — cert_id referencing per-hostname cert
 locals {
   hostnames = { "api" = "api.example.com", "web" = "web.example.com" }
 }

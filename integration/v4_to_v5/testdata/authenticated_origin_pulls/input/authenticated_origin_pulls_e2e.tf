@@ -1,6 +1,6 @@
 # E2E test for authenticated_origin_pulls migration
 # NOTE: Only includes the zone-wide AOP resource for e2e testing.
-# The TKT-001 cert_id reference fix (per-hostname certificates) is validated
+# The cert_id reference fix (per-hostname certificates) is validated
 # by integration tests only — the API rejects fake certificate data and real
 # certificates cannot be included in testdata.
 

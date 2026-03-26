@@ -2,10 +2,10 @@
 # Excludes resources that can't be created in the e2e environment:
 # - service_token_policy, multi_service_token_policy, combined_research_team_policy:
 #   require real cloudflare_access_service_token resources
-# - app_scoped_policy: requires a real domain/application setup (TKT-003)
+# - app_scoped_policy: requires a real domain/application setup
 # - test_token, test_token_2: excluded since dependent policies are excluded
 #
-# The TKT-004 service_token fix and TKT-003 application_id handling
+# service_token and application_id handling
 # are validated by integration tests only.
 
 # Variables
@@ -115,7 +115,7 @@ resource "cloudflare_access_policy" "maximal" {
   }
 }
 
-# TKT-002 + TKT-005: email_domain conversion (block → list, list → {domain=...})
+# email_domain: block → list conversion, list → {domain=...} object
 resource "cloudflare_access_policy" "email_domain_policy" {
   account_id       = var.cloudflare_account_id
   name             = "${local.name_prefix}-email-domain"
@@ -127,7 +127,7 @@ resource "cloudflare_access_policy" "email_domain_policy" {
   }
 }
 
-# TKT-006: any_valid_service_token true → {}
+# any_valid_service_token true → {}
 resource "cloudflare_access_policy" "any_service_token_policy" {
   account_id       = var.cloudflare_account_id
   name             = "${local.name_prefix}-any-service-token"
@@ -139,7 +139,7 @@ resource "cloudflare_access_policy" "any_service_token_policy" {
   }
 }
 
-# TKT-006: any_valid_service_token = false should be omitted, email_domain kept
+# any_valid_service_token = false should be omitted, email_domain kept
 resource "cloudflare_access_policy" "no_service_token_policy" {
   account_id       = var.cloudflare_account_id
   name             = "${local.name_prefix}-no-service-token"
@@ -152,7 +152,7 @@ resource "cloudflare_access_policy" "no_service_token_policy" {
   }
 }
 
-# TKT-005: multiple email domains
+# multiple email domains
 resource "cloudflare_access_policy" "multi_email_domain_policy" {
   account_id       = var.cloudflare_account_id
   name             = "${local.name_prefix}-multi-email-domain"
