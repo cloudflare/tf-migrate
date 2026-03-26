@@ -15,6 +15,19 @@ exemptions:
       - 'enabled_entries.*->.*null'
     enabled: true
 
+  # name and open_access are Computed-only in v5 — the provider reads them from
+  # the API and stores them in state, but they cannot be set in config. After
+  # migration these fields show as (known after apply) on the first plan.
+  # One-time drift that resolves after the first terraform apply.
+  - name: "computed_only_fields"
+    description: "name and open_access are Computed-only in v5 and become (known after apply) on the first plan after migration. Resolves after apply."
+    resource_types:
+      - "cloudflare_zero_trust_dlp_predefined_profile"
+    patterns:
+      - '~ name\s*=.*->.*\(known after apply\)'
+      - '~ open_access\s*=.*->.*\(known after apply\)'
+    enabled: true
+
 settings:
   apply_exemptions: true
   verbose_exemptions: false
