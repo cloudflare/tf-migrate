@@ -8,6 +8,7 @@ dist/
 
 # Local provider dev overrides
 .terraformrc-tf-migrate
+.terraformrc-su-test
 
 # E2E test files
 # Ignore v4 directory except provider.tf and backend.hcl
@@ -15,11 +16,13 @@ e2e/tf/v4/*
 !e2e/tf/v4/provider.tf
 !e2e/tf/v4/backend.hcl
 
+e2e-v5/tf
 # Migrated output
 e2e/migrated-v4_to_v5/
 
 # E2E test outputs
 e2e/tmp/
+e2e-v5/tmp/
 
 # E2E test state files (stored in remote backend)
 e2e/tf/v4/terraform.tfstate*

@@ -113,6 +113,80 @@ var cleanCmd = &cobra.Command{
 	},
 }
 
+// ============================================================================
+// V5 Upgrade Commands - Tests provider v5 upgrades for v5→v5 migrations
+// ============================================================================
+
+var v5UpgradeCleanCmd = &cobra.Command{
+	Use:          "v5-upgrade-clean",
+	Short:        "Clean up v5 upgrade test resources",
+	Long:         `Destroys resources and removes them from the v5 upgrade test state. Use --modules to target specific modules.`,
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg := &e2e.V5UpgradeConfig{
+			FromVersion: cmd.Flag("from-version").Value.String(),
+			ToVersion:   cmd.Flag("to-version").Value.String(),
+		}
+
+		var modules []string
+		modulesStr, _ := cmd.Flags().GetString("modules")
+		if modulesStr != "" {
+			for _, m := range strings.Split(modulesStr, ",") {
+				m = strings.TrimSpace(m)
+				if m != "" {
+					modules = append(modules, m)
+				}
+			}
+		}
+
+		return e2e.RunV5UpgradeClean(cfg, modules)
+	},
+}
+
+var v5UpgradeCmd = &cobra.Command{
+	Use:          "v5-upgrade",
+	Short:        "Test provider v5 upgrades for v5→v5 migrations",
+	SilenceUsage: true,
+	Long: `Tests that provider v5 upgrades work correctly when upgrading between v5 versions.
+
+This command validates that users can safely upgrade from older v5 provider versions
+(e.g., 5.18.0) to newer versions without state corruption or unexpected drift.
+
+Unlike v4→v5 migration tests, these tests:
+  - Do NOT use tf-migrate (configs are already v5 syntax)
+  - Test the provider's built-in UpgradeState mechanism
+  - Create resources with an older v5 version, then upgrade the provider
+
+Examples:
+  # Run with local provider (recommended)
+  e2e v5-upgrade --from-version 5.18.0 --provider ../provider --apply-exemptions
+
+  # Run with registry provider
+  e2e v5-upgrade --from-version 5.18.0 --to-version latest --apply-exemptions
+
+  # Run and clean up after
+  e2e v5-upgrade --from-version 5.18.0 --provider ../provider --clean
+
+  # Test specific resources
+  e2e v5-upgrade --from-version 5.18.0 --resources dns_record,ruleset --provider ../provider`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		parallelism, _ := cmd.Flags().GetInt("parallelism")
+
+		cfg := &e2e.V5UpgradeConfig{
+			FromVersion:     cmd.Flag("from-version").Value.String(),
+			ToVersion:       cmd.Flag("to-version").Value.String(),
+			Resources:       cmd.Flag("resources").Value.String(),
+			Exclude:         cmd.Flag("exclude").Value.String(),
+			ApplyExemptions: cmd.Flag("apply-exemptions").Changed,
+			Parallelism:     parallelism,
+			SkipCreate:      cmd.Flag("skip-create").Changed,
+			ProviderPath:    cmd.Flag("provider").Value.String(),
+			Clean:           cmd.Flag("clean").Changed,
+		}
+		return e2e.RunV5UpgradeTests(cfg)
+	},
+}
+
 func init() {
 	// Init command flags
 	initCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
@@ -135,11 +209,29 @@ func init() {
 	// Clean command flags
 	cleanCmd.Flags().String("modules", "", "Modules to remove from state (comma-separated)")
 
+	// V5 Upgrade command flags
+	v5UpgradeCmd.Flags().String("from-version", e2e.DefaultFromVersion, "Source provider version (e.g., 5.18.0)")
+	v5UpgradeCmd.Flags().String("to-version", e2e.DefaultToVersion, "Target provider version (e.g., latest, 5.20.0)")
+	v5UpgradeCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
+	v5UpgradeCmd.Flags().String("exclude", "", "Exclude specific resources (comma-separated)")
+	v5UpgradeCmd.Flags().Bool("apply-exemptions", false, "Apply drift exemptions from global and resource-specific configs")
+	v5UpgradeCmd.Flags().Int("parallelism", 0, "Terraform parallelism for plan/apply (0 uses Terraform default)")
+	v5UpgradeCmd.Flags().Bool("skip-create", false, "Skip resource creation, use existing state")
+	v5UpgradeCmd.Flags().String("provider", "", "Path to local provider source directory (will be built automatically)")
+	v5UpgradeCmd.Flags().Bool("clean", false, "Destroy resources and clean up state after test completes")
+
+	// V5 Upgrade Clean command flags
+	v5UpgradeCleanCmd.Flags().String("from-version", e2e.DefaultFromVersion, "Source provider version (e.g., 5.18.0)")
+	v5UpgradeCleanCmd.Flags().String("to-version", e2e.DefaultToVersion, "Target provider version (e.g., latest, 5.20.0)")
+	v5UpgradeCleanCmd.Flags().String("modules", "", "Modules to clean (comma-separated, e.g., 'page_rule,dns_record')")
+
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(migrateCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(bootstrapCmd)
 	rootCmd.AddCommand(cleanCmd)
+	rootCmd.AddCommand(v5UpgradeCmd)
+	rootCmd.AddCommand(v5UpgradeCleanCmd)
 }
 
 func main() {
