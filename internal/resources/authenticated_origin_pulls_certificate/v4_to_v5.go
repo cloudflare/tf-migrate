@@ -1,9 +1,6 @@
 package authenticated_origin_pulls_certificate
 
 import (
-	"regexp"
-	"strings"
-
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -42,46 +39,19 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 }
 
 func (m *V4ToV5Migrator) Postprocess(content string) string {
-	// Handle cross-file reference updates for resource split
-	// We need to update references like:
-	// cloudflare_authenticated_origin_pulls_certificate.resource_name
-	// to:
-	// cloudflare_authenticated_origin_pulls_hostname_certificate.resource_name
-	// for resources that were migrated to the hostname type
-
-	// This is a best-effort approach - we look for patterns that suggest
-	// a hostname resource based on common naming conventions
-	re := regexp.MustCompile(`cloudflare_authenticated_origin_pulls_certificate\.([a-zA-Z0-9_]+)`)
-
-	content = re.ReplaceAllStringFunc(content, func(match string) string {
-		// Extract the resource name
-		parts := strings.Split(match, ".")
-		if len(parts) != 2 {
-			return match
-		}
-		resourceName := parts[1]
-
-		// Check if this looks like a hostname resource (contains "hostname" or "host" in name)
-		lowerName := strings.ToLower(resourceName)
-		if strings.Contains(lowerName, "hostname") || strings.Contains(lowerName, "host") {
-			// Update to hostname certificate resource
-			return "cloudflare_authenticated_origin_pulls_hostname_certificate." + resourceName
-		}
-
-		// Keep as per-zone resource
-		return match
-	})
-
+	// No longer used — reference updates are handled via GetResourceRenameForName
+	// which tracks per-hostname resources during TransformConfig.
 	return content
 }
 
-// GetResourceRename implements the ResourceRenamer interface
-// This resource splits into two different types based on the type field:
-// - per-zone -> cloudflare_authenticated_origin_pulls_certificate
-// - per-hostname -> cloudflare_authenticated_origin_pulls_hostname_certificate
-// We return the v4 name for both to indicate no simple 1:1 rename
+// GetResourceRename implements the ResourceRenamer interface.
+// In v5, all per-hostname certificate references (used in cert_id of
+// cloudflare_authenticated_origin_pulls) must point to
+// cloudflare_authenticated_origin_pulls_hostname_certificate.
+// Per-zone certificates keep the same name but are not referenced via cert_id,
+// so renaming all cross-file references to the hostname type is correct.
 func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
-	return []string{"cloudflare_authenticated_origin_pulls_certificate"}, "cloudflare_authenticated_origin_pulls_certificate"
+	return []string{"cloudflare_authenticated_origin_pulls_certificate"}, "cloudflare_authenticated_origin_pulls_hostname_certificate"
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {

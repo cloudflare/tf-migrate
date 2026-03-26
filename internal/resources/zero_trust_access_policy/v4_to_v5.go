@@ -355,14 +355,15 @@ func (m *V4ToV5Migrator) expandObject(obj *hclsyntax.ObjectConsExpr) []hclsyntax
 func (m *V4ToV5Migrator) expandArrayAttribute(key string, item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
 	// Map of attribute names to their inner field names
 	arrayAttrs := map[string]string{
-		"email":        "email",
-		"group":        "id",
-		"ip":           "ip",
-		"email_domain": "domain",
-		"geo":          "country_code",
-		"common_name":  "common_name",
-		"auth_method":  "auth_method",
-		"login_method": "id",
+		"email":         "email",
+		"group":         "id",
+		"ip":            "ip",
+		"email_domain":  "domain",
+		"geo":           "country_code",
+		"common_name":   "common_name",
+		"auth_method":   "auth_method",
+		"login_method":  "id",
+		"service_token": "token_id",
 	}
 
 	innerFieldName, isArrayAttr := arrayAttrs[key]
@@ -652,10 +653,27 @@ func (m *V4ToV5Migrator) buildExprTokens(expr hclsyntax.Expression) hclwrite.Tok
 		}
 
 	case *hclsyntax.ScopeTraversalExpr:
-		if len(e.Traversal) > 0 {
-			if root, ok := e.Traversal[0].(hcl.TraverseRoot); ok {
-				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(root.Name)})
+		// Serialize the full traversal: root.attr[index].attr etc.
+		for i, step := range e.Traversal {
+			switch t := step.(type) {
+			case hcl.TraverseRoot:
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(t.Name)})
+			case hcl.TraverseAttr:
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenDot, Bytes: []byte(".")})
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(t.Name)})
+			case hcl.TraverseIndex:
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")})
+				if t.Key.Type() == cty.String {
+					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOQuote, Bytes: []byte("\"")})
+					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(t.Key.AsString())})
+					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCQuote, Bytes: []byte("\"")})
+				} else if t.Key.Type() == cty.Number {
+					bf := t.Key.AsBigFloat()
+					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNumberLit, Bytes: []byte(bf.Text('f', -1))})
+				}
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
 			}
+			_ = i
 		}
 
 	case *hclsyntax.LiteralValueExpr:
@@ -760,10 +778,47 @@ func (m *V4ToV5Migrator) buildExprTokens(expr hclsyntax.Expression) hclwrite.Tok
 			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCQuote, Bytes: []byte("\"")})
 		}
 
+	case *hclsyntax.RelativeTraversalExpr:
+		// Handle relative traversals like each.key, each.value, count.index
+		tokens = append(tokens, m.buildExprTokens(e.Source)...)
+		for _, step := range e.Traversal {
+			switch t := step.(type) {
+			case hcl.TraverseAttr:
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenDot, Bytes: []byte(".")})
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(t.Name)})
+			case hcl.TraverseIndex:
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")})
+				if t.Key.Type() == cty.String {
+					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOQuote, Bytes: []byte("\"")})
+					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(t.Key.AsString())})
+					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCQuote, Bytes: []byte("\"")})
+				}
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
+			}
+		}
+
+	case *hclsyntax.IndexExpr:
+		// Handle index expressions like resource.name[each.key]
+		tokens = append(tokens, m.buildExprTokens(e.Collection)...)
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")})
+		tokens = append(tokens, m.buildExprTokens(e.Key)...)
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
+
+	case *hclsyntax.FunctionCallExpr:
+		// Handle function calls like toset(...), tolist(...) etc.
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(e.Name)})
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOParen, Bytes: []byte("(")})
+		for i, arg := range e.Args {
+			if i > 0 {
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenComma, Bytes: []byte(", ")})
+			}
+			tokens = append(tokens, m.buildExprTokens(arg)...)
+		}
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCParen, Bytes: []byte(")")})
+
 	default:
-		// For unknown types, try to get the value from the range
-		// This is a fallback that shouldn't normally be hit
-		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenComment, Bytes: []byte("/* UNKNOWN TYPE */")})
+		// Fallback: try to serialize using the source range bytes from the original file
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenComment, Bytes: []byte("/* UNKNOWN EXPR TYPE */")})
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("null")})
 	}
 
