@@ -9,11 +9,20 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
+
+// binaryCache caches the pre-built tf-migrate binary path so it is only
+// compiled once per test run rather than once per sub-test.
+var binaryCache struct {
+	sync.Once
+	path string
+	err  error
+}
 
 // TestCase represents a single integration test case
 type TestCase struct {
@@ -104,19 +113,31 @@ func (r *TestRunner) copyDirectory(src, dst string) error {
 	return nil
 }
 
+// buildBinary builds the tf-migrate binary once and caches the path.
+func (r *TestRunner) buildBinary() (string, error) {
+	binaryCache.Do(func() {
+		binaryPath := filepath.Join(r.TfMigrateDir, "tf-migrate-integration-test")
+		buildCmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/tf-migrate")
+		buildCmd.Dir = r.TfMigrateDir
+		if output, err := buildCmd.CombinedOutput(); err != nil {
+			binaryCache.err = fmt.Errorf("building tf-migrate: %w\nOutput: %s", err, output)
+			return
+		}
+		binaryCache.path = binaryPath
+	})
+	return binaryCache.path, binaryCache.err
+}
+
 // runMigration executes tf-migrate on the given directory
 func (r *TestRunner) runMigration(dir string) error {
-	// Build the binary first to avoid compilation issues
-	buildCmd := exec.Command("go", "build", "-o", filepath.Join(r.TfMigrateDir, "tf-migrate"), "./cmd/tf-migrate")
-	buildCmd.Dir = r.TfMigrateDir
-	if output, err := buildCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("building tf-migrate: %w\nOutput: %s", err, output)
+	binaryPath, err := r.buildBinary()
+	if err != nil {
+		return err
 	}
 
-	// Use --yes to skip phased migration detection and run the full migration
-	// directly. Integration tests validate the final v5 output, not the
-	// intermediate phase-1 state — phased migration is covered separately
-	// in phased_migration_test.go.
+	// Use --skip-phase-check to run the full migration directly.
+	// Integration tests validate the final v5 output, not the intermediate
+	// phase-1 state — phased migration is covered separately in phased_migration_test.go.
 	args := []string{
 		"migrate",
 		"--config-dir", dir,
@@ -126,8 +147,8 @@ func (r *TestRunner) runMigration(dir string) error {
 		"--skip-phase-check",
 	}
 
-	// Run migration
-	migrateCmd := exec.Command(filepath.Join(r.TfMigrateDir, "tf-migrate"), args...)
+	// Run migration using the cached binary
+	migrateCmd := exec.Command(binaryPath, args...)
 	// Set GODEBUG to make map iteration deterministic for consistent test output
 	migrateCmd.Env = append(os.Environ(), "GODEBUG=randommapseed=0")
 
