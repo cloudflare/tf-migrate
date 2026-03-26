@@ -6,6 +6,7 @@ A CLI tool for automatically migrating Terraform configurations between differen
 
 `tf-migrate` helps you upgrade your Terraform infrastructure code by automatically transforming:
 - **Configuration files** (`.tf`) — Updates resource types, attribute names, block structures, and generates import blocks for new v5 resources
+- **Provider version** — Automatically updates `required_providers` to the latest v5 version and prints instructions to regenerate the lock file
 
 > **Note:** tf-migrate does not modify Terraform state. State is upgraded automatically by the v5 provider on first `terraform apply` via its built-in `UpgradeState`/`MoveState` support.
 
@@ -93,7 +94,7 @@ A CLI tool for automatically migrating Terraform configurations between differen
 | | `cloudflare_device_settings_policy` / `cloudflare_zero_trust_device_profiles` | `cloudflare_zero_trust_device_profiles` | resource |
 | | `cloudflare_device_dex_test` / `cloudflare_zero_trust_dex_test` | `cloudflare_zero_trust_dex_test` | resource |
 | | `cloudflare_dlp_profile` / `cloudflare_zero_trust_dlp_profile` | `cloudflare_zero_trust_dlp_custom_profile` | resource |
-| | `cloudflare_zero_trust_dlp_predefined_profile` | `cloudflare_zero_trust_dlp_custom_profile` | resource |
+| | `cloudflare_zero_trust_dlp_predefined_profile` | `cloudflare_zero_trust_dlp_predefined_profile` | resource |
 | | `cloudflare_zero_trust_gateway_certificate` | `cloudflare_zero_trust_gateway_certificate` | resource |
 | | `cloudflare_teams_rule` | `cloudflare_zero_trust_gateway_policy` | resource |
 | | `cloudflare_teams_account` / `cloudflare_zero_trust_gateway_settings` | `cloudflare_zero_trust_gateway_settings` | resource |
@@ -181,6 +182,80 @@ tf-migrate migrate \
 tf-migrate migrate --recursive --source-version v4 --target-version v5
 ```
 
+### Verbose Output
+
+Show per-file progress, rename tables, and cross-file reference details:
+
+```bash
+tf-migrate migrate -v --source-version v4 --target-version v5
+```
+
+## What tf-migrate Does Automatically
+
+After a successful migration, tf-migrate:
+
+1. **Transforms all `.tf` files** — resource renames, attribute changes, block restructuring, `moved {}` blocks, `import {}` blocks
+2. **Updates the provider version** in `required_providers` to the latest v5 release (fetched from GitHub, falls back to a known-good version)
+3. **Prints next-step instructions** for regenerating the lock file:
+   ```
+   terraform init -upgrade -backend=false
+   ```
+4. **Handles `zone_settings_override` automatically** via phased migration — see [Phased Migration](#phased-migration-zone_settings_override) below
+
+## Phased Migration (`zone_settings_override`)
+
+`cloudflare_zone_settings_override` has no schema in the v5 provider. In Atlantis-managed workspaces, `terraform state rm` is typically disabled for safety, making manual state cleanup impossible.
+
+tf-migrate handles this automatically in two phases:
+
+### Phase 1 (first run — detected automatically)
+
+tf-migrate detects `zone_settings_override` resources and modifies the `.tf` file in-place:
+- **Comments out** each `cloudflare_zone_settings_override` resource block with a `# tf-migrate: ` prefix
+- **Appends** a `removed { lifecycle { destroy = false } }` block after each commented block
+
+Terraform only sees the `removed {}` blocks (the resource is a comment), so there is no coexistence error. The v4 provider processes the `removed {}` blocks on `terraform plan`/`apply`, dropping the state entries without touching any infrastructure.
+
+```hcl
+# tf-migrate: resource "cloudflare_zone_settings_override" "example" {
+# tf-migrate:   zone_id = var.zone_id
+# tf-migrate:   settings {
+# tf-migrate:     always_online = "on"
+# tf-migrate:   }
+# tf-migrate: }
+
+removed {
+  from = cloudflare_zone_settings_override.example
+  lifecycle {
+    destroy = false
+  }
+}
+```
+
+**User workflow:**
+1. Commit and push the modified `.tf` files
+2. Atlantis plans and applies using the **current (v4) provider** — `removed {}` blocks drop the state entries
+3. Re-run `tf-migrate migrate` in the same directory
+
+### Phase 2 (second run — detected automatically)
+
+tf-migrate detects the commented-out blocks and asks:
+
+```
+Did you apply the v4 config and remove the resources from state? [y/N]:
+```
+
+On confirmation:
+- Uncomments the resource blocks (strips `# tf-migrate: ` prefix)
+- Removes the `removed {}` blocks
+- Runs the full v4→v5 migration
+
+### No `zone_settings_override`?
+
+If your workspace doesn't use `cloudflare_zone_settings_override`, nothing changes — single-pass migration as normal.
+
+---
+
 ## Manual Migration Steps
 
 tf-migrate automates the vast majority of migrations, but some resources cannot be fully migrated automatically. When manual intervention is required, tf-migrate:
@@ -221,7 +296,7 @@ After running `tf-migrate migrate` and switching to the v5 provider, run `terraf
 tf-migrate migrate --source-version v4 --target-version v5
 
 # 2. Initialize the v5 provider
-terraform init -upgrade
+terraform init -upgrade -backend=false
 
 # 3. Capture the plan output
 terraform plan > plan.txt
@@ -321,75 +396,40 @@ This section covers migrating a Terraform workspace that uses [Atlantis](https:/
 tf-migrate migrate \
   --config-dir ./tf/your-workspace \
   --source-version v4 \
-  --target-version v5
+  --target-version v5 \
+  --no-backup
 ```
 
 tf-migrate transforms all `.tf` files in-place and prints a summary of:
 - Resources renamed
 - Cross-file references updated
 - Warnings for anything requiring manual follow-up
+- Provider version updated (with lock file regeneration instructions)
 
 Review the warnings carefully before proceeding.
 
-> **Tip:** Use `--no-backup` to skip creating `.backup` files entirely:
-> ```bash
-> tf-migrate migrate \
->   --config-dir ./tf/your-workspace \
->   --source-version v4 \
->   --target-version v5 \
->   --no-backup
-> ```
+#### 2. Handle `zone_settings_override` (if applicable)
 
-#### 2. Clean up backup files
+If your workspace uses `cloudflare_zone_settings_override`, tf-migrate automatically enters **phased migration** (see [Phased Migration](#phased-migration-zone_settings_override)):
 
-By default tf-migrate creates `.backup` files alongside every modified file. Delete them before committing, or use `--no-backup` (see step 1) to skip creating them entirely:
+- On the **first run**, tf-migrate comments out the resource blocks and adds `removed {}` blocks
+- Commit and push — Atlantis applies with the v4 provider, dropping the state entries
+- On the **second run**, tf-migrate detects the commented blocks, prompts for confirmation, and completes the full migration
 
-```bash
-find ./tf/your-workspace -name "*.backup" -delete
-```
+No `terraform state rm` required.
 
-#### 3. Update the provider version in `main.tf`
+#### 3. Regenerate `.terraform.lock.hcl` locally with `-backend=false`
 
-tf-migrate does not modify `required_providers`. Update the Cloudflare provider version constraint manually:
-
-```hcl
-# Before
-cloudflare = {
-  source  = "cloudflare/cloudflare"
-  version = "4.x.x"
-}
-
-# After
-cloudflare = {
-  source  = "cloudflare/cloudflare"
-  version = "5.x.x"   # target v5 version
-}
-```
-
-#### 4. Regenerate `.terraform.lock.hcl` locally with `-backend=false`
-
-Because the remote backend is not reachable locally, use `-backend=false` to skip it. This still downloads the v5 provider and regenerates the lock file with v5 hashes:
+tf-migrate prints this instruction at the end of every migration. Because the remote backend is not reachable locally, use `-backend=false` to skip it:
 
 ```bash
-terraform -chdir=./tf/your-workspace init -upgrade -backend=false
+cd ./tf/your-workspace
+terraform init -upgrade -backend=false
 ```
 
-> **Why `-backend=false`?** Without it, Terraform tries to initialise the remote backend, which fails if the backend endpoint (e.g. an internal HTTP state server) is only reachable from within your CI environment.
+> **Why `-backend=false`?** Without it, Terraform tries to initialise the remote backend, which fails if the backend endpoint is only reachable from within your CI environment.
 
-#### 5. Handle `zone_settings_override` state removal (if applicable)
-
-If your workspace uses `cloudflare_zone_settings_override`, tf-migrate splits each instance into multiple `cloudflare_zone_setting` resources and emits `removed {}` blocks and `import {}` blocks in the migrated file.
-
-The v5 provider has no schema for `cloudflare_zone_settings_override`, so the old state entries must be removed **before the first `terraform plan/apply`** against the v5 provider. tf-migrate prints the exact `terraform state rm` commands needed — run them before Atlantis processes the plan:
-
-```bash
-terraform state rm 'cloudflare_zone_settings_override.your_resource_name'
-# repeat for each instance listed in the tf-migrate warnings
-```
-
-After removal, the `import {}` blocks in the migrated file will import each setting's current value from the Cloudflare API on the first `terraform apply`.
-
-#### 6. Commit everything together
+#### 4. Commit everything together
 
 ```bash
 git add tf/your-workspace/
@@ -398,12 +438,10 @@ git commit -m "migrate your-workspace from cloudflare provider v4 to v5"
 
 The commit should include:
 - All modified `.tf` files
-- Updated `main.tf` with the new provider version
+- Updated `main.tf` with the new provider version (updated automatically by tf-migrate)
 - Updated `.terraform.lock.hcl` with v5 hashes
 
-> **Do not commit `.backup` files** — delete them in step 2.
-
-#### 7. Push and let Atlantis plan
+#### 5. Push and let Atlantis plan
 
 Atlantis will pick up the committed lock file, download the v5 provider, and run `terraform plan`. The plan output will reflect the migrated v5 config.
 
@@ -411,7 +449,7 @@ Atlantis will pick up the committed lock file, download the v5 provider, and run
 
 ### Why the lock file matters
 
-Atlantis uses the committed `.terraform.lock.hcl` to pin provider versions. If the lock file still references the old v4 provider (e.g. `constraints = "4.52.5"`), Atlantis will download and use the v4 provider even if `main.tf` specifies a v5 version — causing the entire plan to fail with schema errors like:
+Atlantis uses the committed `.terraform.lock.hcl` to pin provider versions. If the lock file still references the old v4 provider, Atlantis will download and use the v4 provider even if `main.tf` specifies a v5 version — causing the entire plan to fail with schema errors like:
 
 ```
 Error: Invalid resource type
@@ -426,13 +464,12 @@ This is the most common mistake when migrating an Atlantis workspace. Always reg
 
 | Step | Where | What |
 |------|-------|------|
-| 1. Run tf-migrate | Local | Transform `.tf` files |
-| 2. Delete `.backup` files | Local | Clean up before commit |
-| 3. Update `main.tf` | Local | Set v5 provider version |
+| 1. Run tf-migrate | Local | Transform `.tf` files, update provider version |
+| 2. Phase 1 (if `zone_settings_override`) | Local → Git → Atlantis | Commit commented blocks, Atlantis drops state entries |
+| 3. Run tf-migrate again (if phase 1 ran) | Local | Confirm apply succeeded, complete full v5 migration |
 | 4. `terraform init -upgrade -backend=false` | Local | Regenerate lock file with v5 hashes |
-| 5. `terraform state rm` (if needed) | Local / CI pre-plan | Remove old `zone_settings_override` state entries |
-| 6. Commit all changes | Local | `.tf` files + `main.tf` + `.terraform.lock.hcl` |
-| 7. Push | Git | Atlantis picks up the v5 lock file and plans |
+| 5. Commit all changes | Local | `.tf` files + `main.tf` + `.terraform.lock.hcl` |
+| 6. Push | Git | Atlantis picks up the v5 lock file and plans |
 
 ---
 
@@ -443,8 +480,8 @@ This is the most common mistake when migrating an Atlantis workspace. Always reg
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--config-dir` | Current directory | Directory containing Terraform configuration files |
-| `--source-version` | Required | Source provider version (e.g., `v4`) |
-| `--target-version` | Required | Target provider version (e.g., `v5`) |
+| `--source-version` | `v4` | Source provider version (e.g., `v4`) |
+| `--target-version` | `v5` | Target provider version (e.g., `v5`) |
 | `--resources` | All resources | Comma-separated list of resources to migrate |
 | `--dry-run` | `false` | Preview changes without modifying files |
 | `--log-level` | `warn` | Log level: `debug`, `info`, `warn`, `error`, `off` |
@@ -458,8 +495,8 @@ This is the most common mistake when migrating an Atlantis workspace. Always reg
 | `--no-backup` | `false` | Skip creating backup files (alias for `--backup=false`) |
 | `--recursive` | `false` | Recursively process subdirectories |
 | `--skip-phase-check` | `false` | Skip the phased migration confirmation prompt and run the full migration directly (for CI/non-interactive use) |
-| `--verbose` | `false` | Show all diagnostics including informational messages |
-| `--quiet` / `-q` | `false` | Suppress warnings, only show errors |
+| `-v` / `--verbose` | `false` | Show verbose output: per-file progress, rename tables, and all diagnostics |
+| `-q` / `--quiet` | `false` | Suppress warnings, only show errors |
 
 ### `verify-drift` Flags
 
