@@ -297,7 +297,10 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(body *hclwrite.Body, fil
 
 	// Resolve profile_id: prefer the resource-level id attribute (v4 state import
 	// pattern), then fall back to the tf-migrate:import-address annotation comment.
-	if idAttr := body.GetAttribute("id"); idAttr != nil {
+	// Skip entirely if profile_id is already present (e.g. already-migrated v5 file).
+	if body.GetAttribute("profile_id") != nil {
+		// Already set — nothing to do.
+	} else if idAttr := body.GetAttribute("id"); idAttr != nil {
 		tfhcl.RenameAttribute(body, "id", "profile_id")
 	} else if profileID := extractProfileIDFromImportAddress(fileContent, resourceName); profileID != "" {
 		body.SetAttributeValue("profile_id", cty.StringVal(profileID))
