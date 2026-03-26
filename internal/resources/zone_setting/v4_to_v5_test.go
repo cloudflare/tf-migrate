@@ -1,9 +1,16 @@
 package zone_setting
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestV4ToV5Transformation(t *testing.T) {
@@ -613,4 +620,98 @@ func TestHelperFunctions(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestTransformPhaseOne(t *testing.T) {
+	migrator := &V4ToV5Migrator{}
+
+	tests := []struct {
+		name            string
+		input           string
+		wantRemovedFrom string
+	}{
+		{
+			name: "resource block is replaced by removed block",
+			input: `resource "cloudflare_zone_settings_override" "example" {
+  zone_id = "abc123"
+
+  settings {
+    always_online = "on"
+  }
+}`,
+			wantRemovedFrom: "cloudflare_zone_settings_override.example",
+		},
+		{
+			name: "count resource uses bare address without instance key",
+			input: `resource "cloudflare_zone_settings_override" "conditional" {
+  count   = var.enabled ? 1 : 0
+  zone_id = "abc123"
+
+  settings {
+    tls_1_3 = "on"
+  }
+}`,
+			// removed {} does not support instance keys ([0]) — Terraform requires
+			// a bare resource address; the block applies to all instances.
+			wantRemovedFrom: "cloudflare_zone_settings_override.conditional",
+		},
+		{
+			name: "resource with no settings block still gets removed block",
+			input: `resource "cloudflare_zone_settings_override" "empty" {
+  zone_id = "abc123"
+}`,
+			wantRemovedFrom: "cloudflare_zone_settings_override.empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclwrite.ParseConfig([]byte(tt.input), "test.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), "parse error: %v", diags)
+
+			ctx := &transform.Context{
+				Content:       []byte(tt.input),
+				Filename:      "test.tf",
+				Diagnostics:   make(hcl.Diagnostics, 0),
+				Metadata:      make(map[string]interface{}),
+				SourceVersion: "v4",
+				TargetVersion: "v5",
+			}
+
+			var block *hclwrite.Block
+			for _, b := range file.Body().Blocks() {
+				if b.Type() == "resource" {
+					block = b
+					break
+				}
+			}
+			require.NotNil(t, block)
+
+			result, err := migrator.TransformPhaseOne(ctx, block)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+
+			// Phase 1 must NOT remove the original block — removed {} blocks go
+			// to a separate _phase1_cleanup.tf, originals stay intact for phase 2.
+			assert.False(t, result.RemoveOriginal, "TransformPhaseOne must not remove the original resource block")
+
+			// Must produce exactly one block (the removed {} block)
+			require.Len(t, result.Blocks, 1)
+			removedBlock := result.Blocks[0]
+			assert.Equal(t, "removed", removedBlock.Type())
+
+			// Serialize the removed block via a scratch file for accurate formatting
+			scratch := hclwrite.NewEmptyFile()
+			scratch.Body().AppendBlock(removedBlock)
+			output := string(hclwrite.Format(scratch.Bytes()))
+
+			// The removed block must have the correct from address
+			assert.True(t, strings.Contains(output, tt.wantRemovedFrom),
+				"removed block should reference %q, got:\n%s", tt.wantRemovedFrom, output)
+
+			// The removed block must have destroy = false lifecycle
+			assert.True(t, strings.Contains(output, "destroy = false"),
+				"removed block should contain destroy = false lifecycle, got:\n%s", output)
+		})
+	}
 }

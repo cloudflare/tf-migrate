@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2"
@@ -38,6 +41,7 @@ type config struct {
 	backup             bool
 	recursive          bool
 	logLevel           string
+	skipPhaseCheck     bool // skip phased migration prompt and run full migration directly (for CI/e2e)
 
 	// Diagnostic output options
 	quiet   bool // Suppress warnings, only show errors
@@ -135,15 +139,17 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 				cfg.targetVersion = "v5"
 			}
 
-			fmt.Println("Cloudflare Terraform Provider Migration Tool")
-			fmt.Println("============================================")
-			fmt.Println()
-
-			fmt.Printf("Configuration directory: %s\n", cfg.configDir)
-			if cfg.outputDir != "" {
-				fmt.Printf("Output directory: %s\n", cfg.outputDir)
-			} else {
-				fmt.Println("Output directory: in-place")
+			if cfg.verbose {
+				fmt.Println("Cloudflare Terraform Provider Migration Tool")
+				fmt.Println("============================================")
+				fmt.Println()
+				fmt.Printf("Configuration directory: %s\n", cfg.configDir)
+				if cfg.outputDir != "" {
+					fmt.Printf("Output directory: %s\n", cfg.outputDir)
+				} else {
+					fmt.Println("Output directory: in-place")
+				}
+				fmt.Println()
 			}
 
 			if cfg.dryRun {
@@ -158,9 +164,19 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 	cmd.Flags().BoolVar(&cfg.backup, "backup", true, "Create backup of original files before migration")
 	cmd.Flags().BoolVar(&cfg.recursive, "recursive", false, "Recursively process subdirectories (useful for module structures)")
 
+	// --no-backup is a convenience alias for --backup=false
+	var noBackup bool
+	cmd.Flags().BoolVar(&noBackup, "no-backup", false, "Skip creating backup files before migration (alias for --backup=false)")
+	cmd.PreRun = func(cmd *cobra.Command, args []string) {
+		if noBackup {
+			cfg.backup = false
+		}
+	}
+	cmd.Flags().BoolVar(&cfg.skipPhaseCheck, "skip-phase-check", false, "Skip the phased migration confirmation prompt and run the full migration directly (for CI/non-interactive use)")
+
 	// Diagnostic output options
 	cmd.Flags().BoolVarP(&cfg.quiet, "quiet", "q", false, "Suppress warnings, only show errors")
-	cmd.Flags().BoolVar(&cfg.verbose, "verbose", false, "Show all diagnostics including informational messages")
+	cmd.Flags().BoolVarP(&cfg.verbose, "verbose", "v", false, "Show verbose output: per-file progress, rename tables, and all diagnostics")
 
 	return cmd
 }
@@ -209,7 +225,10 @@ Exit code 1: unexpected drift requires attention.`,
 	return cmd
 }
 
-// runMigration performs the actual migration using the pipeline
+// runMigration performs the actual migration using the pipeline.
+// It automatically detects whether a phased migration is needed (e.g. for
+// cloudflare_zone_settings_override in Atlantis-managed workspaces) and handles
+// it transparently without requiring any additional flags from the user.
 func runMigration(log hclog.Logger, cfg config) error {
 	err := validateVersions(cfg)
 	if err != nil {
@@ -223,6 +242,48 @@ func runMigration(log hclog.Logger, cfg config) error {
 		fmt.Println()
 	}
 
+	// --yes skips straight to full migration (used by e2e runner and CI).
+	if cfg.skipPhaseCheck {
+		return runFullMigration(log, cfg)
+	}
+
+	// Check whether phase 1 has already run by looking for commented-out
+	// resource blocks with the tf-migrate phase-1 marker in the files.
+	commentedFiles := findFilesWithPhaseOneComments(cfg)
+	if len(commentedFiles) > 0 {
+		// Phase 1 already ran — ask the user whether the apply succeeded.
+		confirmed, promptErr := confirmPhaseOneApplied(cfg)
+		if promptErr != nil {
+			return promptErr
+		}
+		if confirmed {
+			// User confirms state is clean — uncomment resource blocks,
+			// remove the removed {} blocks, then run the full v5 migration.
+			return runPhaseTwo(log, cfg, commentedFiles)
+		}
+		// User says not yet — print instructions and exit.
+		fmt.Println()
+		fmt.Println("No problem. Once the apply completes successfully, re-run tf-migrate:")
+		fmt.Printf("  tf-migrate migrate --config-dir %s\n", cfg.configDir)
+		return nil
+	}
+
+	// Scan for resources that require phased migration.
+	phaseOneResources, err := detectPhaseOneResources(log, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to scan for phase-1 resources: %w", err)
+	}
+
+	if len(phaseOneResources) > 0 {
+		return runPhaseOne(log, cfg, phaseOneResources)
+	}
+
+	// No phase-1 resources — run the standard full migration.
+	return runFullMigration(log, cfg)
+}
+
+// runFullMigration runs the standard pipeline migration without any phasing.
+func runFullMigration(log hclog.Logger, cfg config) error {
 	providers := getProviders(cfg.resourcesToMigrate...)
 	configPipeline := pipeline.BuildConfigPipeline(log, providers)
 	var allDiagnostics hcl.Diagnostics
@@ -234,11 +295,500 @@ func runMigration(log hclog.Logger, cfg config) error {
 		}
 	}
 	log.Debug("Finished processing configuration files")
-
-	// Print any warnings collected during migration
 	printDiagnostics(allDiagnostics, cfg)
 
+	// Update the provider version constraint in required_providers blocks
+	// and print instructions for regenerating the lock file.
+	if cfg.configDir != "" && !cfg.dryRun {
+		if err := updateProviderVersionConstraint(log, cfg); err != nil {
+			log.Warn("Failed to update provider version constraint", "error", err)
+		}
+	}
+
 	return nil
+}
+
+// fallbackProviderVersions maps migration target versions to known-good
+// provider versions, used when the GitHub API is unavailable.
+var fallbackProviderVersions = map[string]string{
+	"v5": "5.19.0-beta.2",
+}
+
+// targetProviderVersion fetches the latest provider release for the given
+// target migration version from the GitHub releases API. Falls back to a
+// hardcoded version if the fetch fails or times out.
+func targetProviderVersion(targetVersion string) string {
+	majorPrefix := strings.TrimPrefix(targetVersion, "v") + "."
+
+	type release struct {
+		TagName string `json:"tag_name"`
+		Draft   bool   `json:"draft"`
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("https://api.github.com/repos/cloudflare/terraform-provider-cloudflare/releases?per_page=50")
+	if err == nil && resp.StatusCode == http.StatusOK {
+		defer resp.Body.Close()
+		var releases []release
+		if json.NewDecoder(resp.Body).Decode(&releases) == nil {
+			for _, r := range releases {
+				if r.Draft {
+					continue
+				}
+				version := strings.TrimPrefix(r.TagName, "v")
+				if strings.HasPrefix(version, majorPrefix) {
+					return version
+				}
+			}
+		}
+	}
+
+	// Fall back to hardcoded version
+	if v, ok := fallbackProviderVersions[targetVersion]; ok {
+		return v
+	}
+	return ""
+}
+
+// updateProviderVersionConstraint scans all .tf files for a required_providers
+// block containing cloudflare/cloudflare and updates the version constraint to
+// match the target provider version. Prints next-step instructions if updated.
+func updateProviderVersionConstraint(log hclog.Logger, cfg config) error {
+	targetVersion := targetProviderVersion(cfg.targetVersion)
+	if targetVersion == "" {
+		return nil
+	}
+
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+
+		parsed, diags := hclwrite.ParseConfig(content, filepath.Base(file), hcl.InitialPos)
+		if diags.HasErrors() {
+			continue
+		}
+
+		updated := false
+		for _, block := range parsed.Body().Blocks() {
+			if block.Type() != "terraform" {
+				continue
+			}
+			for _, inner := range block.Body().Blocks() {
+				if inner.Type() != "required_providers" {
+					continue
+				}
+				cfAttr := inner.Body().GetAttribute("cloudflare")
+				if cfAttr == nil {
+					continue
+				}
+				// The attribute value is an object expression — check if it
+				// contains source = "cloudflare/cloudflare"
+				attrStr := string(cfAttr.BuildTokens(nil).Bytes())
+				if !strings.Contains(attrStr, "cloudflare/cloudflare") {
+					continue
+				}
+				// Rewrite the version value using raw token replacement.
+				// We replace any existing version = "..." with the target.
+				newAttrStr := regexp.MustCompile(`version\s*=\s*"[^"]*"`).
+					ReplaceAllString(attrStr, `version = "`+targetVersion+`"`)
+				if newAttrStr == attrStr {
+					// No version constraint existed — add one
+					newAttrStr = strings.Replace(attrStr,
+						`source  = "cloudflare/cloudflare"`,
+						`source  = "cloudflare/cloudflare"`+"\n      version = \""+targetVersion+`"`,
+						1)
+					if newAttrStr == attrStr {
+						// Try without double space
+						newAttrStr = strings.Replace(attrStr,
+							`source = "cloudflare/cloudflare"`,
+							`source  = "cloudflare/cloudflare"`+"\n      version = \""+targetVersion+`"`,
+							1)
+					}
+				}
+				if newAttrStr != attrStr {
+					// Re-parse the file with the updated attribute text and write it.
+					newContent := strings.Replace(string(content), attrStr, newAttrStr, 1)
+					if err := os.WriteFile(file, []byte(newContent), 0644); err != nil {
+						log.Warn("Failed to write updated provider version", "file", file, "error", err)
+						continue
+					}
+					updated = true
+					if cfg.verbose {
+						fmt.Printf("✓ Updated cloudflare provider version to %s in %s\n",
+							targetVersion, filepath.Base(file))
+					}
+				}
+			}
+		}
+		_ = updated
+	}
+
+	fmt.Println()
+	fmt.Printf("Provider version updated to %s.\n", targetVersion)
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println()
+	fmt.Println("  1. Regenerate the lock file locally:")
+	fmt.Printf("       cd %s\n", cfg.configDir)
+	fmt.Println("       terraform init -upgrade -backend=false")
+	fmt.Println()
+	fmt.Println("  2. Commit and push all changed files:")
+	fmt.Println("       main.tf (or wherever required_providers lives)")
+	fmt.Println("       .terraform.lock.hcl")
+	fmt.Println("       all migrated .tf files")
+
+	return nil
+}
+
+// findFilesWithPhaseOneComments returns a list of .tf files that contain
+// commented-out resource blocks from a previous phase-1 run, identified by
+// the phaseOneCommentPrefix marker.
+func findFilesWithPhaseOneComments(cfg config) []string {
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
+	if err != nil {
+		return nil
+	}
+	var found []string
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+		if strings.Contains(string(content), phaseOneCommentPrefix+"resource ") {
+			found = append(found, file)
+		}
+	}
+	return found
+}
+
+// confirmPhaseOneApplied asks the user whether they have committed and applied
+// the phase-1 changes. When --yes is set it auto-confirms (for CI).
+func confirmPhaseOneApplied(cfg config) (bool, error) {
+	if cfg.skipPhaseCheck {
+		return true, nil
+	}
+
+	fmt.Println()
+	fmt.Println("It looks like phase 1 has already run (resource blocks are commented out).")
+	fmt.Println()
+	fmt.Print("Did you apply the v4 config and remove the resources from state? [y/N]: ")
+
+	var answer string
+	if _, err := fmt.Scanln(&answer); err != nil {
+		return false, nil
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "y" || answer == "yes", nil
+}
+
+// detectPhaseOneResources scans all .tf files and returns a map of
+// filename → resource addresses for resources whose migrator implements PhaseOneTransformer.
+func detectPhaseOneResources(log hclog.Logger, cfg config) (map[string][]string, error) {
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
+	if err != nil {
+		return nil, err
+	}
+
+	providers := getProviders(cfg.resourcesToMigrate...)
+	found := make(map[string][]string)
+
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			log.Warn("Failed to read file during phase-1 scan", "file", file, "error", err)
+			continue
+		}
+
+		parsed, diags := hclwrite.ParseConfig(content, filepath.Base(file), hcl.InitialPos)
+		if diags.HasErrors() {
+			log.Warn("Failed to parse file during phase-1 scan", "file", file, "error", diags)
+			continue
+		}
+
+		for _, block := range parsed.Body().Blocks() {
+			if block.Type() != "resource" || len(block.Labels()) < 2 {
+				continue
+			}
+			resourceType := block.Labels()[0]
+			resourceName := block.Labels()[1]
+
+			migrator := providers.GetMigrator(resourceType, cfg.sourceVersion, cfg.targetVersion)
+			if migrator == nil {
+				continue
+			}
+			if _, ok := migrator.(transform.PhaseOneTransformer); ok {
+				addr := resourceType + "." + resourceName
+				found[file] = append(found[file], addr)
+			}
+		}
+	}
+
+	return found, nil
+}
+
+// phaseOneCommentPrefix is the line prefix used to comment out resource blocks
+// during phase 1. It acts as a marker so phase 2 can identify and uncomment them.
+const phaseOneCommentPrefix = "# tf-migrate: "
+
+// runPhaseOne rewrites each .tf file containing PhaseOneTransformer resources:
+//   - Comments out each resource block using phaseOneCommentPrefix so Terraform
+//     ignores it, but tf-migrate can recover the definition in phase 2.
+//   - Appends a removed {} block immediately after the commented-out block so
+//     Terraform drops the state entry on the next plan/apply.
+//
+// Since the resource block is commented out, Terraform only sees the removed {}
+// block — no coexistence error. The original definitions are preserved as
+// comments for phase 2 to uncomment and transform.
+//
+// User workflow:
+//  1. Commit and push the modified .tf files
+//  2. Atlantis plans and applies with v4 provider → state entries dropped
+//  3. Re-run tf-migrate → detects commented blocks, prompts for confirmation,
+//     uncoments and runs the full v5 migration
+func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]string) error {
+	fmt.Println("Phased Migration — Phase 1: State Cleanup")
+	fmt.Println("==========================================")
+	fmt.Println()
+	fmt.Println("The following resources have no schema in the v5 provider and must be")
+	fmt.Println("removed from Terraform state before the full migration can proceed:")
+	fmt.Println()
+
+	for _, addrs := range phaseOneResources {
+		for _, addr := range addrs {
+			fmt.Printf("  • %s\n", addr)
+		}
+	}
+	fmt.Println()
+
+	providers := getProviders(cfg.resourcesToMigrate...)
+	totalBlocks := 0
+
+	for file := range phaseOneResources {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", file, err)
+		}
+
+		parsed, diags := hclwrite.ParseConfig(content, filepath.Base(file), hcl.InitialPos)
+		if diags.HasErrors() {
+			return fmt.Errorf("failed to parse %s: %w", file, diags)
+		}
+
+		ctx := &transform.Context{
+			Content:       content,
+			Filename:      filepath.Base(file),
+			Diagnostics:   make(hcl.Diagnostics, 0),
+			Metadata:      make(map[string]interface{}),
+			SourceVersion: cfg.sourceVersion,
+			TargetVersion: cfg.targetVersion,
+			Resources:     cfg.resourcesToMigrate,
+		}
+
+		// Collect (block text, removed block) pairs for this file.
+		type phaseOnePair struct {
+			blockText    string // raw bytes of the original resource block
+			removedBlock *hclwrite.Block
+		}
+		var pairs []phaseOnePair
+
+		for _, block := range parsed.Body().Blocks() {
+			if block.Type() != "resource" || len(block.Labels()) < 2 {
+				continue
+			}
+			resourceType := block.Labels()[0]
+			migrator := providers.GetMigrator(resourceType, cfg.sourceVersion, cfg.targetVersion)
+			if migrator == nil {
+				continue
+			}
+			p1, ok := migrator.(transform.PhaseOneTransformer)
+			if !ok {
+				continue
+			}
+			result, err := p1.TransformPhaseOne(ctx, block)
+			if err != nil {
+				return fmt.Errorf("phase-1 transform failed for %s in %s: %w", block.Labels()[1], file, err)
+			}
+			if result != nil && len(result.Blocks) > 0 {
+				blockText := string(block.BuildTokens(nil).Bytes())
+				pairs = append(pairs, phaseOnePair{
+					blockText:    blockText,
+					removedBlock: result.Blocks[0],
+				})
+				totalBlocks++
+			}
+		}
+
+		if len(pairs) == 0 {
+			continue
+		}
+
+		if cfg.dryRun {
+			fmt.Printf("[%s] (dry run — would comment out %d block(s) and add removed {} blocks)\n",
+				filepath.Base(file), len(pairs))
+			continue
+		}
+
+		// Use the parsed (normalized) file bytes as the base — both blockText
+		// from BuildTokens and the file bytes come from the same hclwrite
+		// tokenizer, so replacements match exactly.
+		newContent := string(parsed.Bytes())
+		for _, pair := range pairs {
+			commented := commentOutBlock(pair.blockText)
+			// Build the removed {} block text
+			scratch := hclwrite.NewEmptyFile()
+			scratch.Body().AppendNewline()
+			scratch.Body().AppendBlock(pair.removedBlock)
+			removedText := string(hclwrite.Format(scratch.Bytes()))
+			newContent = strings.Replace(newContent, pair.blockText, commented+removedText, 1)
+		}
+
+		if cfg.backup {
+			if err := os.WriteFile(file+".backup", content, 0644); err != nil {
+				return fmt.Errorf("failed to create backup for %s: %w", file, err)
+			}
+		}
+		if err := os.WriteFile(file, []byte(newContent), 0644); err != nil {
+			return fmt.Errorf("failed to write %s: %w", file, err)
+		}
+		fmt.Printf("✓ %s — commented out %d resource block(s), added removed {} block(s)\n",
+			filepath.Base(file), len(pairs))
+	}
+
+	if cfg.dryRun {
+		fmt.Println()
+		fmt.Println("(dry run — no files modified)")
+		return nil
+	}
+
+	if totalBlocks == 0 {
+		return nil
+	}
+
+	fmt.Println()
+	fmt.Println("Phase 1 complete.")
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println()
+	fmt.Println("  1. Commit and push the modified .tf files.")
+	fmt.Println("     Your CI/Atlantis pipeline will run terraform plan and apply using the")
+	fmt.Println("     CURRENT (v4) provider. Terraform will process the removed {} blocks")
+	fmt.Println("     and drop the old state entries without destroying any infrastructure.")
+	fmt.Println()
+	fmt.Println("  2. Wait for the apply to complete successfully.")
+	fmt.Println()
+	fmt.Println("  3. Re-run tf-migrate to complete the full migration:")
+	fmt.Printf("       tf-migrate migrate --config-dir %s\n", cfg.configDir)
+	fmt.Println()
+	fmt.Println("     tf-migrate will detect the commented-out blocks, ask you to confirm")
+	fmt.Println("     the apply succeeded, uncomment them, and run the full v5 migration.")
+
+	return nil
+}
+
+// commentOutBlock prefixes every line of blockText with phaseOneCommentPrefix.
+func commentOutBlock(blockText string) string {
+	lines := strings.Split(blockText, "\n")
+	var out []string
+	for _, line := range lines {
+		if line == "" {
+			out = append(out, "")
+		} else {
+			out = append(out, phaseOneCommentPrefix+line)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// runPhaseTwo uncomments the resource blocks that were commented out during
+// phase 1, removes the removed {} blocks that were added alongside them, then
+// runs the full v5 migration.
+func runPhaseTwo(log hclog.Logger, cfg config, commentedFiles []string) error {
+	fmt.Println("Phased Migration — Phase 2: Full Migration")
+	if cfg.verbose {
+		fmt.Println("===========================================")
+	}
+	fmt.Println()
+	fmt.Println("Restoring commented-out resource blocks and running full v5 migration...")
+	fmt.Println()
+
+	// Uncomment resource blocks and remove the adjacent removed {} blocks.
+	for _, file := range commentedFiles {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", file, err)
+		}
+		restored := restorePhaseOneFile(string(content))
+		if err := os.WriteFile(file, []byte(restored), 0644); err != nil {
+			return fmt.Errorf("failed to restore %s: %w", file, err)
+		}
+	}
+
+	return runFullMigration(log, cfg)
+}
+
+// restorePhaseOneFile removes the phaseOneCommentPrefix from commented-out
+// resource lines and removes the removed {} blocks that follow them.
+func restorePhaseOneFile(content string) string {
+	lines := strings.Split(content, "\n")
+	var out []string
+	skipUntilClosingBrace := false
+	depth := 0
+
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+
+		// If we're inside a removed {} block to skip, track brace depth.
+		if skipUntilClosingBrace {
+			depth += strings.Count(line, "{") - strings.Count(line, "}")
+			if depth <= 0 {
+				skipUntilClosingBrace = false
+			}
+			continue
+		}
+
+		// Detect the start of a removed {} block that immediately follows
+		// a commented-out block (i.e. preceded by phase-1 commented lines).
+		// We identify it by the block type being "removed {".
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "removed {" {
+			// Check if the previous non-empty output line was a commented block.
+			// Look backwards in out for the last non-empty line.
+			lastNonEmpty := ""
+			for j := len(out) - 1; j >= 0; j-- {
+				if strings.TrimSpace(out[j]) != "" {
+					lastNonEmpty = out[j]
+					break
+				}
+			}
+			if strings.HasPrefix(strings.TrimSpace(lastNonEmpty), phaseOneCommentPrefix) {
+				// This removed {} block was added by phase 1 — skip it.
+				depth = 1
+				skipUntilClosingBrace = true
+				// Also remove the blank line before removed {} if present.
+				if len(out) > 0 && strings.TrimSpace(out[len(out)-1]) == "" {
+					out = out[:len(out)-1]
+				}
+				continue
+			}
+		}
+
+		// Uncomment lines that have the phase-1 marker prefix.
+		if strings.HasPrefix(line, phaseOneCommentPrefix) {
+			out = append(out, strings.TrimPrefix(line, phaseOneCommentPrefix))
+			continue
+		}
+
+		out = append(out, line)
+	}
+
+	return strings.Join(out, "\n")
 }
 
 func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map[string]*hclwrite.File, hcl.Diagnostics, error) {
@@ -256,7 +806,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		return nil, nil, nil
 	}
 
-	fmt.Printf("\nFound %d configuration files to migrate\n", len(files))
+	fmt.Printf("Found %d configuration files to migrate\n", len(files))
 
 	// Store file paths for global postprocessing
 	outputPaths := make([]string, 0, len(files))
@@ -266,7 +816,9 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 
 	parsedConfigs := make(map[string]*hclwrite.File)
 	for i, file := range files {
-		fmt.Printf("[%d/%d] Processing %s... ", i+1, len(files), filepath.Base(file))
+		if cfg.verbose {
+			fmt.Printf("[%d/%d] Processing %s... ", i+1, len(files), filepath.Base(file))
+		}
 		log.Debug("Processing file", "file", file, "index", i+1)
 
 		content, err := os.ReadFile(file)
@@ -317,7 +869,9 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		}
 
 		if cfg.dryRun {
-			fmt.Println("(dry run)")
+			if cfg.verbose {
+				fmt.Println("(dry run)")
+			}
 			log.Debug("Would write file", "output", outputPath)
 			outputPaths = append(outputPaths, outputPath)
 			continue
@@ -332,7 +886,9 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		if err := os.WriteFile(outputPath, transformed, 0644); err != nil {
 			return nil, allDiagnostics, fmt.Errorf("failed to write %s: %w", outputPath, err)
 		}
-		fmt.Println("✓")
+		if cfg.verbose {
+			fmt.Println("✓")
+		}
 		log.Debug("Migrated file", "output", outputPath)
 		outputPaths = append(outputPaths, outputPath)
 
@@ -363,9 +919,7 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		if renamer, ok := migrator.(transform.ResourceRenamer); ok {
 			oldTypes, newType := renamer.GetResourceRename()
 			if len(oldTypes) > 0 && newType != "" {
-				// Process each old type
 				for _, oldType := range oldTypes {
-					// Only add to renames map if the types are different (actual rename)
 					if oldType != newType {
 						renames[oldType] = newType
 						log.Debug("Collected resource rename", "old", oldType, "new", newType)
@@ -374,13 +928,11 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 					}
 				}
 			} else {
-				// Warn if migrator implements interface but returned empty values
-				log.Warn("Migrator implements ResourceRenamer but returned empty type names",
+				log.Debug("Migrator implements ResourceRenamer but returned empty type names",
 					"oldTypes", oldTypes, "newType", newType)
 			}
 		} else {
-			// Warn if migrator doesn't implement ResourceRenamer interface
-			log.Warn("Migrator does not implement ResourceRenamer interface - cross-file references may not be updated",
+			log.Debug("Migrator does not implement ResourceRenamer interface - cross-file references may not be updated",
 				"migrator", fmt.Sprintf("%T", migrator))
 		}
 
@@ -405,22 +957,22 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		return nil
 	}
 
-	totalUpdates := len(renames) + len(attributeRenames)
-	fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
+	if cfg.verbose {
+		totalUpdates := len(renames) + len(attributeRenames)
+		fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
 
-	// Print summary of resource type renames (always shown)
-	if len(renames) > 0 {
-		fmt.Println("\nResource type renames:")
-		for oldType, newType := range renames {
-			fmt.Printf("  %s → %s\n", oldType, newType)
+		if len(renames) > 0 {
+			fmt.Println("\nResource type renames:")
+			for oldType, newType := range renames {
+				fmt.Printf("  %s → %s\n", oldType, newType)
+			}
 		}
-	}
 
-	// Print summary of attribute renames (always shown)
-	if len(attributeRenames) > 0 {
-		fmt.Println("\nAttribute renames:")
-		for _, rename := range attributeRenames {
-			fmt.Printf("  %s.*.%s → %s.*.%s\n", rename.ResourceType, rename.OldAttribute, rename.ResourceType, rename.NewAttribute)
+		if len(attributeRenames) > 0 {
+			fmt.Println("\nAttribute renames:")
+			for _, rename := range attributeRenames {
+				fmt.Printf("  %s.*.%s → %s.*.%s\n", rename.ResourceType, rename.OldAttribute, rename.ResourceType, rename.NewAttribute)
+			}
 		}
 	}
 
@@ -474,7 +1026,9 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		}
 	}
 
-	fmt.Printf("✓ Updated cross-file references (%d updates applied)\n", totalUpdates)
+	if cfg.verbose {
+		fmt.Printf("✓ Updated cross-file references (%d rule(s) applied)\n", len(renames)+len(attributeRenames))
+	}
 	return nil
 }
 

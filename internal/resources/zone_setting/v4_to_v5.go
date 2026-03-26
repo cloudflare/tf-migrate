@@ -7,7 +7,6 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
-	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
@@ -39,6 +38,29 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+// TransformPhaseOne implements the PhaseOneTransformer interface.
+// It returns a removed {} block for the cloudflare_zone_settings_override resource.
+// The caller (runPhaseOne) comments out the original resource block in the file
+// and appends this removed {} block after it. Terraform only sees the removed {}
+// block (the resource block is a comment), so no coexistence error occurs, and
+// the v4 provider drops the state entry without destroying infrastructure.
+func (m *V4ToV5Migrator) TransformPhaseOne(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	if len(block.Labels()) < 2 {
+		return nil, fmt.Errorf("invalid resource block: expected 2 labels, got %d", len(block.Labels()))
+	}
+	baseName := block.Labels()[1]
+
+	// The removed {} block address must be a bare resource address —
+	// Terraform does not allow instance keys ([0], ["key"]) in removed blocks.
+	// The removed block applies to all instances of the resource.
+	removedAddr := "cloudflare_zone_settings_override." + baseName
+	removedBlock := tfhcl.CreateRemovedBlock(removedAddr)
+	return &transform.TransformResult{
+		Blocks:         []*hclwrite.Block{removedBlock},
+		RemoveOriginal: false, // originals stay untouched — removed {} go to a separate cleanup file
+	}, nil
+}
+
 // TransformConfig performs the one-to-many transformation:
 // One cloudflare_zone_settings_override → Multiple cloudflare_zone_setting resources
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
@@ -60,30 +82,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// These need to be copied to all generated resources
 	metaArgs := m.extractMetaArguments(block)
 
-	// Emit a warning with the terraform state rm command the user must run before
-	// terraform plan/apply. The v5 provider has no schema for cloudflare_zone_settings_override,
-	// so Terraform cannot read the old state entry to process the removed block.
-	// The user must remove it manually first.
+	// State cleanup is handled automatically by the phased migration flow.
+	// The stateAddr is still used for the MIGRATION NOTES comment below.
 	stateAddr := "cloudflare_zone_settings_override." + baseName
 	if metaArgs != nil && metaArgs.count != nil {
 		stateAddr += "[0]"
 	}
-	ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
-		Severity: hcl.DiagWarning,
-		Summary:  fmt.Sprintf("Action required for %s: remove old state entry and move import blocks", stateAddr),
-		Detail: fmt.Sprintf(
-			"After migration, before running terraform plan/apply:\n\n"+
-				"1. Remove the old state entry (the v5 provider has no schema for this type):\n"+
-				"     terraform state rm '%s'\n"+
-				"   If this resource is inside a Terraform module named \"mymod\":\n"+
-				"     terraform state rm 'module.mymod.%s'\n\n"+
-				"2. The import blocks in the migrated file are only valid in the root module.\n"+
-				"   If this file is used as a child module, move the import blocks to your\n"+
-				"   root module and prefix the 'to' address with the module path:\n"+
-				"     to = module.mymod.cloudflare_zone_setting.%s_<setting>",
-			stateAddr, stateAddr, baseName,
-		),
-	})
+	_ = stateAddr // used in MIGRATION NOTES comment inside the removed block
 
 	// Find the settings block
 	var settingsBlock *hclwrite.Block
@@ -173,19 +178,14 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// state entry without attempting to destroy it (requires Terraform 1.7+).
 	removedBlock := tfhcl.CreateRemovedBlock("cloudflare_zone_settings_override." + baseName)
 
-	// Inject migration notes as comments inside the removed block so they appear
-	// in the generated file and are visible to the user.
+	// Inject a note about import block hoisting for child module users.
+	// State cleanup is handled automatically by the phased migration flow.
 	notes := hclwrite.Tokens{
 		{Type: hclsyntax.TokenComment, Bytes: []byte(
-			"# MIGRATION NOTES:\n" +
-				"# 1. Before running terraform plan/apply, remove the old state entry:\n" +
-				"#      terraform state rm '" + stateAddr + "'\n" +
-				"#    If inside a module named \"mymod\":\n" +
-				"#      terraform state rm 'module.mymod." + stateAddr + "'\n" +
-				"# 2. The import blocks above are only valid in the root Terraform module.\n" +
-				"#    If this file is a child module, move the import blocks to your root\n" +
-				"#    module and prefix 'to' with the module path:\n" +
-				"#      to = module.mymod.cloudflare_zone_setting." + baseName + "_<setting>\n",
+			"# NOTE: The import blocks above are only valid in the root Terraform module.\n" +
+				"# If this file is a child module, move the import blocks to your root\n" +
+				"# module and prefix 'to' with the module path:\n" +
+				"#   to = module.mymod.cloudflare_zone_setting." + baseName + "_<setting>\n",
 		)},
 	}
 	removedBlock.Body().AppendUnstructuredTokens(notes)

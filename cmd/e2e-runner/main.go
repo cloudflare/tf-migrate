@@ -56,7 +56,7 @@ var migrateCmd = &cobra.Command{
 			}
 			resources = strings.Join(phaseResources, ",")
 		}
-		return e2e.RunMigrate(resources)
+		return e2e.RunMigrate(resources, false)
 	},
 }
 

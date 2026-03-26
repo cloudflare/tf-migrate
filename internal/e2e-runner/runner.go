@@ -16,6 +16,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -312,11 +313,36 @@ func RunE2ETests(cfg *RunConfig) error {
 	printCyan("Step 2: Running migration")
 	printYellow("Running ./scripts/migrate...")
 
-	if err := RunMigrate(cfg.Resources); err != nil {
+	// Run the full migration directly (--yes bypasses phased migration detection).
+	// The e2e runner handles state cleanup itself below via terraform state rm,
+	// which is simpler and reliable. The phased migration (_phase1_cleanup.tf)
+	// is for real Atlantis users who cannot run terraform state rm.
+	if err := RunMigrate(cfg.Resources, true); err != nil {
 		printError("Migration failed")
 		return err
 	}
 	printSuccess("Migration successful")
+
+	// Remove state entries for resource types the v5 provider has no schema for.
+	// cloudflare_zone_settings_override does not exist in v5 — attempting a plan
+	// with these entries in state produces schema errors.
+	//
+	// We manipulate the local state JSON file directly rather than running
+	// `terraform state rm`, which requires `terraform init` to have been run
+	// first (modules must be installed). Direct JSON manipulation works on the
+	// local state file before init, avoiding the "Module not installed" error.
+	// (Real Atlantis users use the _phase1_cleanup.tf phased approach instead.)
+	obsoleteTypes := map[string]bool{
+		"cloudflare_zone_settings_override": true,
+	}
+	stateFilePath := filepath.Join(v5Dir, "terraform.tfstate")
+	if removed, err := removeObsoleteStateEntries(stateFilePath, obsoleteTypes); err != nil {
+		printYellow("Warning: failed to clean obsolete state entries: %v", err)
+	} else {
+		for _, addr := range removed {
+			printYellow("Removing obsolete state entry (no v5 schema): %s", addr)
+		}
+	}
 
 	// Step 3: Test v5 configurations
 	fmt.Println()
@@ -358,37 +384,6 @@ func RunE2ETests(cfg *RunConfig) error {
 		return err
 	}
 	printSuccess("Terraform init successful")
-
-	// Remove state entries for resource types the v5 provider has no schema for.
-	// cloudflare_zone_settings_override does not exist in v5 — attempting a plan
-	// with these entries in state produces:
-	//   "no schema available for cloudflare_zone_settings_override while reading state"
-	// The removed blocks in the migrated config handle the config side; we must
-	// handle the state side here by removing these entries before any plan runs.
-	obsoleteTypes := []string{"cloudflare_zone_settings_override"}
-	if resources, err := v5TF.StateList(); err == nil {
-		for _, addr := range resources {
-			// Extract resource type from address (handles module. prefixes)
-			typePart := addr
-			for strings.HasPrefix(typePart, "module.") {
-				parts := strings.SplitN(typePart, ".", 3)
-				if len(parts) < 3 {
-					break
-				}
-				typePart = parts[2]
-			}
-			resourceType := strings.SplitN(typePart, ".", 2)[0]
-			for _, obsolete := range obsoleteTypes {
-				if resourceType == obsolete {
-					printYellow("Removing obsolete state entry (no v5 schema): %s", addr)
-					if err := v5TF.StateRm(addr); err != nil {
-						printYellow("Warning: failed to remove %s: %v", addr, err)
-					}
-					break
-				}
-			}
-		}
-	}
 
 	// Optional diagnostic snapshot before refresh
 	if cfg.NoRefreshSnapshot {
@@ -894,7 +889,67 @@ func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string, resou
 	return result
 }
 
-// runV4Tests executes Step 1: Test v4 configurations
+// removeObsoleteStateEntries removes resource entries of the given types directly
+// from the local terraform.tfstate JSON file. This avoids running `terraform state rm`
+// which requires modules to be installed (terraform init). Returns the list of
+// removed resource addresses.
+func removeObsoleteStateEntries(stateFilePath string, obsoleteTypes map[string]bool) ([]string, error) {
+	data, err := os.ReadFile(stateFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var state map[string]interface{}
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, fmt.Errorf("failed to parse state file: %w", err)
+	}
+
+	resources, ok := state["resources"].([]interface{})
+	if !ok {
+		return nil, nil
+	}
+
+	var kept []interface{}
+	var removed []string
+
+	for _, r := range resources {
+		res, ok := r.(map[string]interface{})
+		if !ok {
+			kept = append(kept, r)
+			continue
+		}
+		rType, _ := res["type"].(string)
+		if obsoleteTypes[rType] {
+			rModule, _ := res["module"].(string)
+			rName, _ := res["name"].(string)
+			addr := rType + "." + rName
+			if rModule != "" {
+				addr = rModule + "." + addr
+			}
+			removed = append(removed, addr)
+		} else {
+			kept = append(kept, r)
+		}
+	}
+
+	if len(removed) == 0 {
+		return nil, nil
+	}
+
+	state["resources"] = kept
+	updated, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize state: %w", err)
+	}
+	if err := os.WriteFile(stateFilePath, updated, permFile); err != nil {
+		return nil, fmt.Errorf("failed to write state file: %w", err)
+	}
+	return removed, nil
+}
+
 func runV4Tests(ctx *testContext) error {
 	printYellow("Step 1: Testing v4 configurations")
 

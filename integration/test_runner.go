@@ -113,13 +113,17 @@ func (r *TestRunner) runMigration(dir string) error {
 		return fmt.Errorf("building tf-migrate: %w\nOutput: %s", err, output)
 	}
 
-	// Build command arguments
+	// Use --yes to skip phased migration detection and run the full migration
+	// directly. Integration tests validate the final v5 output, not the
+	// intermediate phase-1 state — phased migration is covered separately
+	// in phased_migration_test.go.
 	args := []string{
 		"migrate",
 		"--config-dir", dir,
 		"--source-version", r.SourceVersion,
 		"--target-version", r.TargetVersion,
 		"--backup=false",
+		"--skip-phase-check",
 	}
 
 	// Run migration

@@ -39,6 +39,23 @@ type ResourceTransformer interface {
 	Preprocess(content string) string
 }
 
+// PhaseOneTransformer is an optional interface for migrators whose v4 resource
+// type has no schema in the v5 provider. These resources require a two-phase
+// migration in Atlantis-managed workspaces where `terraform state rm` is disabled:
+//
+//   - Phase 1: append a `removed {}` block to the file while leaving the rest of
+//     the config as v4. Committing and applying this lets Terraform drop the old
+//     state entry via its own lifecycle, without any manual state surgery.
+//   - Phase 2: run the full migration once the state is clean (the normal
+//     `tf-migrate migrate` path).
+//
+// TransformPhaseOne receives the original v4 block and returns a TransformResult
+// whose Blocks contains only the `removed {}` block (RemoveOriginal: false so the
+// original resource block is left untouched).
+type PhaseOneTransformer interface {
+	TransformPhaseOne(ctx *Context, block *hclwrite.Block) (*TransformResult, error)
+}
+
 // ResourceRenamer is an optional interface that migrators can implement
 // to expose resource type renames. This enables global cross-file reference updates.
 //

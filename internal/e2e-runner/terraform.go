@@ -24,8 +24,9 @@ import (
 type TerraformRunner struct {
 	WorkDir            string
 	EnvVars            map[string]string
-	TFConfigFile       string // For provider overrides
-	SanitizeOutput     bool   // Enable output sanitization
+	UnsetEnvVars       []string // env vars to explicitly remove from the inherited environment
+	TFConfigFile       string   // For provider overrides
+	SanitizeOutput     bool     // Enable output sanitization
 	SanitizationConfig *SanitizationConfig
 }
 
@@ -44,8 +45,18 @@ func (tr *TerraformRunner) Run(args ...string) (string, error) {
 	cmd := exec.Command("terraform", args...)
 	cmd.Dir = tr.WorkDir
 
-	// Set environment variables
-	cmd.Env = os.Environ()
+	// Build environment: start from the inherited env, strip any explicitly
+	// unset vars, then apply overrides and additions.
+	unset := make(map[string]bool, len(tr.UnsetEnvVars))
+	for _, k := range tr.UnsetEnvVars {
+		unset[k] = true
+	}
+	for _, kv := range os.Environ() {
+		key := strings.SplitN(kv, "=", 2)[0]
+		if !unset[key] {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
 	for k, v := range tr.EnvVars {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
