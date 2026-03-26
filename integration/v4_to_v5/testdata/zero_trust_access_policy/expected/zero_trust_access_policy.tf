@@ -433,7 +433,7 @@ resource "cloudflare_zero_trust_access_policy" "service_token_policy" {
   name       = "${local.name_prefix}-service-token-ref"
   decision   = "non_identity"
 
-  include = [{ service_token = [cloudflare_access_service_token] }]
+  include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token.id } }]
 }
 
 moved {
@@ -457,8 +457,8 @@ resource "cloudflare_zero_trust_access_policy" "multi_service_token_policy" {
   name       = "${local.name_prefix}-multi-service-token"
   decision   = "non_identity"
 
-  include = [{ service_token = [cloudflare_access_service_token,
-  cloudflare_access_service_token] }]
+  include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token.id } },
+  { service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token_2.id } }]
 }
 
 moved {
@@ -488,8 +488,8 @@ resource "cloudflare_zero_trust_access_policy" "combined_research_team_policy" {
   name       = "${local.name_prefix}-combined"
   decision   = "non_identity"
 
-  include = [{ service_token = [cloudflare_access_service_token,
-  cloudflare_access_service_token] }]
+  include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token.id } },
+  { service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token_2.id } }]
 }
 
 moved {
