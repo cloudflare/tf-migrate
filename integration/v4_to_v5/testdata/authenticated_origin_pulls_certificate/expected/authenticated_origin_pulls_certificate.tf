@@ -8,7 +8,7 @@ variable "cloudflare_zone_id" {
 
 # Output references to test that they are preserved
 output "per_zone_1_status" {
-  value = cloudflare_authenticated_origin_pulls_certificate.per_zone_1.status
+  value = cloudflare_authenticated_origin_pulls_hostname_certificate.per_zone_1.status
 }
 
 # Per-zone certificate - will migrate to cloudflare_authenticated_origin_pulls_certificate

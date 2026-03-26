@@ -355,7 +355,7 @@ resource "cloudflare_access_policy" "no_service_token_policy" {
 
 resource "cloudflare_access_service_token" "test_token" {
   account_id = var.cloudflare_account_id
-  name       = "cftftest-service-token"
+  name       = "test-service-token"
 }
 
 resource "cloudflare_access_policy" "service_token_policy" {
@@ -374,7 +374,7 @@ resource "cloudflare_access_policy" "service_token_policy" {
 # multiple service tokens in include
 resource "cloudflare_access_service_token" "test_token_2" {
   account_id = var.cloudflare_account_id
-  name       = "cftftest-service-token-2"
+  name       = "test-service-token-2"
 }
 
 resource "cloudflare_access_policy" "multi_service_token_policy" {
