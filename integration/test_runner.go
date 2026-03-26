@@ -9,20 +9,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
-
-// binaryCache caches the pre-built tf-migrate binary path so it is only
-// compiled once per test run rather than once per sub-test.
-var binaryCache struct {
-	sync.Once
-	path string
-	err  error
-}
 
 // TestCase represents a single integration test case
 type TestCase struct {
@@ -33,12 +24,15 @@ type TestCase struct {
 type TestRunner struct {
 	BaseDir       string
 	TfMigrateDir  string
+	BinaryPath    string // path to pre-built tf-migrate binary
 	SourceVersion string
 	TargetVersion string
 	TestDataPath  string
 }
 
-// NewTestRunner creates a new test runner for any version migration
+// NewTestRunner creates a new test runner for any version migration.
+// It builds the tf-migrate binary once and stores the path for reuse
+// across all sub-tests, avoiding a costly rebuild per test case.
 func NewTestRunner(sourceVersion, targetVersion string) (*TestRunner, error) {
 	baseDir, err := os.Getwd()
 	if err != nil {
@@ -49,17 +43,25 @@ func NewTestRunner(sourceVersion, targetVersion string) (*TestRunner, error) {
 	// We could be in integration/v4_to_v5, integration/v5_to_v6, etc.
 	var tfMigrateDir string
 	if strings.Contains(baseDir, "/integration/") {
-		// Find the tf-migrate root by going up from integration
 		parts := strings.Split(baseDir, "/integration/")
 		tfMigrateDir = parts[0]
 	} else {
-		// Fallback: assume we're somewhere under tf-migrate
 		tfMigrateDir = filepath.Dir(filepath.Dir(baseDir))
+	}
+
+	// Build the binary once here rather than per-test to avoid the
+	// overhead of ~86 builds which causes test suite timeouts.
+	binaryPath := filepath.Join(tfMigrateDir, "tf-migrate-integration-test")
+	buildCmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/tf-migrate")
+	buildCmd.Dir = tfMigrateDir
+	if output, err := buildCmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("building tf-migrate: %w\nOutput: %s", err, output)
 	}
 
 	return &TestRunner{
 		BaseDir:       baseDir,
 		TfMigrateDir:  tfMigrateDir,
+		BinaryPath:    binaryPath,
 		SourceVersion: sourceVersion,
 		TargetVersion: targetVersion,
 	}, nil
@@ -113,28 +115,8 @@ func (r *TestRunner) copyDirectory(src, dst string) error {
 	return nil
 }
 
-// buildBinary builds the tf-migrate binary once and caches the path.
-func (r *TestRunner) buildBinary() (string, error) {
-	binaryCache.Do(func() {
-		binaryPath := filepath.Join(r.TfMigrateDir, "tf-migrate-integration-test")
-		buildCmd := exec.Command("go", "build", "-o", binaryPath, "./cmd/tf-migrate")
-		buildCmd.Dir = r.TfMigrateDir
-		if output, err := buildCmd.CombinedOutput(); err != nil {
-			binaryCache.err = fmt.Errorf("building tf-migrate: %w\nOutput: %s", err, output)
-			return
-		}
-		binaryCache.path = binaryPath
-	})
-	return binaryCache.path, binaryCache.err
-}
-
 // runMigration executes tf-migrate on the given directory
 func (r *TestRunner) runMigration(dir string) error {
-	binaryPath, err := r.buildBinary()
-	if err != nil {
-		return err
-	}
-
 	// Use --skip-phase-check to run the full migration directly.
 	// Integration tests validate the final v5 output, not the intermediate
 	// phase-1 state — phased migration is covered separately in phased_migration_test.go.
@@ -147,8 +129,7 @@ func (r *TestRunner) runMigration(dir string) error {
 		"--skip-phase-check",
 	}
 
-	// Run migration using the cached binary
-	migrateCmd := exec.Command(binaryPath, args...)
+	migrateCmd := exec.Command(r.BinaryPath, args...)
 	// Set GODEBUG to make map iteration deterministic for consistent test output
 	migrateCmd.Env = append(os.Environ(), "GODEBUG=randommapseed=0")
 
