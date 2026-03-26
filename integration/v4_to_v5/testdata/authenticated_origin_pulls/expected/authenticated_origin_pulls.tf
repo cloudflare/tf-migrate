@@ -9,7 +9,7 @@ variable "cloudflare_zone_id" {
 
 
 
-# for_each variant — cert_id referencing per-hostname cert
+# TKT-001: for_each variant — cert_id referencing per-hostname cert
 locals {
   hostnames = { "api" = "api.example.com", "web" = "web.example.com" }
 }
@@ -27,7 +27,7 @@ moved {
   to   = cloudflare_authenticated_origin_pulls_settings.zone_wide
 }
 
-# cert_id must reference the hostname certificate resource type
+# TKT-001: cert_id should reference the renamed resource type
 # In v4: cloudflare_authenticated_origin_pulls_certificate (per-hostname type)
 # In v5: cloudflare_authenticated_origin_pulls_hostname_certificate
 resource "cloudflare_authenticated_origin_pulls_hostname_certificate" "hostname_cert" {
@@ -67,7 +67,7 @@ resource "cloudflare_authenticated_origin_pulls" "multi_aop" {
   zone_id  = var.cloudflare_zone_id
   config = [{
     hostname = each.value
-    cert_id  = cloudflare_authenticated_origin_pulls_hostname_certificate.multi_cert[each.key].id
+    cert_id  = cloudflare_authenticated_origin_pulls_certificate.multi_cert[each.key].id
     enabled  = true
   }]
 }
