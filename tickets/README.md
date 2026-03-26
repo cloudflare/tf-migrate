@@ -45,24 +45,6 @@ Per the commit message in `727e0f99c`:
 4. Used the latest `main` branch of tf-migrate instead of tagged version because
    v1.0.0-beta.5 cleared `service_token` entirely (TKT-004)
 
-## Additional Provider State Upgrade Bugs (TKT-007 through TKT-011)
-
-These are **provider-side** bugs in `cloudflare-terraform-next`. They are NOT
-tf-migrate issues — they occur during `terraform plan` because the v5 provider's
-`UpgradeResourceState` handlers fail to deserialize v4 state where the stored
-JSON type doesn't match what the handler expects.
-
-| Ticket | Resource | Error |
-|--------|----------|-------|
-| [TKT-007](TKT-007-provider-state-upgrade-connection-rules.md) | `cloudflare_zero_trust_access_policy` | `connection_rules`: expected `{}`, got `[]` |
-| [TKT-008](TKT-008-provider-state-upgrade-zone-plan.md) | `cloudflare_zone` | `plan`: expected `{}`, got `"enterprise"` |
-| [TKT-009](TKT-009-provider-state-upgrade-logpush-output-options.md) | `cloudflare_logpush_job` | `output_options`: expected `{}`, got `[]` |
-| [TKT-010](TKT-010-provider-state-upgrade-notification-policy-filters.md) | `cloudflare_notification_policy` | `filters`: expected `{}`, got `[]` |
-| [TKT-011](TKT-011-provider-state-upgrade-ruleset-action-parameters.md) | `cloudflare_ruleset` | `action_parameters`: expected `{}`, got `[]` |
-
-All follow the same pattern: v4 stored a field as a JSON array `[]` (empty or
-list), but the v5 UpgradeState handler expects a JSON object `{}`.
-
 ## E2E Tests Added
 
 Test cases reproducing all issues have been added to:

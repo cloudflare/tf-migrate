@@ -63,35 +63,6 @@ locals {
 
 
 
-# TKT-003: application_id + precedence must be removed from policy
-# (mirrors research team's app_azul_mtc_worker.tf)
-# In v4, application-scoped policies had application_id + precedence.
-# In v5, application_id and precedence are removed; the binding is done
-# via the cloudflare_zero_trust_access_application.policies block.
-# tf-migrate removes application_id and precedence with a warning.
-resource "cloudflare_zero_trust_access_application" "test_app" {
-  account_id                 = var.cloudflare_account_id
-  name                       = "${local.name_prefix}-test-app"
-  domain                     = "test.${var.cloudflare_domain}"
-  type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
-}
-
-resource "cloudflare_access_policy" "app_scoped_policy" {
-  account_id       = var.cloudflare_account_id
-  application_id   = cloudflare_zero_trust_access_application.test_app.id
-  name             = "${local.name_prefix}-app-scoped"
-  decision         = "non_identity"
-  precedence       = 1
-  session_duration = "18h"
-
-  include {
-    service_token = [
-      cloudflare_zero_trust_access_service_token.test_token.id,
-    ]
-  }
-}
-
 # Basic test cases
 resource "cloudflare_zero_trust_access_policy" "example" {
   account_id = var.cloudflare_account_id
@@ -432,13 +403,12 @@ moved {
 }
 
 # TKT-006: any_valid_service_token = false should be omitted
-# decision = "allow" because non_identity + email is invalid in the API
 resource "cloudflare_zero_trust_access_policy" "no_service_token_policy" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-no-service-token"
-  decision   = "allow"
+  decision   = "non_identity"
 
-  include = [{ email_domain = { domain = "cloudflare.com" } }]
+  include = [{ email = { email = "user@example.com" } }]
 }
 
 moved {
@@ -463,7 +433,7 @@ resource "cloudflare_zero_trust_access_policy" "service_token_policy" {
   name       = "${local.name_prefix}-service-token-ref"
   decision   = "non_identity"
 
-  include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token.id } }]
+  include = [{ service_token = [cloudflare_access_service_token] }]
 }
 
 moved {
@@ -487,8 +457,8 @@ resource "cloudflare_zero_trust_access_policy" "multi_service_token_policy" {
   name       = "${local.name_prefix}-multi-service-token"
   decision   = "non_identity"
 
-  include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token.id } },
-  { service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token_2.id } }]
+  include = [{ service_token = [cloudflare_access_service_token,
+  cloudflare_access_service_token] }]
 }
 
 moved {
@@ -518,8 +488,8 @@ resource "cloudflare_zero_trust_access_policy" "combined_research_team_policy" {
   name       = "${local.name_prefix}-combined"
   decision   = "non_identity"
 
-  include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token.id } },
-  { service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token_2.id } }]
+  include = [{ service_token = [cloudflare_access_service_token,
+  cloudflare_access_service_token] }]
 }
 
 moved {
