@@ -32,9 +32,9 @@ locals {
 
 # Basic test cases
 resource "cloudflare_access_policy" "example" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-example-policy"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-example-policy"
+  decision         = "allow"
   session_duration = "24h"
 
   approval_group {
@@ -48,9 +48,9 @@ resource "cloudflare_access_policy" "example" {
 }
 
 resource "cloudflare_access_policy" "complex" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-complex-policy"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-complex-policy"
+  decision         = "allow"
   session_duration = "24h"
 
   include {
@@ -71,22 +71,22 @@ resource "cloudflare_access_policy" "complex" {
 resource "cloudflare_access_policy" "map_example" {
   for_each = {
     "api" = {
-      decision   = "allow"
+      decision = "allow"
     }
     "web" = {
-      decision   = "allow"
+      decision = "allow"
     }
     "admin" = {
-      decision   = "allow"
+      decision = "allow"
     }
     "readonly" = {
-      decision   = "allow"
+      decision = "allow"
     }
   }
 
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-map-${each.key}-policy"
-  decision       = each.value.decision
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-map-${each.key}-policy"
+  decision         = each.value.decision
   session_duration = "24h"
 
   include {
@@ -98,9 +98,9 @@ resource "cloudflare_access_policy" "map_example" {
 resource "cloudflare_access_policy" "set_example" {
   for_each = toset(["alpha", "beta", "gamma", "delta", "epsilon"])
 
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-set-${each.key}"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-set-${each.key}"
+  decision         = "allow"
   session_duration = "24h"
 
   include {
@@ -112,9 +112,9 @@ resource "cloudflare_access_policy" "set_example" {
 resource "cloudflare_access_policy" "counted" {
   count = 3
 
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-counted-${count.index}"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-counted-${count.index}"
+  decision         = "allow"
   session_duration = "24h"
 
   include {
@@ -126,9 +126,9 @@ resource "cloudflare_access_policy" "counted" {
 resource "cloudflare_access_policy" "conditional_enabled" {
   count = local.enable_test ? 1 : 0
 
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-conditional-enabled"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-conditional-enabled"
+  decision         = "allow"
   session_duration = "24h"
 
   include {
@@ -139,9 +139,9 @@ resource "cloudflare_access_policy" "conditional_enabled" {
 resource "cloudflare_access_policy" "conditional_disabled" {
   count = local.enable_demo ? 1 : 0
 
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-conditional-disabled"
-  decision       = "deny"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-conditional-disabled"
+  decision         = "deny"
   session_duration = "24h"
 
   include {
@@ -151,9 +151,9 @@ resource "cloudflare_access_policy" "conditional_disabled" {
 
 # Pattern Group 6: Terraform Functions
 resource "cloudflare_access_policy" "with_functions" {
-  account_id     = var.cloudflare_account_id
-  name           = join("-", [local.name_prefix, "functions", "test"])
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = join("-", [local.name_prefix, "functions", "test"])
+  decision         = "allow"
   session_duration = "24h"
 
   include {
@@ -163,9 +163,9 @@ resource "cloudflare_access_policy" "with_functions" {
 
 # Pattern Group 7: Lifecycle Meta-Arguments
 resource "cloudflare_access_policy" "with_lifecycle" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-lifecycle-test"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-lifecycle-test"
+  decision         = "allow"
   session_duration = "24h"
 
   lifecycle {
@@ -179,9 +179,9 @@ resource "cloudflare_access_policy" "with_lifecycle" {
 }
 
 resource "cloudflare_access_policy" "with_prevent_destroy" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-prevent-destroy"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-prevent-destroy"
+  decision         = "allow"
   session_duration = "24h"
 
   lifecycle {
@@ -197,9 +197,9 @@ resource "cloudflare_access_policy" "with_prevent_destroy" {
 
 # Minimal resource (only required fields)
 resource "cloudflare_access_policy" "minimal" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-minimal"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-minimal"
+  decision         = "allow"
   session_duration = "24h"
 
   include {
@@ -209,9 +209,9 @@ resource "cloudflare_access_policy" "minimal" {
 
 # Maximal resource (all optional fields populated)
 resource "cloudflare_access_policy" "maximal" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-maximal"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-maximal"
+  decision         = "allow"
   session_duration = "24h"
 
   approval_group {
@@ -238,9 +238,9 @@ resource "cloudflare_access_policy" "maximal" {
 
 # Policy with common_name
 resource "cloudflare_access_policy" "with_common_name" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-common-name"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-common-name"
+  decision         = "allow"
   session_duration = "24h"
 
   include {
@@ -250,9 +250,9 @@ resource "cloudflare_access_policy" "with_common_name" {
 
 # Policy with auth_method
 resource "cloudflare_access_policy" "with_auth_method" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-auth-method"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-auth-method"
+  decision         = "allow"
   session_duration = "24h"
 
   include {
@@ -262,9 +262,9 @@ resource "cloudflare_access_policy" "with_auth_method" {
 
 # Policy with login_method
 resource "cloudflare_access_policy" "with_login_method" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-login-method"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-login-method"
+  decision         = "allow"
   session_duration = "24h"
 
   include {
@@ -274,9 +274,9 @@ resource "cloudflare_access_policy" "with_login_method" {
 
 # Policy with any_valid_service_token
 resource "cloudflare_access_policy" "with_service_token" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-service-token"
-  decision       = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-service-token"
+  decision         = "allow"
   session_duration = "24h"
 
   include {
@@ -286,9 +286,9 @@ resource "cloudflare_access_policy" "with_service_token" {
 
 # Deny policy
 resource "cloudflare_access_policy" "deny_policy" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-deny"
-  decision       = "deny"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-deny"
+  decision         = "deny"
   session_duration = "24h"
 
   include {
@@ -298,12 +298,122 @@ resource "cloudflare_access_policy" "deny_policy" {
 
 # Bypass policy
 resource "cloudflare_access_policy" "bypass_policy" {
-  account_id     = var.cloudflare_account_id
-  name           = "${local.name_prefix}-bypass"
-  decision       = "bypass"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-bypass"
+  decision         = "bypass"
   session_duration = "24h"
 
   include {
     ip = ["192.0.2.0/24"]
+  }
+}
+
+# ============================================================
+# Research team issue reproductions (TKT-002 through TKT-006)
+# ============================================================
+
+# TKT-002: include/exclude/require block → attribute list conversion
+# TKT-005: email_domain from list to {domain = ...} object
+resource "cloudflare_access_policy" "email_domain_policy" {
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-email-domain"
+  decision         = "allow"
+  session_duration = "18h"
+
+  include {
+    email_domain = ["cloudflare.com"]
+  }
+}
+
+# TKT-006: any_valid_service_token from bool to empty object {}
+resource "cloudflare_access_policy" "any_service_token_policy" {
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-any-service-token"
+  decision         = "non_identity"
+  session_duration = "18h"
+
+  include {
+    any_valid_service_token = true
+  }
+}
+
+# TKT-006: any_valid_service_token = false should be omitted
+resource "cloudflare_access_policy" "no_service_token_policy" {
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-no-service-token"
+  decision         = "non_identity"
+  session_duration = "18h"
+
+  include {
+    any_valid_service_token = false
+    email                   = ["user@example.com"]
+  }
+}
+
+# TKT-004: service_token from list to {token_id = ...} object
+# Also tests TKT-002 (block → list) and TKT-004 (service_token format)
+resource "cloudflare_access_service_token" "test_token" {
+  account_id = var.cloudflare_account_id
+  name       = "test-service-token"
+}
+
+resource "cloudflare_access_policy" "service_token_policy" {
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-service-token-ref"
+  decision         = "non_identity"
+  session_duration = "18h"
+
+  include {
+    service_token = [
+      cloudflare_access_service_token.test_token.id,
+    ]
+  }
+}
+
+# TKT-004: multiple service tokens in include
+resource "cloudflare_access_service_token" "test_token_2" {
+  account_id = var.cloudflare_account_id
+  name       = "test-service-token-2"
+}
+
+resource "cloudflare_access_policy" "multi_service_token_policy" {
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-multi-service-token"
+  decision         = "non_identity"
+  session_duration = "18h"
+
+  include {
+    service_token = [
+      cloudflare_access_service_token.test_token.id,
+      cloudflare_access_service_token.test_token_2.id,
+    ]
+  }
+}
+
+# TKT-005: multiple email domains — each becomes a separate include entry
+resource "cloudflare_access_policy" "multi_email_domain_policy" {
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-multi-email-domain"
+  decision         = "allow"
+  session_duration = "18h"
+
+  include {
+    email_domain = ["cloudflare.com", "example.com"]
+  }
+}
+
+# TKT-002 + TKT-004 + TKT-005 + TKT-006: Combined real-world policy
+# (mirrors research team's actual access_policies.tf)
+resource "cloudflare_access_policy" "combined_research_team_policy" {
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-combined"
+  decision         = "non_identity"
+  session_duration = "18h"
+
+  include {
+    service_token = [
+      cloudflare_access_service_token.test_token.id,
+      cloudflare_access_service_token.test_token_2.id,
+    ]
   }
 }
