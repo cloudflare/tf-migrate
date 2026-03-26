@@ -11,6 +11,13 @@ import (
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
 
+// certMigratorLookup is a local interface satisfied by the
+// authenticated_origin_pulls_certificate migrator. Using an interface avoids
+// an import cycle between the two sibling packages.
+type certMigratorLookup interface {
+	IsPerHostname(resourceName string) bool
+}
+
 // V4ToV5Migrator handles migration of Authenticated Origin Pulls from v4 to v5
 // The v4 resource handled three modes in one resource:
 // 1. Global AOP: zone_id + enabled
@@ -146,7 +153,12 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 // updateCertificateReference updates certificate references from
 // cloudflare_authenticated_origin_pulls_certificate to
 // cloudflare_authenticated_origin_pulls_hostname_certificate
-// when the referenced certificate has type="per-hostname"
+// when the referenced certificate was migrated from type="per-hostname".
+//
+// It looks up the cert migrator via the registry to check whether the referenced
+// resource name was recorded as per-hostname during its own TransformConfig call.
+// This avoids the previous name-based heuristic which was unreliable and also
+// avoids the over-eager blanket rename that GetResourceRename() caused.
 func updateCertificateReference(certTokens hclwrite.Tokens, ctx *transform.Context) hclwrite.Tokens {
 	// Convert tokens to string to check if it's a resource reference
 	certRefStr := strings.TrimSpace(string(certTokens.Bytes()))
@@ -158,39 +170,40 @@ func updateCertificateReference(certTokens hclwrite.Tokens, ctx *transform.Conte
 
 	// Extract the resource name from the reference
 	// Format: cloudflare_authenticated_origin_pulls_certificate.resource_name.id
-	// or: cloudflare_authenticated_origin_pulls_certificate.resource_name
-	parts := strings.Split(certRefStr, ".")
-	if len(parts) < 2 {
-		return certTokens // Invalid format, return unchanged
+	// or with for_each: cloudflare_authenticated_origin_pulls_certificate.resource_name[each.key].id
+	after := strings.TrimPrefix(certRefStr, "cloudflare_authenticated_origin_pulls_certificate.")
+	// resource name is the next dot-separated segment (may be followed by . or [)
+	resourceName := after
+	if idx := strings.IndexAny(after, ".["); idx >= 0 {
+		resourceName = after[:idx]
+	}
+	if resourceName == "" {
+		return certTokens
 	}
 
-	resourceName := parts[1]
-
-	// Check if this certificate resource has type="per-hostname" by checking the resource name
-	// (heuristic matching the certificate migrator's Postprocess logic)
-	isPerHostname := false
-
-	if !isPerHostname {
-		lowerName := strings.ToLower(resourceName)
-		if strings.Contains(lowerName, "hostname") || strings.Contains(lowerName, "host") {
-			isPerHostname = true
-		}
+	// Ask the cert migrator whether this resource was per-hostname.
+	// We use a local interface to avoid an import cycle between sibling packages.
+	certMigrator := internal.GetMigrator("cloudflare_authenticated_origin_pulls_certificate", "v4", "v5")
+	if certMigrator == nil {
+		return certTokens
+	}
+	lookup, ok := certMigrator.(certMigratorLookup)
+	if !ok {
+		return certTokens
 	}
 
-	// Update the reference if it's a per-hostname certificate
-	if isPerHostname {
-		newRefStr := strings.Replace(certRefStr,
-			"cloudflare_authenticated_origin_pulls_certificate.",
-			"cloudflare_authenticated_origin_pulls_hostname_certificate.",
-			1)
-
-		// Parse the updated string back to tokens
-		// We need to create new tokens from the updated reference
-		newTokens := hclwrite.Tokens{
-			{Type: hclsyntax.TokenIdent, Bytes: []byte(newRefStr)},
-		}
-		return newTokens
+	if !lookup.IsPerHostname(resourceName) {
+		return certTokens
 	}
 
-	return certTokens
+	// Replace only the type prefix, preserving the rest of the reference expression
+	newRefStr := strings.Replace(certRefStr,
+		"cloudflare_authenticated_origin_pulls_certificate.",
+		"cloudflare_authenticated_origin_pulls_hostname_certificate.",
+		1)
+
+	newTokens := hclwrite.Tokens{
+		{Type: hclsyntax.TokenIdent, Bytes: []byte(newRefStr)},
+	}
+	return newTokens
 }

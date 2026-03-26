@@ -1,6 +1,8 @@
 package authenticated_origin_pulls_certificate
 
 import (
+	"sync"
+
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -13,10 +15,15 @@ import (
 // is split into two separate resources in v5:
 // - cloudflare_authenticated_origin_pulls_certificate (for type="per-zone")
 // - cloudflare_authenticated_origin_pulls_hostname_certificate (for type="per-hostname")
-type V4ToV5Migrator struct{}
+type V4ToV5Migrator struct {
+	mu               sync.Mutex
+	perHostnameNames map[string]bool // tracks resource names that were type="per-hostname"
+}
 
 func NewV4ToV5Migrator() transform.ResourceTransformer {
-	migrator := &V4ToV5Migrator{}
+	migrator := &V4ToV5Migrator{
+		perHostnameNames: make(map[string]bool),
+	}
 	internal.RegisterMigrator("cloudflare_authenticated_origin_pulls_certificate", "v4", "v5", migrator)
 	return migrator
 }
@@ -38,20 +45,13 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
-func (m *V4ToV5Migrator) Postprocess(content string) string {
-	// No longer used — reference updates are handled via GetResourceRenameForName
-	// which tracks per-hostname resources during TransformConfig.
-	return content
-}
-
-// GetResourceRename implements the ResourceRenamer interface.
-// In v5, all per-hostname certificate references (used in cert_id of
-// cloudflare_authenticated_origin_pulls) must point to
-// cloudflare_authenticated_origin_pulls_hostname_certificate.
-// Per-zone certificates keep the same name but are not referenced via cert_id,
-// so renaming all cross-file references to the hostname type is correct.
-func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
-	return []string{"cloudflare_authenticated_origin_pulls_certificate"}, "cloudflare_authenticated_origin_pulls_hostname_certificate"
+// IsPerHostname returns true if the given resource name was migrated to
+// cloudflare_authenticated_origin_pulls_hostname_certificate (i.e. had type="per-hostname").
+// Called by the authenticated_origin_pulls migrator to correctly update cert_id references.
+func (m *V4ToV5Migrator) IsPerHostname(resourceName string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.perHostnameNames[resourceName]
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
@@ -70,6 +70,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Determine target type based on type value
 	if typeFromState == "per-hostname" {
 		targetType = "cloudflare_authenticated_origin_pulls_hostname_certificate"
+		// Record this resource name so the AOP migrator can update cert_id references
+		m.mu.Lock()
+		m.perHostnameNames[resourceName] = true
+		m.mu.Unlock()
 	} else {
 		// Default to per-zone (includes "per-zone", empty, or any other value)
 		targetType = "cloudflare_authenticated_origin_pulls_certificate"
