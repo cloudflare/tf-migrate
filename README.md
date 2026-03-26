@@ -457,7 +457,7 @@ This is the most common mistake when migrating an Atlantis workspace. Always reg
 | `--backup` | `true` | Create backups of original files before migration |
 | `--no-backup` | `false` | Skip creating backup files (alias for `--backup=false`) |
 | `--recursive` | `false` | Recursively process subdirectories |
-| `--yes` / `-y` | `false` | Skip interactive prompts and assume yes (for CI/non-interactive use) |
+| `--skip-phase-check` | `false` | Skip the phased migration confirmation prompt and run the full migration directly (for CI/non-interactive use) |
 | `--verbose` | `false` | Show all diagnostics including informational messages |
 | `--quiet` / `-q` | `false` | Suppress warnings, only show errors |
 

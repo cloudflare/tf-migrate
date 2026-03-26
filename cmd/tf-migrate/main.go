@@ -41,7 +41,7 @@ type config struct {
 	backup             bool
 	recursive          bool
 	logLevel           string
-	yes                bool // skip interactive prompts, assume yes (for CI/e2e)
+	skipPhaseCheck     bool // skip phased migration prompt and run full migration directly (for CI/e2e)
 
 	// Diagnostic output options
 	quiet   bool // Suppress warnings, only show errors
@@ -172,7 +172,7 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 			cfg.backup = false
 		}
 	}
-	cmd.Flags().BoolVarP(&cfg.yes, "yes", "y", false, "Skip interactive prompts and assume yes (for CI/non-interactive use)")
+	cmd.Flags().BoolVar(&cfg.skipPhaseCheck, "skip-phase-check", false, "Skip the phased migration confirmation prompt and run the full migration directly (for CI/non-interactive use)")
 
 	// Diagnostic output options
 	cmd.Flags().BoolVarP(&cfg.quiet, "quiet", "q", false, "Suppress warnings, only show errors")
@@ -243,7 +243,7 @@ func runMigration(log hclog.Logger, cfg config) error {
 	}
 
 	// --yes skips straight to full migration (used by e2e runner and CI).
-	if cfg.yes {
+	if cfg.skipPhaseCheck {
 		return runFullMigration(log, cfg)
 	}
 
@@ -471,7 +471,7 @@ func findFilesWithPhaseOneComments(cfg config) []string {
 // confirmPhaseOneApplied asks the user whether they have committed and applied
 // the phase-1 changes. When --yes is set it auto-confirms (for CI).
 func confirmPhaseOneApplied(cfg config) (bool, error) {
-	if cfg.yes {
+	if cfg.skipPhaseCheck {
 		return true, nil
 	}
 

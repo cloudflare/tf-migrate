@@ -104,7 +104,7 @@ func RunMigrate(resources string, yes bool) error {
 		"--recursive",
 	}
 	if yes {
-		args = append(args, "--yes")
+		args = append(args, "--skip-phase-check")
 	}
 
 	cmd := exec.Command(binary, args...)

@@ -114,7 +114,7 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 			"--source-version", "v4",
 			"--target-version", "v5",
 			"--backup=false",
-			"--yes",
+			"--skip-phase-check",
 		)
 		migrateCmd.Dir = dir
 		cmdOut, err := migrateCmd.CombinedOutput()

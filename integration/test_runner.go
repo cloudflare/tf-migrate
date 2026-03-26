@@ -123,7 +123,7 @@ func (r *TestRunner) runMigration(dir string) error {
 		"--source-version", r.SourceVersion,
 		"--target-version", r.TargetVersion,
 		"--backup=false",
-		"--yes",
+		"--skip-phase-check",
 	}
 
 	// Run migration
