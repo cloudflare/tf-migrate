@@ -67,7 +67,7 @@ resource "cloudflare_authenticated_origin_pulls" "multi_aop" {
   zone_id  = var.cloudflare_zone_id
   config = [{
     hostname = each.value
-    cert_id  = cloudflare_authenticated_origin_pulls_certificate.multi_cert[each.key].id
+    cert_id  = cloudflare_authenticated_origin_pulls_hostname_certificate.multi_cert[each.key].id
     enabled  = true
   }]
 }
