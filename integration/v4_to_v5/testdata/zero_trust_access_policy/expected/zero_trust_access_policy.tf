@@ -50,6 +50,50 @@ locals {
 
 
 
+# ============================================================
+# Migration issue reproductions
+# ============================================================
+
+
+
+
+# service_token: list of IDs → {token_id = ...} object
+
+
+
+
+
+
+
+# application_id + precedence must be removed from policy (not auto-migratable)
+# (mirrors research team's app_azul_mtc_worker.tf)
+# In v4, application-scoped policies had application_id + precedence.
+# In v5, application_id and precedence are removed; the binding is done
+# via the cloudflare_zero_trust_access_application.policies block.
+# tf-migrate removes application_id and precedence with a warning.
+resource "cloudflare_zero_trust_access_application" "test_app" {
+  account_id                 = var.cloudflare_account_id
+  name                       = "${local.name_prefix}-test-app"
+  domain                     = "test.${var.cloudflare_domain}"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
+}
+
+resource "cloudflare_access_policy" "app_scoped_policy" {
+  account_id       = var.cloudflare_account_id
+  application_id   = cloudflare_zero_trust_access_application.test_app.id
+  name             = "${local.name_prefix}-app-scoped"
+  decision         = "non_identity"
+  precedence       = 1
+  session_duration = "18h"
+
+  include {
+    service_token = [
+      cloudflare_zero_trust_access_service_token.test_token.id,
+    ]
+  }
+}
+
 # Basic test cases
 resource "cloudflare_zero_trust_access_policy" "example" {
   account_id = var.cloudflare_account_id
@@ -358,4 +402,127 @@ resource "cloudflare_zero_trust_access_policy" "bypass_policy" {
 moved {
   from = cloudflare_access_policy.bypass_policy
   to   = cloudflare_zero_trust_access_policy.bypass_policy
+}
+
+# include/exclude/require block → attribute list conversion
+# email_domain: list → {domain = ...} object
+resource "cloudflare_zero_trust_access_policy" "email_domain_policy" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-email-domain"
+  decision   = "allow"
+
+  include = [{ email_domain = { domain = "cloudflare.com" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.email_domain_policy
+  to   = cloudflare_zero_trust_access_policy.email_domain_policy
+}
+
+# any_valid_service_token: bool → empty object {}
+resource "cloudflare_zero_trust_access_policy" "any_service_token_policy" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-any-service-token"
+  decision   = "non_identity"
+
+  include = [{ any_valid_service_token = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.any_service_token_policy
+  to   = cloudflare_zero_trust_access_policy.any_service_token_policy
+}
+
+# any_valid_service_token = false should be omitted
+# decision = "allow" because non_identity + email is invalid in the API
+resource "cloudflare_zero_trust_access_policy" "no_service_token_policy" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-no-service-token"
+  decision   = "allow"
+
+  include = [{ email_domain = { domain = "cloudflare.com" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.no_service_token_policy
+  to   = cloudflare_zero_trust_access_policy.no_service_token_policy
+}
+
+resource "cloudflare_zero_trust_access_service_token" "test_token" {
+  account_id = var.cloudflare_account_id
+  name       = "cftftest-service-token"
+}
+
+moved {
+  from = cloudflare_access_service_token.test_token
+  to   = cloudflare_zero_trust_access_service_token.test_token
+}
+
+resource "cloudflare_zero_trust_access_policy" "service_token_policy" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-service-token-ref"
+  decision   = "non_identity"
+
+  include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token.id } }]
+}
+
+moved {
+  from = cloudflare_access_policy.service_token_policy
+  to   = cloudflare_zero_trust_access_policy.service_token_policy
+}
+
+# multiple service tokens in include
+resource "cloudflare_zero_trust_access_service_token" "test_token_2" {
+  account_id = var.cloudflare_account_id
+  name       = "cftftest-service-token-2"
+}
+
+moved {
+  from = cloudflare_access_service_token.test_token_2
+  to   = cloudflare_zero_trust_access_service_token.test_token_2
+}
+
+resource "cloudflare_zero_trust_access_policy" "multi_service_token_policy" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-multi-service-token"
+  decision   = "non_identity"
+
+  include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token.id } },
+  { service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token_2.id } }]
+}
+
+moved {
+  from = cloudflare_access_policy.multi_service_token_policy
+  to   = cloudflare_zero_trust_access_policy.multi_service_token_policy
+}
+
+# multiple email domains — each becomes a separate include entry
+resource "cloudflare_zero_trust_access_policy" "multi_email_domain_policy" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-multi-email-domain"
+  decision   = "allow"
+
+  include = [{ email_domain = { domain = "cloudflare.com" } },
+  { email_domain = { domain = "example.com" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.multi_email_domain_policy
+  to   = cloudflare_zero_trust_access_policy.multi_email_domain_policy
+}
+
+# Combined real-world policy — service_token refs, email_domain, any_valid_service_token
+# (mirrors research team's actual access_policies.tf)
+resource "cloudflare_zero_trust_access_policy" "combined_research_team_policy" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-combined"
+  decision   = "non_identity"
+
+  include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token.id } },
+  { service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token_2.id } }]
+}
+
+moved {
+  from = cloudflare_access_policy.combined_research_team_policy
+  to   = cloudflare_zero_trust_access_policy.combined_research_team_policy
 }

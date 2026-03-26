@@ -1,8 +1,7 @@
 package authenticated_origin_pulls_certificate
 
 import (
-	"regexp"
-	"strings"
+	"sync"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
@@ -16,10 +15,15 @@ import (
 // is split into two separate resources in v5:
 // - cloudflare_authenticated_origin_pulls_certificate (for type="per-zone")
 // - cloudflare_authenticated_origin_pulls_hostname_certificate (for type="per-hostname")
-type V4ToV5Migrator struct{}
+type V4ToV5Migrator struct {
+	mu               sync.Mutex
+	perHostnameNames map[string]bool // tracks resource names that were type="per-hostname"
+}
 
 func NewV4ToV5Migrator() transform.ResourceTransformer {
-	migrator := &V4ToV5Migrator{}
+	migrator := &V4ToV5Migrator{
+		perHostnameNames: make(map[string]bool),
+	}
 	internal.RegisterMigrator("cloudflare_authenticated_origin_pulls_certificate", "v4", "v5", migrator)
 	return migrator
 }
@@ -41,47 +45,13 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
-func (m *V4ToV5Migrator) Postprocess(content string) string {
-	// Handle cross-file reference updates for resource split
-	// We need to update references like:
-	// cloudflare_authenticated_origin_pulls_certificate.resource_name
-	// to:
-	// cloudflare_authenticated_origin_pulls_hostname_certificate.resource_name
-	// for resources that were migrated to the hostname type
-
-	// This is a best-effort approach - we look for patterns that suggest
-	// a hostname resource based on common naming conventions
-	re := regexp.MustCompile(`cloudflare_authenticated_origin_pulls_certificate\.([a-zA-Z0-9_]+)`)
-
-	content = re.ReplaceAllStringFunc(content, func(match string) string {
-		// Extract the resource name
-		parts := strings.Split(match, ".")
-		if len(parts) != 2 {
-			return match
-		}
-		resourceName := parts[1]
-
-		// Check if this looks like a hostname resource (contains "hostname" or "host" in name)
-		lowerName := strings.ToLower(resourceName)
-		if strings.Contains(lowerName, "hostname") || strings.Contains(lowerName, "host") {
-			// Update to hostname certificate resource
-			return "cloudflare_authenticated_origin_pulls_hostname_certificate." + resourceName
-		}
-
-		// Keep as per-zone resource
-		return match
-	})
-
-	return content
-}
-
-// GetResourceRename implements the ResourceRenamer interface
-// This resource splits into two different types based on the type field:
-// - per-zone -> cloudflare_authenticated_origin_pulls_certificate
-// - per-hostname -> cloudflare_authenticated_origin_pulls_hostname_certificate
-// We return the v4 name for both to indicate no simple 1:1 rename
-func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
-	return []string{"cloudflare_authenticated_origin_pulls_certificate"}, "cloudflare_authenticated_origin_pulls_certificate"
+// IsPerHostname returns true if the given resource name was migrated to
+// cloudflare_authenticated_origin_pulls_hostname_certificate (i.e. had type="per-hostname").
+// Called by the authenticated_origin_pulls migrator to correctly update cert_id references.
+func (m *V4ToV5Migrator) IsPerHostname(resourceName string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.perHostnameNames[resourceName]
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
@@ -100,6 +70,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Determine target type based on type value
 	if typeFromState == "per-hostname" {
 		targetType = "cloudflare_authenticated_origin_pulls_hostname_certificate"
+		// Record this resource name so the AOP migrator can update cert_id references
+		m.mu.Lock()
+		m.perHostnameNames[resourceName] = true
+		m.mu.Unlock()
 	} else {
 		// Default to per-zone (includes "per-zone", empty, or any other value)
 		targetType = "cloudflare_authenticated_origin_pulls_certificate"
