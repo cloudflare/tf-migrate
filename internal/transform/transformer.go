@@ -14,7 +14,8 @@ const DiagInfo = hcl.DiagnosticSeverity(0) // same as hcl.DiagInvalid
 // Context carries data through the transformation pipeline
 type Context struct {
 	Content       []byte
-	Filename      string
+	Filename      string // Base filename (e.g., "main.tf")
+	FilePath      string // Full path to the file (e.g., "/path/to/main.tf")
 	CFGFile       *hclwrite.File
 	CFGFiles      map[string]*hclwrite.File
 	Diagnostics   hcl.Diagnostics

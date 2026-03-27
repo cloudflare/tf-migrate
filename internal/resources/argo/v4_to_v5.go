@@ -89,15 +89,17 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
   - cloudflare_argo_smart_routing.%s (migrated via moved block — no action needed)
   - cloudflare_argo_tiered_caching.%s (NEW — import block generated)
 
-An import {} block has been added with the zone_id as the import ID.
-Before running terraform apply, verify the import block:
+An import {} block has been added in:
+  %s
+
+Before running terraform apply, verify the import block in that file:
 
   import {
     to = cloudflare_argo_tiered_caching.%s
     id = "%s"
   }
 
-If zone_id is a variable reference, replace <zone_id> with the actual zone ID.`, resourceName, tieredName, tieredName, zoneID),
+If zone_id is a variable reference, replace <zone_id> with the actual zone ID.`, resourceName, tieredName, ctx.FilePath, tieredName, zoneID),
 		})
 	} else if smartRoutingAttr != nil {
 		// Only smart_routing

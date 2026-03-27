@@ -610,6 +610,7 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 		ctx := &transform.Context{
 			Content:       content,
 			Filename:      filepath.Base(file),
+			FilePath:      file,
 			Diagnostics:   make(hcl.Diagnostics, 0),
 			Metadata:      make(map[string]interface{}),
 			SourceVersion: cfg.sourceVersion,
@@ -863,6 +864,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		ctx := &transform.Context{
 			Content:       content,
 			Filename:      filepath.Base(file),
+			FilePath:      file,
 			Diagnostics:   make(hcl.Diagnostics, 0),
 			Metadata:      make(map[string]interface{}),
 			SourceVersion: cfg.sourceVersion,

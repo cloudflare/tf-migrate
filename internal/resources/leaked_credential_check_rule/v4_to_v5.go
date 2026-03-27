@@ -97,7 +97,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			Severity: hcl.DiagWarning,
 			Summary:  fmt.Sprintf("Action required: fill in detection_id for cloudflare_leaked_credential_check_rule.%s", resourceName),
 			Detail: "The v4 provider had a bug where the detection_id was not stored in state.\n" +
-				"An import {} block has been generated in the migrated file with a placeholder ID.\n\n" +
+				"An import {} block has been generated in:\n" +
+				"  " + ctx.FilePath + "\n\n" +
 				"Before running terraform plan/apply:\n" +
 				"  1. Find the detection_id:\n" +
 				"       " + listCmd + "\n\n" +
