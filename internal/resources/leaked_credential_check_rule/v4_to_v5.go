@@ -1,6 +1,9 @@
 package leaked_credential_check_rule
 
 import (
+	"fmt"
+
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -62,16 +65,31 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	body := block.Body()
 	resourceName := block.Labels()[1]
 
-	// If the block has no id attribute the v4 bug may be present — warn the user.
+	// If the block has no id attribute the v4 bug may be present — warn the user
+	// both in the file (as a comment) and in the terminal diagnostic output.
 	if body.GetAttribute("id") == nil {
+		importCmd := fmt.Sprintf("terraform import cloudflare_leaked_credential_check_rule.%s <zone_id>/<detection_id>", resourceName)
+		listCmd := `curl -s "https://api.cloudflare.com/client/v4/zones/<zone_id>/leaked-credential-checks/detections" -H "Authorization: Bearer <token>" | jq '.result[].id'`
+
 		tfhcl.AppendWarningComment(body,
 			"The v4 provider had a bug where the detection_id was not stored in state (id = \"\"). "+
 				"If this rule was already created in v4, Terraform will fail to recreate it with "+
 				"error 11003 on the first apply. Find the existing detection_id with: "+
-				"curl -s \"https://api.cloudflare.com/client/v4/zones/<zone_id>/leaked-credential-checks/detections\" "+
-				"-H \"Authorization: Bearer <token>\" | jq '.result[].id' "+
-				"Then import: terraform import cloudflare_leaked_credential_check_rule."+resourceName+" <zone_id>/<detection_id>",
+				listCmd+" Then import: "+importCmd,
 		)
+
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("Manual action required for cloudflare_leaked_credential_check_rule.%s", resourceName),
+			Detail: "The v4 provider had a bug where the detection_id was not stored in state (id = \"\").\n\n" +
+				"If this rule was already created in v4, Terraform will fail to recreate it on the first apply\n" +
+				"with error 11003: \"custom detection for given username and password already exists\".\n\n" +
+				"Steps to fix:\n" +
+				"  1. Find the existing detection_id:\n" +
+				"       " + listCmd + "\n\n" +
+				"  2. Import the existing rule:\n" +
+				"       " + importCmd,
+		})
 	}
 
 	return &transform.TransformResult{
