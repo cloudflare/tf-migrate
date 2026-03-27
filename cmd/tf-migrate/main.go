@@ -320,7 +320,10 @@ var fallbackProviderVersions = map[string]string{
 //
 // Pre-releases (betas) are included because v5 is currently in beta. Draft
 // releases are excluded as they are unpublished works-in-progress.
-func targetProviderVersion(targetVersion string) string {
+//
+// Returns the version string and true if it was fetched from the API,
+// or the fallback version and false if the API was unavailable.
+func targetProviderVersion(targetVersion string) (string, bool) {
 	majorPrefix := strings.TrimPrefix(targetVersion, "v") + "."
 
 	type release struct {
@@ -342,7 +345,7 @@ func targetProviderVersion(targetVersion string) string {
 				}
 				version := strings.TrimPrefix(r.TagName, "v")
 				if strings.HasPrefix(version, majorPrefix) {
-					return version
+					return version, true
 				}
 			}
 		}
@@ -350,18 +353,23 @@ func targetProviderVersion(targetVersion string) string {
 
 	// Fall back to hardcoded version
 	if v, ok := fallbackProviderVersions[targetVersion]; ok {
-		return v
+		return v, false
 	}
-	return ""
+	return "", false
 }
 
 // updateProviderVersionConstraint scans all .tf files for a required_providers
 // block containing cloudflare/cloudflare and updates the version constraint to
 // match the target provider version. Prints next-step instructions if updated.
 func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Diagnostics) error {
-	targetVersion := targetProviderVersion(cfg.targetVersion)
+	targetVersion, fromAPI := targetProviderVersion(cfg.targetVersion)
 	if targetVersion == "" {
 		return nil
+	}
+	if fromAPI {
+		log.Debug("Provider version fetched from GitHub API", "version", targetVersion)
+	} else {
+		log.Debug("GitHub API unavailable, using built-in fallback version", "version", targetVersion)
 	}
 
 	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
