@@ -77,6 +77,104 @@ moved {
   to   = cloudflare_workers_route.example
 }`,
 		},
+		{
+			Name: "Script reference rewrites workers_script name to id",
+			Input: `resource "cloudflare_worker_route" "example" {
+  zone_id     = "d41d8cd98f00b204e9800998ecf8427e"
+  pattern     = "example.com/*"
+  script_name = cloudflare_workers_script.my_worker.name
+}`,
+			Expected: `resource "cloudflare_workers_route" "example" {
+  zone_id = "d41d8cd98f00b204e9800998ecf8427e"
+  pattern = "example.com/*"
+  script  = cloudflare_workers_script.my_worker.id
+}
+  
+moved {
+  from = cloudflare_worker_route.example
+  to   = cloudflare_workers_route.example
+}`,
+		},
+		{
+			Name: "Indexed script reference rewrites workers_script name to id",
+			Input: `resource "cloudflare_worker_route" "example" {
+  zone_id     = "d41d8cd98f00b204e9800998ecf8427e"
+  pattern     = "${each.key}.example.com/*"
+  script_name = cloudflare_workers_script.my_worker[each.key].name
+}`,
+			Expected: `resource "cloudflare_workers_route" "example" {
+  zone_id  = "d41d8cd98f00b204e9800998ecf8427e"
+  pattern  = "${each.key}.example.com/*"
+  script   = cloudflare_workers_script.my_worker[each.key].id
+}
+  
+moved {
+  from = cloudflare_worker_route.example
+  to   = cloudflare_workers_route.example
+}`,
+		},
+		{
+			Name: "Singular worker_script reference rewrites name to id",
+			Input: `resource "cloudflare_workers_route" "example" {
+  zone_id     = "d41d8cd98f00b204e9800998ecf8427e"
+  pattern     = "example.com/*"
+  script_name = cloudflare_worker_script.my_worker.name
+}`,
+			Expected: `resource "cloudflare_workers_route" "example" {
+  zone_id = "d41d8cd98f00b204e9800998ecf8427e"
+  pattern = "example.com/*"
+  script  = cloudflare_worker_script.my_worker.id
+}`,
+		},
+		{
+			Name: "Singular worker_route with singular worker_script reference",
+			Input: `resource "cloudflare_worker_route" "datadog_rum_route" {
+  zone_id     = local.prod_coalition_zone_id
+  pattern     = "${local.datadog_rum_host}/*"
+  script_name = cloudflare_worker_script.datadog_rum_proxy.name
+}`,
+			Expected: `resource "cloudflare_workers_route" "datadog_rum_route" {
+  zone_id = local.prod_coalition_zone_id
+  pattern = "${local.datadog_rum_host}/*"
+  script  = cloudflare_worker_script.datadog_rum_proxy.id
+}
+
+moved {
+  from = cloudflare_worker_route.datadog_rum_route
+  to   = cloudflare_workers_route.datadog_rum_route
+}`,
+		},
+		{
+			Name: "Legacy dot-index script reference rewrites workers_script name to id",
+			Input: `resource "cloudflare_worker_route" "example" {
+  zone_id     = "d41d8cd98f00b204e9800998ecf8427e"
+  pattern     = "example.com/*"
+  script_name = cloudflare_workers_script.my_worker.0.name
+}`,
+			Expected: `resource "cloudflare_workers_route" "example" {
+  zone_id = "d41d8cd98f00b204e9800998ecf8427e"
+  pattern = "example.com/*"
+  script  = cloudflare_workers_script.my_worker.0.id
+}
+
+moved {
+  from = cloudflare_worker_route.example
+  to   = cloudflare_workers_route.example
+}`,
+		},
+		{
+			Name: "String-keyed bracket index rewrites workers_script name to id",
+			Input: `resource "cloudflare_workers_route" "example" {
+  zone_id     = "d41d8cd98f00b204e9800998ecf8427e"
+  pattern     = "example.com/*"
+  script_name = cloudflare_workers_script.my_worker["alpha"].name
+}`,
+			Expected: `resource "cloudflare_workers_route" "example" {
+  zone_id = "d41d8cd98f00b204e9800998ecf8427e"
+  pattern = "example.com/*"
+  script  = cloudflare_workers_script.my_worker["alpha"].id
+}`,
+		},
 	}
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)

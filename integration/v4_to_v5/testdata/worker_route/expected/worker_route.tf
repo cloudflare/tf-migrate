@@ -1,6 +1,6 @@
 # Comprehensive integration test for worker_route migration
 # This file tests ALL Terraform patterns and edge cases
-# Note: Testing routes without script_name to avoid requiring actual worker scripts
+# Includes script_name traversal references to validate v4->v5 attribute rewrites
 
 # ========================================
 # Variables
@@ -201,10 +201,70 @@ resource "cloudflare_workers_route" "complex_interpolation" {
 }
 
 ###############################################################################
+# Pattern 12: Worker script dependencies for route references
+###############################################################################
+
+resource "cloudflare_workers_script" "segment_proxy" {
+  account_id  = var.cloudflare_account_id
+  content     = "addEventListener('fetch', event => { event.respondWith(new Response('ok')); });"
+  script_name = "${local.name_prefix}-segment-proxy"
+}
+
+
+resource "cloudflare_workers_script" "segment_proxy_indexed" {
+  count       = 1
+  account_id  = var.cloudflare_account_id
+  content     = "addEventListener('fetch', event => { event.respondWith(new Response('ok')); });"
+  script_name = "${local.name_prefix}-segment-proxy-${count.index}"
+}
+
+resource "cloudflare_workers_script" "segment_proxy_each" {
+  for_each    = toset(["alpha"])
+  account_id  = var.cloudflare_account_id
+  content     = "addEventListener('fetch', event => { event.respondWith(new Response('ok')); });"
+  script_name = "${local.name_prefix}-segment-proxy-${each.key}"
+}
+
+###############################################################################
+# Pattern 12: script_name reference rewrites
+###############################################################################
+
+resource "cloudflare_workers_route" "script_ref_plural" {
+  zone_id = local.zone_id
+  pattern = "${local.name_prefix}-script-plural.cf-tf-test.com/*"
+  script  = cloudflare_workers_script.segment_proxy.id
+}
+
+resource "cloudflare_workers_route" "script_ref_singular" {
+  zone_id = local.zone_id
+  pattern = "${local.name_prefix}-script-singular.cf-tf-test.com/*"
+  script  = cloudflare_workers_script.legacy_proxy.id
+}
+
+resource "cloudflare_workers_route" "script_ref_indexed" {
+  zone_id = local.zone_id
+  pattern = "${local.name_prefix}-script-indexed.cf-tf-test.com/*"
+  script  = cloudflare_workers_script.segment_proxy_indexed[0].id
+}
+
+resource "cloudflare_workers_route" "script_ref_each_key" {
+  zone_id = local.zone_id
+  pattern = "${local.name_prefix}-script-each.cf-tf-test.com/*"
+  script  = cloudflare_workers_script.segment_proxy_each["alpha"].id
+}
+
+resource "cloudflare_workers_route" "script_ref_dot_index" {
+  zone_id = local.zone_id
+  pattern = "${local.name_prefix}-script-dotidx.cf-tf-test.com/*"
+  script  = cloudflare_workers_script.segment_proxy_indexed.0.id
+}
+
+###############################################################################
 # Summary: Test Coverage
 ###############################################################################
 # Total resources: 25+ instances across all patterns
 # - Routes without script_name (catch-all/fallback): 25+ instances
+# - script_name references with worker_script/workers_script traversals
 # - for_each with maps: 2 instances (api_routes)
 # - for_each with sets: 2 instances (admin_routes)
 # - count-based: 3 instances (numbered)
@@ -213,3 +273,14 @@ resource "cloudflare_workers_route" "complex_interpolation" {
 # - Special patterns: wildcard, exact paths, query params, special chars
 # - Environment configs: 3 instances (prod/staging/dev)
 ###############################################################################
+
+resource "cloudflare_workers_script" "legacy_proxy" {
+  account_id  = var.cloudflare_account_id
+  content     = "addEventListener('fetch', event => { event.respondWith(new Response('ok')); });"
+  script_name = "${local.name_prefix}-legacy-proxy"
+}
+
+moved {
+  from = cloudflare_worker_script.legacy_proxy
+  to   = cloudflare_workers_script.legacy_proxy
+}
