@@ -68,13 +68,16 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// If the block has no id attribute the v4 bug may be present — warn the user
 	// both in the file (as a comment) and in the terminal diagnostic output.
 	if body.GetAttribute("id") == nil {
-		// Extract the actual zone_id value if it's a literal string, so the
-		// suggested curl and import commands are immediately runnable.
+		// Extract the actual zone_id value if it's a literal hex string (32 chars),
+		// so the suggested curl and import commands are immediately runnable.
+		// If zone_id is a variable reference (e.g. var.zone_id) keep the placeholder.
 		zoneID := "<zone_id>"
 		if zoneAttr := body.GetAttribute("zone_id"); zoneAttr != nil {
-			zoneID = tfhcl.ExtractStringFromAttribute(zoneAttr)
-			if zoneID == "" {
-				zoneID = "<zone_id>"
+			extracted := tfhcl.ExtractStringFromAttribute(zoneAttr)
+			// Only use the extracted value if it looks like a real zone ID
+			// (32-character hex string), not a variable reference like "var".
+			if len(extracted) == 32 {
+				zoneID = extracted
 			}
 		}
 
