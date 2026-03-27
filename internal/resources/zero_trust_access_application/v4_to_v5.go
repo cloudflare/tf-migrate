@@ -76,9 +76,23 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.EnsureAttribute(body, "http_only_cookie_attribute", "false")
 	}
 
-	// Strip saas_app block for non-SaaS application types
-	// v5 validates that saas_app can only be set when type = "saas" or type = "dash_sso"
-	if appType != "saas" && appType != "dash_sso" && appType != "" {
+	// Strip saas_app block only when we can confirm the type is a known non-SaaS literal.
+	// Using an allowlist (rather than a denylist) ensures we never strip saas_app when
+	// the type is a variable reference or local (e.g. type = var.app_type), where
+	// ExtractStringFromAttribute returns a non-empty identifier that is not a saas type
+	// but also not a known concrete non-saas type.
+	nonSaasLiterals := map[string]bool{
+		"self_hosted": true,
+		"ssh":         true,
+		"vnc":         true,
+		"rdp":         true,
+		"bookmark":    true,
+		"app_launcher": true,
+		"warp":        true,
+		"biso":        true,
+		"mcp_portal":  true,
+	}
+	if nonSaasLiterals[appType] {
 		tfhcl.RemoveBlocksByType(body, "saas_app")
 	}
 

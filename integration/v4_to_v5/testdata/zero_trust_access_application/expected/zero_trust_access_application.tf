@@ -443,6 +443,18 @@ resource "cloudflare_zero_trust_access_application" "resourcename_opt2" {
 # NOTE: cloudflare_access_policy with application_id CANNOT be migrated to v5.
 # See access_policy.md in the repo root for details.
 
+# Pattern: self_hosted app with an erroneous saas_app block.
+# count = 0 so this is never applied to the API in e2e runs; it exercises the
+# config transformation path only (saas_app must be stripped for non-saas types).
+resource "cloudflare_zero_trust_access_application" "self_hosted_with_saas_app" {
+  count      = 0
+  account_id = local.common_account_id
+  name       = "${local.name_prefix} Self Hosted With SaaS App"
+  type       = "self_hosted"
+
+  http_only_cookie_attribute = "false"
+}
+
 # Resource using v4 name option 1
 resource "cloudflare_zero_trust_access_application" "resourcename_opt1" {
   account_id                 = var.cloudflare_account_id
@@ -456,3 +468,4 @@ moved {
   from = cloudflare_access_application.resourcename_opt1
   to   = cloudflare_zero_trust_access_application.resourcename_opt1
 }
+

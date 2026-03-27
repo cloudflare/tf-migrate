@@ -197,6 +197,58 @@ resource "cloudflare_custom_ssl" "hyphen_geo" {
   geo_restrictions = { label = "us-t5" }
 }`,
 			},
+
+		// --- Placeholder path: missing write-only fields ---
+		{
+			Name: "missing certificate and private_key — placeholders and lifecycle added",
+			Input: `
+resource "cloudflare_custom_ssl" "no_creds" {
+  zone_id = "abc123"
+}`,
+			Expected: `resource "cloudflare_custom_ssl" "no_creds" {
+  zone_id     = "abc123"
+  certificate = "PLACEHOLDER - actual certificate already deployed"
+  private_key = "PLACEHOLDER - actual private key already deployed"
+  lifecycle {
+    ignore_changes = [certificate, private_key]
+  }
+}`,
+		},
+		{
+			Name: "empty custom_ssl_options block — placeholders and lifecycle added",
+			Input: `
+resource "cloudflare_custom_ssl" "empty_opts" {
+  zone_id = "abc123"
+  custom_ssl_options {}
+}`,
+			Expected: `resource "cloudflare_custom_ssl" "empty_opts" {
+  zone_id     = "abc123"
+  certificate = "PLACEHOLDER - actual certificate already deployed"
+  private_key = "PLACEHOLDER - actual private key already deployed"
+  lifecycle {
+    ignore_changes = [certificate, private_key]
+  }
+}`,
+		},
+		{
+			Name: "existing lifecycle block — ignore_changes merged, other attrs preserved",
+			Input: `
+resource "cloudflare_custom_ssl" "existing_lc" {
+  zone_id = "abc123"
+  lifecycle {
+    create_before_destroy = true
+  }
+}`,
+			Expected: `resource "cloudflare_custom_ssl" "existing_lc" {
+  zone_id     = "abc123"
+  certificate = "PLACEHOLDER - actual certificate already deployed"
+  private_key = "PLACEHOLDER - actual private key already deployed"
+  lifecycle {
+    create_before_destroy = true
+    ignore_changes        = [certificate, private_key]
+  }
+}`,
+		},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)

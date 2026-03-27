@@ -64,7 +64,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		body.SetAttributeValue("certificate", cty.StringVal("PLACEHOLDER - actual certificate already deployed"))
 
 		// Add or update lifecycle block to ignore certificate changes
-		addLifecycleIgnoreChanges(body, "certificate")
+		tfhcl.AddLifecycleIgnoreChanges(body, "certificate")
 
 		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 			Severity: hcl.DiagWarning,
@@ -93,36 +93,3 @@ The actual certificate is already deployed in Cloudflare and won't be modified.`
 	}, nil
 }
 
-// addLifecycleIgnoreChanges adds or updates a lifecycle block with ignore_changes for the given attribute
-func addLifecycleIgnoreChanges(body *hclwrite.Body, attrName string) {
-	// Check if lifecycle block already exists
-	var lifecycleBlock *hclwrite.Block
-	for _, block := range body.Blocks() {
-		if block.Type() == "lifecycle" {
-			lifecycleBlock = block
-			break
-		}
-	}
-
-	if lifecycleBlock == nil {
-		// Create new lifecycle block
-		lifecycleBlock = body.AppendNewBlock("lifecycle", nil)
-	}
-
-	lifecycleBody := lifecycleBlock.Body()
-
-	// Check if ignore_changes already exists
-	if existingAttr := lifecycleBody.GetAttribute("ignore_changes"); existingAttr != nil {
-		// Parse existing ignore_changes and add the new attribute if not present
-		// For simplicity, we'll just set it to include the new attribute
-		// A more sophisticated approach would parse and merge
-		lifecycleBody.SetAttributeRaw("ignore_changes", hclwrite.TokensForTuple([]hclwrite.Tokens{
-			hclwrite.TokensForIdentifier(attrName),
-		}))
-	} else {
-		// Set ignore_changes with the attribute
-		lifecycleBody.SetAttributeRaw("ignore_changes", hclwrite.TokensForTuple([]hclwrite.Tokens{
-			hclwrite.TokensForIdentifier(attrName),
-		}))
-	}
-}
