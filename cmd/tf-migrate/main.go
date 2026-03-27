@@ -34,14 +34,15 @@ type config struct {
 	outputDir string
 
 	// Migration options
-	resourcesToMigrate []string
-	sourceVersion      string
-	targetVersion      string
-	dryRun             bool
-	backup             bool
-	recursive          bool
-	logLevel           string
-	skipPhaseCheck     bool // skip phased migration prompt and run full migration directly (for CI/e2e)
+	resourcesToMigrate    []string
+	sourceVersion         string
+	targetVersion         string
+	targetProviderVersion string // explicit provider version to write into required_providers (overrides API fetch)
+	dryRun                bool
+	backup                bool
+	recursive             bool
+	logLevel              string
+	skipPhaseCheck        bool // skip phased migration prompt and run full migration directly (for CI/e2e)
 
 	// Diagnostic output options
 	quiet   bool // Suppress warnings, only show errors
@@ -163,6 +164,7 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 	cmd.Flags().StringVar(&cfg.outputDir, "output-dir", "", "Output directory for migrated configuration files (default: in-place)")
 	cmd.Flags().BoolVar(&cfg.backup, "backup", true, "Create backup of original files before migration")
 	cmd.Flags().BoolVar(&cfg.recursive, "recursive", false, "Recursively process subdirectories (useful for module structures)")
+	cmd.Flags().StringVar(&cfg.targetProviderVersion, "target-provider-version", "", "Explicit provider version to set in required_providers (e.g. 5.19.0-beta.3); skips GitHub API lookup")
 
 	// --no-backup is a convenience alias for --backup=false
 	var noBackup bool
@@ -352,15 +354,24 @@ func targetProviderVersion(targetVersion string) (string, bool) {
 // block containing cloudflare/cloudflare and updates the version constraint to
 // match the target provider version. Prints next-step instructions if updated.
 func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Diagnostics) error {
-	targetVersion, fromAPI := targetProviderVersion(cfg.targetVersion)
-	if !fromAPI {
-		// GitHub API was unreachable (rate-limited, offline, etc.).
-		// Do not write a stale hardcoded version — tell the user to update manually.
-		log.Debug("GitHub API unavailable — skipping provider version update")
-		printVersionFetchFailure(cfg)
-		return nil
+	var targetVersion string
+
+	if cfg.targetProviderVersion != "" {
+		// User supplied an explicit version via --target-provider-version; use it directly.
+		targetVersion = cfg.targetProviderVersion
+		log.Debug("Using explicit provider version from --target-provider-version flag", "version", targetVersion)
+	} else {
+		var fromAPI bool
+		targetVersion, fromAPI = targetProviderVersion(cfg.targetVersion)
+		if !fromAPI {
+			// GitHub API was unreachable (rate-limited, offline, etc.).
+			// Do not write a stale hardcoded version — tell the user to update manually.
+			log.Debug("GitHub API unavailable — skipping provider version update")
+			printVersionFetchFailure(cfg, diags)
+			return nil
+		}
+		log.Debug("Provider version fetched from GitHub API", "version", targetVersion)
 	}
-	log.Debug("Provider version fetched from GitHub API", "version", targetVersion)
 
 	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
 	if err != nil {
@@ -474,7 +485,7 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 // printVersionFetchFailure is called when the GitHub API is unreachable.
 // Instead of silently writing a stale hardcoded version it tells the user
 // to look up the latest version and update required_providers manually.
-func printVersionFetchFailure(cfg config) {
+func printVersionFetchFailure(cfg config, diags hcl.Diagnostics) {
 	fmt.Println()
 	fmt.Println("⚠ Could not fetch the latest provider version from GitHub (network unavailable or rate-limited).")
 	fmt.Println("  The provider version in required_providers has NOT been updated.")
@@ -483,6 +494,22 @@ func printVersionFetchFailure(cfg config) {
 	fmt.Println()
 
 	step := 1
+
+	// Always remind the user to review warnings — even when the version fetch
+	// fails there may be actionable migration warnings that need attention.
+	hasActionableWarnings := false
+	for _, d := range diags {
+		if d.Severity == hcl.DiagWarning {
+			hasActionableWarnings = true
+			break
+		}
+	}
+	if hasActionableWarnings {
+		fmt.Printf("  %d. Review the warnings above and complete any required manual actions\n", step)
+		fmt.Println("     before running terraform plan/apply.")
+		fmt.Println()
+		step++
+	}
 
 	fmt.Printf("  %d. Find the latest Cloudflare provider version:\n", step)
 	fmt.Println("       https://github.com/cloudflare/terraform-provider-cloudflare/releases")
