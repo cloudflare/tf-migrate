@@ -467,6 +467,50 @@ moved {
 }
 `,
 		},
+		{
+			Name: "github teams explosion with resource reference identity_provider_id",
+			Input: `
+resource "cloudflare_access_group" "test" {
+  account_id = "abc123"
+  name       = "GitHub Group"
+
+  include {
+    github {
+      name                 = "my-org"
+      identity_provider_id = cloudflare_access_identity_provider.my_idp.id
+      teams                = ["team-1", "team-2"]
+    }
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_access_group" "test" {
+  account_id = "abc123"
+  name       = "GitHub Group"
+
+  include = [
+    {
+      github_organization = {
+        name                 = "my-org"
+        team                 = "team-1"
+        identity_provider_id = cloudflare_access_identity_provider.my_idp.id
+      }
+    },
+    {
+      github_organization = {
+        name                 = "my-org"
+        team                 = "team-2"
+        identity_provider_id = cloudflare_access_identity_provider.my_idp.id
+      }
+    },
+  ]
+}
+moved {
+  from = cloudflare_access_group.test
+  to   = cloudflare_zero_trust_access_group.test
+}
+`,
+		},
 		// Note: gsuite, azure, okta, saml complex nested tests are skipped
 		// as the v4 schema uses these as array fields, not nested blocks
 		// Testing these would require actual v4 state format which has arrays
