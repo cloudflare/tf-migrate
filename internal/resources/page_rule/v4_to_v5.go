@@ -72,7 +72,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		}
 		if len(removedFields) > 0 {
 			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
-				Severity: hcl.DiagWarning,
+				Severity: transform.DiagInfo,
 				Summary:  fmt.Sprintf("Deprecated fields removed: cloudflare_page_rule.%s", resourceName),
 				Detail: fmt.Sprintf(`The following deprecated fields have been removed during migration:
   %s
@@ -221,4 +221,3 @@ func (m *V4ToV5Migrator) transformCacheTTLByStatus(body *hclwrite.Body) {
 		body.SetAttributeRaw("cache_ttl_by_status", objTokens)
 	}
 }
-

@@ -5,6 +5,12 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 )
 
+// DiagInfo is an informational diagnostic severity level.
+// The hcl package only defines DiagError and DiagWarning; DiagInvalid (0) is
+// the zero value and serves as our "info" tier. Diagnostics at this level are
+// suppressed by default and only shown with --verbose.
+const DiagInfo = hcl.DiagnosticSeverity(0) // same as hcl.DiagInvalid
+
 // Context carries data through the transformation pipeline
 type Context struct {
 	Content       []byte

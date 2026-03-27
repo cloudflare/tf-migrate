@@ -65,7 +65,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Remove min_days_for_renewal attribute if present and warn
 	if body.GetAttribute("min_days_for_renewal") != nil {
 		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
-			Severity: hcl.DiagWarning,
+			Severity: transform.DiagInfo,
 			Summary:  fmt.Sprintf("Deprecated field removed: cloudflare_origin_ca_certificate.%s", resourceName),
 			Detail: `The 'min_days_for_renewal' field has been removed during migration.
 
@@ -80,4 +80,3 @@ should be managed through external automation or lifecycle rules.`,
 		RemoveOriginal: false,
 	}, nil
 }
-
