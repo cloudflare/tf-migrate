@@ -202,3 +202,4 @@ resource "cloudflare_certificate_pack" "with_coalesce" {
 # - 2 filtered for_each
 # - 1 with coalesce
 # = 20+ total instances
+
