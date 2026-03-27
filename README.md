@@ -495,6 +495,7 @@ This is the most common mistake when migrating an Atlantis workspace. Always reg
 | `--no-backup` | `false` | Skip creating backup files (alias for `--backup=false`) |
 | `--recursive` | `false` | Recursively process subdirectories |
 | `--skip-phase-check` | `false` | Skip the phased migration confirmation prompt and run the full migration directly (for CI/non-interactive use) |
+| `--target-provider-version` | _(auto-detected)_ | Explicit provider version to write into `required_providers` (e.g. `5.19.0-beta.3`). Bypasses the GitHub API lookup — useful in CI or air-gapped environments where the API is unreachable. |
 | `-v` / `--verbose` | `false` | Show verbose output: per-file progress, rename tables, and all diagnostics |
 | `-q` / `--quiet` | `false` | Suppress warnings, only show errors |
 

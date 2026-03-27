@@ -59,22 +59,47 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		// Neither smart_routing or tiered_caching - Default to smart_routing with value = off
 		newBlocks = append(newBlocks, m.createSmartRoutingBlock(block, resourceName, true)...)
 	} else if smartRoutingAttr != nil && tieredCachingAttr != nil {
-		// Both smart_routing and tiered_caching
-		// Only smart_routing gets moved block (primary resource)
-		// tiered_caching is created as new (users must import it)
+		// Both smart_routing and tiered_caching.
+		// smart_routing gets a moved block (primary resource, state carries over).
+		// tiered_caching is a brand-new resource with no existing state entry —
+		// the user must import the existing zone setting before applying.
+		tieredName := resourceName + "_tiered"
 		newBlocks = append(newBlocks, m.createSmartRoutingBlock(block, resourceName, true)...)
-		newBlocks = append(newBlocks, m.createTieredCachingBlock(block, resourceName+"_tiered", false)...)
+		newBlocks = append(newBlocks, m.createTieredCachingBlock(block, tieredName, false)...)
 
-		// Add warning about required manual import for tiered_caching
+		// Extract zone_id from the original block so the import block and
+		// diagnostic message use the real value when it is a literal string.
+		zoneID := "<zone_id>"
+		if zoneAttr := body.GetAttribute("zone_id"); zoneAttr != nil {
+			extracted := tfhcl.ExtractStringFromAttribute(zoneAttr)
+			if len(extracted) == 32 {
+				zoneID = extracted
+			}
+		}
+
+		// Generate an import block so the user only needs to fill in the
+		// zone_id placeholder (already resolved when it's a literal).
+		importBlock := tfhcl.CreateImportBlock("cloudflare_argo_tiered_caching", tieredName, zoneID)
+		newBlocks = append(newBlocks, importBlock)
+
 		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 			Severity: hcl.DiagWarning,
-			Summary:  fmt.Sprintf("Resource split: cloudflare_argo.%s", resourceName),
+			Summary:  fmt.Sprintf("Action required: import tiered caching resource for cloudflare_argo.%s", resourceName),
 			Detail: fmt.Sprintf(`The cloudflare_argo resource has been split into two separate resources in v5:
-  - cloudflare_argo_smart_routing.%s (migrated via moved block)
-  - cloudflare_argo_tiered_caching.%s_tiered (NEW - requires manual import)
+  - cloudflare_argo_smart_routing.%s (migrated via moved block — no action needed)
+  - cloudflare_argo_tiered_caching.%s (NEW — import block generated)
 
-After running terraform apply with the moved block, import the tiered caching resource:
-  terraform import cloudflare_argo_tiered_caching.%s_tiered <zone_id>`, resourceName, resourceName, resourceName),
+An import {} block has been added in:
+  %s
+
+Before running terraform apply, verify the import block in that file:
+
+  import {
+    to = cloudflare_argo_tiered_caching.%s
+    id = "%s"
+  }
+
+If zone_id is a variable reference, replace <zone_id> with the actual zone ID.`, resourceName, tieredName, ctx.FilePath, tieredName, zoneID),
 		})
 	} else if smartRoutingAttr != nil {
 		// Only smart_routing
@@ -135,4 +160,3 @@ func (m *V4ToV5Migrator) createMovedBlock(fromName, toName, fromType, toType str
 	to := fmt.Sprintf("%s.%s", toType, toName)
 	return tfhcl.CreateMovedBlock(from, to)
 }
-

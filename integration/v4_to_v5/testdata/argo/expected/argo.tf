@@ -68,6 +68,11 @@ resource "cloudflare_argo_tiered_caching" "both_attributes_tiered" {
   value   = "on"
 }
 
+import {
+  to = cloudflare_argo_tiered_caching.both_attributes_tiered
+  id = "<zone_id>"
+}
+
 resource "cloudflare_argo_smart_routing" "neither_attribute" {
   zone_id = var.cloudflare_zone_id
   value   = "off"
@@ -125,6 +130,11 @@ resource "cloudflare_argo_tiered_caching" "both_with_lifecycle_tiered" {
   }
 }
 
+import {
+  to = cloudflare_argo_tiered_caching.both_with_lifecycle_tiered
+  id = "<zone_id>"
+}
+
 resource "cloudflare_argo_smart_routing" "smart_routing_off" {
   zone_id = var.cloudflare_zone_id
   value   = "off"
@@ -168,4 +178,9 @@ moved {
 resource "cloudflare_argo_tiered_caching" "both_mixed_values_tiered" {
   zone_id = var.cloudflare_zone_id
   value   = "on"
+}
+
+import {
+  to = cloudflare_argo_tiered_caching.both_mixed_values_tiered
+  id = "<zone_id>"
 }

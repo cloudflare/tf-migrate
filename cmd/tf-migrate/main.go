@@ -34,14 +34,15 @@ type config struct {
 	outputDir string
 
 	// Migration options
-	resourcesToMigrate []string
-	sourceVersion      string
-	targetVersion      string
-	dryRun             bool
-	backup             bool
-	recursive          bool
-	logLevel           string
-	skipPhaseCheck     bool // skip phased migration prompt and run full migration directly (for CI/e2e)
+	resourcesToMigrate    []string
+	sourceVersion         string
+	targetVersion         string
+	targetProviderVersion string // explicit provider version to write into required_providers (overrides API fetch)
+	dryRun                bool
+	backup                bool
+	recursive             bool
+	logLevel              string
+	skipPhaseCheck        bool // skip phased migration prompt and run full migration directly (for CI/e2e)
 
 	// Diagnostic output options
 	quiet   bool // Suppress warnings, only show errors
@@ -163,6 +164,7 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 	cmd.Flags().StringVar(&cfg.outputDir, "output-dir", "", "Output directory for migrated configuration files (default: in-place)")
 	cmd.Flags().BoolVar(&cfg.backup, "backup", true, "Create backup of original files before migration")
 	cmd.Flags().BoolVar(&cfg.recursive, "recursive", false, "Recursively process subdirectories (useful for module structures)")
+	cmd.Flags().StringVar(&cfg.targetProviderVersion, "target-provider-version", "", "Explicit provider version to set in required_providers (e.g. 5.19.0-beta.3); skips GitHub API lookup")
 
 	// --no-backup is a convenience alias for --backup=false
 	var noBackup bool
@@ -300,7 +302,7 @@ func runFullMigration(log hclog.Logger, cfg config) error {
 	// Update the provider version constraint in required_providers blocks
 	// and print instructions for regenerating the lock file.
 	if cfg.configDir != "" && !cfg.dryRun {
-		if err := updateProviderVersionConstraint(log, cfg); err != nil {
+		if err := updateProviderVersionConstraint(log, cfg, allDiagnostics); err != nil {
 			log.Warn("Failed to update provider version constraint", "error", err)
 		}
 	}
@@ -308,21 +310,22 @@ func runFullMigration(log hclog.Logger, cfg config) error {
 	return nil
 }
 
-// fallbackProviderVersions maps migration target versions to known-good
-// provider versions, used when the GitHub API is unavailable.
-var fallbackProviderVersions = map[string]string{
-	"v5": "5.19.0-beta.2",
-}
-
 // targetProviderVersion fetches the latest provider release for the given
-// target migration version from the GitHub releases API. Falls back to a
-// hardcoded version if the fetch fails or times out.
-func targetProviderVersion(targetVersion string) string {
+// target migration version from the GitHub releases API.
+//
+// Pre-releases (betas) are included because v5 is currently in beta. Draft
+// releases are excluded as they are unpublished works-in-progress.
+//
+// Returns ("", false) if the API is unreachable or rate-limited — callers
+// should warn the user to update the version manually rather than silently
+// writing a stale hardcoded version.
+func targetProviderVersion(targetVersion string) (string, bool) {
 	majorPrefix := strings.TrimPrefix(targetVersion, "v") + "."
 
 	type release struct {
-		TagName string `json:"tag_name"`
-		Draft   bool   `json:"draft"`
+		TagName    string `json:"tag_name"`
+		Draft      bool   `json:"draft"`
+		PreRelease bool   `json:"prerelease"`
 	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -332,31 +335,42 @@ func targetProviderVersion(targetVersion string) string {
 		var releases []release
 		if json.NewDecoder(resp.Body).Decode(&releases) == nil {
 			for _, r := range releases {
+				// Skip unpublished drafts; include pre-releases (betas).
 				if r.Draft {
 					continue
 				}
 				version := strings.TrimPrefix(r.TagName, "v")
 				if strings.HasPrefix(version, majorPrefix) {
-					return version
+					return version, true
 				}
 			}
 		}
 	}
 
-	// Fall back to hardcoded version
-	if v, ok := fallbackProviderVersions[targetVersion]; ok {
-		return v
-	}
-	return ""
+	return "", false
 }
 
 // updateProviderVersionConstraint scans all .tf files for a required_providers
 // block containing cloudflare/cloudflare and updates the version constraint to
 // match the target provider version. Prints next-step instructions if updated.
-func updateProviderVersionConstraint(log hclog.Logger, cfg config) error {
-	targetVersion := targetProviderVersion(cfg.targetVersion)
-	if targetVersion == "" {
-		return nil
+func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Diagnostics) error {
+	var targetVersion string
+
+	if cfg.targetProviderVersion != "" {
+		// User supplied an explicit version via --target-provider-version; use it directly.
+		targetVersion = cfg.targetProviderVersion
+		log.Debug("Using explicit provider version from --target-provider-version flag", "version", targetVersion)
+	} else {
+		var fromAPI bool
+		targetVersion, fromAPI = targetProviderVersion(cfg.targetVersion)
+		if !fromAPI {
+			// GitHub API was unreachable (rate-limited, offline, etc.).
+			// Do not write a stale hardcoded version — tell the user to update manually.
+			log.Debug("GitHub API unavailable — skipping provider version update")
+			printVersionFetchFailure(cfg, diags)
+			return nil
+		}
+		log.Debug("Provider version fetched from GitHub API", "version", targetVersion)
 	}
 
 	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
@@ -435,16 +449,91 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config) error {
 	fmt.Println()
 	fmt.Println("Next steps:")
 	fmt.Println()
-	fmt.Println("  1. Regenerate the lock file locally:")
+
+	step := 1
+
+	// If there were any actionable warnings (DiagWarning), remind the user
+	// to address them before proceeding.
+	hasActionableWarnings := false
+	for _, d := range diags {
+		if d.Severity == hcl.DiagWarning {
+			hasActionableWarnings = true
+			break
+		}
+	}
+	if hasActionableWarnings {
+		fmt.Printf("  %d. Review the warnings above and complete any required manual actions\n", step)
+		fmt.Println("     before running terraform plan/apply.")
+		fmt.Println()
+		step++
+	}
+
+	fmt.Printf("  %d. Regenerate the lock file locally:\n", step)
 	fmt.Printf("       cd %s\n", cfg.configDir)
 	fmt.Println("       terraform init -upgrade -backend=false")
 	fmt.Println()
-	fmt.Println("  2. Commit and push all changed files:")
-	fmt.Println("       main.tf (or wherever required_providers lives)")
-	fmt.Println("       .terraform.lock.hcl")
-	fmt.Println("       all migrated .tf files")
+	step++
+
+	fmt.Printf("  %d. Commit and push all changed files:\n", step)
+	fmt.Println("       git add .")
+	fmt.Printf("       git commit -m \"chore: migrate Cloudflare provider to v%s\"\n", targetVersion)
+	fmt.Println("       git push")
 
 	return nil
+}
+
+// printVersionFetchFailure is called when the GitHub API is unreachable.
+// Instead of silently writing a stale hardcoded version it tells the user
+// to look up the latest version and update required_providers manually.
+func printVersionFetchFailure(cfg config, diags hcl.Diagnostics) {
+	fmt.Println()
+	fmt.Println("⚠ Could not fetch the latest provider version from GitHub (network unavailable or rate-limited).")
+	fmt.Println("  The provider version in required_providers has NOT been updated.")
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println()
+
+	step := 1
+
+	// Always remind the user to review warnings — even when the version fetch
+	// fails there may be actionable migration warnings that need attention.
+	hasActionableWarnings := false
+	for _, d := range diags {
+		if d.Severity == hcl.DiagWarning {
+			hasActionableWarnings = true
+			break
+		}
+	}
+	if hasActionableWarnings {
+		fmt.Printf("  %d. Review the warnings above and complete any required manual actions\n", step)
+		fmt.Println("     before running terraform plan/apply.")
+		fmt.Println()
+		step++
+	}
+
+	fmt.Printf("  %d. Find the latest Cloudflare provider version:\n", step)
+	fmt.Println("       https://github.com/cloudflare/terraform-provider-cloudflare/releases")
+	fmt.Println()
+	step++
+
+	fmt.Printf("  %d. Update required_providers in your main.tf (or equivalent):\n", step)
+	fmt.Println("       cloudflare = {")
+	fmt.Println("         source  = \"cloudflare/cloudflare\"")
+	fmt.Println("         version = \"~> <latest>\"")
+	fmt.Println("       }")
+	fmt.Println()
+	step++
+
+	fmt.Printf("  %d. Regenerate the lock file locally:\n", step)
+	fmt.Printf("       cd %s\n", cfg.configDir)
+	fmt.Println("       terraform init -upgrade -backend=false")
+	fmt.Println()
+	step++
+
+	fmt.Printf("  %d. Commit and push all changed files:\n", step)
+	fmt.Println("       git add .")
+	fmt.Println("       git commit -m \"chore: migrate Cloudflare provider to v<latest>\"")
+	fmt.Println("       git push")
 }
 
 // findFilesWithPhaseOneComments returns a list of .tf files that contain
@@ -584,6 +673,7 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 		ctx := &transform.Context{
 			Content:       content,
 			Filename:      filepath.Base(file),
+			FilePath:      file,
 			Diagnostics:   make(hcl.Diagnostics, 0),
 			Metadata:      make(map[string]interface{}),
 			SourceVersion: cfg.sourceVersion,
@@ -837,6 +927,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		ctx := &transform.Context{
 			Content:       content,
 			Filename:      filepath.Base(file),
+			FilePath:      file,
 			Diagnostics:   make(hcl.Diagnostics, 0),
 			Metadata:      make(map[string]interface{}),
 			SourceVersion: cfg.sourceVersion,
@@ -1203,6 +1294,10 @@ func printDiagnostics(diags hcl.Diagnostics, cfg config) {
 		if cfg.quiet && warnings > 0 {
 			fmt.Printf("\n⚠ %d warning(s) suppressed (use without --quiet to see details)\n", warnings)
 		}
+		// Even when nothing actionable is shown, hint about suppressed info messages
+		if !cfg.verbose && infos > 0 {
+			fmt.Printf("\nℹ %d informational message(s) suppressed (use --verbose to see details)\n", infos)
+		}
 		return
 	}
 
@@ -1219,8 +1314,12 @@ func printDiagnostics(diags hcl.Diagnostics, cfg config) {
 			parts = append(parts, fmt.Sprintf("%d warning(s)", warnings))
 		}
 	}
-	if cfg.verbose && infos > 0 {
-		parts = append(parts, fmt.Sprintf("%d info message(s)", infos))
+	if infos > 0 {
+		if cfg.verbose {
+			parts = append(parts, fmt.Sprintf("%d info message(s)", infos))
+		} else {
+			parts = append(parts, fmt.Sprintf("%d info message(s) suppressed (use --verbose to see)", infos))
+		}
 	}
 	fmt.Printf("Migration diagnostics: %s\n", strings.Join(parts, ", "))
 	fmt.Println(strings.Repeat("─", 70))

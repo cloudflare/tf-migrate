@@ -44,6 +44,16 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
 
+	// Idempotency guard: if cache_type is absent the block has already been
+	// migrated (it uses the v5 "value" attribute). Return the block unchanged
+	// so re-running tf-migrate does not duplicate resources.
+	if body.GetAttribute("cache_type") == nil {
+		return &transform.TransformResult{
+			Blocks:         []*hclwrite.Block{block},
+			RemoveOriginal: false,
+		}, nil
+	}
+
 	blocks := make([]*hclwrite.Block, 0)
 
 	// rename cache_type to value in the original block

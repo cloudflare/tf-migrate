@@ -60,7 +60,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// tags - not supported in v5
 	if body.GetAttribute("tags") != nil {
 		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
-			Severity: hcl.DiagWarning,
+			Severity: transform.DiagInfo,
 			Summary:  fmt.Sprintf("Deprecated field removed: cloudflare_workers_script.%s", resourceName),
 			Detail: `The 'tags' field has been removed during migration.
 
@@ -493,4 +493,3 @@ func joinAttributes(attrs []string) string {
 	}
 	return result
 }
-

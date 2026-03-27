@@ -51,21 +51,19 @@ locals {
 
 
 # ============================================================
-# Migration issue reproductions
+# Research team issue reproductions (TKT-002 through TKT-006)
 # ============================================================
 
 
 
 
-# service_token: list of IDs → {token_id = ...} object
 
 
 
 
 
 
-
-# application_id + precedence must be removed from policy (not auto-migratable)
+# TKT-003: application_id + precedence must be removed from policy
 # (mirrors research team's app_azul_mtc_worker.tf)
 # In v4, application-scoped policies had application_id + precedence.
 # In v5, application_id and precedence are removed; the binding is done
@@ -404,8 +402,8 @@ moved {
   to   = cloudflare_zero_trust_access_policy.bypass_policy
 }
 
-# include/exclude/require block → attribute list conversion
-# email_domain: list → {domain = ...} object
+# TKT-002: include/exclude/require block → attribute list conversion
+# TKT-005: email_domain from list to {domain = ...} object
 resource "cloudflare_zero_trust_access_policy" "email_domain_policy" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-email-domain"
@@ -419,7 +417,7 @@ moved {
   to   = cloudflare_zero_trust_access_policy.email_domain_policy
 }
 
-# any_valid_service_token: bool → empty object {}
+# TKT-006: any_valid_service_token from bool to empty object {}
 resource "cloudflare_zero_trust_access_policy" "any_service_token_policy" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-any-service-token"
@@ -433,7 +431,7 @@ moved {
   to   = cloudflare_zero_trust_access_policy.any_service_token_policy
 }
 
-# any_valid_service_token = false should be omitted
+# TKT-006: any_valid_service_token = false should be omitted
 # decision = "allow" because non_identity + email is invalid in the API
 resource "cloudflare_zero_trust_access_policy" "no_service_token_policy" {
   account_id = var.cloudflare_account_id
@@ -448,6 +446,8 @@ moved {
   to   = cloudflare_zero_trust_access_policy.no_service_token_policy
 }
 
+# TKT-004: service_token from list to {token_id = ...} object
+# Also tests TKT-002 (block → list) and TKT-004 (service_token format)
 resource "cloudflare_zero_trust_access_service_token" "test_token" {
   account_id = var.cloudflare_account_id
   name       = "cftftest-service-token"
@@ -471,7 +471,7 @@ moved {
   to   = cloudflare_zero_trust_access_policy.service_token_policy
 }
 
-# multiple service tokens in include
+# TKT-004: multiple service tokens in include
 resource "cloudflare_zero_trust_access_service_token" "test_token_2" {
   account_id = var.cloudflare_account_id
   name       = "cftftest-service-token-2"
@@ -496,7 +496,7 @@ moved {
   to   = cloudflare_zero_trust_access_policy.multi_service_token_policy
 }
 
-# multiple email domains — each becomes a separate include entry
+# TKT-005: multiple email domains — each becomes a separate include entry
 resource "cloudflare_zero_trust_access_policy" "multi_email_domain_policy" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-multi-email-domain"
@@ -511,7 +511,7 @@ moved {
   to   = cloudflare_zero_trust_access_policy.multi_email_domain_policy
 }
 
-# Combined real-world policy — service_token refs, email_domain, any_valid_service_token
+# TKT-002 + TKT-004 + TKT-005 + TKT-006: Combined real-world policy
 # (mirrors research team's actual access_policies.tf)
 resource "cloudflare_zero_trust_access_policy" "combined_research_team_policy" {
   account_id = var.cloudflare_account_id

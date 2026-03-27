@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclwrite"
-
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 )
 
 // V4ToV5Migrator handles migration of certificate_pack resources from v4 to v5
@@ -61,7 +60,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	if len(removedFields) > 0 {
 		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
-			Severity: hcl.DiagWarning,
+			Severity: transform.DiagInfo,
 			Summary:  fmt.Sprintf("Deprecated fields removed: cloudflare_certificate_pack.%s", resourceName),
 			Detail: fmt.Sprintf(`The following fields have been removed during migration:
   %s
@@ -84,4 +83,3 @@ These fields are now Computed-only or removed in the v5 provider:
 		RemoveOriginal: false,
 	}, nil
 }
-
