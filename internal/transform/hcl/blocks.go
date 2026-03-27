@@ -1054,3 +1054,86 @@ func ConvertBlocksToArrayAttribute(body *hclwrite.Body, blockType string, emptyI
 	// Remove all original blocks
 	RemoveBlocksByType(body, blockType)
 }
+
+// AddLifecycleIgnoreChanges adds or updates a lifecycle block's ignore_changes list
+// with the given attribute names, merging with any existing entries (deduplicating).
+//
+// If no lifecycle block exists, one is created. If ignore_changes already exists,
+// the new names are merged in rather than overwriting the existing list.
+//
+// Example — adding "certificate" when no lifecycle block exists:
+//
+//	Before:
+//	  resource "cloudflare_custom_ssl" "example" {
+//	    zone_id = "abc123"
+//	  }
+//
+//	After AddLifecycleIgnoreChanges(body, "certificate"):
+//	  resource "cloudflare_custom_ssl" "example" {
+//	    zone_id = "abc123"
+//	    lifecycle {
+//	      ignore_changes = [certificate]
+//	    }
+//	  }
+//
+// Example — merging "certificate" into an existing ignore_changes = [bundle_method]:
+//
+//	Before:
+//	  lifecycle {
+//	    ignore_changes = [bundle_method]
+//	  }
+//
+//	After AddLifecycleIgnoreChanges(body, "certificate"):
+//	  lifecycle {
+//	    ignore_changes = [bundle_method, certificate]
+//	  }
+func AddLifecycleIgnoreChanges(body *hclwrite.Body, attrNames ...string) {
+	if len(attrNames) == 0 {
+		return
+	}
+
+	// Find or create the lifecycle block.
+	var lifecycleBlock *hclwrite.Block
+	for _, block := range body.Blocks() {
+		if block.Type() == "lifecycle" {
+			lifecycleBlock = block
+			break
+		}
+	}
+	if lifecycleBlock == nil {
+		lifecycleBlock = body.AppendNewBlock("lifecycle", nil)
+	}
+
+	lifecycleBody := lifecycleBlock.Body()
+
+	// Collect existing ignore_changes identifiers so we can merge.
+	existing := make(map[string]bool)
+	var ordered []string // preserve existing order
+
+	if existingAttr := lifecycleBody.GetAttribute("ignore_changes"); existingAttr != nil {
+		for _, tok := range existingAttr.Expr().BuildTokens(nil) {
+			if tok.Type == hclsyntax.TokenIdent {
+				name := string(tok.Bytes)
+				if !existing[name] {
+					existing[name] = true
+					ordered = append(ordered, name)
+				}
+			}
+		}
+	}
+
+	// Append new names that aren't already present.
+	for _, name := range attrNames {
+		if !existing[name] {
+			existing[name] = true
+			ordered = append(ordered, name)
+		}
+	}
+
+	// Write the merged list back.
+	var tupleElems []hclwrite.Tokens
+	for _, name := range ordered {
+		tupleElems = append(tupleElems, hclwrite.TokensForIdentifier(name))
+	}
+	lifecycleBody.SetAttributeRaw("ignore_changes", hclwrite.TokensForTuple(tupleElems))
+}

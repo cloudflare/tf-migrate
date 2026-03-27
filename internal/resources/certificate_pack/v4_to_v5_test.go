@@ -98,6 +98,112 @@ resource "cloudflare_certificate_pack" "computed" {
   certificate_authority = "lets_encrypt"
 }`,
 			},
+
+		// --- Block-syntax validation_records / validation_errors ---
+		{
+			Name: "validation_records as block syntax — removed",
+			Input: `
+resource "cloudflare_certificate_pack" "block_records" {
+  zone_id               = "0da42c8d2132a9ddaf714f9e7c920711"
+  type                  = "advanced"
+  hosts                 = ["example.com"]
+  validation_method     = "txt"
+  validity_days         = 90
+  certificate_authority = "lets_encrypt"
+
+  validation_records {
+    cname_name   = "abc123.example.com"
+    cname_target = "dcv.digicert.com"
+  }
+}`,
+			Expected: `resource "cloudflare_certificate_pack" "block_records" {
+  zone_id               = "0da42c8d2132a9ddaf714f9e7c920711"
+  type                  = "advanced"
+  hosts                 = ["example.com"]
+  validation_method     = "txt"
+  validity_days         = 90
+  certificate_authority = "lets_encrypt"
+}`,
+		},
+		{
+			Name: "validation_errors as block syntax — removed",
+			Input: `
+resource "cloudflare_certificate_pack" "block_errors" {
+  zone_id               = "0da42c8d2132a9ddaf714f9e7c920711"
+  type                  = "advanced"
+  hosts                 = ["example.com"]
+  validation_method     = "txt"
+  validity_days         = 90
+  certificate_authority = "lets_encrypt"
+
+  validation_errors {
+    message = "some error"
+  }
+}`,
+			Expected: `resource "cloudflare_certificate_pack" "block_errors" {
+  zone_id               = "0da42c8d2132a9ddaf714f9e7c920711"
+  type                  = "advanced"
+  hosts                 = ["example.com"]
+  validation_method     = "txt"
+  validity_days         = 90
+  certificate_authority = "lets_encrypt"
+}`,
+		},
+		{
+			Name: "both block-syntax validation_records and validation_errors — both removed",
+			Input: `
+resource "cloudflare_certificate_pack" "both_blocks" {
+  zone_id               = "0da42c8d2132a9ddaf714f9e7c920711"
+  type                  = "advanced"
+  hosts                 = ["example.com"]
+  validation_method     = "txt"
+  validity_days         = 90
+  certificate_authority = "lets_encrypt"
+
+  validation_records {
+    cname_name   = "abc123.example.com"
+    cname_target = "dcv.digicert.com"
+  }
+
+  validation_errors {
+    message = "some error"
+  }
+}`,
+			Expected: `resource "cloudflare_certificate_pack" "both_blocks" {
+  zone_id               = "0da42c8d2132a9ddaf714f9e7c920711"
+  type                  = "advanced"
+  hosts                 = ["example.com"]
+  validation_method     = "txt"
+  validity_days         = 90
+  certificate_authority = "lets_encrypt"
+}`,
+		},
+		{
+			Name: "attribute-syntax and block-syntax validation_records simultaneously — both removed",
+			Input: `
+resource "cloudflare_certificate_pack" "mixed" {
+  zone_id               = "0da42c8d2132a9ddaf714f9e7c920711"
+  type                  = "advanced"
+  hosts                 = ["example.com"]
+  validation_method     = "txt"
+  validity_days         = 90
+  certificate_authority = "lets_encrypt"
+  validation_records    = []
+
+  validation_records {
+    cname_name   = "abc123.example.com"
+    cname_target = "dcv.digicert.com"
+  }
+}`,
+			Expected: `resource "cloudflare_certificate_pack" "mixed" {
+  zone_id               = "0da42c8d2132a9ddaf714f9e7c920711"
+  type                  = "advanced"
+  hosts                 = ["example.com"]
+  validation_method     = "txt"
+  validity_days         = 90
+  certificate_authority = "lets_encrypt"
+}`,
+		},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)

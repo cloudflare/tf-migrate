@@ -126,5 +126,59 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "new" {
 		},
 	}
 
+
+	// --- Placeholder path: missing certificate ---
+	placeholderTests := []testhelpers.ConfigTestCase{
+		{
+			Name: "missing certificate — placeholder and lifecycle added",
+			Input: `
+resource "cloudflare_zero_trust_access_mtls_certificate" "no_cert" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "example"
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_mtls_certificate" "no_cert" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "example"
+  certificate = "PLACEHOLDER - actual certificate already deployed"
+  lifecycle {
+    ignore_changes = [certificate]
+  }
+}`,
+		},
+		{
+			Name: "existing lifecycle with ignore_changes — certificate merged in",
+			Input: `
+resource "cloudflare_zero_trust_access_mtls_certificate" "existing_lc" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "example"
+  lifecycle {
+    ignore_changes = [associated_hostnames]
+  }
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_mtls_certificate" "existing_lc" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "example"
+  certificate = "PLACEHOLDER - actual certificate already deployed"
+  lifecycle {
+    ignore_changes = [associated_hostnames, certificate]
+  }
+}`,
+		},
+		{
+			Name: "certificate present — no placeholder added",
+			Input: `
+resource "cloudflare_zero_trust_access_mtls_certificate" "has_cert" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "example"
+  certificate = "CERT_DATA"
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_mtls_certificate" "has_cert" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "example"
+  certificate = "CERT_DATA"
+}`,
+		},
+	}
+	testhelpers.RunConfigTransformTests(t, placeholderTests, migrator)
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }

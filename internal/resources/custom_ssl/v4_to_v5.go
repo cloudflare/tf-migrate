@@ -91,7 +91,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	if len(missingFields) > 0 {
 		// Add lifecycle block to ignore changes to write-only fields
-		addLifecycleIgnoreChanges(body, missingFields...)
+		tfhcl.AddLifecycleIgnoreChanges(body, missingFields...)
 
 		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 			Severity: hcl.DiagWarning,
@@ -155,34 +155,3 @@ func buildGeoRestrictionsObject(labelValueTokens hclwrite.Tokens) hclwrite.Token
 	return hclwrite.TokensForObject(attrs)
 }
 
-// addLifecycleIgnoreChanges adds or updates a lifecycle block with ignore_changes for the given attributes
-func addLifecycleIgnoreChanges(body *hclwrite.Body, attrNames ...string) {
-	if len(attrNames) == 0 {
-		return
-	}
-
-	// Check if lifecycle block already exists
-	var lifecycleBlock *hclwrite.Block
-	for _, block := range body.Blocks() {
-		if block.Type() == "lifecycle" {
-			lifecycleBlock = block
-			break
-		}
-	}
-
-	if lifecycleBlock == nil {
-		// Create new lifecycle block
-		lifecycleBlock = body.AppendNewBlock("lifecycle", nil)
-	}
-
-	lifecycleBody := lifecycleBlock.Body()
-
-	// Build tokens for the attribute list
-	var attrTokens []hclwrite.Tokens
-	for _, name := range attrNames {
-		attrTokens = append(attrTokens, hclwrite.TokensForIdentifier(name))
-	}
-
-	// Set ignore_changes with the attributes
-	lifecycleBody.SetAttributeRaw("ignore_changes", hclwrite.TokensForTuple(attrTokens))
-}
