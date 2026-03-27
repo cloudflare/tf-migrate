@@ -450,7 +450,7 @@ moved {
 
 resource "cloudflare_zero_trust_access_service_token" "test_token" {
   account_id = var.cloudflare_account_id
-  name       = "test-service-token"
+  name       = "cftftest-service-token"
 }
 
 moved {
@@ -474,7 +474,7 @@ moved {
 # multiple service tokens in include
 resource "cloudflare_zero_trust_access_service_token" "test_token_2" {
   account_id = var.cloudflare_account_id
-  name       = "test-service-token-2"
+  name       = "cftftest-service-token-2"
 }
 
 moved {
