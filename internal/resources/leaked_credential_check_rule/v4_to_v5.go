@@ -65,47 +65,54 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	body := block.Body()
 	resourceName := block.Labels()[1]
 
-	// If the block has no id attribute the v4 bug may be present — warn the user
-	// both in the file (as a comment) and in the terminal diagnostic output.
+	// If the block has no id attribute the v4 bug may be present.
+	// Generate an import {} block with placeholder IDs so the user can fill
+	// them in without any manual HCL editing. Also emit a terminal diagnostic
+	// with the curl command to find the real detection_id.
 	if body.GetAttribute("id") == nil {
-		// Extract the actual zone_id value if it's a literal hex string (32 chars),
-		// so the suggested curl and import commands are immediately runnable.
-		// If zone_id is a variable reference (e.g. var.zone_id) keep the placeholder.
+		// Extract zone_id if it's a literal 32-char hex string; otherwise keep placeholder.
 		zoneID := "<zone_id>"
 		if zoneAttr := body.GetAttribute("zone_id"); zoneAttr != nil {
 			extracted := tfhcl.ExtractStringFromAttribute(zoneAttr)
-			// Only use the extracted value if it looks like a real zone ID
-			// (32-character hex string), not a variable reference like "var".
 			if len(extracted) == 32 {
 				zoneID = extracted
 			}
 		}
 
+		importID := fmt.Sprintf("%s/<detection_id>", zoneID)
 		listCmd := fmt.Sprintf(
 			`curl -s "https://api.cloudflare.com/client/v4/zones/%s/leaked-credential-checks/detections" -H "Authorization: Bearer <token>" | jq '.result[] | {id, username, password}'`,
 			zoneID,
 		)
-		importCmd := fmt.Sprintf("terraform import cloudflare_leaked_credential_check_rule.%s %s/<detection_id>", resourceName, zoneID)
 
-		tfhcl.AppendWarningComment(body,
-			"The v4 provider had a bug where the detection_id was not stored in state (id = \"\"). "+
-				"If this rule was already created in v4, Terraform will fail to recreate it with "+
-				"error 11003 on the first apply. Find the existing detection_id with: "+
-				listCmd+" Then import: "+importCmd,
+		// Generate import {} block with placeholder ID so the user just needs
+		// to replace <detection_id> (and <zone_id> if not resolved above).
+		importBlock := tfhcl.CreateImportBlock(
+			"cloudflare_leaked_credential_check_rule",
+			resourceName,
+			importID,
 		)
 
 		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 			Severity: hcl.DiagWarning,
-			Summary:  fmt.Sprintf("Manual action required for cloudflare_leaked_credential_check_rule.%s", resourceName),
-			Detail: "The v4 provider had a bug where the detection_id was not stored in state (id = \"\").\n\n" +
-				"If this rule was already created in v4, Terraform will fail to recreate it on the first apply\n" +
-				"with error 11003: \"custom detection for given username and password already exists\".\n\n" +
-				"Steps to fix:\n" +
-				"  1. Find the existing detection_id:\n" +
+			Summary:  fmt.Sprintf("Action required: fill in detection_id for cloudflare_leaked_credential_check_rule.%s", resourceName),
+			Detail: "The v4 provider had a bug where the detection_id was not stored in state.\n" +
+				"An import {} block has been generated in the migrated file with a placeholder ID.\n\n" +
+				"Before running terraform plan/apply:\n" +
+				"  1. Find the detection_id:\n" +
 				"       " + listCmd + "\n\n" +
-				"  2. Import the existing rule:\n" +
-				"       " + importCmd,
+				"  2. Replace <detection_id> in the import block with the real ID.\n" +
+				"     The import block looks like:\n" +
+				"       import {\n" +
+				"         to = cloudflare_leaked_credential_check_rule." + resourceName + "\n" +
+				"         id = \"" + importID + "\"\n" +
+				"       }",
 		})
+
+		return &transform.TransformResult{
+			Blocks:         []*hclwrite.Block{importBlock, block},
+			RemoveOriginal: true, // Must be true for extra blocks (import block) to be written
+		}, nil
 	}
 
 	return &transform.TransformResult{

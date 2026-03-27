@@ -35,6 +35,45 @@ locals {
   ])
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# =============================================================================
+# Output for verification
+# =============================================================================
+output "total_rules_created" {
+  value       = 27
+  description = "Total number of leaked credential check rules created for testing"
+}
+
+output "conditional_rules_enabled" {
+  value       = var.enable_optional_rules
+  description = "Whether conditional rules are enabled"
+}
+
+import {
+  to = cloudflare_leaked_credential_check_rule.basic
+  id = "<zone_id>/<detection_id>"
+}
+
 # =============================================================================
 # TEST CASE 1: Basic resource with all fields
 # =============================================================================
@@ -44,11 +83,21 @@ resource "cloudflare_leaked_credential_check_rule" "basic" {
   password = "http.request.body.form.password"
 }
 
+import {
+  to = cloudflare_leaked_credential_check_rule.minimal
+  id = "<zone_id>/<detection_id>"
+}
+
 # =============================================================================
 # TEST CASE 2: Minimal resource (zone_id only - both optional fields omitted)
 # =============================================================================
 resource "cloudflare_leaked_credential_check_rule" "minimal" {
   zone_id = local.zone_id
+}
+
+import {
+  to = cloudflare_leaked_credential_check_rule.username_only
+  id = "<zone_id>/<detection_id>"
 }
 
 # =============================================================================
@@ -59,12 +108,22 @@ resource "cloudflare_leaked_credential_check_rule" "username_only" {
   username = "http.request.body.form.username"
 }
 
+import {
+  to = cloudflare_leaked_credential_check_rule.password_only
+  id = "<zone_id>/<detection_id>"
+}
+
 # =============================================================================
 # TEST CASE 4: Password only (username optional)
 # =============================================================================
 resource "cloudflare_leaked_credential_check_rule" "password_only" {
   zone_id  = local.zone_id
   password = "http.request.body.form.password"
+}
+
+import {
+  to = cloudflare_leaked_credential_check_rule.form_detection
+  id = "<zone_id>/<detection_id>"
 }
 
 # =============================================================================
@@ -76,16 +135,31 @@ resource "cloudflare_leaked_credential_check_rule" "form_detection" {
   password = "http.request.body.form.pass"
 }
 
+import {
+  to = cloudflare_leaked_credential_check_rule.json_detection
+  id = "<zone_id>/<detection_id>"
+}
+
 resource "cloudflare_leaked_credential_check_rule" "json_detection" {
   zone_id  = local.zone_id
   username = "lookup_json_string(http.request.body.raw, \"credentials.username\")"
   password = "lookup_json_string(http.request.body.raw, \"credentials.password\")"
 }
 
+import {
+  to = cloudflare_leaked_credential_check_rule.header_detection
+  id = "<zone_id>/<detection_id>"
+}
+
 resource "cloudflare_leaked_credential_check_rule" "header_detection" {
   zone_id  = local.zone_id
   username = "http.request.headers[\"x-username\"][0]"
   password = "http.request.headers[\"x-password\"][0]"
+}
+
+import {
+  to = cloudflare_leaked_credential_check_rule.foreach_usernames
+  id = "<zone_id>/<detection_id>"
 }
 
 # =============================================================================
@@ -99,6 +173,11 @@ resource "cloudflare_leaked_credential_check_rule" "foreach_usernames" {
   password = local.password_expressions.form_password
 }
 
+import {
+  to = cloudflare_leaked_credential_check_rule.foreach_patterns
+  id = "<zone_id>/<detection_id>"
+}
+
 # =============================================================================
 # TEST CASE 11-13: for_each with set - detection patterns
 # =============================================================================
@@ -108,6 +187,11 @@ resource "cloudflare_leaked_credential_check_rule" "foreach_patterns" {
   zone_id  = local.zone_id
   username = "http.request.body.${each.key}.username"
   password = "http.request.body.${each.key}.password"
+}
+
+import {
+  to = cloudflare_leaked_credential_check_rule.counted
+  id = "<zone_id>/<detection_id>"
 }
 
 # =============================================================================
@@ -121,6 +205,11 @@ resource "cloudflare_leaked_credential_check_rule" "counted" {
   password = "http.request.body.form.password${count.index}"
 }
 
+import {
+  to = cloudflare_leaked_credential_check_rule.conditional_enabled
+  id = "<zone_id>/<detection_id>"
+}
+
 # =============================================================================
 # TEST CASE 17: Conditional creation (enabled)
 # =============================================================================
@@ -130,6 +219,11 @@ resource "cloudflare_leaked_credential_check_rule" "conditional_enabled" {
   zone_id  = local.zone_id
   username = "http.request.body.form.conditional_user"
   password = "http.request.body.form.conditional_pass"
+}
+
+import {
+  to = cloudflare_leaked_credential_check_rule.conditional_disabled
+  id = "<zone_id>/<detection_id>"
 }
 
 # =============================================================================
@@ -143,6 +237,11 @@ resource "cloudflare_leaked_credential_check_rule" "conditional_disabled" {
   password = "http.request.body.form.disabled_pass"
 }
 
+import {
+  to = cloudflare_leaked_credential_check_rule.with_variables
+  id = "<zone_id>/<detection_id>"
+}
+
 # =============================================================================
 # TEST CASE 19: Variable references (direct variable usage)
 # =============================================================================
@@ -152,6 +251,11 @@ resource "cloudflare_leaked_credential_check_rule" "with_variables" {
   password = "http.request.body.form.${local.name_prefix}_pass"
 }
 
+import {
+  to = cloudflare_leaked_credential_check_rule.interpolated
+  id = "<zone_id>/<detection_id>"
+}
+
 # =============================================================================
 # TEST CASE 20: Complex string interpolation
 # =============================================================================
@@ -159,6 +263,11 @@ resource "cloudflare_leaked_credential_check_rule" "interpolated" {
   zone_id  = local.zone_id
   username = "${local.username_expressions.form_username}"
   password = "${local.password_expressions.form_password}"
+}
+
+import {
+  to = cloudflare_leaked_credential_check_rule.with_lifecycle
+  id = "<zone_id>/<detection_id>"
 }
 
 # =============================================================================
@@ -174,6 +283,11 @@ resource "cloudflare_leaked_credential_check_rule" "with_lifecycle" {
   }
 }
 
+import {
+  to = cloudflare_leaked_credential_check_rule.complex_json
+  id = "<zone_id>/<detection_id>"
+}
+
 # =============================================================================
 # TEST CASE 22: Complex nested JSON lookups
 # =============================================================================
@@ -181,6 +295,11 @@ resource "cloudflare_leaked_credential_check_rule" "complex_json" {
   zone_id  = local.zone_id
   username = "lookup_json_string(http.request.body.raw, \"data.authentication.credentials.username\")"
   password = "lookup_json_string(http.request.body.raw, \"data.authentication.credentials.password\")"
+}
+
+import {
+  to = cloudflare_leaked_credential_check_rule.urlencoded
+  id = "<zone_id>/<detection_id>"
 }
 
 # =============================================================================
@@ -192,6 +311,11 @@ resource "cloudflare_leaked_credential_check_rule" "urlencoded" {
   password = "http.request.body.form.pass%5Fword"
 }
 
+import {
+  to = cloudflare_leaked_credential_check_rule.explicit_nulls
+  id = "<zone_id>/<detection_id>"
+}
+
 # =============================================================================
 # TEST CASE 24: Null optional fields (explicitly set to null)
 # =============================================================================
@@ -199,6 +323,11 @@ resource "cloudflare_leaked_credential_check_rule" "explicit_nulls" {
   zone_id  = local.zone_id
   username = null
   password = null
+}
+
+import {
+  to = cloudflare_leaked_credential_check_rule.query_params
+  id = "<zone_id>/<detection_id>"
 }
 
 # =============================================================================
@@ -210,6 +339,11 @@ resource "cloudflare_leaked_credential_check_rule" "query_params" {
   password = "http.request.uri.args[\"password\"][0]"
 }
 
+import {
+  to = cloudflare_leaked_credential_check_rule.cookie_detection
+  id = "<zone_id>/<detection_id>"
+}
+
 # =============================================================================
 # TEST CASE 26: Cookie-based detection
 # =============================================================================
@@ -219,6 +353,11 @@ resource "cloudflare_leaked_credential_check_rule" "cookie_detection" {
   password = "http.request.cookies[\"session_token\"][0]"
 }
 
+import {
+  to = cloudflare_leaked_credential_check_rule.deep_json
+  id = "<zone_id>/<detection_id>"
+}
+
 # =============================================================================
 # TEST CASE 27: Multi-step JSON path
 # =============================================================================
@@ -226,17 +365,4 @@ resource "cloudflare_leaked_credential_check_rule" "deep_json" {
   zone_id  = local.zone_id
   username = "lookup_json_string(lookup_json_string(http.request.body.raw, \"payload\"), \"username\")"
   password = "lookup_json_string(lookup_json_string(http.request.body.raw, \"payload\"), \"password\")"
-}
-
-# =============================================================================
-# Output for verification
-# =============================================================================
-output "total_rules_created" {
-  value       = 27
-  description = "Total number of leaked credential check rules created for testing"
-}
-
-output "conditional_rules_enabled" {
-  value       = var.enable_optional_rules
-  description = "Whether conditional rules are enabled"
 }
