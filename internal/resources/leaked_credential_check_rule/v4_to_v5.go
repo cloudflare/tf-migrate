@@ -5,6 +5,7 @@ import (
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
 
 // V4ToV5Migrator handles the migration of cloudflare_leaked_credential_check_rule from v4 to v5.
@@ -48,15 +49,33 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 }
 
 // TransformConfig handles configuration file transformations.
-// For leaked_credential_check_rule, no HCL transformations are needed because:
-// - Resource name is identical in v4 and v5
-// - All v4 fields exist in v5 with the same names and types
-// - No fields were deprecated or renamed
-// - The only changes are validation-level (username and password became optional)
+// The v4 provider had a bug where it created the detection rule successfully
+// but failed to store the returned detection_id in state (id = ""). The v5
+// provider's Read() detects the empty ID and removes the resource from state,
+// causing Terraform to attempt a re-create on the next apply — which fails
+// with error 11003 "custom detection for given username and password already
+// exists" if the rule was actually created by the v4 provider.
+//
+// We emit a MIGRATION WARNING comment so users know they may need to manually
+// import the existing rule.
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	body := block.Body()
+	resourceName := block.Labels()[1]
+
+	// If the block has no id attribute the v4 bug may be present — warn the user.
+	if body.GetAttribute("id") == nil {
+		tfhcl.AppendWarningComment(body,
+			"The v4 provider had a bug where the detection_id was not stored in state (id = \"\"). "+
+				"If this rule was already created in v4, Terraform will fail to recreate it with "+
+				"error 11003 on the first apply. Find the existing detection_id with: "+
+				"curl -s \"https://api.cloudflare.com/client/v4/zones/<zone_id>/leaked-credential-checks/detections\" "+
+				"-H \"Authorization: Bearer <token>\" | jq '.result[].id' "+
+				"Then import: terraform import cloudflare_leaked_credential_check_rule."+resourceName+" <zone_id>/<detection_id>",
+		)
+	}
+
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
 }
-
