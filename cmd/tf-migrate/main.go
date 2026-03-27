@@ -308,21 +308,15 @@ func runFullMigration(log hclog.Logger, cfg config) error {
 	return nil
 }
 
-// fallbackProviderVersions maps migration target versions to known-good
-// provider versions, used when the GitHub API is unavailable.
-var fallbackProviderVersions = map[string]string{
-	"v5": "5.19.0-beta.3",
-}
-
 // targetProviderVersion fetches the latest provider release for the given
-// target migration version from the GitHub releases API. Falls back to a
-// hardcoded version if the fetch fails or times out.
+// target migration version from the GitHub releases API.
 //
 // Pre-releases (betas) are included because v5 is currently in beta. Draft
 // releases are excluded as they are unpublished works-in-progress.
 //
-// Returns the version string and true if it was fetched from the API,
-// or the fallback version and false if the API was unavailable.
+// Returns ("", false) if the API is unreachable or rate-limited — callers
+// should warn the user to update the version manually rather than silently
+// writing a stale hardcoded version.
 func targetProviderVersion(targetVersion string) (string, bool) {
 	majorPrefix := strings.TrimPrefix(targetVersion, "v") + "."
 
@@ -351,10 +345,6 @@ func targetProviderVersion(targetVersion string) (string, bool) {
 		}
 	}
 
-	// Fall back to hardcoded version
-	if v, ok := fallbackProviderVersions[targetVersion]; ok {
-		return v, false
-	}
 	return "", false
 }
 
@@ -363,14 +353,14 @@ func targetProviderVersion(targetVersion string) (string, bool) {
 // match the target provider version. Prints next-step instructions if updated.
 func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Diagnostics) error {
 	targetVersion, fromAPI := targetProviderVersion(cfg.targetVersion)
-	if targetVersion == "" {
+	if !fromAPI {
+		// GitHub API was unreachable (rate-limited, offline, etc.).
+		// Do not write a stale hardcoded version — tell the user to update manually.
+		log.Debug("GitHub API unavailable — skipping provider version update")
+		printVersionFetchFailure(cfg)
 		return nil
 	}
-	if fromAPI {
-		log.Debug("Provider version fetched from GitHub API", "version", targetVersion)
-	} else {
-		log.Debug("GitHub API unavailable, using built-in fallback version", "version", targetVersion)
-	}
+	log.Debug("Provider version fetched from GitHub API", "version", targetVersion)
 
 	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
 	if err != nil {
@@ -479,6 +469,44 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 	fmt.Println("       git push")
 
 	return nil
+}
+
+// printVersionFetchFailure is called when the GitHub API is unreachable.
+// Instead of silently writing a stale hardcoded version it tells the user
+// to look up the latest version and update required_providers manually.
+func printVersionFetchFailure(cfg config) {
+	fmt.Println()
+	fmt.Println("⚠ Could not fetch the latest provider version from GitHub (network unavailable or rate-limited).")
+	fmt.Println("  The provider version in required_providers has NOT been updated.")
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println()
+
+	step := 1
+
+	fmt.Printf("  %d. Find the latest Cloudflare provider version:\n", step)
+	fmt.Println("       https://github.com/cloudflare/terraform-provider-cloudflare/releases")
+	fmt.Println()
+	step++
+
+	fmt.Printf("  %d. Update required_providers in your main.tf (or equivalent):\n", step)
+	fmt.Println("       cloudflare = {")
+	fmt.Println("         source  = \"cloudflare/cloudflare\"")
+	fmt.Println("         version = \"~> <latest>\"")
+	fmt.Println("       }")
+	fmt.Println()
+	step++
+
+	fmt.Printf("  %d. Regenerate the lock file locally:\n", step)
+	fmt.Printf("       cd %s\n", cfg.configDir)
+	fmt.Println("       terraform init -upgrade -backend=false")
+	fmt.Println()
+	step++
+
+	fmt.Printf("  %d. Commit and push all changed files:\n", step)
+	fmt.Println("       git add .")
+	fmt.Println("       git commit -m \"chore: migrate Cloudflare provider to v<latest>\"")
+	fmt.Println("       git push")
 }
 
 // findFilesWithPhaseOneComments returns a list of .tf files that contain
