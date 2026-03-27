@@ -1759,9 +1759,27 @@ func (m *V4ToV5Migrator) buildExprTokens(expr hclsyntax.Expression) hclwrite.Tok
 		}
 
 	case *hclsyntax.ScopeTraversalExpr:
-		if len(e.Traversal) > 0 {
-			if root, ok := e.Traversal[0].(hcl.TraverseRoot); ok {
-				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(root.Name)})
+		// Emit the full traversal: root + all attribute/index steps.
+		// e.g. cloudflare_access_identity_provider.my_idp.id
+		// Previously only the root name was emitted, truncating .my_idp.id.
+		for _, step := range e.Traversal {
+			switch t := step.(type) {
+			case hcl.TraverseRoot:
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(t.Name)})
+			case hcl.TraverseAttr:
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenDot, Bytes: []byte(".")})
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(t.Name)})
+			case hcl.TraverseIndex:
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")})
+				if t.Key.Type() == cty.String {
+					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOQuote, Bytes: []byte("\"")})
+					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(t.Key.AsString())})
+					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCQuote, Bytes: []byte("\"")})
+				} else if t.Key.Type() == cty.Number {
+					bf := t.Key.AsBigFloat()
+					tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNumberLit, Bytes: []byte(bf.String())})
+				}
+				tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
 			}
 		}
 
