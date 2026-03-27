@@ -162,6 +162,19 @@ moved {
   to   = cloudflare_workers_route.example
 }`,
 		},
+		{
+			Name: "String-keyed bracket index rewrites workers_script name to id",
+			Input: `resource "cloudflare_workers_route" "example" {
+  zone_id     = "d41d8cd98f00b204e9800998ecf8427e"
+  pattern     = "example.com/*"
+  script_name = cloudflare_workers_script.my_worker["alpha"].name
+}`,
+			Expected: `resource "cloudflare_workers_route" "example" {
+  zone_id = "d41d8cd98f00b204e9800998ecf8427e"
+  pattern = "example.com/*"
+  script  = cloudflare_workers_script.my_worker["alpha"].id
+}`,
+		},
 	}
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
