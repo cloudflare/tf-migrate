@@ -76,6 +76,12 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.EnsureAttribute(body, "http_only_cookie_attribute", "false")
 	}
 
+	// Strip saas_app block for non-SaaS application types
+	// v5 validates that saas_app can only be set when type = "saas" or type = "dash_sso"
+	if appType != "saas" && appType != "dash_sso" && appType != "" {
+		tfhcl.RemoveBlocksByType(body, "saas_app")
+	}
+
 	tfhcl.RemoveAttributes(body, "domain_type")
 
 	// Remove attributes with default/empty values that v4 provider removes from state
@@ -376,4 +382,3 @@ func (m *V4ToV5Migrator) convertTargetAttributesToMap(body *hclwrite.Body) {
 		body.RemoveBlock(block)
 	}
 }
-

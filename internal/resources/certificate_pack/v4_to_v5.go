@@ -47,14 +47,15 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	resourceName := tfhcl.GetResourceName(block)
 
 	// Check for deprecated fields and warn
+	// Check both attribute syntax (validation_records = [...]) and block syntax (validation_records { })
 	var removedFields []string
 	if body.GetAttribute("wait_for_active_status") != nil {
 		removedFields = append(removedFields, "wait_for_active_status")
 	}
-	if body.GetAttribute("validation_records") != nil {
+	if body.GetAttribute("validation_records") != nil || len(tfhcl.FindBlocksByType(body, "validation_records")) > 0 {
 		removedFields = append(removedFields, "validation_records")
 	}
-	if body.GetAttribute("validation_errors") != nil {
+	if body.GetAttribute("validation_errors") != nil || len(tfhcl.FindBlocksByType(body, "validation_errors")) > 0 {
 		removedFields = append(removedFields, "validation_errors")
 	}
 
@@ -76,7 +77,10 @@ These fields are now Computed-only or removed in the v5 provider:
 	tfhcl.RemoveAttributes(body, "wait_for_active_status")
 
 	// validation_records, validation_errors: were Optional+Computed in v4, only Computed in v5
+	// Remove both attribute syntax and block syntax since v4 supported both
 	tfhcl.RemoveAttributes(body, "validation_records", "validation_errors")
+	tfhcl.RemoveBlocksByType(body, "validation_records")
+	tfhcl.RemoveBlocksByType(body, "validation_errors")
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
