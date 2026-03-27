@@ -71,6 +71,10 @@ resource "cloudflare_argo_tiered_caching" "both_tiered" {
   zone_id = "0da42c8d2132a9ddaf714f9e7c920711"
   value   = "on"
 }
+import {
+  to = cloudflare_argo_tiered_caching.both_tiered
+  id = "0da42c8d2132a9ddaf714f9e7c920711"
+}
 `,
 			},
 			{
@@ -283,6 +287,10 @@ resource "cloudflare_argo_tiered_caching" "both_lifecycle_tiered" {
   lifecycle {
     ignore_changes = [value]
   }
+}
+import {
+  to = cloudflare_argo_tiered_caching.both_lifecycle_tiered
+  id = "0da42c8d2132a9ddaf714f9e7c920711"
 }
 `,
 			},
