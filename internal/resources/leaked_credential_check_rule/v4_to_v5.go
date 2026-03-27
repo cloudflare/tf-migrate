@@ -68,8 +68,21 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// If the block has no id attribute the v4 bug may be present — warn the user
 	// both in the file (as a comment) and in the terminal diagnostic output.
 	if body.GetAttribute("id") == nil {
-		importCmd := fmt.Sprintf("terraform import cloudflare_leaked_credential_check_rule.%s <zone_id>/<detection_id>", resourceName)
-		listCmd := `curl -s "https://api.cloudflare.com/client/v4/zones/<zone_id>/leaked-credential-checks/detections" -H "Authorization: Bearer <token>" | jq '.result[].id'`
+		// Extract the actual zone_id value if it's a literal string, so the
+		// suggested curl and import commands are immediately runnable.
+		zoneID := "<zone_id>"
+		if zoneAttr := body.GetAttribute("zone_id"); zoneAttr != nil {
+			zoneID = tfhcl.ExtractStringFromAttribute(zoneAttr)
+			if zoneID == "" {
+				zoneID = "<zone_id>"
+			}
+		}
+
+		listCmd := fmt.Sprintf(
+			`curl -s "https://api.cloudflare.com/client/v4/zones/%s/leaked-credential-checks/detections" -H "Authorization: Bearer <token>" | jq '.result[] | {id, username, password}'`,
+			zoneID,
+		)
+		importCmd := fmt.Sprintf("terraform import cloudflare_leaked_credential_check_rule.%s %s/<detection_id>", resourceName, zoneID)
 
 		tfhcl.AppendWarningComment(body,
 			"The v4 provider had a bug where the detection_id was not stored in state (id = \"\"). "+
