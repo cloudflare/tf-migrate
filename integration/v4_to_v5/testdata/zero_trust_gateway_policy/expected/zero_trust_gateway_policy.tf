@@ -116,6 +116,64 @@ locals {
 
 # Total: 28 base resources + 3 from for_each map + 4 from for_each set + 3 from count = 38 instances
 
+# ============================================================================
+# BUGS-2007: Already-v5-named resources with block syntax not converted
+# These resources already have the v5 name but rule_settings and nested
+# blocks are still in v4 block syntax — tf-migrate must still convert them.
+# ============================================================================
+
+# Already v5-named: rule_settings with flat attrs (block_page_reason rename needed)
+resource "cloudflare_zero_trust_gateway_policy" "bugs2007_block" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix} BUGS-2007 Block Policy"
+  description = "BUGS-2007 block policy with block_page_reason"
+  action      = "block"
+  precedence  = 2000
+  filters     = local.dns_filter
+  traffic     = local.common_traffic_expression
+
+  rule_settings = {
+    block_page_enabled = true
+    block_reason       = "Access denied by policy"
+  }
+}
+
+# Already v5-named: rule_settings with nested notification_settings
+resource "cloudflare_zero_trust_gateway_policy" "bugs2007_notification" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix} BUGS-2007 Notify Policy"
+  description = "BUGS-2007 policy with notification_settings"
+  action      = "block"
+  precedence  = 2100
+  filters     = local.dns_filter
+  traffic     = local.common_traffic_expression
+
+  rule_settings = {
+    notification_settings = {
+      enabled = true
+      msg     = "You have been blocked"
+    }
+  }
+}
+
+# Already v5-named: rule_settings with nested l4override
+resource "cloudflare_zero_trust_gateway_policy" "bugs2007_l4" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix} BUGS-2007 L4 Policy"
+  description = "BUGS-2007 policy with l4override"
+  action      = "l4_override"
+  precedence  = 2200
+  filters     = local.l4_filter
+  traffic     = "net.dst.ip == 93.184.216.34"
+
+  rule_settings = {
+    l4override = {
+      ip   = "10.0.0.1"
+      port = 8080
+    }
+  }
+}
+
 # 1. Minimal gateway policy
 resource "cloudflare_zero_trust_gateway_policy" "minimal" {
   account_id  = local.common_account_id
@@ -576,3 +634,4 @@ moved {
   from = cloudflare_teams_rule.with_override_ips
   to   = cloudflare_zero_trust_gateway_policy.with_override_ips
 }
+

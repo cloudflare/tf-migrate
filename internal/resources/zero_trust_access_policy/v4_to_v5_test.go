@@ -557,3 +557,90 @@ resource "cloudflare_access_policy" "test" {
 		t.Errorf("Expected diagnostic detail to mention resource name, got: %s", ctx.Diagnostics[0].Detail)
 	}
 }
+
+// TestConfigTransformation_AlreadyV5Named tests the scenario from BUGS-2006:
+// The user has already run tf-migrate once (or manually renamed resources),
+// so the resource type is already "cloudflare_zero_trust_access_policy" (v5 name),
+// but the nested include/exclude/require blocks are still in v4 block syntax.
+// tf-migrate must still convert the blocks even when the resource name is already v5.
+func TestConfigTransformation_AlreadyV5Named(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	tests := []testhelpers.ConfigTestCase{
+		{
+			Name: "v5-named resource with include block still in block syntax",
+			Input: `
+resource "cloudflare_zero_trust_access_policy" "sarav2_testing_sara_token" {
+  account_id = "account-123"
+  name       = "Sara Token Policy"
+  decision   = "allow"
+
+  include {
+    email = ["sara@example.com"]
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_access_policy" "sarav2_testing_sara_token" {
+  account_id = "account-123"
+  name       = "Sara Token Policy"
+  decision   = "allow"
+
+  include = [{ email = { email = "sara@example.com" } }]
+}`,
+		},
+		{
+			Name: "v5-named resource with multiple condition blocks still in block syntax",
+			Input: `
+resource "cloudflare_zero_trust_access_policy" "assemblyline_valid_cloudflare_email" {
+  account_id = "account-123"
+  name       = "Assemblyline Policy"
+  decision   = "allow"
+
+  include {
+    email_domain = ["cloudflare.com"]
+  }
+
+  require {
+    certificate = true
+  }
+
+  exclude {
+    geo = ["CN"]
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_access_policy" "assemblyline_valid_cloudflare_email" {
+  account_id = "account-123"
+  name       = "Assemblyline Policy"
+  decision   = "allow"
+
+  include = [{ email_domain = { domain = "cloudflare.com" } }]
+  require = [{ certificate = {} }]
+  exclude = [{ geo = { country_code = "CN" } }]
+}`,
+		},
+		{
+			Name: "v5-named resource with everyone include block",
+			Input: `
+resource "cloudflare_zero_trust_access_policy" "test_everyone" {
+  account_id = "account-123"
+  name       = "Everyone Policy"
+  decision   = "allow"
+
+  include {
+    everyone = true
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_access_policy" "test_everyone" {
+  account_id = "account-123"
+  name       = "Everyone Policy"
+  decision   = "allow"
+
+  include = [{ everyone = {} }]
+}`,
+		},
+	}
+
+	testhelpers.RunConfigTransformTests(t, tests, migrator)
+}

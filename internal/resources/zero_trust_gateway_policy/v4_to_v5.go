@@ -17,6 +17,8 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 	migrator := &V4ToV5Migrator{}
 	// Register the OLD (v4) resource name: cloudflare_teams_rule
 	internal.RegisterMigrator("cloudflare_teams_rule", "v4", "v5", migrator)
+	// Also register the NEW (v5) resource name so already-renamed resources are still processed (BUGS-2007)
+	internal.RegisterMigrator("cloudflare_zero_trust_gateway_policy", "v4", "v5", migrator)
 	return migrator
 }
 
@@ -26,8 +28,11 @@ func (m *V4ToV5Migrator) GetResourceType() string {
 }
 
 func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
-	// Check for the OLD (v4) resource name
-	return resourceType == "cloudflare_teams_rule"
+	// Accept both the OLD (v4) name and the NEW (v5) name.
+	// The v5 name is needed when a resource was already renamed (e.g. by a prior
+	// partial migration) but its nested blocks were not yet converted (BUGS-2007).
+	return resourceType == "cloudflare_teams_rule" ||
+		resourceType == "cloudflare_zero_trust_gateway_policy"
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
@@ -47,7 +52,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	resourceName := tfhcl.GetResourceName(block)
 
 	// Rename resource type: cloudflare_teams_rule → cloudflare_zero_trust_gateway_policy
-	tfhcl.RenameResourceType(block, "cloudflare_teams_rule", "cloudflare_zero_trust_gateway_policy")
+	// Skip when already v5-named (resource was renamed in a prior migration run).
+	if originalResourceType == "cloudflare_teams_rule" {
+		tfhcl.RenameResourceType(block, "cloudflare_teams_rule", "cloudflare_zero_trust_gateway_policy")
+	}
 
 	body := block.Body()
 
@@ -60,7 +68,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// This must be done AFTER processing nested blocks
 	tfhcl.ConvertSingleBlockToAttribute(body, "rule_settings", "rule_settings")
 
-	// Generate moved block for resource rename
+	// Generate moved block only when renaming from v4 name.
+	// If already v5-named: no rename, no moved block — just apply attribute conversions above.
 	_, newType := m.GetResourceRename()
 	if originalResourceType != newType {
 		from := originalResourceType + "." + resourceName
