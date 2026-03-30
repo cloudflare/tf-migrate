@@ -128,7 +128,9 @@ func RunMigrate(resources string, yes bool) error {
 	// Terraform only supports import blocks in the root module, so any import
 	// blocks generated inside a module directory must be moved to root with the
 	// module address prepended to the `to` attribute.
-	if err := hoistImportBlocksToRoot(generatedDir, resourceList); err != nil {
+	// Pass the zone ID so <zone_id> placeholders are resolved with the real value.
+	zoneID := os.Getenv("CLOUDFLARE_ZONE_ID")
+	if err := hoistImportBlocksToRoot(generatedDir, resourceList, zoneID); err != nil {
 		printYellow("Warning: Failed to hoist import blocks to root: %v", err)
 	}
 
@@ -448,7 +450,7 @@ func updateProviderTF(dir string) error {
 // becomes at root:
 //
 //	to = module.zone_setting.cloudflare_zone_setting.minimal_always_online
-func hoistImportBlocksToRoot(generatedDir string, resourceList []string) error {
+func hoistImportBlocksToRoot(generatedDir string, resourceList []string, zoneID string) error {
 	mainTFPath := filepath.Join(generatedDir, "main.tf")
 
 	var hoisted []string
@@ -501,6 +503,10 @@ func hoistImportBlocksToRoot(generatedDir string, resourceList []string) error {
 		return err
 	}
 	for _, block := range hoisted {
+		// Substitute <zone_id> placeholder with the real zone ID when available.
+		if zoneID != "" {
+			block = strings.ReplaceAll(block, "<zone_id>", zoneID)
+		}
 		if _, err := fmt.Fprintf(f, "%s\n", block); err != nil {
 			return err
 		}
