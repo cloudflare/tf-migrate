@@ -1,6 +1,7 @@
 package registry
 
 import (
+	accountrolesdata "github.com/cloudflare/tf-migrate/internal/datasources/account_roles"
 	accountsdata "github.com/cloudflare/tf-migrate/internal/datasources/accounts"
 	lbpoolsdata "github.com/cloudflare/tf-migrate/internal/datasources/load_balancer_pools"
 	rulesetsdata "github.com/cloudflare/tf-migrate/internal/datasources/rulesets"
@@ -94,6 +95,7 @@ import (
 // Each resource package's NewV4ToV5Migrator function registers itself with the internal registry.
 func RegisterAllMigrations() {
 	// Datasources
+	accountrolesdata.NewV4ToV5Migrator()
 	accountsdata.NewV4ToV5Migrator()
 	lbpoolsdata.NewV4ToV5Migrator()
 	rulesetsdata.NewV4ToV5Migrator()
