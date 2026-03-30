@@ -1,8 +1,10 @@
 package authenticated_origin_pulls
 
 import (
+	"fmt"
 	"strings"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
@@ -106,7 +108,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 			// Update certificate reference if it points to a per-hostname certificate
 			// that will be migrated to cloudflare_authenticated_origin_pulls_hostname_certificate
-			certTokens = updateCertificateReference(certTokens, ctx)
+			certTokens = updateCertificateReference(certTokens, ctx, resourceName)
 
 			configBody.SetAttributeRaw("cert_id", certTokens)
 		}
@@ -157,9 +159,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 //
 // It looks up the cert migrator via the registry to check whether the referenced
 // resource name was recorded as per-hostname during its own TransformConfig call.
-// This avoids the previous name-based heuristic which was unreliable and also
-// avoids the over-eager blanket rename that GetResourceRename() caused.
-func updateCertificateReference(certTokens hclwrite.Tokens, ctx *transform.Context) hclwrite.Tokens {
+// If it cannot determine the certificate type (e.g. the certificate resource lives
+// in a different file that has not been processed yet), it emits a diagnostic
+// warning so the user knows to update the reference manually.
+//
+// aopResourceName is the name label of the cloudflare_authenticated_origin_pulls
+// resource being transformed, used to produce actionable diagnostic messages.
+func updateCertificateReference(certTokens hclwrite.Tokens, ctx *transform.Context, aopResourceName string) hclwrite.Tokens {
 	// Convert tokens to string to check if it's a resource reference
 	certRefStr := strings.TrimSpace(string(certTokens.Bytes()))
 
@@ -168,16 +174,16 @@ func updateCertificateReference(certTokens hclwrite.Tokens, ctx *transform.Conte
 		return certTokens // Not a reference to the cert resource, return unchanged
 	}
 
-	// Extract the resource name from the reference
+	// Extract the certificate resource name from the reference
 	// Format: cloudflare_authenticated_origin_pulls_certificate.resource_name.id
 	// or with for_each: cloudflare_authenticated_origin_pulls_certificate.resource_name[each.key].id
 	after := strings.TrimPrefix(certRefStr, "cloudflare_authenticated_origin_pulls_certificate.")
 	// resource name is the next dot-separated segment (may be followed by . or [)
-	resourceName := after
+	certResourceName := after
 	if idx := strings.IndexAny(after, ".["); idx >= 0 {
-		resourceName = after[:idx]
+		certResourceName = after[:idx]
 	}
-	if resourceName == "" {
+	if certResourceName == "" {
 		return certTokens
 	}
 
@@ -192,7 +198,34 @@ func updateCertificateReference(certTokens hclwrite.Tokens, ctx *transform.Conte
 		return certTokens
 	}
 
-	if !lookup.IsPerHostname(resourceName) {
+	if !lookup.IsPerHostname(certResourceName) {
+		// The certificate type could not be determined — it is either a per-zone cert
+		// (which would be an unusual configuration) or, more likely, it lives in a
+		// different file that has not been processed yet. Emit a warning so the user
+		// can update the reference manually.
+		newRef := strings.Replace(certRefStr,
+			"cloudflare_authenticated_origin_pulls_certificate.",
+			"cloudflare_authenticated_origin_pulls_hostname_certificate.",
+			1)
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary: fmt.Sprintf(
+				"Manual update required: cert_id in %s",
+				ctx.Filename,
+			),
+			Detail: fmt.Sprintf(
+				"Resource cloudflare_authenticated_origin_pulls.%s in %s:\n"+
+					"  cert_id references %q but the certificate resource type could not\n"+
+					"  be determined automatically (it may be defined in another file).\n\n"+
+					"  If cloudflare_authenticated_origin_pulls_certificate.%s has type = \"per-hostname\",\n"+
+					"  update the cert_id to:\n"+
+					"    cert_id = %s",
+				aopResourceName, ctx.Filename,
+				certRefStr,
+				certResourceName,
+				newRef,
+			),
+		})
 		return certTokens
 	}
 
