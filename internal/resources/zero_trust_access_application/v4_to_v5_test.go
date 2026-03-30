@@ -1614,3 +1614,119 @@ func TestResourceNaming(t *testing.T) {
 		}
 	})
 }
+
+func TestSaasAppStripping(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	tests := []testhelpers.ConfigTestCase{
+		{
+			Name: "self_hosted with saas_app block — saas_app stripped",
+			Input: `resource "cloudflare_zero_trust_access_application" "test" {
+  account_id = "abc123"
+  name       = "Test App"
+  type       = "self_hosted"
+
+  saas_app {
+    sp_entity_id         = "should-be-removed"
+    consumer_service_url = "https://removed.example.com/sso"
+  }
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "test" {
+  account_id                 = "abc123"
+  name                       = "Test App"
+  type                       = "self_hosted"
+  http_only_cookie_attribute = "false"
+}`,
+		},
+		{
+			Name: "ssh with saas_app block — saas_app stripped",
+			Input: `resource "cloudflare_zero_trust_access_application" "test" {
+  account_id = "abc123"
+  name       = "SSH App"
+  type       = "ssh"
+  domain     = "ssh.example.com"
+
+  saas_app {
+    sp_entity_id = "should-be-removed"
+  }
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "test" {
+  account_id                 = "abc123"
+  name                       = "SSH App"
+  type                       = "ssh"
+  domain                     = "ssh.example.com"
+  http_only_cookie_attribute = "false"
+}`,
+		},
+		{
+			Name: "dash_sso with saas_app block — saas_app preserved",
+			Input: `resource "cloudflare_zero_trust_access_application" "test" {
+  account_id = "abc123"
+  name       = "Dash SSO"
+  type       = "dash_sso"
+
+  saas_app {
+    auth_type = "saml"
+    sp_entity_id = "dash-entity"
+    consumer_service_url = "https://dash.example.com/sso"
+  }
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "test" {
+  account_id = "abc123"
+  name       = "Dash SSO"
+  type       = "dash_sso"
+  saas_app = {
+    auth_type            = "saml"
+    sp_entity_id         = "dash-entity"
+    consumer_service_url = "https://dash.example.com/sso"
+  }
+}`,
+		},
+		{
+			Name: "type is variable reference — saas_app preserved (cannot determine type)",
+			Input: `resource "cloudflare_zero_trust_access_application" "test" {
+  account_id = "abc123"
+  name       = "Variable Type App"
+  type       = var.app_type
+
+  saas_app {
+    sp_entity_id         = "entity-id"
+    consumer_service_url = "https://example.com/sso"
+  }
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "test" {
+  account_id = "abc123"
+  name       = "Variable Type App"
+  type       = var.app_type
+  saas_app = {
+    sp_entity_id         = "entity-id"
+    consumer_service_url = "https://example.com/sso"
+  }
+}`,
+		},
+		{
+			Name: "type is local reference — saas_app preserved (cannot determine type)",
+			Input: `resource "cloudflare_zero_trust_access_application" "test" {
+  account_id = "abc123"
+  name       = "Local Type App"
+  type       = local.app_type
+
+  saas_app {
+    sp_entity_id         = "entity-id"
+    consumer_service_url = "https://example.com/sso"
+  }
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "test" {
+  account_id = "abc123"
+  name       = "Local Type App"
+  type       = local.app_type
+  saas_app = {
+    sp_entity_id         = "entity-id"
+    consumer_service_url = "https://example.com/sso"
+  }
+}`,
+		},
+	}
+
+	testhelpers.RunConfigTransformTests(t, tests, migrator)
+}

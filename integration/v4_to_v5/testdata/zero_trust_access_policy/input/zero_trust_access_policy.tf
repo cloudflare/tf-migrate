@@ -446,3 +446,50 @@ resource "cloudflare_access_policy" "app_scoped_policy" {
     ]
   }
 }
+
+# ============================================================================
+# BUGS-2006: Already-v5-named resources with block syntax not converted
+# These resources already have the v5 name but nested blocks are still in
+# v4 block syntax — tf-migrate must still convert them.
+# ============================================================================
+
+# Already v5-named: simple include block with email
+resource "cloudflare_zero_trust_access_policy" "bugs2006_email" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-bugs2006-email"
+  decision   = "allow"
+
+  include {
+    email = ["sara@example.com"]
+  }
+}
+
+# Already v5-named: multiple condition blocks
+resource "cloudflare_zero_trust_access_policy" "bugs2006_multi_condition" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-bugs2006-multi"
+  decision   = "allow"
+
+  include {
+    email_domain = ["cloudflare.com"]
+  }
+
+  require {
+    certificate = true
+  }
+
+  exclude {
+    geo = ["CN", "RU"]
+  }
+}
+
+# Already v5-named: everyone boolean condition
+resource "cloudflare_zero_trust_access_policy" "bugs2006_everyone" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-bugs2006-everyone"
+  decision   = "allow"
+
+  include {
+    everyone = true
+  }
+}

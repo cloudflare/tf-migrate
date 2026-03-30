@@ -22,6 +22,8 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 	migrator := &V4ToV5Migrator{}
 	// Register the OLD (v4) resource name: cloudflare_access_policy
 	internal.RegisterMigrator("cloudflare_access_policy", "v4", "v5", migrator)
+	// Also register the NEW (v5) resource name so already-renamed resources are still processed (BUGS-2006)
+	internal.RegisterMigrator("cloudflare_zero_trust_access_policy", "v4", "v5", migrator)
 	return migrator
 }
 
@@ -31,8 +33,11 @@ func (m *V4ToV5Migrator) GetResourceType() string {
 }
 
 func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
-	// Check for the OLD (v4) resource name
-	return resourceType == "cloudflare_access_policy"
+	// Accept both the OLD (v4) name and the NEW (v5) name.
+	// The v5 name is needed when a resource was already renamed (e.g. by a prior
+	// partial migration) but its nested blocks were not yet converted (BUGS-2006).
+	return resourceType == "cloudflare_access_policy" ||
+		resourceType == "cloudflare_zero_trust_access_policy"
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
@@ -82,6 +87,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	var movedBlock *hclwrite.Block
 
 	// 1. Rename resource type: cloudflare_access_policy → cloudflare_zero_trust_access_policy
+	// Skip when already v5-named (resource was renamed in a prior migration run).
 	if originalResourceType == "cloudflare_access_policy" {
 		tfhcl.RenameResourceType(block, "cloudflare_access_policy", "cloudflare_zero_trust_access_policy")
 
@@ -91,6 +97,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		to := newType + "." + resourceName
 		movedBlock = tfhcl.CreateMovedBlock(from, to)
 	}
+	// If already v5-named: no rename, no moved block — just apply attribute conversions below.
 
 	// 2. Simple field operations
 	// Remove deprecated fields

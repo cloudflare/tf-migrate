@@ -1,7 +1,12 @@
 package custom_ssl
 
 import (
+	"fmt"
+	"strings"
+
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -60,14 +65,43 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 //     emit a SingleNestedAttribute object { label = "..." } at the root.
 //  3. Remove the now-empty custom_ssl_options block.
 //  4. Remove the custom_ssl_priority block (write-only, not in v5).
+//  5. Warn if required write-only fields are missing.
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
+	resourceName := tfhcl.GetResourceName(block)
 
 	// Step 1 & 2: Process the custom_ssl_options block.
 	m.transformCustomSSLOptionsBlock(body)
 
 	// Step 3: Remove custom_ssl_priority blocks (write-only reprioritization, not in v5).
 	tfhcl.RemoveBlocksByType(body, "custom_ssl_priority")
+
+	// Step 4: Check for required write-only fields that may be missing after hoisting
+	// These are write-only fields that can't be read from API, so they may not be present
+	// If missing, add placeholder values and lifecycle ignore block since the resource already exists
+	var missingFields []string
+	if body.GetAttribute("certificate") == nil {
+		missingFields = append(missingFields, "certificate")
+		body.SetAttributeValue("certificate", cty.StringVal("PLACEHOLDER - actual certificate already deployed"))
+	}
+	if body.GetAttribute("private_key") == nil {
+		missingFields = append(missingFields, "private_key")
+		body.SetAttributeValue("private_key", cty.StringVal("PLACEHOLDER - actual private key already deployed"))
+	}
+
+	if len(missingFields) > 0 {
+		// Add lifecycle block to ignore changes to write-only fields
+		tfhcl.AddLifecycleIgnoreChanges(body, missingFields...)
+
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("Added placeholders for write-only attributes in cloudflare_custom_ssl.%s", resourceName),
+			Detail: fmt.Sprintf(`The following required attributes were missing: %s
+
+Placeholder values have been added with lifecycle { ignore_changes = [...] }.
+The actual certificate/key is already deployed in Cloudflare and won't be modified.`, strings.Join(missingFields, ", ")),
+		})
+	}
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
@@ -120,3 +154,4 @@ func buildGeoRestrictionsObject(labelValueTokens hclwrite.Tokens) hclwrite.Token
 	}
 	return hclwrite.TokensForObject(attrs)
 }
+
