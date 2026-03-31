@@ -19,8 +19,8 @@ locals {
 # Reference roles by name in a resource
 resource "cloudflare_account_member" "example" {
   account_id = var.cloudflare_account_id
-  email      = "user@example.com"
-  roles = [
+  email_address      = "user@example.com"
+  role_ids = [
     local.account_member_roles["Administrator"].id,
   ]
 }
