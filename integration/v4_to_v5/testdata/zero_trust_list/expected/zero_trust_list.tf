@@ -109,7 +109,58 @@ locals {
 
 
 
-# Total: 26 base resources + 3 from for_each map + 4 from for_each set + 3 from count = 36 instances
+# ============================================================================
+# BUGS-2009: Already-v5-named resources with v4 block syntax
+# These resources already have the v5 name but items_with_description blocks
+# are still in v4 block syntax — tf-migrate must still convert them.
+# ============================================================================
+
+# 27. Already v5-named: simple items array
+resource "cloudflare_zero_trust_list" "bugs2009_simple" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} BUGS-2009 Simple"
+  type       = "IP"
+  items = [{
+    description = null
+    value       = "10.0.0.1"
+    }, {
+    description = null
+    value       = "10.0.0.2"
+  }]
+}
+
+# 28. Already v5-named: items_with_description blocks
+resource "cloudflare_zero_trust_list" "bugs2009_blocks" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} BUGS-2009 Blocks"
+  type       = "DOMAIN"
+
+
+  items = [{
+    description = "First block"
+    value       = "bugs2009-block1.cf-tf-test.com"
+    }, {
+    description = "Second block"
+    value       = "bugs2009-block2.cf-tf-test.com"
+  }]
+}
+
+# 29. Already v5-named: mixed items and blocks
+resource "cloudflare_zero_trust_list" "bugs2009_mixed" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} BUGS-2009 Mixed"
+  type       = "EMAIL"
+
+  items = [{
+    description = "Support email"
+    value       = "bugs2009-support@cf-tf-test.com"
+    }, {
+    description = null
+    value       = "bugs2009-admin@cf-tf-test.com"
+  }]
+}
+
+# Total: 26 base resources + 3 from for_each map + 4 from for_each set + 3 from count + 3 BUGS-2009 = 39 instances
 
 # 1. Minimal resource - only required fields
 resource "cloudflare_zero_trust_list" "minimal" {

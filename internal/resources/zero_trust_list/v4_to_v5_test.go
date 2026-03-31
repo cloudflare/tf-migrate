@@ -315,3 +315,119 @@ moved {
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
 }
+
+// TestV4ToV5Transformation_AlreadyV5Named tests the scenario from BUGS-2009:
+// The user has already run tf-migrate once (or manually renamed resources),
+// so the resource type is already "cloudflare_zero_trust_list" (v5 name),
+// but items_with_description blocks are still in v4 block syntax.
+// tf-migrate must still convert the blocks even when the resource name is already v5.
+func TestV4ToV5Transformation_AlreadyV5Named(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	tests := []testhelpers.ConfigTestCase{
+		{
+			Name: "v5-named resource with simple items array",
+			Input: `
+resource "cloudflare_zero_trust_list" "already_v5_simple" {
+  account_id = "abc123"
+  name       = "Already V5 Simple"
+  type       = "IP"
+  items      = ["10.0.0.1", "10.0.0.2"]
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_list" "already_v5_simple" {
+  account_id = "abc123"
+  name       = "Already V5 Simple"
+  type       = "IP"
+
+  items = [{
+    description = null
+    value       = "10.0.0.1"
+    }, {
+    description = null
+    value       = "10.0.0.2"
+  }]
+}`,
+		},
+		{
+			Name: "v5-named resource with items_with_description blocks",
+			Input: `
+resource "cloudflare_zero_trust_list" "already_v5_blocks" {
+  account_id = "abc123"
+  name       = "Already V5 Blocks"
+  type       = "DOMAIN"
+
+  items_with_description {
+    value       = "example.com"
+    description = "Example domain"
+  }
+
+  items_with_description {
+    value       = "test.com"
+    description = "Test domain"
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_list" "already_v5_blocks" {
+  account_id = "abc123"
+  name       = "Already V5 Blocks"
+  type       = "DOMAIN"
+
+  items = [{
+    description = "Example domain"
+    value       = "example.com"
+    }, {
+    description = "Test domain"
+    value       = "test.com"
+  }]
+}`,
+		},
+		{
+			Name: "v5-named resource with mixed items and blocks",
+			Input: `
+resource "cloudflare_zero_trust_list" "already_v5_mixed" {
+  account_id = "abc123"
+  name       = "Already V5 Mixed"
+  type       = "EMAIL"
+  items      = ["admin@example.com"]
+
+  items_with_description {
+    value       = "support@example.com"
+    description = "Support email"
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_list" "already_v5_mixed" {
+  account_id = "abc123"
+  name       = "Already V5 Mixed"
+  type       = "EMAIL"
+
+  items = [{
+    description = "Support email"
+    value       = "support@example.com"
+    }, {
+    description = null
+    value       = "admin@example.com"
+  }]
+}`,
+		},
+		{
+			Name: "v5-named resource with empty items array",
+			Input: `
+resource "cloudflare_zero_trust_list" "already_v5_empty" {
+  account_id = "abc123"
+  name       = "Already V5 Empty"
+  type       = "IP"
+  items      = []
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_list" "already_v5_empty" {
+  account_id = "abc123"
+  name       = "Already V5 Empty"
+  type       = "IP"
+}`,
+		},
+	}
+
+	testhelpers.RunConfigTransformTests(t, tests, migrator)
+}
