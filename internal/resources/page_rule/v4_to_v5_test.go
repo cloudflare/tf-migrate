@@ -119,6 +119,52 @@ func TestV4ToV5Transformation(t *testing.T) {
       "200" = "3600"
       "404" = "300"
     }
+					}
+				}`,
+			},
+			{
+				Name: "Removes server_side_exclude",
+				Input: `resource "cloudflare_page_rule" "example" {
+  zone_id = "abc123"
+  target  = "example.com/*"
+  actions {
+    cache_level         = "bypass"
+    server_side_exclude = true
+  }
+}`,
+				Expected: `resource "cloudflare_page_rule" "example" {
+  zone_id = "abc123"
+  target  = "example.com/*"
+  status  = "active"
+  actions = {
+    cache_level = "bypass"
+  }
+}`,
+			},
+			{
+				Name: "Transforms query_string ignore to include exclude",
+				Input: `resource "cloudflare_page_rule" "example" {
+  zone_id = "abc123"
+  target  = "example.com/*"
+  actions {
+    cache_key_fields {
+      query_string {
+        ignore = true
+      }
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_page_rule" "example" {
+  zone_id = "abc123"
+  target  = "example.com/*"
+  status  = "active"
+  actions = {
+    cache_key_fields = {
+      query_string = {
+        include = []
+        exclude = ["*"]
+      }
+    }
   }
 }`,
 			},

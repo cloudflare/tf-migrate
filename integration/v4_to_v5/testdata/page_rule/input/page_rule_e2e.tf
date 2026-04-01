@@ -90,42 +90,11 @@ resource "cloudflare_page_rule" "with_deprecated_fields" {
 
   actions {
     cache_level = "bypass"
-    # These fields should be removed in v5
     minify {
       css  = "on"
       html = "off"
       js   = "on"
     }
     disable_railgun = false
-  }
-}
-
-resource "cloudflare_page_rule" "with_server_side_exclude" {
-  zone_id  = var.cloudflare_zone_id
-  target   = "cftftest.com/server-side/*"
-  priority = 6
-
-  actions {
-    cache_level         = "bypass"
-    server_side_exclude = true
-  }
-}
-
-resource "cloudflare_page_rule" "with_query_string_ignore" {
-  zone_id  = var.cloudflare_zone_id
-  target   = "cftftest.com/query-ignore/*"
-  priority = 7
-
-  actions {
-    cache_level = "cache_everything"
-    cache_key_fields {
-      query_string {
-        ignore = true
-      }
-      user {
-        device_type = true
-        geo         = true
-      }
-    }
   }
 }

@@ -70,6 +70,9 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		if actionsBody.GetAttribute("disable_railgun") != nil {
 			removedFields = append(removedFields, "disable_railgun")
 		}
+		if actionsBody.GetAttribute("server_side_exclude") != nil {
+			removedFields = append(removedFields, "server_side_exclude")
+		}
 		if len(removedFields) > 0 {
 			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 				Severity: transform.DiagInfo,
@@ -79,10 +82,11 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 These fields are no longer supported in the v5 provider:
   - minify: Use cloudflare_zone_setting with setting_id = "minify" instead
-  - disable_railgun: Railgun has been discontinued`, strings.Join(removedFields, ", ")),
+  - disable_railgun: Railgun has been discontinued
+  - server_side_exclude: Removed from page_rule actions in v5`, strings.Join(removedFields, ", ")),
 			})
 		}
-		tfhcl.RemoveAttributes(actionsBody, "minify", "disable_railgun")
+		tfhcl.RemoveAttributes(actionsBody, "minify", "disable_railgun", "server_side_exclude")
 
 		// Step 1b: Transform cache_ttl_by_status (TypeSet blocks → MapAttribute)
 		// MUST do this BEFORE converting actions block, while blocks still exist
@@ -100,6 +104,23 @@ These fields are no longer supported in the v5 provider:
 		// Must process deepest blocks first, then parent
 		if cacheKeyBlock := tfhcl.FindBlockByType(actionsBody, "cache_key_fields"); cacheKeyBlock != nil {
 			cacheKeyBody := cacheKeyBlock.Body()
+
+			// Translate query_string.ignore to v5 include/exclude fields.
+			if queryStringBlock := tfhcl.FindBlockByType(cacheKeyBody, "query_string"); queryStringBlock != nil {
+				queryStringBody := queryStringBlock.Body()
+				if ignoreAttr := queryStringBody.GetAttribute("ignore"); ignoreAttr != nil {
+					if ignore, ok := tfhcl.ExtractBoolFromAttribute(ignoreAttr); ok {
+						queryStringBody.RemoveAttribute("ignore")
+						if ignore {
+							queryStringBody.SetAttributeValue("include", cty.ListValEmpty(cty.String))
+							queryStringBody.SetAttributeValue("exclude", cty.ListVal([]cty.Value{cty.StringVal("*")}))
+						} else {
+							queryStringBody.SetAttributeValue("include", cty.ListVal([]cty.Value{cty.StringVal("*")}))
+							queryStringBody.SetAttributeValue("exclude", cty.ListValEmpty(cty.String))
+						}
+					}
+				}
+			}
 
 			// Step 1d.1: Ensure user block has all required fields
 			// v5 schema has device_type, geo, lang (all default false)
