@@ -42,6 +42,13 @@ exemptions:
       - 'filters.*->.*null'
     enabled: true
 
+  - name: "dns_resolvers_nested_persistent_drift"
+    description: "The test-only resource `with_dns_resolvers_nested` sets `rule_settings.dns_resolvers.ipv4` on a non-resolve gateway policy. Cloudflare's API does not persist this nested resolver payload for that policy shape, so the v5 provider reads it back as absent and Terraform continuously plans to re-add `ipv4.ip` and `route_through_private_network`. This is persistent API/provider behavior for this synthetic scenario and does not affect normal gateway policies."
+    change_types: ["update"]
+    patterns:
+      - 'module\.zero_trust_gateway_policy\.cloudflare_zero_trust_gateway_policy\.with_dns_resolvers_nested\s+will be updated'
+    enabled: true
+
 settings:
   apply_exemptions: true
   verbose_exemptions: false
