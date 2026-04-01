@@ -248,6 +248,18 @@ resource "cloudflare_access_policy" "with_common_name" {
   }
 }
 
+# Policy with common_names overflow array
+resource "cloudflare_access_policy" "with_common_names" {
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-common-names"
+  decision         = "allow"
+  session_duration = "24h"
+
+  include {
+    common_names = ["device2.example.com", "device3.example.com"]
+  }
+}
+
 # Policy with auth_method
 resource "cloudflare_access_policy" "with_auth_method" {
   account_id       = var.cloudflare_account_id
@@ -491,5 +503,59 @@ resource "cloudflare_zero_trust_access_policy" "bugs2006_everyone" {
 
   include {
     everyone = true
+  }
+}
+
+# BUGS-2007: nested and list selector migrations
+resource "cloudflare_access_policy" "bugs2007_lists" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-bugs2007-lists"
+  decision   = "allow"
+
+  include {
+    device_posture = ["posture-1"]
+    email_list     = ["email-list-1"]
+    ip_list        = ["ip-list-1"]
+  }
+}
+
+resource "cloudflare_access_policy" "bugs2007_azure" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-bugs2007-azure"
+  decision   = "allow"
+
+  include {
+    azure {
+      id                   = ["group-1", "group-2"]
+      identity_provider_id = "idp-1"
+    }
+  }
+}
+
+resource "cloudflare_access_policy" "bugs2007_saml" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-bugs2007-saml"
+  decision   = "allow"
+
+  include {
+    saml {
+      attribute_name       = "group"
+      attribute_value      = "engineering"
+      identity_provider_id = "idp-saml"
+    }
+  }
+}
+
+resource "cloudflare_access_policy" "bugs2007_auth_context" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-bugs2007-auth-context"
+  decision   = "allow"
+
+  include {
+    auth_context {
+      id                   = "ctx-id"
+      ac_id                = "ctx-ac-id"
+      identity_provider_id = "idp-auth"
+    }
   }
 }

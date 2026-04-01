@@ -74,6 +74,17 @@ resource "cloudflare_access_policy" "complex" {
   }
 }
 
+resource "cloudflare_access_policy" "common_names_overflow" {
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-common-names-overflow"
+  decision         = "allow"
+  session_duration = "24h"
+
+  include {
+    common_names = ["device2.example.com", "device3.example.com"]
+  }
+}
+
 # Minimal resource (only required fields)
 resource "cloudflare_access_policy" "minimal" {
   account_id       = var.cloudflare_account_id
