@@ -36,6 +36,9 @@ locals {
 
 
 
+
+
+
 # Pattern 1: Simple email selector
 resource "cloudflare_zero_trust_access_group" "simple_email" {
   account_id = var.cloudflare_account_id
@@ -452,6 +455,30 @@ moved {
   to   = cloudflare_zero_trust_access_group.common_name
 }
 
+# Pattern 15b: common_names overflow array selector
+resource "cloudflare_zero_trust_access_group" "common_names" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} Common Names Group"
+
+  include = [
+    {
+      common_name = {
+        common_name = "client1.example.com"
+      }
+    },
+    {
+      common_name = {
+        common_name = "client2.example.com"
+      }
+    },
+  ]
+}
+
+moved {
+  from = cloudflare_access_group.common_names
+  to   = cloudflare_zero_trust_access_group.common_names
+}
+
 # Pattern 16: Auth method selector
 resource "cloudflare_zero_trust_access_group" "auth_method_selector" {
   account_id = var.cloudflare_account_id
@@ -548,4 +575,51 @@ resource "cloudflare_zero_trust_access_group" "child" {
 moved {
   from = cloudflare_access_group.child
   to   = cloudflare_zero_trust_access_group.child
+}
+
+# Pattern 21: external_evaluation selector
+resource "cloudflare_zero_trust_access_group" "external_eval" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} External Evaluation Group"
+
+  include = [
+    {
+      external_evaluation = {
+        evaluate_url = "https://example.com/evaluate"
+        keys_url     = "https://example.com/keys"
+      }
+    },
+  ]
+}
+
+moved {
+  from = cloudflare_access_group.external_eval
+  to   = cloudflare_zero_trust_access_group.external_eval
+}
+
+# Pattern 22: auth_context selector
+resource "cloudflare_zero_trust_access_group" "auth_context" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} Auth Context Group"
+
+
+  include = [
+    {
+      everyone = {}
+    },
+  ]
+  require = [
+    {
+      auth_context = {
+        id                   = "ctx-id-1"
+        ac_id                = "ac-id-1"
+        identity_provider_id = "idp-id-1"
+      }
+    },
+  ]
+}
+
+moved {
+  from = cloudflare_access_group.auth_context
+  to   = cloudflare_zero_trust_access_group.auth_context
 }
