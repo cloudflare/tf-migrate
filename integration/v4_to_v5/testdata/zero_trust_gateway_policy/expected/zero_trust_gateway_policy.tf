@@ -174,6 +174,7 @@ resource "cloudflare_zero_trust_gateway_policy" "bugs2007_l4" {
   }
 }
 
+
 # 1. Minimal gateway policy
 resource "cloudflare_zero_trust_gateway_policy" "minimal" {
   account_id  = local.common_account_id
@@ -202,7 +203,7 @@ resource "cloudflare_zero_trust_gateway_policy" "maximal" {
   traffic     = "any(dns.domains[*] in {\"example.com\" \"test.com\"})"
 
   rule_settings = {
-    override_ips       = ["1.1.1.1", "1.0.0.1"]
+    override_ips = ["1.1.1.1", "1.0.0.1"]
   }
 }
 
@@ -223,7 +224,7 @@ resource "cloudflare_zero_trust_gateway_policy" "with_settings" {
   traffic     = "any(dns.domains[*] in {\"example.com\" \"test.com\"})"
 
   rule_settings = {
-    override_ips       = ["1.1.1.1", "1.0.0.1"]
+    override_ips = ["1.1.1.1", "1.0.0.1"]
   }
 }
 
@@ -635,3 +636,29 @@ moved {
   to   = cloudflare_zero_trust_gateway_policy.with_override_ips
 }
 
+# Nested dns_resolvers should be preserved during block->attribute conversion
+resource "cloudflare_zero_trust_gateway_policy" "with_dns_resolvers_nested" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix} DNS Resolvers Nested"
+  description = "Policy with nested dns_resolvers fields"
+  action      = "block"
+  precedence  = 2300
+  filters     = local.dns_filter
+  traffic     = local.common_traffic_expression
+
+  rule_settings = {
+    dns_resolvers = {
+      ipv4 = [
+        {
+          ip                            = "1.1.1.1"
+          route_through_private_network = true
+        }
+      ]
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_rule.with_dns_resolvers_nested
+  to   = cloudflare_zero_trust_gateway_policy.with_dns_resolvers_nested
+}
