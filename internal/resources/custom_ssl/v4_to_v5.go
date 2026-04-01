@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
 
@@ -76,6 +77,9 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Step 3: Remove custom_ssl_priority blocks (write-only reprioritization, not in v5).
 	tfhcl.RemoveBlocksByType(body, "custom_ssl_priority")
 
+	// Normalize ignore_changes entries that reference removed v4-only fields.
+	m.normalizeLifecycleIgnoreChanges(body)
+
 	// Step 4: Check for required write-only fields that may be missing after hoisting
 	// These are write-only fields that can't be read from API, so they may not be present
 	// If missing, add placeholder values and lifecycle ignore block since the resource already exists
@@ -107,6 +111,59 @@ The actual certificate/key is already deployed in Cloudflare and won't be modifi
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
+}
+
+func (m *V4ToV5Migrator) normalizeLifecycleIgnoreChanges(body *hclwrite.Body) {
+	lifecycle := tfhcl.FindBlockByType(body, "lifecycle")
+	if lifecycle == nil {
+		return
+	}
+
+	ignoreAttr := lifecycle.Body().GetAttribute("ignore_changes")
+	if ignoreAttr == nil {
+		return
+	}
+
+	var ordered []string
+	seen := make(map[string]bool)
+
+	add := func(name string) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		ordered = append(ordered, name)
+	}
+
+	for _, tok := range ignoreAttr.Expr().BuildTokens(nil) {
+		if tok.Type != hclsyntax.TokenIdent {
+			continue
+		}
+		name := string(tok.Bytes)
+
+		if name == "all" {
+			lifecycle.Body().SetAttributeRaw("ignore_changes", hclwrite.TokensForIdentifier("all"))
+			return
+		}
+
+		if name == "custom_ssl_options" {
+			add("certificate")
+			add("private_key")
+			continue
+		}
+
+		add(name)
+	}
+
+	if len(ordered) == 0 {
+		return
+	}
+
+	var tupleElems []hclwrite.Tokens
+	for _, name := range ordered {
+		tupleElems = append(tupleElems, hclwrite.TokensForIdentifier(name))
+	}
+	lifecycle.Body().SetAttributeRaw("ignore_changes", hclwrite.TokensForTuple(tupleElems))
 }
 
 // transformCustomSSLOptionsBlock unpacks the custom_ssl_options block:
@@ -154,4 +211,3 @@ func buildGeoRestrictionsObject(labelValueTokens hclwrite.Tokens) hclwrite.Token
 	}
 	return hclwrite.TokensForObject(attrs)
 }
-

@@ -1114,6 +1114,12 @@ func AddLifecycleIgnoreChanges(body *hclwrite.Body, attrNames ...string) {
 		for _, tok := range existingAttr.Expr().BuildTokens(nil) {
 			if tok.Type == hclsyntax.TokenIdent {
 				name := string(tok.Bytes)
+				if name == "all" {
+					// Terraform semantics: ignore_changes = all is exclusive and
+					// must not be combined with other entries.
+					lifecycleBody.SetAttributeRaw("ignore_changes", hclwrite.TokensForIdentifier("all"))
+					return
+				}
 				if !existing[name] {
 					existing[name] = true
 					ordered = append(ordered, name)
@@ -1122,8 +1128,18 @@ func AddLifecycleIgnoreChanges(body *hclwrite.Body, attrNames ...string) {
 		}
 	}
 
+	for _, name := range attrNames {
+		if name == "all" {
+			lifecycleBody.SetAttributeRaw("ignore_changes", hclwrite.TokensForIdentifier("all"))
+			return
+		}
+	}
+
 	// Append new names that aren't already present.
 	for _, name := range attrNames {
+		if name == "all" {
+			continue
+		}
 		if !existing[name] {
 			existing[name] = true
 			ordered = append(ordered, name)
