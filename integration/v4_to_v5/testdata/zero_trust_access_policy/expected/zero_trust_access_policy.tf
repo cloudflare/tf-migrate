@@ -51,6 +51,7 @@ locals {
 
 
 
+
 # ============================================================
 # Research team issue reproductions (TKT-002 through TKT-006)
 # ============================================================
@@ -387,6 +388,27 @@ resource "cloudflare_zero_trust_access_policy" "with_common_names" {
 moved {
   from = cloudflare_access_policy.with_common_names
   to   = cloudflare_zero_trust_access_policy.with_common_names
+}
+
+# Policy with connection_rules ssh structure (BUGS-2012)
+resource "cloudflare_zero_trust_access_policy" "with_connection_rules" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-connection-rules"
+  decision   = "allow"
+
+
+  connection_rules = {
+    ssh = {
+      usernames         = ["admin", "deploy"]
+      allow_email_alias = true
+    }
+  }
+  include = [{ everyone = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.with_connection_rules
+  to   = cloudflare_zero_trust_access_policy.with_connection_rules
 }
 
 # Policy with auth_method

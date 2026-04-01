@@ -260,6 +260,25 @@ resource "cloudflare_access_policy" "with_common_names" {
   }
 }
 
+# Policy with connection_rules ssh structure (BUGS-2012)
+resource "cloudflare_access_policy" "with_connection_rules" {
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-connection-rules"
+  decision         = "allow"
+  session_duration = "24h"
+
+  include {
+    everyone = true
+  }
+
+  connection_rules {
+    ssh {
+      usernames         = ["admin", "deploy"]
+      allow_email_alias = true
+    }
+  }
+}
+
 # Policy with auth_method
 resource "cloudflare_access_policy" "with_auth_method" {
   account_id       = var.cloudflare_account_id
