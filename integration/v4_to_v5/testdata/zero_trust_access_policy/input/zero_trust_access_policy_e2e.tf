@@ -85,6 +85,25 @@ resource "cloudflare_access_policy" "common_names_overflow" {
   }
 }
 
+# BUGS-2012: connection_rules ssh structure
+resource "cloudflare_access_policy" "with_connection_rules" {
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-connection-rules"
+  decision         = "allow"
+  session_duration = "24h"
+
+  include {
+    everyone = true
+  }
+
+  connection_rules {
+    ssh {
+      usernames         = ["admin", "deploy"]
+      allow_email_alias = true
+    }
+  }
+}
+
 # Minimal resource (only required fields)
 resource "cloudflare_access_policy" "minimal" {
   account_id       = var.cloudflare_account_id
