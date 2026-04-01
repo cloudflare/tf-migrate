@@ -52,13 +52,13 @@ variable "policy_configs" {
 # Locals with multiple values
 locals {
   name_prefix               = "cftftest"
-  common_account_id = var.cloudflare_account_id
-  policy_name_prefix = "${local.name_prefix}-${var.policy_prefix}-policy"
-  dns_filter = ["dns"]
-  http_filter = ["http"]
-  l4_filter = ["l4"]
+  common_account_id         = var.cloudflare_account_id
+  policy_name_prefix        = "${local.name_prefix}-${var.policy_prefix}-policy"
+  dns_filter                = ["dns"]
+  http_filter               = ["http"]
+  l4_filter                 = ["l4"]
   common_traffic_expression = "any(dns.domains[*] == \"cf-tf-test.com\")"
-  block_reason = "Access blocked by company policy - ${var.policy_prefix}"
+  block_reason              = "Access blocked by company policy - ${var.policy_prefix}"
 }
 
 # ============================================================================
@@ -68,7 +68,7 @@ locals {
 # 1. Minimal gateway policy
 resource "cloudflare_teams_rule" "minimal" {
   account_id  = local.common_account_id
-  name = "${local.name_prefix} Minimal Policy"
+  name        = "${local.name_prefix} Minimal Policy"
   description = "Basic block policy"
   precedence  = 100
   action      = "block"
@@ -88,36 +88,36 @@ resource "cloudflare_teams_rule" "maximal" {
   traffic     = "any(dns.domains[*] in {\"example.com\" \"test.com\"})"
 
   rule_settings {
-    override_ips       = ["1.1.1.1", "1.0.0.1"]
+    override_ips = ["1.1.1.1", "1.0.0.1"]
   }
 }
 
 # 3. Policy with rule_settings and field renames
 resource "cloudflare_teams_rule" "with_settings" {
-  account_id = var.cloudflare_account_id
-  name = "${local.name_prefix} Override Policy with Settings"
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix} Override Policy with Settings"
   description = "Policy with DNS override settings"
-  precedence = 200
-  action     = "override"
-  enabled    = true
-  filters    = ["dns"]
-  traffic    = "any(dns.domains[*] in {\"example.com\" \"test.com\"})"
+  precedence  = 200
+  action      = "override"
+  enabled     = true
+  filters     = ["dns"]
+  traffic     = "any(dns.domains[*] in {\"example.com\" \"test.com\"})"
 
   rule_settings {
-    override_ips       = ["1.1.1.1", "1.0.0.1"]
+    override_ips = ["1.1.1.1", "1.0.0.1"]
   }
 }
 
 # 4. Policy with nested blocks requiring transformation
 resource "cloudflare_teams_rule" "with_nested_blocks" {
-  account_id = var.cloudflare_account_id
-  name = "${local.name_prefix} L4 Override Policy"
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix} L4 Override Policy"
   description = "Policy with L4 override and notification"
-  precedence = 300
-  action     = "l4_override"
-  enabled    = true
-  filters    = local.l4_filter
-  traffic    = "net.dst.ip == 93.184.216.34"
+  precedence  = 300
+  action      = "l4_override"
+  enabled     = true
+  filters     = local.l4_filter
+  traffic     = "net.dst.ip == 93.184.216.34"
 
   rule_settings {
     l4override {
@@ -129,14 +129,14 @@ resource "cloudflare_teams_rule" "with_nested_blocks" {
 
 # 5. Complex policy with multiple nested structures
 resource "cloudflare_teams_rule" "complex" {
-  account_id     = var.cloudflare_account_id
-  name = "${local.name_prefix} Complex Policy"
-  description    = "Policy with many nested settings"
-  precedence     = 400
-  action         = "allow"
-  enabled        = true
-  filters        = local.http_filter
-  traffic        = "http.request.uri matches \".*api.*\""
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix} Complex Policy"
+  description = "Policy with many nested settings"
+  precedence  = 400
+  action      = "allow"
+  enabled     = true
+  filters     = local.http_filter
+  traffic     = "http.request.uri matches \".*api.*\""
 
   rule_settings {
     audit_ssh {
@@ -163,7 +163,7 @@ resource "cloudflare_teams_rule" "complex" {
 # 6. Simple allow policy for testing rule_settings
 resource "cloudflare_teams_rule" "simple_resolver" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix} Simple Allow Policy"
+  name        = "${local.name_prefix} Simple Allow Policy"
   description = "Simple allow policy with settings"
   precedence  = 500
   action      = "allow"
@@ -187,7 +187,7 @@ resource "cloudflare_teams_rule" "policy_configs" {
   account_id  = var.cloudflare_account_id
   name        = "${local.policy_name_prefix}-${each.key}"
   description = each.value.description
-  precedence  = each.value.precedence + 5000  # Add offset to avoid conflicts
+  precedence  = each.value.precedence + 5000 # Add offset to avoid conflicts
   action      = each.value.action
   enabled     = true
   filters     = ["dns"]
@@ -239,7 +239,7 @@ resource "cloudflare_teams_rule" "conditional_enabled" {
   count = var.enable_security_policies ? 1 : 0
 
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix} Security Policy - Enabled"
+  name        = "${local.name_prefix} Security Policy - Enabled"
   description = "This policy is conditionally created"
   precedence  = 800
   action      = "block"
@@ -258,7 +258,7 @@ resource "cloudflare_teams_rule" "conditional_disabled" {
   count = var.enable_security_policies ? 0 : 1
 
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix} Security Policy - Disabled"
+  name        = "${local.name_prefix} Security Policy - Disabled"
   description = "This policy is conditionally not created"
   precedence  = 900
   action      = "allow"
@@ -302,7 +302,7 @@ resource "cloudflare_teams_rule" "with_interpolation" {
 # 21. Policy with lifecycle block
 resource "cloudflare_teams_rule" "with_lifecycle" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix} Protected Policy"
+  name        = "${local.name_prefix} Protected Policy"
   description = "Policy with lifecycle settings"
   precedence  = 1210
   action      = "block"
@@ -319,7 +319,7 @@ resource "cloudflare_teams_rule" "with_lifecycle" {
 # 22. Policy with prevent_destroy (set to false for testing)
 resource "cloudflare_teams_rule" "with_prevent_destroy" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix} Important Policy"
+  name        = "${local.name_prefix} Important Policy"
   description = "Critical policy"
   precedence  = 1300
   action      = "block"
@@ -328,7 +328,7 @@ resource "cloudflare_teams_rule" "with_prevent_destroy" {
   traffic     = "any(dns.domains[*] == \"critical.cf-tf-test.com\")"
 
   lifecycle {
-    prevent_destroy = false  # Set to false for testing
+    prevent_destroy = false # Set to false for testing
   }
 
   rule_settings {
@@ -344,7 +344,7 @@ resource "cloudflare_teams_rule" "with_prevent_destroy" {
 # 23. L4 Override policy with specific settings
 resource "cloudflare_teams_rule" "l4_override_detailed" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix} L4 Override Detailed"
+  name        = "${local.name_prefix} L4 Override Detailed"
   description = "Detailed L4 override configuration"
   precedence  = 1400
   action      = "l4_override"
@@ -363,7 +363,7 @@ resource "cloudflare_teams_rule" "l4_override_detailed" {
 # 24. Policy with audit SSH settings
 resource "cloudflare_teams_rule" "with_audit_ssh" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix} SSH Audit Policy"
+  name        = "${local.name_prefix} SSH Audit Policy"
   description = "Policy with SSH auditing enabled"
   precedence  = 1500
   action      = "allow"
@@ -381,7 +381,7 @@ resource "cloudflare_teams_rule" "with_audit_ssh" {
 # 25. Policy with check_session settings
 resource "cloudflare_teams_rule" "with_check_session" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix} Session Check Policy"
+  name        = "${local.name_prefix} Session Check Policy"
   description = "Policy with session validation"
   precedence  = 1600
   action      = "allow"
@@ -400,7 +400,7 @@ resource "cloudflare_teams_rule" "with_check_session" {
 # 26. Policy with BISO admin controls
 resource "cloudflare_teams_rule" "with_biso" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix} BISO Controls Policy"
+  name        = "${local.name_prefix} BISO Controls Policy"
   description = "Policy with browser isolation controls"
   precedence  = 1700
   action      = "isolate"
@@ -420,7 +420,7 @@ resource "cloudflare_teams_rule" "with_biso" {
 # 27. Policy with payload logging
 resource "cloudflare_teams_rule" "with_payload_log" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix} Payload Logging Policy"
+  name        = "${local.name_prefix} Payload Logging Policy"
   description = "Policy with payload logging enabled"
   precedence  = 1800
   action      = "allow"
@@ -438,7 +438,7 @@ resource "cloudflare_teams_rule" "with_payload_log" {
 # 28. Policy with override IPs
 resource "cloudflare_teams_rule" "with_override_ips" {
   account_id  = var.cloudflare_account_id
-  name = "${local.name_prefix} DNS Override Policy"
+  name        = "${local.name_prefix} DNS Override Policy"
   description = "Policy with custom DNS servers"
   precedence  = 1900
   action      = "override"
@@ -508,6 +508,26 @@ resource "cloudflare_zero_trust_gateway_policy" "bugs2007_l4" {
     l4override {
       ip   = "10.0.0.1"
       port = 8080
+    }
+  }
+}
+
+# Nested dns_resolvers should be preserved during block->attribute conversion
+resource "cloudflare_teams_rule" "with_dns_resolvers_nested" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix} DNS Resolvers Nested"
+  description = "Policy with nested dns_resolvers fields"
+  action      = "block"
+  precedence  = 2300
+  filters     = local.dns_filter
+  traffic     = local.common_traffic_expression
+
+  rule_settings {
+    dns_resolvers {
+      ipv4 {
+        ip                            = "1.1.1.1"
+        route_through_private_network = true
+      }
     }
   }
 }

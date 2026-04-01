@@ -907,7 +907,7 @@ func (m *V4ToV5Migrator) convertConditionBlocksToAttributes(body *hclwrite.Body)
 // These blocks have array semantics in v4 but are represented as blocks
 func (m *V4ToV5Migrator) convertNestedBlocksToAttributes(body *hclwrite.Body) {
 	// List of block types that should be converted to array attributes
-	nestedBlockTypes := []string{"github", "gsuite", "azure", "okta", "saml", "external_evaluation"}
+	nestedBlockTypes := []string{"github", "gsuite", "azure", "okta", "saml", "external_evaluation", "auth_context"}
 
 	for _, blockType := range nestedBlockTypes {
 		blocks := tfhcl.FindBlocksByType(body, blockType)
@@ -1305,9 +1305,36 @@ func (m *V4ToV5Migrator) expandObject(obj *hclsyntax.ObjectConsExpr) []hclsyntax
 			}
 		}
 
+		// Handle external_evaluation specially
+		if key == "external_evaluation" {
+			expanded := m.expandExternalEvaluation(item)
+			if len(expanded) > 0 {
+				allExpanded = append(allExpanded, expanded...)
+				continue
+			}
+		}
+
+		// Handle auth_context specially
+		if key == "auth_context" {
+			expanded := m.expandAuthContext(item)
+			if len(expanded) > 0 {
+				allExpanded = append(allExpanded, expanded...)
+				continue
+			}
+		}
+
 		// Handle azure specially
 		if key == "azure" {
 			expanded := m.expandAzure(item)
+			if len(expanded) > 0 {
+				allExpanded = append(allExpanded, expanded...)
+				continue
+			}
+		}
+
+		// Handle common_names overflow specially
+		if key == "common_names" {
+			expanded := m.expandMappedArrayAttribute("common_names", "common_name", "common_name", item)
 			if len(expanded) > 0 {
 				allExpanded = append(allExpanded, expanded...)
 				continue
@@ -1429,6 +1456,55 @@ func (m *V4ToV5Migrator) expandArrayAttribute(key string, item hclsyntax.ObjectC
 			},
 		},
 	}
+	return []hclsyntax.Expression{newObj}
+}
+
+func (m *V4ToV5Migrator) expandMappedArrayAttribute(sourceKey, targetKey, innerFieldName string, item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
+	_ = sourceKey
+
+	if tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr); ok {
+		var result []hclsyntax.Expression
+		for _, elem := range tup.Exprs {
+			newObj := &hclsyntax.ObjectConsExpr{
+				Items: []hclsyntax.ObjectConsItem{
+					{
+						KeyExpr: m.newKeyExpr(targetKey),
+						ValueExpr: &hclsyntax.ObjectConsExpr{
+							Items: []hclsyntax.ObjectConsItem{
+								{
+									KeyExpr:   m.newKeyExpr(innerFieldName),
+									ValueExpr: elem,
+								},
+							},
+						},
+					},
+				},
+			}
+			result = append(result, newObj)
+		}
+		return result
+	}
+
+	if _, ok := item.ValueExpr.(*hclsyntax.ObjectConsExpr); ok {
+		return nil
+	}
+
+	newObj := &hclsyntax.ObjectConsExpr{
+		Items: []hclsyntax.ObjectConsItem{
+			{
+				KeyExpr: m.newKeyExpr(targetKey),
+				ValueExpr: &hclsyntax.ObjectConsExpr{
+					Items: []hclsyntax.ObjectConsItem{
+						{
+							KeyExpr:   m.newKeyExpr(innerFieldName),
+							ValueExpr: item.ValueExpr,
+						},
+					},
+				},
+			},
+		},
+	}
+
 	return []hclsyntax.Expression{newObj}
 }
 
@@ -1619,6 +1695,68 @@ func (m *V4ToV5Migrator) expandSaml(item hclsyntax.ObjectConsItem) []hclsyntax.E
 				{
 					KeyExpr:   m.newKeyExpr("saml"),
 					ValueExpr: samlObj,
+				},
+			},
+		}
+		result = append(result, newObj)
+	}
+
+	return result
+}
+
+// expandExternalEvaluation handles external_evaluation blocks
+// external_evaluation = [{evaluate_url = "...", keys_url = "..."}]
+// -> {external_evaluation = {evaluate_url = "...", keys_url = "..."}}
+func (m *V4ToV5Migrator) expandExternalEvaluation(item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
+	tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr)
+	if !ok {
+		return nil
+	}
+
+	var result []hclsyntax.Expression
+
+	for _, externalExpr := range tup.Exprs {
+		externalObj, ok := externalExpr.(*hclsyntax.ObjectConsExpr)
+		if !ok {
+			continue
+		}
+
+		newObj := &hclsyntax.ObjectConsExpr{
+			Items: []hclsyntax.ObjectConsItem{
+				{
+					KeyExpr:   m.newKeyExpr("external_evaluation"),
+					ValueExpr: externalObj,
+				},
+			},
+		}
+		result = append(result, newObj)
+	}
+
+	return result
+}
+
+// expandAuthContext handles auth_context blocks
+// auth_context = [{id = "...", ac_id = "...", identity_provider_id = "..."}]
+// -> {auth_context = {id = "...", ac_id = "...", identity_provider_id = "..."}}
+func (m *V4ToV5Migrator) expandAuthContext(item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
+	tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr)
+	if !ok {
+		return nil
+	}
+
+	var result []hclsyntax.Expression
+
+	for _, authExpr := range tup.Exprs {
+		authObj, ok := authExpr.(*hclsyntax.ObjectConsExpr)
+		if !ok {
+			continue
+		}
+
+		newObj := &hclsyntax.ObjectConsExpr{
+			Items: []hclsyntax.ObjectConsItem{
+				{
+					KeyExpr:   m.newKeyExpr("auth_context"),
+					ValueExpr: authObj,
 				},
 			},
 		}
@@ -1880,4 +2018,3 @@ func (m *V4ToV5Migrator) normalizeIPsInSource(src string) string {
 		return `"` + ipWithCIDR + `/32"`
 	})
 }
-

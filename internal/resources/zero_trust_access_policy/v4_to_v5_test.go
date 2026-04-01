@@ -321,6 +321,136 @@ resource "cloudflare_zero_trust_access_policy" "test" {
 
 moved {
   from = cloudflare_access_policy.test
+			to   = cloudflare_zero_trust_access_policy.test
+}`,
+		},
+		{
+			Name: "array expansion - device_posture email_list ip_list",
+			Input: `
+resource "cloudflare_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include {
+    device_posture = ["posture-1"]
+    email_list     = ["email-list-1"]
+    ip_list        = ["ip-list-1"]
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include = [{ device_posture = { integration_uid = "posture-1" } },
+    { email_list = { id = "email-list-1" } },
+  { ip_list = { id = "ip-list-1" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
+}`,
+		},
+		{
+			Name: "nested block expansion - azure okta gsuite",
+			Input: `
+resource "cloudflare_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include {
+    azure {
+      id                   = ["group-1", "group-2"]
+      identity_provider_id = "idp-1"
+    }
+    okta {
+      name                 = ["okta-1", "okta-2"]
+      identity_provider_id = "idp-2"
+    }
+    gsuite {
+      email                = ["team@example.com"]
+      identity_provider_id = "idp-3"
+    }
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include = [{ azure_ad = { id = "group-1"
+    identity_provider_id = "idp-1" } },
+    { azure_ad = { id = "group-2"
+      identity_provider_id = "idp-1" } },
+    { okta = { name = "okta-1"
+      identity_provider_id = "idp-2" } },
+    { okta = { name = "okta-2"
+      identity_provider_id = "idp-2" } },
+  { gsuite = { email = "team@example.com"
+  identity_provider_id = "idp-3" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
+}`,
+		},
+		{
+			Name: "nested block expansion - saml oidc external_evaluation auth_context",
+			Input: `
+resource "cloudflare_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include {
+    saml {
+      attribute_name       = "group"
+      attribute_value      = "eng"
+      identity_provider_id = "idp-1"
+    }
+    oidc {
+      claim_name           = "roles"
+      claim_value          = "admin"
+      identity_provider_id = "idp-2"
+    }
+    external_evaluation {
+      evaluate_url = "https://example.com/evaluate"
+      keys_url     = "https://example.com/keys"
+    }
+    auth_context {
+      id                   = "ctx-id"
+      ac_id                = "ctx-ac-id"
+      identity_provider_id = "idp-3"
+    }
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include = [{ saml = { attribute_name = "group"
+    attribute_value = "eng"
+    identity_provider_id = "idp-1" } },
+    { oidc = { claim_name = "roles"
+      claim_value = "admin"
+      identity_provider_id = "idp-2" } },
+    { external_evaluation = { evaluate_url = "https://example.com/evaluate"
+      keys_url = "https://example.com/keys" } },
+  { auth_context = { id = "ctx-id"
+  ac_id = "ctx-ac-id"
+  identity_provider_id = "idp-3" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
   to   = cloudflare_zero_trust_access_policy.test
 }`,
 		},
@@ -410,6 +540,33 @@ resource "cloudflare_zero_trust_access_policy" "test" {
   decision   = "allow"
 
   include = [{ common_name = { common_name = "device1.example.com" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
+}`,
+		},
+		{
+			Name: "common_names overflow array",
+			Input: `
+resource "cloudflare_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include {
+    common_names = ["device1.example.com", "device2.example.com"]
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include = [{ common_name = { common_name = "device1.example.com" } },
+  { common_name = { common_name = "device2.example.com" } }]
 }
 
 moved {

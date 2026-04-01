@@ -120,14 +120,19 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Convert connection_rules block to attribute syntax
 	tfhcl.ConvertSingleBlockToAttribute(body, "connection_rules", "connection_rules")
 
-	// 4. First convert include/exclude/require blocks to attributes if needed
+	// 4. Normalize nested condition selector blocks inside include/exclude/require.
+	// Convert e.g. include { azure { ... } } -> include { azure = [{ ... }] }
+	// before converting include/exclude/require blocks themselves.
+	m.normalizeNestedConditionBlocks(body)
+
+	// 5. First convert include/exclude/require blocks to attributes if needed
 	m.convertConditionBlocksToAttributes(body)
 
-	// 5. Then process include/exclude/require condition transformations
+	// 6. Then process include/exclude/require condition transformations
 	// These require complex AST manipulation
 	m.transformConditionAttributes(body)
 
-	// 6. Remove empty exclude and require arrays (v5 provider normalizes them to null)
+	// 7. Remove empty exclude and require arrays (v5 provider normalizes them to null)
 	// Only remove exclude and require, keep include even if empty
 	m.removeEmptyConditionArrays(body)
 
@@ -141,6 +146,22 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		Blocks:         blocks,
 		RemoveOriginal: movedBlock != nil, // Remove original if we generated a moved block
 	}, nil
+}
+
+// normalizeNestedConditionBlocks converts nested condition selector blocks into attribute form
+// so they survive include/exclude/require block-to-attribute conversion.
+func (m *V4ToV5Migrator) normalizeNestedConditionBlocks(body *hclwrite.Body) {
+	conditionNames := []string{"include", "exclude", "require"}
+	nestedSelectors := []string{"github", "saml", "oidc", "azure", "okta", "gsuite", "external_evaluation", "auth_context"}
+
+	for _, condName := range conditionNames {
+		for _, condBlock := range tfhcl.FindBlocksByType(body, condName) {
+			condBody := condBlock.Body()
+			for _, nested := range nestedSelectors {
+				tfhcl.ConvertBlocksToArrayAttribute(condBody, nested, false)
+			}
+		}
+	}
 }
 
 // convertConditionBlocksToAttributes converts include/exclude/require blocks to attribute arrays
@@ -330,6 +351,47 @@ func (m *V4ToV5Migrator) expandObject(obj *hclsyntax.ObjectConsExpr) []hclsyntax
 			}
 		}
 
+		// Handle nested block selectors converted to list/object syntax
+		if key == "saml" || key == "oidc" || key == "external_evaluation" || key == "auth_context" {
+			expanded := m.expandNestedSelector(key, key, item, "")
+			if len(expanded) > 0 {
+				allExpanded = append(allExpanded, expanded...)
+				continue
+			}
+		}
+
+		if key == "azure" {
+			expanded := m.expandNestedSelector(key, "azure_ad", item, "id")
+			if len(expanded) > 0 {
+				allExpanded = append(allExpanded, expanded...)
+				continue
+			}
+		}
+
+		if key == "okta" {
+			expanded := m.expandNestedSelector(key, "okta", item, "name")
+			if len(expanded) > 0 {
+				allExpanded = append(allExpanded, expanded...)
+				continue
+			}
+		}
+
+		if key == "gsuite" {
+			expanded := m.expandNestedSelector(key, "gsuite", item, "email")
+			if len(expanded) > 0 {
+				allExpanded = append(allExpanded, expanded...)
+				continue
+			}
+		}
+
+		if key == "common_names" {
+			expanded := m.expandMappedArrayAttribute("common_names", "common_name", "common_name", item)
+			if len(expanded) > 0 {
+				allExpanded = append(allExpanded, expanded...)
+				continue
+			}
+		}
+
 		// Handle simple array attributes
 		expanded := m.expandArrayAttribute(key, item)
 		if len(expanded) > 0 {
@@ -356,21 +418,73 @@ func (m *V4ToV5Migrator) expandObject(obj *hclsyntax.ObjectConsExpr) []hclsyntax
 	return nil
 }
 
+func (m *V4ToV5Migrator) expandMappedArrayAttribute(sourceKey, targetKey, innerFieldName string, item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
+	_ = sourceKey
+
+	if tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr); ok {
+		var result []hclsyntax.Expression
+		for _, elem := range tup.Exprs {
+			newObj := &hclsyntax.ObjectConsExpr{
+				Items: []hclsyntax.ObjectConsItem{
+					{
+						KeyExpr: m.newKeyExpr(targetKey),
+						ValueExpr: &hclsyntax.ObjectConsExpr{
+							Items: []hclsyntax.ObjectConsItem{
+								{
+									KeyExpr:   m.newKeyExpr(innerFieldName),
+									ValueExpr: elem,
+								},
+							},
+						},
+					},
+				},
+			}
+			result = append(result, newObj)
+		}
+		return result
+	}
+
+	if _, ok := item.ValueExpr.(*hclsyntax.ObjectConsExpr); ok {
+		return nil
+	}
+
+	newObj := &hclsyntax.ObjectConsExpr{
+		Items: []hclsyntax.ObjectConsItem{
+			{
+				KeyExpr: m.newKeyExpr(targetKey),
+				ValueExpr: &hclsyntax.ObjectConsExpr{
+					Items: []hclsyntax.ObjectConsItem{
+						{
+							KeyExpr:   m.newKeyExpr(innerFieldName),
+							ValueExpr: item.ValueExpr,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return []hclsyntax.Expression{newObj}
+}
+
 // expandArrayAttribute expands array attributes like email, group, ip
 // email = ["a", "b"] -> [{email = {email = "a"}}, {email = {email = "b"}}]
 // Also handles single string values: common_name = "device" -> {common_name = {common_name = "device"}}
 func (m *V4ToV5Migrator) expandArrayAttribute(key string, item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
 	// Map of attribute names to their inner field names
 	arrayAttrs := map[string]string{
-		"email":         "email",
-		"group":         "id",
-		"ip":            "ip",
-		"email_domain":  "domain",
-		"geo":           "country_code",
-		"common_name":   "common_name",
-		"auth_method":   "auth_method",
-		"login_method":  "id",
-		"service_token": "token_id",
+		"email":          "email",
+		"group":          "id",
+		"ip":             "ip",
+		"email_domain":   "domain",
+		"geo":            "country_code",
+		"common_name":    "common_name",
+		"auth_method":    "auth_method",
+		"login_method":   "id",
+		"device_posture": "integration_uid",
+		"email_list":     "id",
+		"ip_list":        "id",
+		"service_token":  "token_id",
 	}
 
 	innerFieldName, isArrayAttr := arrayAttrs[key]
@@ -439,6 +553,100 @@ func (m *V4ToV5Migrator) expandArrayAttribute(key string, item hclsyntax.ObjectC
 		},
 	}
 	return []hclsyntax.Expression{newObj}
+}
+
+// expandNestedSelector expands nested selector blocks converted to list/object syntax.
+// Examples:
+//
+//	azure = [{id = ["a", "b"], identity_provider_id = "idp"}]
+//	-> [{azure_ad = {id = "a", identity_provider_id = "idp"}}, {azure_ad = {id = "b", identity_provider_id = "idp"}}]
+//
+//	saml = [{attribute_name = "n", attribute_value = "v", identity_provider_id = "idp"}]
+//	-> [{saml = {attribute_name = "n", attribute_value = "v", identity_provider_id = "idp"}}]
+func (m *V4ToV5Migrator) expandNestedSelector(sourceKey, targetKey string, item hclsyntax.ObjectConsItem, explodeField string) []hclsyntax.Expression {
+	var elems []hclsyntax.Expression
+
+	switch v := item.ValueExpr.(type) {
+	case *hclsyntax.TupleConsExpr:
+		elems = v.Exprs
+	case *hclsyntax.ObjectConsExpr:
+		elems = []hclsyntax.Expression{v}
+	default:
+		return nil
+	}
+
+	if len(elems) == 0 {
+		return nil
+	}
+
+	var result []hclsyntax.Expression
+
+	for _, elem := range elems {
+		elemObj, ok := elem.(*hclsyntax.ObjectConsExpr)
+		if !ok {
+			continue
+		}
+
+		if explodeField == "" {
+			result = append(result, m.wrapSelectorObject(targetKey, elemObj.Items))
+			continue
+		}
+
+		fieldIdx := -1
+		for idx, fieldItem := range elemObj.Items {
+			if m.getKeyString(fieldItem.KeyExpr) == explodeField {
+				fieldIdx = idx
+				break
+			}
+		}
+
+		if fieldIdx == -1 {
+			result = append(result, m.wrapSelectorObject(targetKey, elemObj.Items))
+			continue
+		}
+
+		explodeExpr := elemObj.Items[fieldIdx].ValueExpr
+		tuple, ok := explodeExpr.(*hclsyntax.TupleConsExpr)
+		if !ok {
+			result = append(result, m.wrapSelectorObject(targetKey, elemObj.Items))
+			continue
+		}
+
+		for _, explodedValue := range tuple.Exprs {
+			clonedItems := make([]hclsyntax.ObjectConsItem, 0, len(elemObj.Items))
+			for idx, original := range elemObj.Items {
+				if idx == fieldIdx {
+					clonedItems = append(clonedItems, hclsyntax.ObjectConsItem{
+						KeyExpr:   original.KeyExpr,
+						ValueExpr: explodedValue,
+					})
+					continue
+				}
+				clonedItems = append(clonedItems, original)
+			}
+			result = append(result, m.wrapSelectorObject(targetKey, clonedItems))
+		}
+	}
+
+	if len(result) == 0 {
+		_ = sourceKey
+		return nil
+	}
+
+	return result
+}
+
+func (m *V4ToV5Migrator) wrapSelectorObject(selectorKey string, nestedItems []hclsyntax.ObjectConsItem) hclsyntax.Expression {
+	return &hclsyntax.ObjectConsExpr{
+		Items: []hclsyntax.ObjectConsItem{
+			{
+				KeyExpr: m.newKeyExpr(selectorKey),
+				ValueExpr: &hclsyntax.ObjectConsExpr{
+					Items: nestedItems,
+				},
+			},
+		},
+	}
 }
 
 // expandGithub handles the special case of github blocks

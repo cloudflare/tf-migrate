@@ -13,7 +13,7 @@ variable "cloudflare_domain" {
 }
 
 locals {
-  name_prefix           = "cftftest"
+  name_prefix = "cftftest"
 }
 
 # Pattern 1: Simple email selector
@@ -201,6 +201,16 @@ resource "cloudflare_access_group" "common_name" {
   }
 }
 
+# Pattern 15b: common_names overflow array selector
+resource "cloudflare_access_group" "common_names" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} Common Names Group"
+
+  include {
+    common_names = ["client1.example.com", "client2.example.com"]
+  }
+}
+
 # Pattern 16: Auth method selector
 resource "cloudflare_access_group" "auth_method_selector" {
   account_id = var.cloudflare_account_id
@@ -254,4 +264,35 @@ resource "cloudflare_access_group" "child" {
   }
 
   depends_on = [cloudflare_access_group.parent]
+}
+
+# Pattern 21: external_evaluation selector
+resource "cloudflare_access_group" "external_eval" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} External Evaluation Group"
+
+  include {
+    external_evaluation {
+      evaluate_url = "https://example.com/evaluate"
+      keys_url     = "https://example.com/keys"
+    }
+  }
+}
+
+# Pattern 22: auth_context selector
+resource "cloudflare_access_group" "auth_context" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} Auth Context Group"
+
+  include {
+    everyone = true
+  }
+
+  require {
+    auth_context {
+      id                   = "ctx-id-1"
+      ac_id                = "ac-id-1"
+      identity_provider_id = "idp-id-1"
+    }
+  }
 }

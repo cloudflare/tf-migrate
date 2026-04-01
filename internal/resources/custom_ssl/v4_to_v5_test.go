@@ -198,14 +198,14 @@ resource "cloudflare_custom_ssl" "hyphen_geo" {
 }`,
 			},
 
-		// --- Placeholder path: missing write-only fields ---
-		{
-			Name: "missing certificate and private_key — placeholders and lifecycle added",
-			Input: `
+			// --- Placeholder path: missing write-only fields ---
+			{
+				Name: "missing certificate and private_key — placeholders and lifecycle added",
+				Input: `
 resource "cloudflare_custom_ssl" "no_creds" {
   zone_id = "abc123"
 }`,
-			Expected: `resource "cloudflare_custom_ssl" "no_creds" {
+				Expected: `resource "cloudflare_custom_ssl" "no_creds" {
   zone_id     = "abc123"
   certificate = "PLACEHOLDER - actual certificate already deployed"
   private_key = "PLACEHOLDER - actual private key already deployed"
@@ -213,15 +213,15 @@ resource "cloudflare_custom_ssl" "no_creds" {
     ignore_changes = [certificate, private_key]
   }
 }`,
-		},
-		{
-			Name: "empty custom_ssl_options block — placeholders and lifecycle added",
-			Input: `
+			},
+			{
+				Name: "empty custom_ssl_options block — placeholders and lifecycle added",
+				Input: `
 resource "cloudflare_custom_ssl" "empty_opts" {
   zone_id = "abc123"
   custom_ssl_options {}
 }`,
-			Expected: `resource "cloudflare_custom_ssl" "empty_opts" {
+				Expected: `resource "cloudflare_custom_ssl" "empty_opts" {
   zone_id     = "abc123"
   certificate = "PLACEHOLDER - actual certificate already deployed"
   private_key = "PLACEHOLDER - actual private key already deployed"
@@ -229,17 +229,17 @@ resource "cloudflare_custom_ssl" "empty_opts" {
     ignore_changes = [certificate, private_key]
   }
 }`,
-		},
-		{
-			Name: "existing lifecycle block — ignore_changes merged, other attrs preserved",
-			Input: `
+			},
+			{
+				Name: "existing lifecycle block — ignore_changes merged, other attrs preserved",
+				Input: `
 resource "cloudflare_custom_ssl" "existing_lc" {
   zone_id = "abc123"
   lifecycle {
     create_before_destroy = true
   }
 }`,
-			Expected: `resource "cloudflare_custom_ssl" "existing_lc" {
+				Expected: `resource "cloudflare_custom_ssl" "existing_lc" {
   zone_id     = "abc123"
   certificate = "PLACEHOLDER - actual certificate already deployed"
   private_key = "PLACEHOLDER - actual private key already deployed"
@@ -248,7 +248,43 @@ resource "cloudflare_custom_ssl" "existing_lc" {
     ignore_changes        = [certificate, private_key]
   }
 }`,
-		},
+			},
+			{
+				Name: "existing ignore_changes custom_ssl_options is normalized",
+				Input: `
+resource "cloudflare_custom_ssl" "existing_ignore" {
+  zone_id = "abc123"
+  lifecycle {
+    ignore_changes = [custom_ssl_options]
+  }
+}`,
+				Expected: `resource "cloudflare_custom_ssl" "existing_ignore" {
+  zone_id     = "abc123"
+  certificate = "PLACEHOLDER - actual certificate already deployed"
+  private_key = "PLACEHOLDER - actual private key already deployed"
+  lifecycle {
+    ignore_changes = [certificate, private_key]
+  }
+}`,
+			},
+			{
+				Name: "existing ignore_changes all stays exclusive",
+				Input: `
+resource "cloudflare_custom_ssl" "ignore_all" {
+  zone_id = "abc123"
+  lifecycle {
+    ignore_changes = all
+  }
+}`,
+				Expected: `resource "cloudflare_custom_ssl" "ignore_all" {
+  zone_id     = "abc123"
+  certificate = "PLACEHOLDER - actual certificate already deployed"
+  private_key = "PLACEHOLDER - actual private key already deployed"
+  lifecycle {
+    ignore_changes = all
+  }
+}`,
+			},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)

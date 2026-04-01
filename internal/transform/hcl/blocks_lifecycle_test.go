@@ -129,4 +129,30 @@ resource "cloudflare_zero_trust_access_mtls_certificate" "example" {
 		val := ignoreChangesValue(body)
 		assert.Equal(t, "[associated_hostnames, certificate]", val)
 	})
+
+	t.Run("existing all remains exclusive when merging", func(t *testing.T) {
+		_, body := parseBody(t, `
+resource "cloudflare_zero_trust_access_mtls_certificate" "example" {
+  account_id = "abc123"
+  lifecycle {
+    ignore_changes = all
+  }
+}`)
+		AddLifecycleIgnoreChanges(body, "certificate")
+		val := ignoreChangesValue(body)
+		assert.Equal(t, "all", val)
+	})
+
+	t.Run("incoming all overrides existing list", func(t *testing.T) {
+		_, body := parseBody(t, `
+resource "cloudflare_custom_ssl" "example" {
+  zone_id = "abc123"
+  lifecycle {
+    ignore_changes = [certificate]
+  }
+}`)
+		AddLifecycleIgnoreChanges(body, "all")
+		val := ignoreChangesValue(body)
+		assert.Equal(t, "all", val)
+	})
 }

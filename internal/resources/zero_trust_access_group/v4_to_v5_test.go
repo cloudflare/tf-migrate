@@ -338,6 +338,42 @@ moved {
 `,
 		},
 		{
+			Name: "common_names overflow array",
+			Input: `
+resource "cloudflare_access_group" "test" {
+  account_id = "abc123"
+  name       = "Common Names Group"
+
+  include {
+    common_names = ["client1.example.com", "client2.example.com"]
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_access_group" "test" {
+  account_id = "abc123"
+  name       = "Common Names Group"
+
+  include = [
+    {
+      common_name = {
+        common_name = "client1.example.com"
+      }
+    },
+    {
+      common_name = {
+        common_name = "client2.example.com"
+      }
+    },
+  ]
+}
+moved {
+  from = cloudflare_access_group.test
+  to   = cloudflare_zero_trust_access_group.test
+}
+`,
+		},
+		{
 			Name: "auth_method scalar",
 			Input: `
 resource "cloudflare_access_group" "test" {
@@ -501,6 +537,78 @@ resource "cloudflare_zero_trust_access_group" "test" {
         name                 = "my-org"
         team                 = "team-2"
         identity_provider_id = cloudflare_access_identity_provider.my_idp.id
+      }
+    },
+  ]
+}
+moved {
+  from = cloudflare_access_group.test
+			to   = cloudflare_zero_trust_access_group.test
+}
+`,
+		},
+		{
+			Name: "external_evaluation block conversion",
+			Input: `
+resource "cloudflare_access_group" "test" {
+  account_id = "abc123"
+  name       = "External Eval Group"
+
+  include {
+    external_evaluation {
+      evaluate_url = "https://example.com/eval"
+      keys_url     = "https://example.com/keys"
+    }
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_access_group" "test" {
+  account_id = "abc123"
+  name       = "External Eval Group"
+
+  include = [
+    {
+      external_evaluation = {
+        evaluate_url = "https://example.com/eval"
+        keys_url     = "https://example.com/keys"
+      }
+    },
+  ]
+}
+moved {
+  from = cloudflare_access_group.test
+  to   = cloudflare_zero_trust_access_group.test
+}
+`,
+		},
+		{
+			Name: "auth_context block conversion",
+			Input: `
+resource "cloudflare_access_group" "test" {
+  account_id = "abc123"
+  name       = "Auth Context Group"
+
+  include {
+    auth_context {
+      id                   = "ctx-id"
+      ac_id                = "ac-id"
+      identity_provider_id = "idp-123"
+    }
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_access_group" "test" {
+  account_id = "abc123"
+  name       = "Auth Context Group"
+
+  include = [
+    {
+      auth_context = {
+        id                   = "ctx-id"
+        ac_id                = "ac-id"
+        identity_provider_id = "idp-123"
       }
     },
   ]

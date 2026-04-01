@@ -93,3 +93,36 @@ resource "cloudflare_page_rule" "with_deprecated_fields" {
     cache_level = "bypass"
   }
 }
+
+resource "cloudflare_page_rule" "with_server_side_exclude" {
+  zone_id  = var.cloudflare_zone_id
+  target   = "cftftest.com/server-side/*"
+  priority = 6
+
+  status = "active"
+  actions = {
+    cache_level = "bypass"
+  }
+}
+
+resource "cloudflare_page_rule" "with_query_string_ignore" {
+  zone_id  = var.cloudflare_zone_id
+  target   = "cftftest.com/query-ignore/*"
+  priority = 7
+
+  status = "active"
+  actions = {
+    cache_level = "cache_everything"
+    cache_key_fields = {
+      query_string = {
+        include = []
+        exclude = ["*"]
+      }
+      user = {
+        device_type = true
+        geo         = true
+        lang        = false
+      }
+    }
+  }
+}

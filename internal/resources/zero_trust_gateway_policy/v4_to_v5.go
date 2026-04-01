@@ -141,8 +141,18 @@ func (m *V4ToV5Migrator) processRuleSettingsBlock(ruleSettingsBlock *hclwrite.Bl
 			}
 		}
 
-		// Convert block to attribute syntax
-		tfhcl.ConvertSingleBlockToAttribute(ruleSettingsBody, blockName, blockName)
+		// Convert block to attribute syntax.
+		// Use recursive conversion for blocks that contain nested blocks.
+		if blockName == "dns_resolvers" {
+			tfhcl.ConvertBlockToAttributeWithNestedAndArrays(ruleSettingsBody, blockName, map[string]bool{
+				"ipv4": true,
+				"ipv6": true,
+			})
+		} else if blockName == "resolve_dns_internally" {
+			tfhcl.ConvertBlockToAttributeWithNested(ruleSettingsBody, blockName)
+		} else {
+			tfhcl.ConvertSingleBlockToAttribute(ruleSettingsBody, blockName, blockName)
+		}
 	}
 }
 
@@ -171,4 +181,3 @@ func (m *V4ToV5Migrator) normalizeDurationAttribute(body *hclwrite.Body, attrNam
 		tfhcl.SetAttribute(body, attrName, normalized)
 	}
 }
-

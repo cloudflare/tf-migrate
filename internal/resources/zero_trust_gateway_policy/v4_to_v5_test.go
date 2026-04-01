@@ -105,6 +105,42 @@ moved {
   to   = cloudflare_zero_trust_gateway_policy.with_nested
 }`,
 			},
+			{
+				Name: "Gateway policy with nested dns_resolvers",
+				Input: `resource "cloudflare_teams_rule" "with_dns_resolvers" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "DNS Resolvers Policy"
+  action     = "block"
+  precedence = 210
+
+  rule_settings {
+    dns_resolvers {
+      ipv4 {
+        route_through_private_network = true
+      }
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_zero_trust_gateway_policy" "with_dns_resolvers" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "DNS Resolvers Policy"
+  action     = "block"
+  precedence = 210
+
+  rule_settings = {
+    dns_resolvers = {
+      ipv4 = [{
+        route_through_private_network = true
+      }]
+    }
+  }
+}
+
+moved {
+  from = cloudflare_teams_rule.with_dns_resolvers
+  to   = cloudflare_zero_trust_gateway_policy.with_dns_resolvers
+}`,
+			},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
