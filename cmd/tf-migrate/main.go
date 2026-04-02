@@ -43,6 +43,7 @@ type config struct {
 	recursive             bool
 	logLevel              string
 	skipPhaseCheck        bool // skip phased migration prompt and run full migration directly (for CI/e2e)
+	skipVersionCheck      bool // skip minimum provider version check (for testing)
 
 	// Diagnostic output options
 	quiet   bool // Suppress warnings, only show errors
@@ -170,6 +171,7 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 	var noBackup bool
 	cmd.Flags().BoolVar(&noBackup, "no-backup", false, "Skip creating backup files before migration (alias for --backup=false)")
 	cmd.Flags().BoolVar(&cfg.skipPhaseCheck, "skip-phase-check", false, "Skip the phased migration confirmation prompt and run the full migration directly (for CI/non-interactive use)")
+	cmd.Flags().BoolVar(&cfg.skipVersionCheck, "skip-version-check", false, "Skip the minimum provider version check (for testing/CI only)")
 	cmd.PreRun = func(cmd *cobra.Command, args []string) {
 		if noBackup {
 			cfg.backup = false
@@ -234,6 +236,11 @@ Exit code 1: unexpected drift requires attention.`,
 func runMigration(log hclog.Logger, cfg config) error {
 	err := validateVersions(cfg)
 	if err != nil {
+		return err
+	}
+
+	// Check that the installed provider version meets minimum requirements
+	if err := checkMinimumProviderVersion(cfg); err != nil {
 		return err
 	}
 
