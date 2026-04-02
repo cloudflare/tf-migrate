@@ -65,6 +65,7 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 			"--source-version", "v4",
 			"--target-version", "v5",
 			"--backup=false",
+			"--skip-version-check",
 		)
 		migrateCmd.Dir = dir
 		cmdOut, err := migrateCmd.CombinedOutput()
@@ -115,6 +116,7 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 			"--target-version", "v5",
 			"--backup=false",
 			"--skip-phase-check",
+			"--skip-version-check",
 		)
 		migrateCmd.Dir = dir
 		cmdOut, err := migrateCmd.CombinedOutput()
@@ -141,7 +143,7 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 		// Phase 1
 		p1 := exec.Command(binaryPath,
 			"migrate", "--config-dir", dir,
-			"--source-version", "v4", "--target-version", "v5", "--backup=false",
+			"--source-version", "v4", "--target-version", "v5", "--backup=false", "--skip-version-check",
 		)
 		p1.Dir = dir
 		_, err := p1.CombinedOutput()
@@ -150,7 +152,7 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 		// Phase 2 — confirm with "y"
 		p2 := exec.Command(binaryPath,
 			"migrate", "--config-dir", dir,
-			"--source-version", "v4", "--target-version", "v5", "--backup=false",
+			"--source-version", "v4", "--target-version", "v5", "--backup=false", "--skip-version-check",
 		)
 		p2.Dir = dir
 		p2.Stdin = strings.NewReader("y\n")
@@ -177,7 +179,7 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 
 		p1 := exec.Command(binaryPath,
 			"migrate", "--config-dir", dir,
-			"--source-version", "v4", "--target-version", "v5", "--backup=false",
+			"--source-version", "v4", "--target-version", "v5", "--backup=false", "--skip-version-check",
 		)
 		p1.Dir = dir
 		_, err := p1.CombinedOutput()
@@ -187,7 +189,7 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 
 		p2 := exec.Command(binaryPath,
 			"migrate", "--config-dir", dir,
-			"--source-version", "v4", "--target-version", "v5", "--backup=false",
+			"--source-version", "v4", "--target-version", "v5", "--backup=false", "--skip-version-check",
 		)
 		p2.Dir = dir
 		p2.Stdin = strings.NewReader("n\n")
@@ -215,7 +217,7 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 
 		migrateCmd := exec.Command(binaryPath,
 			"migrate", "--config-dir", dir,
-			"--source-version", "v4", "--target-version", "v5", "--backup=false",
+			"--source-version", "v4", "--target-version", "v5", "--backup=false", "--skip-version-check",
 		)
 		migrateCmd.Dir = dir
 		cmdOut, err := migrateCmd.CombinedOutput()

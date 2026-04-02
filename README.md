@@ -16,6 +16,24 @@ A CLI tool for automatically migrating Terraform configurations between differen
 |----------------|----------------|
 | Cloudflare Provider v4 | Cloudflare Provider v5 |
 
+### Prerequisites
+
+#### Minimum Provider Version (v4 → v5 only)
+
+For v4 to v5 migrations, you must be running **Cloudflare Provider v4.52.5 or higher** before running tf-migrate. This version introduced critical state migration capabilities required for a successful upgrade.
+
+The tool checks for this in the following order:
+1. **`.terraform.lock.hcl`** — The installed provider version (most reliable)
+2. **`required_providers` block** — The version constraint in your `.tf` files (fallback)
+
+If neither is found, or if the version is below 4.52.5, the migration will be blocked with instructions on how to upgrade.
+
+To bypass this check (e.g., for testing or CI), use `--skip-version-check`:
+
+```bash
+tf-migrate migrate --source-version v4 --target-version v5 --skip-version-check
+```
+
 ### Supported Resources (v4 → v5)
 
 <details>
@@ -495,6 +513,7 @@ This is the most common mistake when migrating an Atlantis workspace. Always reg
 | `--no-backup` | `false` | Skip creating backup files (alias for `--backup=false`) |
 | `--recursive` | `false` | Recursively process subdirectories |
 | `--skip-phase-check` | `false` | Skip the phased migration confirmation prompt and run the full migration directly (for CI/non-interactive use) |
+| `--skip-version-check` | `false` | Skip the minimum provider version check (for testing/CI only). Only applies to v4→v5 migrations. |
 | `--target-provider-version` | _(auto-detected)_ | Explicit provider version to write into `required_providers` (e.g. `5.19.0-beta.3`). Bypasses the GitHub API lookup — useful in CI or air-gapped environments where the API is unreachable. |
 | `-v` / `--verbose` | `false` | Show verbose output: per-file progress, rename tables, and all diagnostics |
 | `-q` / `--quiet` | `false` | Suppress warnings, only show errors |

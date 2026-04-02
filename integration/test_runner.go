@@ -120,6 +120,7 @@ func (r *TestRunner) runMigration(dir string) error {
 	// Use --skip-phase-check to run the full migration directly.
 	// Integration tests validate the final v5 output, not the intermediate
 	// phase-1 state — phased migration is covered separately in phased_migration_test.go.
+	// Use --skip-version-check because test fixtures don't have lock files or required_providers.
 	args := []string{
 		"migrate",
 		"--config-dir", dir,
@@ -127,6 +128,7 @@ func (r *TestRunner) runMigration(dir string) error {
 		"--target-version", r.TargetVersion,
 		"--backup=false",
 		"--skip-phase-check",
+		"--skip-version-check",
 	}
 
 	migrateCmd := exec.Command(r.BinaryPath, args...)
