@@ -21,9 +21,10 @@ import (
 )
 
 // RunMigrate copies v4/ to migrated-v4_to_v5/ and runs migration.
-// When yes is true, --yes is passed to tf-migrate to auto-confirm the phase-1
+// When yes is true, --skip-phase-check is passed to tf-migrate to auto-confirm the phase-1
 // completion prompt (used for the phase-2 call in the e2e runner).
-func RunMigrate(resources string, yes bool) error {
+// targetProviderVersion is an optional explicit provider version to set in required_providers.
+func RunMigrate(resources string, yes bool, targetProviderVersion string) error {
 	repoRoot := getRepoRoot()
 	e2eRoot := filepath.Join(repoRoot, "e2e")
 	v4Dir := filepath.Join(e2eRoot, "tf", "v4")
@@ -105,6 +106,9 @@ func RunMigrate(resources string, yes bool) error {
 	}
 	if yes {
 		args = append(args, "--skip-phase-check")
+	}
+	if targetProviderVersion != "" {
+		args = append(args, "--target-provider-version", targetProviderVersion)
 	}
 
 	cmd := exec.Command(binary, args...)

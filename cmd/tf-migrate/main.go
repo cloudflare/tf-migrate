@@ -245,6 +245,11 @@ func runMigration(log hclog.Logger, cfg config) error {
 		return err
 	}
 
+	// Check that the installed provider version meets minimum requirements
+	if err := checkMinimumProviderVersion(cfg); err != nil {
+		return err
+	}
+
 	// Check for same-version migration (bypass mode)
 	if cfg.sourceVersion == cfg.targetVersion {
 		fmt.Printf("\n⚠ Same-version migration detected (%s → %s)\n", cfg.sourceVersion, cfg.targetVersion)

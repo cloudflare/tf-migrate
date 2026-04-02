@@ -33,14 +33,15 @@ const (
 
 // RunConfig holds configuration for e2e test run
 type RunConfig struct {
-	SkipV4Test        bool
-	ApplyExemptions   bool
-	NoRefreshSnapshot bool
-	Parallelism       int
-	Resources         string
-	Exclude           string // comma-separated resource names to exclude
-	Phase             string // comma-separated phase numbers (e.g., "0,1")
-	ProviderPath      string
+	SkipV4Test            bool
+	ApplyExemptions       bool
+	NoRefreshSnapshot     bool
+	Parallelism           int
+	Resources             string
+	Exclude               string // comma-separated resource names to exclude
+	Phase                 string // comma-separated phase numbers (e.g., "0,1")
+	ProviderPath          string
+	TargetProviderVersion string // explicit provider version to set in required_providers
 }
 
 // testContext holds shared state for e2e test execution
@@ -313,11 +314,11 @@ func RunE2ETests(cfg *RunConfig) error {
 	printCyan("Step 2: Running migration")
 	printYellow("Running ./scripts/migrate...")
 
-	// Run the full migration directly (--yes bypasses phased migration detection).
+	// Run the full migration directly (--skip-phase-check bypasses phased migration detection).
 	// The e2e runner handles state cleanup itself below via terraform state rm,
 	// which is simpler and reliable. The phased migration (_phase1_cleanup.tf)
 	// is for real Atlantis users who cannot run terraform state rm.
-	if err := RunMigrate(cfg.Resources, true); err != nil {
+	if err := RunMigrate(cfg.Resources, true, cfg.TargetProviderVersion); err != nil {
 		printError("Migration failed")
 		return err
 	}
