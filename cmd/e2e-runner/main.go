@@ -46,6 +46,7 @@ var migrateCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		resources, _ := cmd.Flags().GetString("resources")
 		phase, _ := cmd.Flags().GetString("phase")
+		targetProviderVersion, _ := cmd.Flags().GetString("target-provider-version")
 		if phase != "" {
 			if resources != "" {
 				return fmt.Errorf("--phase and --resources are mutually exclusive; use one or the other")
@@ -56,7 +57,7 @@ var migrateCmd = &cobra.Command{
 			}
 			resources = strings.Join(phaseResources, ",")
 		}
-		return e2e.RunMigrate(resources, false)
+		return e2e.RunMigrate(resources, false, targetProviderVersion)
 	},
 }
 
@@ -69,14 +70,15 @@ var runCmd = &cobra.Command{
 		parallelism, _ := cmd.Flags().GetInt("parallelism")
 
 		cfg := &e2e.RunConfig{
-			SkipV4Test:        cmd.Flag("skip-v4-test").Changed,
-			ApplyExemptions:   cmd.Flag("apply-exemptions").Changed,
-			NoRefreshSnapshot: cmd.Flag("no-refresh-snapshot").Changed,
-			Parallelism:       parallelism,
-			Resources:         cmd.Flag("resources").Value.String(),
-			Exclude:           cmd.Flag("exclude").Value.String(),
-			Phase:             cmd.Flag("phase").Value.String(),
-			ProviderPath:      cmd.Flag("provider").Value.String(),
+			SkipV4Test:            cmd.Flag("skip-v4-test").Changed,
+			ApplyExemptions:       cmd.Flag("apply-exemptions").Changed,
+			NoRefreshSnapshot:     cmd.Flag("no-refresh-snapshot").Changed,
+			Parallelism:           parallelism,
+			Resources:             cmd.Flag("resources").Value.String(),
+			Exclude:               cmd.Flag("exclude").Value.String(),
+			Phase:                 cmd.Flag("phase").Value.String(),
+			ProviderPath:          cmd.Flag("provider").Value.String(),
+			TargetProviderVersion: cmd.Flag("target-provider-version").Value.String(),
 		}
 		return e2e.RunE2ETests(cfg)
 	},
@@ -195,6 +197,7 @@ func init() {
 	// Migrate command flags
 	migrateCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
 	migrateCmd.Flags().String("phase", "", "Run predefined phase(s) (comma-separated numbers, e.g., '0' or '0,1')")
+	migrateCmd.Flags().String("target-provider-version", "", "Explicit provider version to set in required_providers (e.g. 5.19.0-beta.3); skips GitHub API lookup")
 
 	// Run command flags
 	runCmd.Flags().Bool("skip-v4-test", false, "Skip v4 testing phase")
@@ -205,6 +208,7 @@ func init() {
 	runCmd.Flags().String("provider", "", "Path to provider source directory (will be built automatically)")
 	runCmd.Flags().Int("parallelism", 0, "Terraform parallelism for plan/apply (0 uses Terraform default)")
 	runCmd.Flags().Bool("no-refresh-snapshot", false, "Run an additional diagnostic terraform plan with -refresh=false before the authoritative refresh plan")
+	runCmd.Flags().String("target-provider-version", "", "Explicit provider version to set in required_providers (e.g. 5.19.0-beta.3); skips GitHub API lookup")
 
 	// Clean command flags
 	cleanCmd.Flags().String("modules", "", "Modules to remove from state (comma-separated)")
