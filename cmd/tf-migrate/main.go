@@ -158,6 +158,12 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 				fmt.Println("\n DRY RUN MODE - No changes will be made")
 			}
 
+			// Check minimum provider version early to provide clear error without help output
+			if err := checkMinimumProviderVersion(*cfg); err != nil {
+				cmd.SilenceUsage = true
+				return err
+			}
+
 			return runMigration(log, *cfg)
 		},
 	}
@@ -236,11 +242,6 @@ Exit code 1: unexpected drift requires attention.`,
 func runMigration(log hclog.Logger, cfg config) error {
 	err := validateVersions(cfg)
 	if err != nil {
-		return err
-	}
-
-	// Check that the installed provider version meets minimum requirements
-	if err := checkMinimumProviderVersion(cfg); err != nil {
 		return err
 	}
 
