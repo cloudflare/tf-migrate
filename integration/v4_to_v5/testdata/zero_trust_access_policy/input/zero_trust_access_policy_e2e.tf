@@ -193,3 +193,22 @@ resource "cloudflare_access_policy" "multi_email_domain_policy" {
     email_domain = ["cloudflare.com", "example.com"]
   }
 }
+
+# BUGS-2012: connection_rules ssh structure
+resource "cloudflare_zero_trust_access_policy" "connection-rules-v5-name-v4-body" {
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-connection-rules-v5-name-v4-body"
+  decision         = "allow"
+  session_duration = "24h"
+
+  include {
+    everyone = true
+  }
+
+  connection_rules {
+    ssh {
+      usernames         = ["admin", "deploy"]
+      allow_email_alias = true
+    }
+  }
+}
