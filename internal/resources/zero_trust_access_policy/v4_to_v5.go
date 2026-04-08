@@ -62,6 +62,9 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// These cannot be automatically migrated - they use a different API endpoint
 	// and must be converted to inline policies in cloudflare_zero_trust_access_application
 	if originalResourceType == "cloudflare_access_policy" && body.GetAttribute("application_id") != nil {
+		// Generate a removed block for Atlantis-friendly state cleanup
+		removedBlock := tfhcl.CreateRemovedBlock("cloudflare_access_policy." + resourceName)
+
 		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 			Severity: hcl.DiagWarning,
 			Summary:  "Application-scoped access policy cannot be automatically migrated",
@@ -69,17 +72,18 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 				"Resource cloudflare_access_policy.%s has 'application_id' and cannot be automatically migrated to v5.\n\n"+
 					"Application-scoped policies use a different API endpoint than account-level policies. "+
 					"In v5, these must be converted to inline policies within cloudflare_zero_trust_access_application.\n\n"+
+					"A 'removed' block has been generated to drop this resource from state without destroying it.\n\n"+
 					"Manual steps required:\n"+
-					"1. Remove this resource from state: terraform state rm cloudflare_access_policy.%s\n"+
-					"2. Add the policy inline in the application's 'policies' attribute\n"+
+					"1. Review the generated 'removed' block\n"+
+					"2. Add this policy inline in the application's 'policies' attribute\n"+
 					"3. Run terraform apply\n\n"+
 					"See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade#cloudflare_access_policy",
-				resourceName, resourceName),
+				resourceName),
 		})
-		// Return original block unchanged, no moved block
+		// Return removed block and remove original resource from config
 		return &transform.TransformResult{
-			Blocks:         []*hclwrite.Block{block},
-			RemoveOriginal: false,
+			Blocks:         []*hclwrite.Block{removedBlock},
+			RemoveOriginal: true,
 		}, nil
 	}
 

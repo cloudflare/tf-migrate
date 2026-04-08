@@ -79,20 +79,6 @@ resource "cloudflare_zero_trust_access_application" "test_app" {
   http_only_cookie_attribute = "false"
 }
 
-resource "cloudflare_access_policy" "app_scoped_policy" {
-  account_id       = var.cloudflare_account_id
-  application_id   = cloudflare_zero_trust_access_application.test_app.id
-  name             = "${local.name_prefix}-app-scoped"
-  decision         = "non_identity"
-  precedence       = 1
-  session_duration = "18h"
-
-  include {
-    service_token = [
-      cloudflare_zero_trust_access_service_token.test_token.id,
-    ]
-  }
-}
 
 # ============================================================================
 # BUGS-2006: Already-v5-named resources with block syntax not converted
@@ -605,6 +591,13 @@ resource "cloudflare_zero_trust_access_policy" "combined_research_team_policy" {
 moved {
   from = cloudflare_access_policy.combined_research_team_policy
   to   = cloudflare_zero_trust_access_policy.combined_research_team_policy
+}
+
+removed {
+  from = cloudflare_access_policy.app_scoped_policy
+  lifecycle {
+    destroy = false
+  }
 }
 
 # BUGS-2007: nested and list selector migrations
