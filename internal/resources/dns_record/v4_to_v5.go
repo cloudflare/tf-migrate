@@ -43,6 +43,19 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	return []string{"cloudflare_record"}, "cloudflare_dns_record"
 }
 
+// GetComputedAttributeMappings implements the ComputedAttributeMapper interface
+// This enables cross-file reference updates for computed attributes that change names
+func (m *V4ToV5Migrator) GetComputedAttributeMappings() []transform.ComputedAttributeMapping {
+	return []transform.ComputedAttributeMapping{
+		{
+			OldResourceType: "cloudflare_record",
+			OldAttribute:    "hostname",
+			NewResourceType: "cloudflare_dns_record",
+			NewAttribute:    "name",
+		},
+	}
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	// Capture original resource type before any modifications (for moved block generation)
 	originalResourceType := tfhcl.GetResourceType(block)
@@ -171,4 +184,3 @@ func (m *V4ToV5Migrator) processDataAttribute(block *hclwrite.Block, recordType 
 		block.Body().SetAttributeRaw("data", newTokens)
 	}
 }
-

@@ -42,6 +42,25 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	return []string{"cloudflare_tunnel", "cloudflare_zero_trust_tunnel_cloudflared"}, "cloudflare_zero_trust_tunnel_cloudflared"
 }
 
+// GetComputedAttributeMappings implements the ComputedAttributeMapper interface
+// This enables cross-file reference updates for computed attributes that change names
+func (m *V4ToV5Migrator) GetComputedAttributeMappings() []transform.ComputedAttributeMapping {
+	return []transform.ComputedAttributeMapping{
+		{
+			OldResourceType: "cloudflare_tunnel",
+			OldAttribute:    "cname",
+			NewResourceType: "cloudflare_zero_trust_tunnel_cloudflared",
+			NewAttribute:    "name",
+		},
+		{
+			OldResourceType: "cloudflare_tunnel",
+			OldAttribute:    "secret",
+			NewResourceType: "cloudflare_zero_trust_tunnel_cloudflared",
+			NewAttribute:    "tunnel_secret",
+		},
+	}
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	resourceType := tfhcl.GetResourceType(block)
 	resourceName := tfhcl.GetResourceName(block)
@@ -86,4 +105,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		RemoveOriginal: true,
 	}, nil
 }
-

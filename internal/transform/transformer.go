@@ -91,6 +91,28 @@ type AttributeRenamer interface {
 	GetAttributeRenames() []AttributeRename
 }
 
+// ComputedAttributeMapping represents a computed attribute reference that changes
+// when a resource type is renamed. This handles cross-file references where both
+// the resource type AND the computed attribute name change.
+//
+// Example: cloudflare_tunnel.example.cname → cloudflare_zero_trust_tunnel_cloudflared.example.name
+type ComputedAttributeMapping struct {
+	OldResourceType string // The old resource type name (e.g., "cloudflare_tunnel")
+	OldAttribute    string // The old computed attribute name (e.g., "cname")
+	NewResourceType string // The new resource type name (e.g., "cloudflare_zero_trust_tunnel_cloudflared")
+	NewAttribute    string // The new computed attribute name (e.g., "name")
+}
+
+// ComputedAttributeMapper is an optional interface that migrators can implement
+// to expose computed attribute mappings that change when resource types are renamed.
+// This enables global cross-file reference updates for computed attributes.
+type ComputedAttributeMapper interface {
+	// GetComputedAttributeMappings returns a list of computed attribute mappings
+	// Each mapping specifies how computed attribute references should be rewritten
+	// when the resource type is renamed
+	GetComputedAttributeMappings() []ComputedAttributeMapping
+}
+
 // MigrationProvider specifies the interface for a migrator provider
 // This is used to provide a way to get migrators for a given resource type
 // a migrator defines the strategy which a resource uses to migrate the resource
