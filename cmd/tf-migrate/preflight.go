@@ -290,10 +290,8 @@ func printPreflightReport(report *preflightReport, cfg config) {
 		}
 	}
 
-	// Only show detailed scan output in verbose mode or if there are issues
-	hasIssues := len(manual) > 0 || len(unsupported) > 0 || len(report.Warnings) > 0
-
-	if cfg.verbose || hasIssues {
+	// Only show detailed resource list in verbose mode
+	if cfg.verbose {
 		fmt.Println()
 		fmt.Println("Pre-migration scan:")
 		fmt.Printf("  %d Cloudflare resource(s) found\n", len(report.Resources))
@@ -307,18 +305,15 @@ func printPreflightReport(report *preflightReport, cfg config) {
 			fmt.Println()
 		}
 
-		if len(autoMigrated) > 0 && cfg.verbose {
+		if len(autoMigrated) > 0 {
 			fmt.Printf("  Resources with config-only changes (%d):\n", len(autoMigrated))
 			for _, r := range autoMigrated {
 				fmt.Printf("    %s.%s\n", r.ResourceType, r.ResourceName)
 			}
 			fmt.Println()
-		} else if len(autoMigrated) > 0 && hasIssues {
-			fmt.Printf("  %d resource(s) with config-only changes (no rename)\n", len(autoMigrated))
-			fmt.Println()
 		}
 	} else {
-		// Minimal output in non-verbose mode with no issues
+		// Minimal output in non-verbose mode
 		fmt.Printf("  Migrated %d resources (%d renamed, %d config-only)\n",
 			len(report.Resources), len(renamed), len(autoMigrated))
 	}
