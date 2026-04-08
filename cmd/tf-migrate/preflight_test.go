@@ -1,0 +1,308 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/hashicorp/go-hclog"
+
+	"github.com/cloudflare/tf-migrate/internal/registry"
+)
+
+func init() {
+	// Ensure all resource migrations are registered for tests
+	registry.RegisterAllMigrations()
+}
+
+func TestRunPreMigrationScan_ClassifiesResources(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write a .tf file with a mix of resource types
+	content := `
+resource "cloudflare_access_application" "admin_api" {
+  account_id = "abc123"
+  name       = "Admin API"
+  type       = "self_hosted"
+}
+
+resource "cloudflare_ruleset" "rate_limit" {
+  zone_id = "abc123"
+  name    = "Rate Limit"
+  kind    = "zone"
+  phase   = "http_ratelimit"
+}
+
+resource "cloudflare_dns_record" "root_a" {
+  zone_id = "abc123"
+  name    = "example.com"
+  type    = "A"
+  value   = "192.0.2.1"
+}
+
+resource "aws_s3_bucket" "logs" {
+  bucket = "my-logs"
+}
+`
+	err := os.WriteFile(filepath.Join(tmpDir, "main.tf"), []byte(content), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	log := hclog.NewNullLogger()
+	cfg := config{
+		configDir:     tmpDir,
+		sourceVersion: "v4",
+		targetVersion: "v5",
+	}
+
+	report, err := runPreMigrationScan(log, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should NOT include the aws_s3_bucket (not a cloudflare resource)
+	for _, r := range report.Resources {
+		if r.ResourceType == "aws_s3_bucket" {
+			t.Error("Non-cloudflare resource should not be included in scan")
+		}
+	}
+
+	// Should find cloudflare resources
+	if len(report.Resources) == 0 {
+		t.Fatal("Expected to find cloudflare resources")
+	}
+
+	// Check that access_application is classified as renamed
+	found := false
+	for _, r := range report.Resources {
+		if r.ResourceType == "cloudflare_access_application" {
+			found = true
+			if r.Class != classRenamed {
+				t.Errorf("Expected access_application to be classRenamed, got %d", r.Class)
+			}
+			if r.NewType != "cloudflare_zero_trust_access_application" {
+				t.Errorf("Expected new type cloudflare_zero_trust_access_application, got %s", r.NewType)
+			}
+		}
+	}
+	if !found {
+		t.Error("Expected to find cloudflare_access_application in scan results")
+	}
+}
+
+func TestRunPreMigrationScan_DetectsMovedBlocks(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write a main.tf with a resource
+	mainContent := `
+resource "cloudflare_access_application" "admin_api" {
+  account_id = "abc123"
+  name       = "Admin API"
+}
+`
+	err := os.WriteFile(filepath.Join(tmpDir, "main.tf"), []byte(mainContent), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a moved.tf with hand-written moved blocks
+	movedContent := `
+moved {
+  from = cloudflare_access_application.admin_api
+  to   = cloudflare_zero_trust_access_application.admin_api
+}
+
+moved {
+  from = cloudflare_record.root_a
+  to   = cloudflare_dns_record.root_a
+}
+`
+	err = os.WriteFile(filepath.Join(tmpDir, "moved.tf"), []byte(movedContent), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	log := hclog.NewNullLogger()
+	cfg := config{
+		configDir:     tmpDir,
+		sourceVersion: "v4",
+		targetVersion: "v5",
+	}
+
+	report, err := runPreMigrationScan(log, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(report.MovedBlocks) != 2 {
+		t.Fatalf("Expected 2 moved blocks, got %d", len(report.MovedBlocks))
+	}
+
+	// Should have a warning about the duplicate moved block for access_application
+	if len(report.Warnings) == 0 {
+		t.Error("Expected warnings about pre-existing moved blocks")
+	}
+
+	foundDuplicateWarning := false
+	for _, w := range report.Warnings {
+		if contains(w, "tf-migrate will generate this moved block automatically") {
+			foundDuplicateWarning = true
+		}
+	}
+	if !foundDuplicateWarning {
+		t.Errorf("Expected warning about duplicate moved block, got warnings: %v", report.Warnings)
+	}
+}
+
+func TestDetectMovedBlockConflicts_DuplicateMovedBlock(t *testing.T) {
+	renames := map[string]string{
+		"cloudflare_access_application": "cloudflare_zero_trust_access_application",
+	}
+
+	report := &preflightReport{
+		MovedBlocks: []existingMovedBlock{
+			{
+				File:     "moved.tf",
+				FromType: "cloudflare_access_application",
+				FromName: "admin_api",
+				ToType:   "cloudflare_zero_trust_access_application",
+				ToName:   "admin_api",
+			},
+		},
+	}
+
+	warnings := detectMovedBlockConflicts(report, renames)
+	if len(warnings) != 1 {
+		t.Fatalf("Expected 1 warning, got %d: %v", len(warnings), warnings)
+	}
+	if !contains(warnings[0], "tf-migrate will generate this moved block automatically") {
+		t.Errorf("Unexpected warning: %s", warnings[0])
+	}
+}
+
+func TestDetectMovedBlockConflicts_ConflictingTarget(t *testing.T) {
+	renames := map[string]string{
+		"cloudflare_access_application": "cloudflare_zero_trust_access_application",
+	}
+
+	report := &preflightReport{
+		MovedBlocks: []existingMovedBlock{
+			{
+				File:     "moved.tf",
+				FromType: "cloudflare_access_application",
+				FromName: "admin_api",
+				ToType:   "cloudflare_wrong_type",
+				ToName:   "admin_api",
+			},
+		},
+	}
+
+	warnings := detectMovedBlockConflicts(report, renames)
+	if len(warnings) != 1 {
+		t.Fatalf("Expected 1 warning, got %d: %v", len(warnings), warnings)
+	}
+	if !contains(warnings[0], "Conflicting moved block") {
+		t.Errorf("Expected conflicting moved block warning, got: %s", warnings[0])
+	}
+}
+
+func TestDetectMovedBlockConflicts_NoConflict(t *testing.T) {
+	renames := map[string]string{
+		"cloudflare_access_application": "cloudflare_zero_trust_access_application",
+	}
+
+	// A moved block for a non-renamed resource (no conflict)
+	report := &preflightReport{
+		MovedBlocks: []existingMovedBlock{
+			{
+				File:     "moved.tf",
+				FromType: "cloudflare_custom_resource",
+				FromName: "example",
+				ToType:   "cloudflare_custom_resource_v2",
+				ToName:   "example",
+			},
+		},
+		Resources: []scannedResource{
+			{
+				ResourceType: "cloudflare_custom_resource",
+				ResourceName: "example",
+			},
+		},
+	}
+
+	warnings := detectMovedBlockConflicts(report, renames)
+	if len(warnings) != 0 {
+		t.Errorf("Expected no warnings, got %d: %v", len(warnings), warnings)
+	}
+}
+
+func TestClassifyResource_UnsupportedResource(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write a .tf file with a made-up cloudflare resource type
+	content := `
+resource "cloudflare_nonexistent_resource" "test" {
+  name = "test"
+}
+`
+	err := os.WriteFile(filepath.Join(tmpDir, "main.tf"), []byte(content), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	log := hclog.NewNullLogger()
+	cfg := config{
+		configDir:     tmpDir,
+		sourceVersion: "v4",
+		targetVersion: "v5",
+	}
+
+	report, err := runPreMigrationScan(log, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(report.Resources) != 1 {
+		t.Fatalf("Expected 1 resource, got %d", len(report.Resources))
+	}
+	if report.Resources[0].Class != classUnsupported {
+		t.Errorf("Expected classUnsupported, got %d", report.Resources[0].Class)
+	}
+}
+
+func TestRunPreMigrationScan_EmptyDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	log := hclog.NewNullLogger()
+	cfg := config{
+		configDir:     tmpDir,
+		sourceVersion: "v4",
+		targetVersion: "v5",
+	}
+
+	report, err := runPreMigrationScan(log, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(report.Resources) != 0 {
+		t.Errorf("Expected 0 resources, got %d", len(report.Resources))
+	}
+	if len(report.MovedBlocks) != 0 {
+		t.Errorf("Expected 0 moved blocks, got %d", len(report.MovedBlocks))
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && searchString(s, substr)
+}
+
+func searchString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

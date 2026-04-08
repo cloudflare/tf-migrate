@@ -680,21 +680,32 @@ resource "cloudflare_access_policy" "test" {
 		t.Fatalf("TransformConfig returned error: %v", err)
 	}
 
-	// Should return the original block unchanged (no transformation, no moved block)
+	// Should return a removed block and RemoveOriginal should be true
 	if result == nil {
 		t.Fatal("Expected non-nil result")
 	}
 	if len(result.Blocks) != 1 {
-		t.Errorf("Expected 1 block (original only), got %d", len(result.Blocks))
+		t.Errorf("Expected 1 block (removed block), got %d", len(result.Blocks))
 	}
-	if result.RemoveOriginal {
-		t.Error("Expected RemoveOriginal to be false")
+	if !result.RemoveOriginal {
+		t.Error("Expected RemoveOriginal to be true")
 	}
 
-	// Block should still be cloudflare_access_policy (not renamed)
-	labels := result.Blocks[0].Labels()
-	if len(labels) < 1 || labels[0] != "cloudflare_access_policy" {
-		t.Errorf("Expected resource type to remain 'cloudflare_access_policy', got %v", labels)
+	// Block should be a "removed" block
+	if result.Blocks[0].Type() != "removed" {
+		t.Errorf("Expected block type 'removed', got '%s'", result.Blocks[0].Type())
+	}
+
+	// The removed block should have the correct "from" attribute
+	removedBody := result.Blocks[0].Body()
+	fromAttr := removedBody.GetAttribute("from")
+	if fromAttr == nil {
+		t.Error("Expected removed block to have 'from' attribute")
+	} else {
+		fromExpr := string(fromAttr.Expr().BuildTokens(nil).Bytes())
+		if !strings.Contains(fromExpr, "cloudflare_access_policy.test") {
+			t.Errorf("Expected 'from' to reference cloudflare_access_policy.test, got: %s", fromExpr)
+		}
 	}
 
 	// Should have a warning diagnostic

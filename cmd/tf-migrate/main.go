@@ -257,6 +257,30 @@ func runMigration(log hclog.Logger, cfg config) error {
 		fmt.Println()
 	}
 
+	// Run pre-migration scan to classify resources and detect issues.
+	if cfg.configDir != "" {
+		report, scanErr := runPreMigrationScan(log, cfg)
+		if scanErr != nil {
+			log.Warn("Pre-migration scan failed", "error", scanErr)
+		} else {
+			printPreflightReport(report, cfg)
+
+			// If there are warnings about conflicting moved blocks and we're in
+			// interactive mode, give the user a chance to abort.
+			if len(report.Warnings) > 0 && !cfg.skipPhaseCheck {
+				fmt.Print("Proceed with migration? [Y/n]: ")
+				var answer string
+				if _, err := fmt.Scanln(&answer); err == nil {
+					answer = strings.ToLower(strings.TrimSpace(answer))
+					if answer == "n" || answer == "no" {
+						fmt.Println("Migration aborted. Please resolve the warnings above and re-run tf-migrate.")
+						return nil
+					}
+				}
+			}
+		}
+	}
+
 	// --yes skips straight to full migration (used by e2e runner and CI).
 	if cfg.skipPhaseCheck {
 		return runFullMigration(log, cfg)
@@ -465,6 +489,16 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 
 	step := 1
 
+	// Remind users to apply with v4 first if they haven't already.
+	// This normalizes state for resources like cloudflare_ruleset where the v5
+	// provider's UpgradeResourceState has edge cases with older v4 state formats.
+	fmt.Printf("  %d. BEFORE upgrading: ensure you have run 'terraform apply' with\n", step)
+	fmt.Printf("     provider v%s on your current v4 config to normalize state.\n", minimumProviderVersion)
+	fmt.Println("     This prevents state deserialization errors during the v5 upgrade")
+	fmt.Println("     (especially for resources like cloudflare_ruleset).")
+	fmt.Println()
+	step++
+
 	// If there were any actionable warnings (DiagWarning), remind the user
 	// to address them before proceeding.
 	hasActionableWarnings := false
@@ -484,6 +518,15 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 	fmt.Printf("  %d. Regenerate the lock file locally:\n", step)
 	fmt.Printf("       cd %s\n", cfg.configDir)
 	fmt.Println("       terraform init -upgrade -backend=false")
+	fmt.Println()
+	step++
+
+	// Note about provider version and MoveState support
+	fmt.Printf("  %d. Verify the provider version supports MoveState for your resources.\n", step)
+	fmt.Printf("     tf-migrate set the version to %s. If you see errors about\n", targetVersion)
+	fmt.Println("     'Missing resource schema' or 'no schema available' during plan/apply,")
+	fmt.Println("     try upgrading to the latest beta release:")
+	fmt.Println("       https://github.com/cloudflare/terraform-provider-cloudflare/releases")
 	fmt.Println()
 	step++
 

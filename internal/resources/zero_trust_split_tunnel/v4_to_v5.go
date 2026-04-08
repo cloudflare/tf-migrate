@@ -37,12 +37,14 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
-// TransformConfig does nothing - removal is handled by ProcessCrossResourceConfigMigration.
+// TransformConfig generates a removed block for Atlantis-friendly state cleanup.
 // The device profile migrator calls ProcessCrossResourceConfigMigration which merges
-// split tunnels into profiles and removes the split_tunnel blocks.
-// We return RemoveOriginal=false because the cross-resource handler manages removal.
+// split tunnels into profiles and removes the split_tunnel blocks from config.
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	resourceName := tfhcl.GetResourceName(block)
+
+	// Generate removed block for Atlantis-friendly state cleanup
+	removedBlock := tfhcl.CreateRemovedBlock("cloudflare_split_tunnel." + resourceName)
 
 	// Add warning about resource removal
 	ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
@@ -55,13 +57,12 @@ Split tunnel configuration is now managed directly within device profile resourc
   - cloudflare_zero_trust_device_custom_profile.exclude/include
 
 The migrator will attempt to merge split_tunnel entries into associated device profiles.
-After migration, remove the old state:
-  terraform state rm cloudflare_split_tunnel.` + resourceName,
+A 'removed' block has been generated to drop this resource from state without destroying it.`,
 	})
 
-	// Don't mark for removal - ProcessCrossResourceConfigMigration handles it
+	// Return removed block - ProcessCrossResourceConfigMigration handles config removal
 	return &transform.TransformResult{
-		Blocks:         nil,
+		Blocks:         []*hclwrite.Block{removedBlock},
 		RemoveOriginal: false,
 	}, nil
 }
