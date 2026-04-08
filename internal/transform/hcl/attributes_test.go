@@ -100,6 +100,31 @@ resource "test" "example" {
 			expected:    false,
 			notContains: "other",
 		},
+		{
+			name: "Preserve trailing inline comment when renaming",
+			input: `
+resource "cloudflare_dns_record" "example" {
+  name  = "test"
+  value = "192.0.2.1"  # Cloudchamber IP
+}`,
+			oldName:  "value",
+			newName:  "content",
+			expected: true,
+			contains: `content = "192.0.2.1" # Cloudchamber IP`,
+		},
+		{
+			name: "Preserve comment without extra spacing",
+			input: `
+resource "cloudflare_dns_record" "example" {
+  type  = "A"
+  value = "162.159.203.78" # Cloudchamber IP
+  zone_id = var.zone_id
+}`,
+			oldName:  "value",
+			newName:  "content",
+			expected: true,
+			contains: `content = "162.159.203.78" # Cloudchamber IP`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1210,7 +1235,7 @@ resource "cloudflare_healthcheck" "example" {
 				`type    = "HTTP"`,
 			},
 			shouldNotContain: []string{
-				"port    = 80\n  path",    // Should not be at root level
+				"port    = 80\n  path",      // Should not be at root level
 				"method  = \"GET\"\n  zone", // Should not be at root level
 			},
 		},
