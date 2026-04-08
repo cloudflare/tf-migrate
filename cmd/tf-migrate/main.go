@@ -489,16 +489,6 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 
 	step := 1
 
-	// Remind users to apply with v4 first if they haven't already.
-	// This normalizes state for resources like cloudflare_ruleset where the v5
-	// provider's UpgradeResourceState has edge cases with older v4 state formats.
-	fmt.Printf("  %d. BEFORE upgrading: ensure you have run 'terraform apply' with\n", step)
-	fmt.Printf("     provider v%s on your current v4 config to normalize state.\n", minimumProviderVersion)
-	fmt.Println("     This prevents state deserialization errors during the v5 upgrade")
-	fmt.Println("     (especially for resources like cloudflare_ruleset).")
-	fmt.Println()
-	step++
-
 	// If there were any actionable warnings (DiagWarning), remind the user
 	// to address them before proceeding.
 	hasActionableWarnings := false
@@ -821,8 +811,8 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 	fmt.Println("Next steps:")
 	fmt.Println()
 	fmt.Println("  1. Commit and push the modified .tf files.")
-	fmt.Println("     Your CI/Atlantis pipeline will run terraform plan and apply using the")
-	fmt.Println("     CURRENT (v4) provider. Terraform will process the removed {} blocks")
+	fmt.Println("     Run terraform plan and apply using the current (v4) provider.")
+	fmt.Println("     Terraform will process the removed {} blocks")
 	fmt.Println("     and drop the old state entries without destroying any infrastructure.")
 	fmt.Println()
 	fmt.Println("  2. Wait for the apply to complete successfully.")

@@ -290,8 +290,19 @@ func printPreflightReport(report *preflightReport, cfg config) {
 		}
 	}
 
-	// Only show detailed scan output in verbose mode or if there are issues
-	hasIssues := len(manual) > 0 || len(unsupported) > 0 || len(report.Warnings) > 0
+	// Print warnings ALWAYS (these are important for all users)
+	if len(report.Warnings) > 0 {
+		fmt.Println()
+		fmt.Println("⚠ Warnings:")
+		for _, w := range report.Warnings {
+			for _, line := range strings.Split(w, "\n") {
+				fmt.Printf("  %s\n", line)
+			}
+		}
+	}
+
+	// Only show detailed scan output in verbose mode or if there are issues (manual/unsupported)
+	hasIssues := len(manual) > 0 || len(unsupported) > 0
 
 	if cfg.verbose || hasIssues {
 		fmt.Println()
@@ -347,16 +358,5 @@ func printPreflightReport(report *preflightReport, cfg config) {
 			fmt.Printf("    %s: %s.%s → %s.%s\n", mb.File, mb.FromType, mb.FromName, mb.ToType, mb.ToName)
 		}
 		fmt.Println()
-	}
-
-	// Print warnings
-	if len(report.Warnings) > 0 {
-		fmt.Println("  ⚠ Warnings:")
-		for _, w := range report.Warnings {
-			for _, line := range strings.Split(w, "\n") {
-				fmt.Printf("    %s\n", line)
-			}
-			fmt.Println()
-		}
 	}
 }
