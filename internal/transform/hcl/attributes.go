@@ -53,19 +53,21 @@ func EnsureAttribute(body *hclwrite.Body, attrName string, defaultValue interfac
 // Example - Explicitly setting fail_open during migration:
 //
 // Before:
-//   deployment_configs {
-//     production {
-//       usage_model = "bundled"
-//     }
-//   }
+//
+//	deployment_configs {
+//	  production {
+//	    usage_model = "bundled"
+//	  }
+//	}
 //
 // After calling SetAttribute(body, "fail_open", false):
-//   deployment_configs {
-//     production {
-//       usage_model = "bundled"
-//       fail_open   = false
-//     }
-//   }
+//
+//	deployment_configs {
+//	  production {
+//	    usage_model = "bundled"
+//	    fail_open   = false
+//	  }
+//	}
 func SetAttribute(body *hclwrite.Body, attrName string, value interface{}) {
 	tokens := TokensForSimpleValue(value)
 	if tokens != nil {
@@ -109,7 +111,18 @@ func RenameAttribute(body *hclwrite.Body, oldName, newName string) bool {
 
 	// Rename the attribute itself
 	if attr := body.GetAttribute(oldName); attr != nil {
-		tokens := attr.Expr().BuildTokens(nil)
+		// Extract trailing comment tokens BEFORE modifying the body
+		// Comments are stored as tokens after the expression and before the newline
+		trailingCommentTokens := extractTrailingCommentTokens(body, oldName)
+
+		// Build expression tokens
+		exprTokens := attr.Expr().BuildTokens(nil)
+
+		// Combine expression tokens with trailing comment tokens
+		var tokens hclwrite.Tokens
+		tokens = append(tokens, exprTokens...)
+		tokens = append(tokens, trailingCommentTokens...)
+
 		body.SetAttributeRaw(newName, tokens)
 		body.RemoveAttribute(oldName)
 		renamed = true
@@ -139,6 +152,70 @@ func RenameAttribute(body *hclwrite.Body, oldName, newName string) bool {
 	}
 
 	return renamed
+}
+
+// extractTrailingCommentTokens extracts trailing comment tokens that appear after
+// an attribute's expression but before the newline. These are inline comments like:
+//
+//	value = "192.0.2.1"  # Cloudchamber IP
+func extractTrailingCommentTokens(body *hclwrite.Body, attrName string) hclwrite.Tokens {
+	var commentTokens hclwrite.Tokens
+
+	// Get all tokens from the body to find the attribute and its trailing comments
+	bodyTokens := body.BuildTokens(nil)
+
+	// Find the attribute name token
+	attrNameBytes := []byte(attrName)
+	for i := 0; i < len(bodyTokens); i++ {
+		tok := bodyTokens[i]
+
+		// Look for the attribute name followed by equals sign
+		if string(tok.Bytes) == string(attrNameBytes) && tok.Type == hclsyntax.TokenIdent {
+			// Found the attribute name, now look for equals and expression end
+			// We need to find the end of the expression and capture any trailing comment
+			j := i + 1
+
+			// Skip whitespace and equals
+			for j < len(bodyTokens) && (bodyTokens[j].Type == hclsyntax.TokenNewline ||
+				bodyTokens[j].Type == hclsyntax.TokenEqual ||
+				bodyTokens[j].Type == hclsyntax.TokenNil) {
+				j++
+			}
+
+			// Now we're at the start of the expression, find the end of it
+			// The expression ends when we hit a TokenNewline, TokenComment, or TokenEOF
+			exprEnd := j
+			parenDepth := 0
+			for exprEnd < len(bodyTokens) {
+				t := bodyTokens[exprEnd]
+
+				// Track parenthesis depth for complex expressions
+				if t.Type == hclsyntax.TokenOBrace || t.Type == hclsyntax.TokenOBrack || t.Type == hclsyntax.TokenOParen {
+					parenDepth++
+				} else if t.Type == hclsyntax.TokenCBrace || t.Type == hclsyntax.TokenCBrack || t.Type == hclsyntax.TokenCParen {
+					parenDepth--
+				}
+
+				// Check for comment or newline at top level
+				if parenDepth == 0 {
+					if t.Type == hclsyntax.TokenComment {
+						// Found a comment, capture it and any leading whitespace
+						commentTokens = append(commentTokens, t)
+						break
+					} else if t.Type == hclsyntax.TokenNewline {
+						// End of line without comment
+						break
+					}
+				}
+
+				exprEnd++
+			}
+
+			break
+		}
+	}
+
+	return commentTokens
 }
 
 // RenameAndWrapInArray renames an attribute and wraps its value in an array.
@@ -268,11 +345,12 @@ func ExtractStringFromAttribute(attr *hclwrite.Attribute) string {
 // Returns the boolean value and true if successful, or false and false if not found/invalid.
 //
 // Example usage:
-//   enabledAttr := body.GetAttribute("enabled")
-//   value, ok := ExtractBoolFromAttribute(enabledAttr)
-//   // Returns (true, true) from: enabled = true
-//   // Returns (false, true) from: enabled = false
-//   // Returns (false, false) from: enabled = null or missing
+//
+//	enabledAttr := body.GetAttribute("enabled")
+//	value, ok := ExtractBoolFromAttribute(enabledAttr)
+//	// Returns (true, true) from: enabled = true
+//	// Returns (false, true) from: enabled = false
+//	// Returns (false, false) from: enabled = null or missing
 func ExtractBoolFromAttribute(attr *hclwrite.Attribute) (bool, bool) {
 	if attr == nil {
 		return false, false
@@ -1218,9 +1296,10 @@ func WrapMapValuesInObjects(body *hclwrite.Body, attrName string, wrapFieldName 
 
 // ConvertServiceBindingBlocksToServicesMap converts service_binding blocks to a services map attribute.
 // Example:
-//   service_binding { name = "MY_SERVICE" service = "worker-1" environment = "production" }
-//   →
-//   services = { MY_SERVICE = { service = "worker-1" environment = "production" } }
+//
+//	service_binding { name = "MY_SERVICE" service = "worker-1" environment = "production" }
+//	→
+//	services = { MY_SERVICE = { service = "worker-1" environment = "production" } }
 func ConvertServiceBindingBlocksToServicesMap(body *hclwrite.Body) bool {
 	// Find all service_binding blocks
 	serviceBindingBlocks := []*hclwrite.Block{}
@@ -1380,7 +1459,7 @@ func ConvertServiceBindingBlocksToServicesMap(body *hclwrite.Body) bool {
 	body.SetAttributeRaw("services", servicesTokens)
 
 	// Remove service_binding blocks
-	for _, block := range serviceBindingBlocks{
+	for _, block := range serviceBindingBlocks {
 		body.RemoveBlock(block)
 	}
 
