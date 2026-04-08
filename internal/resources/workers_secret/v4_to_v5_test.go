@@ -19,16 +19,11 @@ resource "cloudflare_worker_secret" "my_secret" {
   script_name = "my-worker"
   secret      = "super-secret-value"
 }`,
-				Expected: `resource "cloudflare_workers_secret" "my_secret" {
-  name         = "MY_SECRET"
-  script_name  = "my-worker"
-  secret_text  = "super-secret-value"
-  # MIGRATION WARNING: MIGRATION REQUIRED: Add account_id attribute (required in v5)
-}
-
-moved {
-  from = cloudflare_worker_secret.my_secret
-  to   = cloudflare_workers_secret.my_secret
+				Expected: `resource "cloudflare_worker_secret" "my_secret" {
+  name        = "MY_SECRET"
+  script_name = "my-worker"
+  secret      = "super-secret-value"
+  # MIGRATION WARNING: cloudflare_workers_secret removed in v5. Migrate this secret to a 'secret_text' binding in cloudflare_workers_script. See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade#cloudflare_workers_secret
 }`,
 			},
 			{
@@ -40,10 +35,10 @@ resource "cloudflare_workers_secret" "my_secret" {
   secret      = "super-secret-value"
 }`,
 				Expected: `resource "cloudflare_workers_secret" "my_secret" {
-  name         = "MY_SECRET"
-  script_name  = "my-worker"
-  secret_text  = "super-secret-value"
-  # MIGRATION WARNING: MIGRATION REQUIRED: Add account_id attribute (required in v5)
+  name        = "MY_SECRET"
+  script_name = "my-worker"
+  secret      = "super-secret-value"
+  # MIGRATION WARNING: cloudflare_workers_secret removed in v5. Migrate this secret to a 'secret_text' binding in cloudflare_workers_script. See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade#cloudflare_workers_secret
 }`,
 			},
 			{
@@ -55,16 +50,12 @@ resource "cloudflare_worker_secret" "my_secret" {
   script_name = "my-worker"
   secret      = "super-secret-value"
 }`,
-				Expected: `resource "cloudflare_workers_secret" "my_secret" {
-  account_id   = "f037e56e89293a057740de681ac9abbe"
-  name         = "MY_SECRET"
-  script_name  = "my-worker"
-  secret_text  = "super-secret-value"
-}
-
-moved {
-  from = cloudflare_worker_secret.my_secret
-  to   = cloudflare_workers_secret.my_secret
+				Expected: `resource "cloudflare_worker_secret" "my_secret" {
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "MY_SECRET"
+  script_name = "my-worker"
+  secret      = "super-secret-value"
+  # MIGRATION WARNING: cloudflare_workers_secret removed in v5. Migrate this secret to a 'secret_text' binding in cloudflare_workers_script. See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade#cloudflare_workers_secret
 }`,
 			},
 			{
@@ -76,17 +67,12 @@ resource "cloudflare_worker_secret" "my_secret" {
   secret             = "super-secret-value"
   dispatch_namespace = "my-namespace"
 }`,
-				Expected: `resource "cloudflare_workers_secret" "my_secret" {
-  name                = "MY_SECRET"
-  script_name         = "my-worker"
-  dispatch_namespace  = "my-namespace"
-  secret_text         = "super-secret-value"
-  # MIGRATION WARNING: MIGRATION REQUIRED: Add account_id attribute (required in v5)
-}
-
-moved {
-  from = cloudflare_worker_secret.my_secret
-  to   = cloudflare_workers_secret.my_secret
+				Expected: `resource "cloudflare_worker_secret" "my_secret" {
+  name               = "MY_SECRET"
+  script_name        = "my-worker"
+  secret             = "super-secret-value"
+  dispatch_namespace = "my-namespace"
+  # MIGRATION WARNING: cloudflare_workers_secret removed in v5. Migrate this secret to a 'secret_text' binding in cloudflare_workers_script. See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade#cloudflare_workers_secret
 }`,
 			},
 			{
@@ -103,28 +89,23 @@ resource "cloudflare_workers_secret" "secret2" {
   script_name = "worker-two"
   secret      = "second-secret"
 }`,
-				// Note: Block ordering is non-deterministic, test individually
-				Expected: `resource "cloudflare_workers_secret" "secret2" {
-  name         = "SECRET_TWO"
-  script_name  = "worker-two"
-  secret_text  = "second-secret"
-  # MIGRATION WARNING: MIGRATION REQUIRED: Add account_id attribute (required in v5)
+				// Note: Blocks are processed in order they appear in input
+				Expected: `resource "cloudflare_worker_secret" "secret1" {
+  name        = "SECRET_ONE"
+  script_name = "worker-one"
+  secret      = "first-secret"
+  # MIGRATION WARNING: cloudflare_workers_secret removed in v5. Migrate this secret to a 'secret_text' binding in cloudflare_workers_script. See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade#cloudflare_workers_secret
 }
 
-resource "cloudflare_workers_secret" "secret1" {
-  name         = "SECRET_ONE"
-  script_name  = "worker-one"
-  secret_text  = "first-secret"
-  # MIGRATION WARNING: MIGRATION REQUIRED: Add account_id attribute (required in v5)
-}
-
-moved {
-  from = cloudflare_worker_secret.secret1
-  to   = cloudflare_workers_secret.secret1
+resource "cloudflare_workers_secret" "secret2" {
+  name        = "SECRET_TWO"
+  script_name = "worker-two"
+  secret      = "second-secret"
+  # MIGRATION WARNING: cloudflare_workers_secret removed in v5. Migrate this secret to a 'secret_text' binding in cloudflare_workers_script. See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade#cloudflare_workers_secret
 }`,
 			},
 			{
-				Name: "plural_with_account_id_no_warning",
+				Name: "plural_with_account_id",
 				Input: `
 resource "cloudflare_workers_secret" "my_secret" {
   account_id  = "f037e56e89293a057740de681ac9abbe"
@@ -133,10 +114,11 @@ resource "cloudflare_workers_secret" "my_secret" {
   secret      = "super-secret-value"
 }`,
 				Expected: `resource "cloudflare_workers_secret" "my_secret" {
-  account_id   = "f037e56e89293a057740de681ac9abbe"
-  name         = "MY_SECRET"
-  script_name  = "my-worker"
-  secret_text  = "super-secret-value"
+  account_id  = "f037e56e89293a057740de681ac9abbe"
+  name        = "MY_SECRET"
+  script_name = "my-worker"
+  secret      = "super-secret-value"
+  # MIGRATION WARNING: cloudflare_workers_secret removed in v5. Migrate this secret to a 'secret_text' binding in cloudflare_workers_script. See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade#cloudflare_workers_secret
 }`,
 			},
 		}
