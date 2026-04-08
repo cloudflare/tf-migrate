@@ -1052,7 +1052,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 }
 
 func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []string) error {
-	// Collect resource renames and attribute renames from all migrators
+	// Collect resource renames, attribute renames, and computed attribute mappings from all migrators
 	providers := getProviders(cfg.resourcesToMigrate...)
 	migrators := providers.GetAllMigrators(cfg.sourceVersion, cfg.targetVersion, cfg.resourcesToMigrate...)
 
@@ -1060,6 +1060,8 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 	renames := make(map[string]string)
 	// Slice to store attribute renames
 	var attributeRenames []transform.AttributeRename
+	// Slice to store computed attribute mappings (for when both resource type AND attribute change)
+	var computedAttrMappings []transform.ComputedAttributeMapping
 
 	for _, migrator := range migrators {
 		// Check if this migrator implements ResourceRenamer interface
@@ -1096,16 +1098,31 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 				}
 			}
 		}
+
+		// Check if this migrator implements ComputedAttributeMapper interface
+		if computedAttrMapper, ok := migrator.(transform.ComputedAttributeMapper); ok {
+			mappings := computedAttrMapper.GetComputedAttributeMappings()
+			if len(mappings) > 0 {
+				computedAttrMappings = append(computedAttrMappings, mappings...)
+				for _, m := range mappings {
+					log.Debug("Collected computed attribute mapping",
+						"old_type", m.OldResourceType,
+						"old_attr", m.OldAttribute,
+						"new_type", m.NewResourceType,
+						"new_attr", m.NewAttribute)
+				}
+			}
+		}
 	}
 
 	// If no renames found, skip global postprocessing
-	if len(renames) == 0 && len(attributeRenames) == 0 {
+	if len(renames) == 0 && len(attributeRenames) == 0 && len(computedAttrMappings) == 0 {
 		log.Debug("No renames found, skipping global postprocessing")
 		return nil
 	}
 
 	if cfg.verbose {
-		totalUpdates := len(renames) + len(attributeRenames)
+		totalUpdates := len(renames) + len(attributeRenames) + len(computedAttrMappings)
 		fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
 
 		if len(renames) > 0 {
@@ -1121,6 +1138,13 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 				fmt.Printf("  %s.*.%s → %s.*.%s\n", rename.ResourceType, rename.OldAttribute, rename.ResourceType, rename.NewAttribute)
 			}
 		}
+
+		if len(computedAttrMappings) > 0 {
+			fmt.Println("\nComputed attribute mappings:")
+			for _, mapping := range computedAttrMappings {
+				fmt.Printf("  %s.*.%s → %s.*.%s\n", mapping.OldResourceType, mapping.OldAttribute, mapping.NewResourceType, mapping.NewAttribute)
+			}
+		}
 	}
 
 	// Apply renames to all files
@@ -1133,6 +1157,28 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 
 		contentStr := string(content)
 		modified := false
+
+		// Apply computed attribute mappings FIRST (for when both resource type AND attribute name change)
+		// Example: cloudflare_tunnel.<name>.cname → cloudflare_zero_trust_tunnel_cloudflared.<name>.name
+		// This must happen BEFORE resource type renames so the pattern matches the old resource type
+		for _, mapping := range computedAttrMappings {
+			// Build regex pattern to match old resource type + old attribute
+			// Pattern: cloudflare_tunnel\.([a-zA-Z0-9_-]+)\.cname
+			pattern := mapping.OldResourceType + `\.([a-zA-Z0-9_-]+)\.` + mapping.OldAttribute
+			replacement := mapping.NewResourceType + ".$1." + mapping.NewAttribute
+			newContent := regexReplaceSkippingMovedBlocks(contentStr, pattern, replacement)
+
+			if newContent != contentStr {
+				modified = true
+				contentStr = newContent
+				log.Debug("Updated computed attribute references",
+					"file", filepath.Base(outputPath),
+					"old_type", mapping.OldResourceType,
+					"old_attr", mapping.OldAttribute,
+					"new_type", mapping.NewResourceType,
+					"new_attr", mapping.NewAttribute)
+			}
+		}
 
 		// Apply all resource type renames, but skip content within moved blocks
 		for oldType, newType := range renames {
@@ -1174,7 +1220,7 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 	}
 
 	if cfg.verbose {
-		fmt.Printf("✓ Updated cross-file references (%d rule(s) applied)\n", len(renames)+len(attributeRenames))
+		fmt.Printf("✓ Updated cross-file references (%d rule(s) applied)\n", len(renames)+len(attributeRenames)+len(computedAttrMappings))
 	}
 	return nil
 }
