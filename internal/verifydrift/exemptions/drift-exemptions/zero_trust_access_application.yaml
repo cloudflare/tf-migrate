@@ -1,0 +1,26 @@
+# Drift Exemptions for zero_trust_access_application resource
+
+version: 1
+
+exemptions:
+  # Inline policy normalization in v5
+  # When reusable policies are referenced by ID in the application's policies array,
+  # the v5 provider normalizes them to only store 'id' and 'precedence'. The other
+  # fields (decision, name, include, exclude, require) are intentionally cleared
+  # because the full policy definition lives in the separate access_policy resource.
+  # This is expected behavior, not a migration issue.
+  - name: "inline_policy_normalization"
+    description: "Inline policies are normalized to only id/precedence when referencing reusable policies. The full policy definition is in the separate cloudflare_zero_trust_access_policy resource. This is expected v5 behavior."
+    resource_types:
+      - "cloudflare_zero_trust_access_application"
+    patterns:
+      - '- decision.*=.*-> null'
+      - '- exclude.*=.*-> null'
+      - '- include.*=.*-> null'
+      - '- name.*=.*-> null'
+      - '- require.*=.*-> null'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

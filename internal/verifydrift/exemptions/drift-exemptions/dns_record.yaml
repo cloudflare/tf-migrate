@@ -1,0 +1,21 @@
+# Drift Exemptions for dns_record resource
+
+version: 1
+
+exemptions:
+  # DNS record name case normalization in v5
+  # The v5 provider normalizes DNS record names to uppercase for certain
+  # record types (like CNAME/TXT with underscore prefixes). This causes
+  # a one-time drift where lowercase names become uppercase.
+  # This is expected provider behavior, not a migration issue.
+  - name: "dns_name_case_normalization"
+    description: "DNS record names are normalized to uppercase by the v5 provider for certain record types. This is expected provider behavior that resolves after apply."
+    resource_types:
+      - "cloudflare_dns_record"
+    patterns:
+      - '~ name.*=.*"_[a-f0-9]+.*" -> "_[A-F0-9]+'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false
