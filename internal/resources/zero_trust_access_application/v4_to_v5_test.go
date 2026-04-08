@@ -1726,6 +1726,250 @@ func TestSaasAppStripping(t *testing.T) {
   }
 }`,
 		},
+		// Type-gated attribute filtering tests
+		{
+			Name: "warp type — strip invalid http_only_cookie_attribute",
+			Input: `resource "cloudflare_zero_trust_access_application" "warp_enrollment" {
+  account_id = "abc123"
+  name       = "Warp Enrollment"
+  domain     = "warp.example.com"
+  type       = "warp"
+
+  http_only_cookie_attribute = false
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "warp_enrollment" {
+  account_id = "abc123"
+  name       = "Warp Enrollment"
+  domain     = "warp.example.com"
+  type       = "warp"
+}`,
+		},
+		{
+			Name: "warp type — strip invalid self_hosted_domains",
+			Input: `resource "cloudflare_zero_trust_access_application" "warp_enrollment" {
+  account_id = "abc123"
+  name       = "Warp Enrollment"
+  domain     = "warp.example.com"
+  type       = "warp"
+
+  self_hosted_domains = ["app1.example.com", "app2.example.com"]
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "warp_enrollment" {
+  account_id = "abc123"
+  name       = "Warp Enrollment"
+  domain     = "warp.example.com"
+  type       = "warp"
+}`,
+		},
+		{
+			Name: "warp type — strip invalid app_launcher_visible",
+			Input: `resource "cloudflare_zero_trust_access_application" "warp_enrollment" {
+  account_id = "abc123"
+  name       = "Warp Enrollment"
+  domain     = "warp.example.com"
+  type       = "warp"
+
+  app_launcher_visible = true
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "warp_enrollment" {
+  account_id = "abc123"
+  name       = "Warp Enrollment"
+  domain     = "warp.example.com"
+  type       = "warp"
+}`,
+		},
+		{
+			Name: "saas type — strip invalid http_only_cookie_attribute",
+			Input: `resource "cloudflare_zero_trust_access_application" "remote_mcp" {
+  account_id = "abc123"
+  name       = "Remote MCP"
+  domain     = "mcp.example.com"
+  type       = "saas"
+
+  http_only_cookie_attribute = false
+
+  saas_app = {
+    sp_entity_id         = "entity-id"
+    consumer_service_url = "https://example.com/sso"
+  }
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "remote_mcp" {
+  account_id = "abc123"
+  name       = "Remote MCP"
+  domain     = "mcp.example.com"
+  type       = "saas"
+
+  saas_app = {
+    sp_entity_id         = "entity-id"
+    consumer_service_url = "https://example.com/sso"
+  }
+}`,
+		},
+		{
+			Name: "saas type — strip invalid self_hosted_domains",
+			Input: `resource "cloudflare_zero_trust_access_application" "remote_mcp" {
+  account_id = "abc123"
+  name       = "Remote MCP"
+  domain     = "mcp.example.com"
+  type       = "saas"
+
+  self_hosted_domains = ["app.example.com"]
+
+  saas_app = {
+    sp_entity_id         = "entity-id"
+    consumer_service_url = "https://example.com/sso"
+  }
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "remote_mcp" {
+  account_id = "abc123"
+  name       = "Remote MCP"
+  domain     = "mcp.example.com"
+  type       = "saas"
+
+  saas_app = {
+    sp_entity_id         = "entity-id"
+    consumer_service_url = "https://example.com/sso"
+  }
+}`,
+		},
+		{
+			Name: "self_hosted type — preserve valid http_only_cookie_attribute",
+			Input: `resource "cloudflare_zero_trust_access_application" "self_hosted_app" {
+  account_id = "abc123"
+  name       = "Self Hosted App"
+  domain     = "app.example.com"
+  type       = "self_hosted"
+
+  http_only_cookie_attribute = false
+  self_hosted_domains        = ["app.example.com", "app2.example.com"]
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "self_hosted_app" {
+  account_id = "abc123"
+  name       = "Self Hosted App"
+  domain     = "app.example.com"
+  type       = "self_hosted"
+
+  http_only_cookie_attribute = false
+  self_hosted_domains        = ["app.example.com", "app2.example.com"]
+}`,
+		},
+		{
+			Name: "self_hosted type — cors_headers preserved",
+			Input: `resource "cloudflare_zero_trust_access_application" "self_hosted_app" {
+  account_id = "abc123"
+  name       = "Self Hosted App"
+  domain     = "app.example.com"
+  type       = "self_hosted"
+
+  cors_headers = {
+    allow_credentials = true
+    allow_headers     = ["X-Custom-Header"]
+    max_age           = 86400
+  }
+  http_only_cookie_attribute = "false"
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "self_hosted_app" {
+  account_id = "abc123"
+  name       = "Self Hosted App"
+  domain     = "app.example.com"
+  type       = "self_hosted"
+
+  cors_headers = {
+    allow_credentials = true
+    allow_headers     = ["X-Custom-Header"]
+    max_age           = 86400
+  }
+  http_only_cookie_attribute = "false"
+}`,
+		},
+		{
+			Name: "app_launcher type — landing_page_design preserved",
+			Input: `resource "cloudflare_zero_trust_access_application" "app_launcher" {
+  account_id = "abc123"
+  name       = "App Launcher"
+  domain     = "launcher.example.com"
+  type       = "app_launcher"
+
+  landing_page_design = {
+    title       = "My App Launcher"
+    description = "Access your applications"
+  }
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "app_launcher" {
+  account_id = "abc123"
+  name       = "App Launcher"
+  domain     = "launcher.example.com"
+  type       = "app_launcher"
+
+  landing_page_design = {
+    title       = "My App Launcher"
+    description = "Access your applications"
+  }
+}`,
+		},
+		{
+			Name: "self_hosted type — landing_page_design removed",
+			Input: `resource "cloudflare_zero_trust_access_application" "self_hosted_app" {
+  account_id = "abc123"
+  name       = "Self Hosted App"
+  domain     = "app.example.com"
+  type       = "self_hosted"
+
+  landing_page_design = {
+    title = "Wrong Place"
+  }
+  http_only_cookie_attribute = "false"
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "self_hosted_app" {
+  account_id = "abc123"
+  name       = "Self Hosted App"
+  domain     = "app.example.com"
+  type       = "self_hosted"
+
+  http_only_cookie_attribute = "false"
+}`,
+		},
+		{
+			Name: "app_launcher type — cors_headers removed",
+			Input: `resource "cloudflare_zero_trust_access_application" "app_launcher" {
+  account_id = "abc123"
+  name       = "App Launcher"
+  domain     = "launcher.example.com"
+  type       = "app_launcher"
+
+  cors_headers = {
+    allow_credentials = true
+  }
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "app_launcher" {
+  account_id = "abc123"
+  name       = "App Launcher"
+  domain     = "launcher.example.com"
+  type       = "app_launcher"
+}`,
+		},
+		{
+			Name: "variable type reference — warning comment added",
+			Input: `resource "cloudflare_zero_trust_access_application" "dynamic_app" {
+  account_id = "abc123"
+  name       = "Dynamic App"
+  domain     = "app.example.com"
+  type       = var.app_type
+
+  http_only_cookie_attribute = false
+  self_hosted_domains        = ["app.example.com"]
+}`,
+			Expected: `resource "cloudflare_zero_trust_access_application" "dynamic_app" {
+  account_id = "abc123"
+  name       = "Dynamic App"
+  domain     = "app.example.com"
+  type       = var.app_type
+
+  # MIGRATION WARNING: Type-gated attributes detected but type could not be determined statically. Please verify that http_only_cookie_attribute, self_hosted_domains, app_launcher_visible, cors_headers, and landing_page_design are valid for your application type.
+  http_only_cookie_attribute = false
+  self_hosted_domains        = ["app.example.com"]
+}`,
+		},
 	}
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
