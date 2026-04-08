@@ -521,14 +521,12 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 	fmt.Println()
 	step++
 
-	// Note about provider version and MoveState support
-	fmt.Printf("  %d. Verify the provider version supports MoveState for your resources.\n", step)
-	fmt.Printf("     tf-migrate set the version to %s. If you see errors about\n", targetVersion)
-	fmt.Println("     'Missing resource schema' or 'no schema available' during plan/apply,")
-	fmt.Println("     try upgrading to the latest beta release:")
-	fmt.Println("       https://github.com/cloudflare/terraform-provider-cloudflare/releases")
-	fmt.Println()
-	step++
+	// Provider version note (verbose only)
+	if cfg.verbose {
+		fmt.Printf("  %d. Provider version set to %s (latest available)\n", step, targetVersion)
+		fmt.Println()
+		step++
+	}
 
 	fmt.Printf("  %d. Commit and push all changed files:\n", step)
 	fmt.Println("       git add .")
