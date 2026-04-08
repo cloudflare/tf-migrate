@@ -68,13 +68,18 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// V4 has type default = "self_hosted", default to this value if type is not specified in V4 config
 	tfhcl.EnsureAttribute(body, "type", "self_hosted")
 
+	// Get the application type for type-gated attribute filtering
+	appType := tfhcl.ExtractStringFromAttribute(body.GetAttribute("type"))
+
 	// V5 changed the default for http_only_cookie_attribute from false to true
 	// Explicitly set to false to maintain v4 behavior when not specified
 	// Only applicable for types: self_hosted, ssh, vnc, rdp, mcp_portal
-	appType := tfhcl.ExtractStringFromAttribute(body.GetAttribute("type"))
 	if appType == "self_hosted" || appType == "ssh" || appType == "vnc" || appType == "rdp" || appType == "mcp_portal" {
 		tfhcl.EnsureAttribute(body, "http_only_cookie_attribute", "false")
 	}
+
+	// Strip type-gated attributes that are invalid for the application type
+	m.stripInvalidTypeGatedAttributes(body, appType)
 
 	// Strip saas_app block only when we can confirm the type is a known non-SaaS literal.
 	// Using an allowlist (rather than a denylist) ensures we never strip saas_app when
@@ -82,15 +87,15 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// ExtractStringFromAttribute returns a non-empty identifier that is not a saas type
 	// but also not a known concrete non-saas type.
 	nonSaasLiterals := map[string]bool{
-		"self_hosted": true,
-		"ssh":         true,
-		"vnc":         true,
-		"rdp":         true,
-		"bookmark":    true,
+		"self_hosted":  true,
+		"ssh":          true,
+		"vnc":          true,
+		"rdp":          true,
+		"bookmark":     true,
 		"app_launcher": true,
-		"warp":        true,
-		"biso":        true,
-		"mcp_portal":  true,
+		"warp":         true,
+		"biso":         true,
+		"mcp_portal":   true,
 	}
 	if nonSaasLiterals[appType] {
 		tfhcl.RemoveBlocksByType(body, "saas_app")
@@ -140,6 +145,70 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		Blocks:         blocks,
 		RemoveOriginal: movedBlock != nil, // Remove original if we generated a moved block
 	}, nil
+}
+
+// stripInvalidTypeGatedAttributes removes attributes that are not valid for the application type.
+// Certain attributes are only valid for specific application types in v5.
+func (m *V4ToV5Migrator) stripInvalidTypeGatedAttributes(body *hclwrite.Body, appType string) {
+	// Define which attributes are valid for which types
+	typeGatedAttrs := map[string][]string{
+		"http_only_cookie_attribute": {"self_hosted", "ssh", "vnc", "rdp", "mcp_portal"},
+		"self_hosted_domains":        {"self_hosted", "ssh", "vnc", "rdp", "mcp_portal"},
+		"app_launcher_visible":       {"self_hosted", "ssh", "vnc", "rdp", "saas", "bookmark"},
+		"cors_headers":               {"self_hosted"},
+		"landing_page_design":        {"app_launcher"},
+	}
+
+	// Known application types for validation
+	knownTypes := map[string]bool{
+		"self_hosted":  true,
+		"ssh":          true,
+		"vnc":          true,
+		"rdp":          true,
+		"bookmark":     true,
+		"app_launcher": true,
+		"warp":         true,
+		"biso":         true,
+		"saas":         true,
+		"mcp_portal":   true,
+	}
+
+	// If we can't determine the type (variable reference, etc.), add a warning comment
+	if appType == "" || !knownTypes[appType] {
+		// Check if any type-gated attributes exist
+		hasGatedAttrs := false
+		for attr := range typeGatedAttrs {
+			if body.GetAttribute(attr) != nil {
+				hasGatedAttrs = true
+				break
+			}
+		}
+		if hasGatedAttrs {
+			tfhcl.AppendWarningComment(body, "Type-gated attributes detected but type could not be determined statically. Please verify that http_only_cookie_attribute, self_hosted_domains, app_launcher_visible, cors_headers, and landing_page_design are valid for your application type.")
+		}
+		return
+	}
+
+	// For known types, strip invalid attributes
+	for attr, validTypes := range typeGatedAttrs {
+		if body.GetAttribute(attr) == nil {
+			continue
+		}
+
+		// Check if current type is in valid types list
+		isValid := false
+		for _, validType := range validTypes {
+			if appType == validType {
+				isValid = true
+				break
+			}
+		}
+
+		// Remove attribute if not valid for this type
+		if !isValid {
+			tfhcl.RemoveAttributes(body, attr)
+		}
+	}
 }
 
 // removeDefaultValueAttributes removes attributes that have default/empty values.
