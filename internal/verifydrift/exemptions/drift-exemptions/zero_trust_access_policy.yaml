@@ -3,19 +3,17 @@
 version: 1
 
 exemptions:
-  # session_duration was a valid v4 policy attribute but is removed in v5.
-  # tf-migrate correctly drops it from the migrated config. The API then
-  # normalizes it to the default "24h". If the v4 config used a non-default
-  # value (e.g. "18h"), the first v5 plan shows a change back to "24h".
-  # This is a one-time drift that resolves after the first terraform apply.
+  # NOTE: session_duration_normalization exemption removed as the bug is fixed.
+  # tf-migrate now correctly preserves session_duration during migration.
+  # The exemption is kept here (disabled) for historical reference.
   - name: "session_duration_normalization"
-    description: "session_duration was removed from v5 access policies. The API normalizes it to '24h' (default). One-time drift that resolves after apply."
+    description: "DEPRECATED: tf-migrate now preserves session_duration. This exemption is no longer needed."
     resource_types:
       - "cloudflare_zero_trust_access_policy"
     patterns:
       - '~ session_duration\s*='
       - 'session_duration.*->.*"24h"'
-    enabled: true
+    enabled: false
 
 settings:
   apply_exemptions: true

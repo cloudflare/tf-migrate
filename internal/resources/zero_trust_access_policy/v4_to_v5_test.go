@@ -42,7 +42,7 @@ moved {
 }`,
 		},
 		{
-			Name: "policy with deprecated fields removed (zone_id, precedence, session_duration)",
+			Name: "policy with deprecated fields removed (zone_id, precedence), session_duration preserved",
 			Input: `
 resource "cloudflare_access_policy" "test" {
   account_id       = "account-123"
@@ -58,9 +58,10 @@ resource "cloudflare_access_policy" "test" {
 }`,
 			Expected: `
 resource "cloudflare_zero_trust_access_policy" "test" {
-  account_id = "account-123"
-  name       = "Test Policy"
-  decision   = "allow"
+  account_id       = "account-123"
+  name             = "Test Policy"
+  decision         = "allow"
+  session_duration = "24h"
 
   include = [{ everyone = {} }]
 }

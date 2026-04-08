@@ -104,9 +104,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// If already v5-named: no rename, no moved block — just apply attribute conversions below.
 
 	// 2. Simple field operations
-	// Remove deprecated fields
-	// session_duration is not valid for policies (only for applications)
-	tfhcl.RemoveAttributes(body, "application_id", "precedence", "zone_id", "session_duration")
+	// Remove deprecated fields that are not valid in v5
+	tfhcl.RemoveAttributes(body, "application_id", "precedence", "zone_id")
 
 	// Convert approval_group block to approval_groups attribute array
 	// In v4: approval_group { approvals_needed = 1 }

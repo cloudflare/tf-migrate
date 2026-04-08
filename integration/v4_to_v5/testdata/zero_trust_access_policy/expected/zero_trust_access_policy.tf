@@ -124,9 +124,10 @@ resource "cloudflare_zero_trust_access_policy" "bugs2006_everyone" {
 
 # Basic test cases
 resource "cloudflare_zero_trust_access_policy" "example" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-example-policy"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-example-policy"
+  decision         = "allow"
+  session_duration = "24h"
 
 
   approval_groups = [{
@@ -142,9 +143,10 @@ moved {
 }
 
 resource "cloudflare_zero_trust_access_policy" "complex" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-complex-policy"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-complex-policy"
+  decision         = "allow"
+  session_duration = "24h"
 
 
 
@@ -178,9 +180,10 @@ resource "cloudflare_zero_trust_access_policy" "map_example" {
     }
   }
 
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-map-${each.key}-policy"
-  decision   = each.value.decision
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-map-${each.key}-policy"
+  decision         = each.value.decision
+  session_duration = "24h"
 
   include = [{ email = { email = "@example.com" } }]
 }
@@ -194,9 +197,10 @@ moved {
 resource "cloudflare_zero_trust_access_policy" "set_example" {
   for_each = toset(["alpha", "beta", "gamma", "delta", "epsilon"])
 
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-set-${each.key}"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-set-${each.key}"
+  decision         = "allow"
+  session_duration = "24h"
 
   include = [{ email = { email = "@example.com" } }]
 }
@@ -210,9 +214,10 @@ moved {
 resource "cloudflare_zero_trust_access_policy" "counted" {
   count = 3
 
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-counted-${count.index}"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-counted-${count.index}"
+  decision         = "allow"
+  session_duration = "24h"
 
   include = [{ ip = { ip = "10.0.${count.index}.0/24" } }]
 }
@@ -226,9 +231,10 @@ moved {
 resource "cloudflare_zero_trust_access_policy" "conditional_enabled" {
   count = local.enable_test ? 1 : 0
 
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-conditional-enabled"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-conditional-enabled"
+  decision         = "allow"
+  session_duration = "24h"
 
   include = [{ everyone = {} }]
 }
@@ -241,9 +247,10 @@ moved {
 resource "cloudflare_zero_trust_access_policy" "conditional_disabled" {
   count = local.enable_demo ? 1 : 0
 
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-conditional-disabled"
-  decision   = "deny"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-conditional-disabled"
+  decision         = "deny"
+  session_duration = "24h"
 
   include = [{ everyone = {} }]
 }
@@ -255,9 +262,10 @@ moved {
 
 # Pattern Group 6: Terraform Functions
 resource "cloudflare_zero_trust_access_policy" "with_functions" {
-  account_id = var.cloudflare_account_id
-  name       = join("-", [local.name_prefix, "functions", "test"])
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = join("-", [local.name_prefix, "functions", "test"])
+  decision         = "allow"
+  session_duration = "24h"
 
   include = [{ email = { email = "function1@example.com" } },
   { email = { email = "function2@example.com" } }]
@@ -270,9 +278,10 @@ moved {
 
 # Pattern Group 7: Lifecycle Meta-Arguments
 resource "cloudflare_zero_trust_access_policy" "with_lifecycle" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-lifecycle-test"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-lifecycle-test"
+  decision         = "allow"
+  session_duration = "24h"
 
   lifecycle {
     create_before_destroy = true
@@ -288,9 +297,10 @@ moved {
 }
 
 resource "cloudflare_zero_trust_access_policy" "with_prevent_destroy" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-prevent-destroy"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-prevent-destroy"
+  decision         = "allow"
+  session_duration = "24h"
 
   lifecycle {
     prevent_destroy = false
@@ -306,9 +316,10 @@ moved {
 
 # Minimal resource (only required fields)
 resource "cloudflare_zero_trust_access_policy" "minimal" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-minimal"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-minimal"
+  decision         = "allow"
+  session_duration = "24h"
 
   include = [{ everyone = {} }]
 }
@@ -320,9 +331,10 @@ moved {
 
 # Maximal resource (all optional fields populated)
 resource "cloudflare_zero_trust_access_policy" "maximal" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-maximal"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-maximal"
+  decision         = "allow"
+  session_duration = "24h"
 
 
 
@@ -349,9 +361,10 @@ moved {
 
 # Policy with common_name
 resource "cloudflare_zero_trust_access_policy" "with_common_name" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-common-name"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-common-name"
+  decision         = "allow"
+  session_duration = "24h"
 
   include = [{ common_name = { common_name = "device1.example.com" } }]
 }
@@ -363,9 +376,10 @@ moved {
 
 # Policy with common_names overflow array
 resource "cloudflare_zero_trust_access_policy" "with_common_names" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-common-names"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-common-names"
+  decision         = "allow"
+  session_duration = "24h"
 
   include = [{ common_name = { common_name = "device2.example.com" } },
   { common_name = { common_name = "device3.example.com" } }]
@@ -378,9 +392,10 @@ moved {
 
 # Policy with connection_rules ssh structure (BUGS-2012)
 resource "cloudflare_zero_trust_access_policy" "with_connection_rules" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-connection-rules"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-connection-rules"
+  decision         = "allow"
+  session_duration = "24h"
 
 
   connection_rules = {
@@ -399,9 +414,10 @@ moved {
 
 # Policy with auth_method
 resource "cloudflare_zero_trust_access_policy" "with_auth_method" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-auth-method"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-auth-method"
+  decision         = "allow"
+  session_duration = "24h"
 
   include = [{ auth_method = { auth_method = "swk" } }]
 }
@@ -413,9 +429,10 @@ moved {
 
 # Policy with login_method
 resource "cloudflare_zero_trust_access_policy" "with_login_method" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-login-method"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-login-method"
+  decision         = "allow"
+  session_duration = "24h"
 
   include = [{ login_method = { id = "otp" } },
   { login_method = { id = "warp" } }]
@@ -428,9 +445,10 @@ moved {
 
 # Policy with any_valid_service_token
 resource "cloudflare_zero_trust_access_policy" "with_service_token" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-service-token"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-service-token"
+  decision         = "allow"
+  session_duration = "24h"
 
   include = [{ any_valid_service_token = {} }]
 }
@@ -442,9 +460,10 @@ moved {
 
 # Deny policy
 resource "cloudflare_zero_trust_access_policy" "deny_policy" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-deny"
-  decision   = "deny"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-deny"
+  decision         = "deny"
+  session_duration = "24h"
 
   include = [{ ip = { ip = "198.51.100.0/24" } }]
 }
@@ -456,9 +475,10 @@ moved {
 
 # Bypass policy
 resource "cloudflare_zero_trust_access_policy" "bypass_policy" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-bypass"
-  decision   = "bypass"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-bypass"
+  decision         = "bypass"
+  session_duration = "24h"
 
   include = [{ ip = { ip = "192.0.2.0/24" } }]
 }
@@ -471,9 +491,10 @@ moved {
 # TKT-002: include/exclude/require block → attribute list conversion
 # TKT-005: email_domain from list to {domain = ...} object
 resource "cloudflare_zero_trust_access_policy" "email_domain_policy" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-email-domain"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-email-domain"
+  decision         = "allow"
+  session_duration = "18h"
 
   include = [{ email_domain = { domain = "cloudflare.com" } }]
 }
@@ -485,9 +506,10 @@ moved {
 
 # TKT-006: any_valid_service_token from bool to empty object {}
 resource "cloudflare_zero_trust_access_policy" "any_service_token_policy" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-any-service-token"
-  decision   = "non_identity"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-any-service-token"
+  decision         = "non_identity"
+  session_duration = "18h"
 
   include = [{ any_valid_service_token = {} }]
 }
@@ -500,9 +522,10 @@ moved {
 # TKT-006: any_valid_service_token = false should be omitted
 # decision = "allow" because non_identity + email is invalid in the API
 resource "cloudflare_zero_trust_access_policy" "no_service_token_policy" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-no-service-token"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-no-service-token"
+  decision         = "allow"
+  session_duration = "18h"
 
   include = [{ email_domain = { domain = "cloudflare.com" } }]
 }
@@ -525,9 +548,10 @@ moved {
 }
 
 resource "cloudflare_zero_trust_access_policy" "service_token_policy" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-service-token-ref"
-  decision   = "non_identity"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-service-token-ref"
+  decision         = "non_identity"
+  session_duration = "18h"
 
   include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token.id } }]
 }
@@ -549,9 +573,10 @@ moved {
 }
 
 resource "cloudflare_zero_trust_access_policy" "multi_service_token_policy" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-multi-service-token"
-  decision   = "non_identity"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-multi-service-token"
+  decision         = "non_identity"
+  session_duration = "18h"
 
   include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token.id } },
   { service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token_2.id } }]
@@ -564,9 +589,10 @@ moved {
 
 # TKT-005: multiple email domains — each becomes a separate include entry
 resource "cloudflare_zero_trust_access_policy" "multi_email_domain_policy" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-multi-email-domain"
-  decision   = "allow"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-multi-email-domain"
+  decision         = "allow"
+  session_duration = "18h"
 
   include = [{ email_domain = { domain = "cloudflare.com" } },
   { email_domain = { domain = "example.com" } }]
@@ -580,9 +606,10 @@ moved {
 # TKT-002 + TKT-004 + TKT-005 + TKT-006: Combined real-world policy
 # (mirrors research team's actual access_policies.tf)
 resource "cloudflare_zero_trust_access_policy" "combined_research_team_policy" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-combined"
-  decision   = "non_identity"
+  account_id       = var.cloudflare_account_id
+  name             = "${local.name_prefix}-combined"
+  decision         = "non_identity"
+  session_duration = "18h"
 
   include = [{ service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token.id } },
   { service_token = { token_id = cloudflare_zero_trust_access_service_token.test_token_2.id } }]
