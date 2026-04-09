@@ -1138,6 +1138,13 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		return nil
 	}
 
+	// Track resources that were intentionally converted to removed {} blocks.
+	// References to these addresses must NOT be rewritten to renamed types.
+	removedRefsByType, err := collectRemovedRefsByType(outputPaths)
+	if err != nil {
+		log.Warn("Failed to collect removed block references for postprocessing", "error", err)
+	}
+
 	if cfg.verbose {
 		totalUpdates := len(renames) + len(attributeRenames) + len(computedAttrMappings)
 		fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
@@ -1199,7 +1206,7 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 
 		// Apply all resource type renames, but skip content within moved blocks
 		for oldType, newType := range renames {
-			newContent := replaceSkippingMovedBlocks(contentStr, oldType+".", newType+".")
+			newContent := replaceResourceTypeRefsSkippingMovedBlocks(contentStr, oldType, newType, removedRefsByType[oldType])
 			if newContent != contentStr {
 				modified = true
 				contentStr = newContent
@@ -1240,6 +1247,68 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		fmt.Printf("✓ Updated cross-file references (%d rule(s) applied)\n", len(renames)+len(attributeRenames)+len(computedAttrMappings))
 	}
 	return nil
+}
+
+// collectRemovedRefsByType scans transformed files and returns addresses found in
+// removed { from = <type>.<name> } blocks as a map[type]set(name).
+func collectRemovedRefsByType(outputPaths []string) (map[string]map[string]struct{}, error) {
+	removed := make(map[string]map[string]struct{})
+
+	for _, outputPath := range outputPaths {
+		content, err := os.ReadFile(outputPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed reading %s: %w", outputPath, err)
+		}
+
+		parsed, diags := hclwrite.ParseConfig(content, filepath.Base(outputPath), hcl.InitialPos)
+		if diags.HasErrors() {
+			continue
+		}
+
+		for _, block := range parsed.Body().Blocks() {
+			if block.Type() != "removed" {
+				continue
+			}
+			fromAttr := block.Body().GetAttribute("from")
+			if fromAttr == nil {
+				continue
+			}
+
+			from := extractTraversalString(fromAttr)
+			parts := strings.SplitN(from, ".", 2)
+			if len(parts) != 2 {
+				continue
+			}
+
+			resourceType, resourceName := parts[0], parts[1]
+			if _, ok := removed[resourceType]; !ok {
+				removed[resourceType] = make(map[string]struct{})
+			}
+			removed[resourceType][resourceName] = struct{}{}
+		}
+	}
+
+	return removed, nil
+}
+
+// replaceResourceTypeRefsSkippingMovedBlocks rewrites <oldType>.<name> to
+// <newType>.<name>, except when <name> is in excludedNames. Replacements are
+// skipped inside moved/removed blocks.
+func replaceResourceTypeRefsSkippingMovedBlocks(content, oldType, newType string, excludedNames map[string]struct{}) string {
+	pattern := regexp.MustCompile(regexp.QuoteMeta(oldType) + `\.([a-zA-Z0-9_-]+)`)
+	return regexReplaceFuncSkippingMovedBlocks(content, pattern, func(match string) string {
+		sub := pattern.FindStringSubmatch(match)
+		if len(sub) != 2 {
+			return match
+		}
+		name := sub[1]
+		if excludedNames != nil {
+			if _, skip := excludedNames[name]; skip {
+				return match
+			}
+		}
+		return newType + "." + name
+	})
 }
 
 // findProtectedBlockRanges returns the [start, end) byte ranges of all moved and
@@ -1322,6 +1391,25 @@ func regexReplaceSkippingMovedBlocks(content, pattern, replacement string) strin
 		lastEnd = r[1]
 	}
 	result.WriteString(re.ReplaceAllString(content[lastEnd:], replacement))
+	return result.String()
+}
+
+// regexReplaceFuncSkippingMovedBlocks replaces regex matches in content with a
+// callback, skipping moved and removed blocks.
+func regexReplaceFuncSkippingMovedBlocks(content string, re *regexp.Regexp, replacer func(string) string) string {
+	protected := findProtectedBlockRanges(content)
+	if len(protected) == 0 {
+		return re.ReplaceAllStringFunc(content, replacer)
+	}
+
+	var result strings.Builder
+	lastEnd := 0
+	for _, r := range protected {
+		result.WriteString(re.ReplaceAllStringFunc(content[lastEnd:r[0]], replacer))
+		result.WriteString(content[r[0]:r[1]])
+		lastEnd = r[1]
+	}
+	result.WriteString(re.ReplaceAllStringFunc(content[lastEnd:], replacer))
 	return result.String()
 }
 
