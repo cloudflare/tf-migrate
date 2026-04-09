@@ -48,12 +48,6 @@ func (m *V4ToV5Migrator) GetComputedAttributeMappings() []transform.ComputedAttr
 	return []transform.ComputedAttributeMapping{
 		{
 			OldResourceType: "cloudflare_tunnel",
-			OldAttribute:    "cname",
-			NewResourceType: "cloudflare_zero_trust_tunnel_cloudflared",
-			NewAttribute:    "name",
-		},
-		{
-			OldResourceType: "cloudflare_tunnel",
 			OldAttribute:    "secret",
 			NewResourceType: "cloudflare_zero_trust_tunnel_cloudflared",
 			NewAttribute:    "tunnel_secret",
