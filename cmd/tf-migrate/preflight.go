@@ -290,31 +290,48 @@ func printPreflightReport(report *preflightReport, cfg config) {
 		}
 	}
 
-	fmt.Println()
-	fmt.Println("Pre-migration scan:")
-	fmt.Printf("  %d Cloudflare resource(s) found\n", len(report.Resources))
-	fmt.Println()
-
-	if len(renamed) > 0 {
-		fmt.Printf("  Resources with type rename + moved block (%d):\n", len(renamed))
-		for _, r := range renamed {
-			fmt.Printf("    %s.%s → %s.%s\n", r.OldType, r.ResourceName, r.NewType, r.ResourceName)
+	// Print warnings ALWAYS (these are important for all users)
+	if len(report.Warnings) > 0 {
+		fmt.Println()
+		fmt.Println("⚠ Warnings:")
+		for _, w := range report.Warnings {
+			for _, line := range strings.Split(w, "\n") {
+				fmt.Printf("  %s\n", line)
+			}
 		}
-		fmt.Println()
-		fmt.Println("  IMPORTANT: Moved blocks require the v5 provider to support MoveState for")
-		fmt.Println("  each resource. Ensure you use the provider version set by tf-migrate")
-		fmt.Println("  (including beta releases if applicable).")
-		fmt.Println()
 	}
 
-	if len(autoMigrated) > 0 && cfg.verbose {
-		fmt.Printf("  Resources with config-only changes (%d):\n", len(autoMigrated))
-		for _, r := range autoMigrated {
-			fmt.Printf("    %s.%s\n", r.ResourceType, r.ResourceName)
-		}
+	// Only show detailed scan output in verbose mode or if there are issues (manual/unsupported)
+	hasIssues := len(manual) > 0 || len(unsupported) > 0
+
+	if cfg.verbose || hasIssues {
 		fmt.Println()
-	} else if len(autoMigrated) > 0 {
-		fmt.Printf("  %d resource(s) with config-only changes (no rename)\n", len(autoMigrated))
+		fmt.Println("Pre-migration scan:")
+		fmt.Printf("  %d Cloudflare resource(s) found\n", len(report.Resources))
+		fmt.Println()
+
+		if len(renamed) > 0 {
+			fmt.Printf("  Resources with type rename + moved block (%d):\n", len(renamed))
+			for _, r := range renamed {
+				fmt.Printf("    %s.%s → %s.%s\n", r.OldType, r.ResourceName, r.NewType, r.ResourceName)
+			}
+			fmt.Println()
+		}
+
+		if len(autoMigrated) > 0 && cfg.verbose {
+			fmt.Printf("  Resources with config-only changes (%d):\n", len(autoMigrated))
+			for _, r := range autoMigrated {
+				fmt.Printf("    %s.%s\n", r.ResourceType, r.ResourceName)
+			}
+			fmt.Println()
+		} else if len(autoMigrated) > 0 && hasIssues {
+			fmt.Printf("  %d resource(s) with config-only changes (no rename)\n", len(autoMigrated))
+			fmt.Println()
+		}
+	} else {
+		// Minimal output in non-verbose mode with no issues
+		fmt.Printf("  Migrated %d resources (%d renamed, %d config-only)\n",
+			len(report.Resources), len(renamed), len(autoMigrated))
 	}
 
 	if len(manual) > 0 {
@@ -341,16 +358,5 @@ func printPreflightReport(report *preflightReport, cfg config) {
 			fmt.Printf("    %s: %s.%s → %s.%s\n", mb.File, mb.FromType, mb.FromName, mb.ToType, mb.ToName)
 		}
 		fmt.Println()
-	}
-
-	// Print warnings
-	if len(report.Warnings) > 0 {
-		fmt.Println("  ⚠ Warnings:")
-		for _, w := range report.Warnings {
-			for _, line := range strings.Split(w, "\n") {
-				fmt.Printf("    %s\n", line)
-			}
-			fmt.Println()
-		}
 	}
 }

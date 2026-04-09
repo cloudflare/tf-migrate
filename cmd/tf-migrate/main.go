@@ -170,7 +170,7 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 
 	cmd.Flags().StringVar(&cfg.outputDir, "output-dir", "", "Output directory for migrated configuration files (default: in-place)")
 	cmd.Flags().BoolVar(&cfg.backup, "backup", true, "Create backup of original files before migration")
-	cmd.Flags().BoolVar(&cfg.recursive, "recursive", false, "Recursively process subdirectories (useful for module structures)")
+	cmd.Flags().BoolVar(&cfg.recursive, "recursive", true, "Recursively process subdirectories (useful for module structures)")
 	cmd.Flags().StringVar(&cfg.targetProviderVersion, "target-provider-version", "", "Explicit provider version to set in required_providers (e.g. 5.19.0-beta.3); skips GitHub API lookup")
 
 	// --no-backup is a convenience alias for --backup=false
@@ -415,6 +415,9 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 		return err
 	}
 
+	// Track which directories had their provider version updated
+	updatedDirs := make(map[string]bool)
+
 	for _, file := range files {
 		content, err := os.ReadFile(file)
 		if err != nil {
@@ -478,7 +481,11 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 				}
 			}
 		}
-		_ = updated
+		if updated {
+			// Track the directory containing this file
+			dir := filepath.Dir(file)
+			updatedDirs[dir] = true
+		}
 	}
 
 	fmt.Println()
@@ -488,16 +495,6 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 	fmt.Println()
 
 	step := 1
-
-	// Remind users to apply with v4 first if they haven't already.
-	// This normalizes state for resources like cloudflare_ruleset where the v5
-	// provider's UpgradeResourceState has edge cases with older v4 state formats.
-	fmt.Printf("  %d. BEFORE upgrading: ensure you have run 'terraform apply' with\n", step)
-	fmt.Printf("     provider v%s on your current v4 config to normalize state.\n", minimumProviderVersion)
-	fmt.Println("     This prevents state deserialization errors during the v5 upgrade")
-	fmt.Println("     (especially for resources like cloudflare_ruleset).")
-	fmt.Println()
-	step++
 
 	// If there were any actionable warnings (DiagWarning), remind the user
 	// to address them before proceeding.
@@ -515,20 +512,40 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 		step++
 	}
 
-	fmt.Printf("  %d. Regenerate the lock file locally:\n", step)
-	fmt.Printf("       cd %s\n", cfg.configDir)
-	fmt.Println("       terraform init -upgrade -backend=false")
+	fmt.Printf("  %d. Regenerate the lock file locally in each directory:\n", step)
+	if len(updatedDirs) <= 1 {
+		// Single directory (or none) - use the original format
+		fmt.Printf("       cd %s\n", cfg.configDir)
+		fmt.Println("       terraform init -upgrade -backend=false")
+	} else {
+		// Multiple directories with provider updates
+		// Sort for consistent output
+		var sortedDirs []string
+		for dir := range updatedDirs {
+			sortedDirs = append(sortedDirs, dir)
+		}
+		// Sort by length then lexically for consistent ordering
+		for i := 0; i < len(sortedDirs)-1; i++ {
+			for j := i + 1; j < len(sortedDirs); j++ {
+				if len(sortedDirs[i]) > len(sortedDirs[j]) ||
+					(len(sortedDirs[i]) == len(sortedDirs[j]) && sortedDirs[i] > sortedDirs[j]) {
+					sortedDirs[i], sortedDirs[j] = sortedDirs[j], sortedDirs[i]
+				}
+			}
+		}
+		for _, dir := range sortedDirs {
+			fmt.Printf("       cd %s && terraform init -upgrade -backend=false\n", dir)
+		}
+	}
 	fmt.Println()
 	step++
 
-	// Note about provider version and MoveState support
-	fmt.Printf("  %d. Verify the provider version supports MoveState for your resources.\n", step)
-	fmt.Printf("     tf-migrate set the version to %s. If you see errors about\n", targetVersion)
-	fmt.Println("     'Missing resource schema' or 'no schema available' during plan/apply,")
-	fmt.Println("     try upgrading to the latest beta release:")
-	fmt.Println("       https://github.com/cloudflare/terraform-provider-cloudflare/releases")
-	fmt.Println()
-	step++
+	// Provider version note (verbose only)
+	if cfg.verbose {
+		fmt.Printf("  %d. Provider version set to %s (latest available)\n", step, targetVersion)
+		fmt.Println()
+		step++
+	}
 
 	fmt.Printf("  %d. Commit and push all changed files:\n", step)
 	fmt.Println("       git add .")
@@ -823,8 +840,8 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 	fmt.Println("Next steps:")
 	fmt.Println()
 	fmt.Println("  1. Commit and push the modified .tf files.")
-	fmt.Println("     Your CI/Atlantis pipeline will run terraform plan and apply using the")
-	fmt.Println("     CURRENT (v4) provider. Terraform will process the removed {} blocks")
+	fmt.Println("     Run terraform plan and apply using the current (v4) provider.")
+	fmt.Println("     Terraform will process the removed {} blocks")
 	fmt.Println("     and drop the old state entries without destroying any infrastructure.")
 	fmt.Println()
 	fmt.Println("  2. Wait for the apply to complete successfully.")
