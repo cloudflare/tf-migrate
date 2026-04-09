@@ -93,7 +93,7 @@ func TestUpdateProviderVersionConstraint(t *testing.T) {
 			expected: `terraform {
   required_providers {
     cloudflare = {
-      source = "cloudflare/cloudflare"
+      source  = "cloudflare/cloudflare"
       version = "5.19.0-beta.4"
     }
   }
