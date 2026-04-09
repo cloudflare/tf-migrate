@@ -138,10 +138,12 @@ func RunInit(resources string) error {
 
 		// Create versions.tf for each module
 		versionsFile := filepath.Join(moduleDir, "versions.tf")
+		// Pin Cloudflare provider to v4 for the v4 apply phase
 		versionsContent := `terraform {
   required_providers {
     cloudflare = {
-      source = "cloudflare/cloudflare"
+      source  = "cloudflare/cloudflare"
+      version = "~> 4.0"
     }
     tls = {
       source  = "hashicorp/tls"
