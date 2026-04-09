@@ -170,7 +170,7 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 
 	cmd.Flags().StringVar(&cfg.outputDir, "output-dir", "", "Output directory for migrated configuration files (default: in-place)")
 	cmd.Flags().BoolVar(&cfg.backup, "backup", true, "Create backup of original files before migration")
-	cmd.Flags().BoolVar(&cfg.recursive, "recursive", false, "Recursively process subdirectories (useful for module structures)")
+	cmd.Flags().BoolVar(&cfg.recursive, "recursive", true, "Recursively process subdirectories (useful for module structures)")
 	cmd.Flags().StringVar(&cfg.targetProviderVersion, "target-provider-version", "", "Explicit provider version to set in required_providers (e.g. 5.19.0-beta.3); skips GitHub API lookup")
 
 	// --no-backup is a convenience alias for --backup=false
@@ -415,6 +415,9 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 		return err
 	}
 
+	// Track which directories had their provider version updated
+	updatedDirs := make(map[string]bool)
+
 	for _, file := range files {
 		content, err := os.ReadFile(file)
 		if err != nil {
@@ -478,7 +481,11 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 				}
 			}
 		}
-		_ = updated
+		if updated {
+			// Track the directory containing this file
+			dir := filepath.Dir(file)
+			updatedDirs[dir] = true
+		}
 	}
 
 	fmt.Println()
@@ -505,9 +512,31 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 		step++
 	}
 
-	fmt.Printf("  %d. Regenerate the lock file locally:\n", step)
-	fmt.Printf("       cd %s\n", cfg.configDir)
-	fmt.Println("       terraform init -upgrade -backend=false")
+	fmt.Printf("  %d. Regenerate the lock file locally in each directory:\n", step)
+	if len(updatedDirs) <= 1 {
+		// Single directory (or none) - use the original format
+		fmt.Printf("       cd %s\n", cfg.configDir)
+		fmt.Println("       terraform init -upgrade -backend=false")
+	} else {
+		// Multiple directories with provider updates
+		// Sort for consistent output
+		var sortedDirs []string
+		for dir := range updatedDirs {
+			sortedDirs = append(sortedDirs, dir)
+		}
+		// Sort by length then lexically for consistent ordering
+		for i := 0; i < len(sortedDirs)-1; i++ {
+			for j := i + 1; j < len(sortedDirs); j++ {
+				if len(sortedDirs[i]) > len(sortedDirs[j]) ||
+					(len(sortedDirs[i]) == len(sortedDirs[j]) && sortedDirs[i] > sortedDirs[j]) {
+					sortedDirs[i], sortedDirs[j] = sortedDirs[j], sortedDirs[i]
+				}
+			}
+		}
+		for _, dir := range sortedDirs {
+			fmt.Printf("       cd %s && terraform init -upgrade -backend=false\n", dir)
+		}
+	}
 	fmt.Println()
 	step++
 

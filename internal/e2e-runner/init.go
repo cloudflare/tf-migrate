@@ -143,7 +143,7 @@ func RunInit(resources string) error {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> v4.52.7"
+      version = "~> 4.52.7"
     }
     tls = {
       source  = "hashicorp/tls"
