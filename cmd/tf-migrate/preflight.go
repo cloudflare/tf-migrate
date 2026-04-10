@@ -331,10 +331,8 @@ func printPreflightReport(report *preflightReport, cfg config) {
 		}
 	}
 
-	// Only show detailed scan output in verbose mode or if there are issues (manual/unsupported)
-	hasIssues := len(manual) > 0 || len(unsupported) > 0
-
-	if cfg.verbose || hasIssues {
+	// Only show detailed scan output in verbose mode
+	if cfg.verbose {
 		fmt.Println()
 		fmt.Println("Pre-migration scan:")
 		fmt.Printf("  %d Cloudflare resource(s) found\n", len(report.Resources))
@@ -348,45 +346,42 @@ func printPreflightReport(report *preflightReport, cfg config) {
 			fmt.Println()
 		}
 
-		if len(autoMigrated) > 0 && cfg.verbose {
+		if len(autoMigrated) > 0 {
 			fmt.Printf("  Resources with config-only changes (%d):\n", len(autoMigrated))
 			for _, r := range autoMigrated {
 				fmt.Printf("    %s.%s\n", r.ResourceType, r.ResourceName)
 			}
 			fmt.Println()
-		} else if len(autoMigrated) > 0 && hasIssues {
-			fmt.Printf("  %d resource(s) with config-only changes (no rename)\n", len(autoMigrated))
+		}
+
+		if len(manual) > 0 {
+			fmt.Printf("  Resources requiring manual intervention (%d):\n", len(manual))
+			for _, r := range manual {
+				fmt.Printf("    %s.%s: %s\n", r.ResourceType, r.ResourceName, r.Detail)
+			}
+			fmt.Println()
+		}
+
+		if len(unsupported) > 0 {
+			fmt.Printf("  Unsupported resources -- no transformer registered (%d):\n", len(unsupported))
+			for _, r := range unsupported {
+				fmt.Printf("    %s.%s\n", r.ResourceType, r.ResourceName)
+			}
+			fmt.Println("  These resources must be migrated manually. Check the v5 migration guide:")
+			fmt.Println("  https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade")
+			fmt.Println()
+		}
+
+		if len(report.MovedBlocks) > 0 {
+			fmt.Printf("  Existing moved blocks found (%d):\n", len(report.MovedBlocks))
+			for _, mb := range report.MovedBlocks {
+				fmt.Printf("    %s: %s.%s → %s.%s\n", mb.File, mb.FromType, mb.FromName, mb.ToType, mb.ToName)
+			}
 			fmt.Println()
 		}
 	} else {
-		// Minimal output in non-verbose mode with no issues
+		// Minimal output in non-verbose mode
 		fmt.Printf("  Migrated %d resources (%d renamed, %d config-only)\n",
 			len(report.Resources), len(renamed), len(autoMigrated))
-	}
-
-	if len(manual) > 0 {
-		fmt.Printf("  ⚠ Resources requiring manual intervention (%d):\n", len(manual))
-		for _, r := range manual {
-			fmt.Printf("    %s.%s: %s\n", r.ResourceType, r.ResourceName, r.Detail)
-		}
-		fmt.Println()
-	}
-
-	if len(unsupported) > 0 {
-		fmt.Printf("  ⚠ Unsupported resources -- no transformer registered (%d):\n", len(unsupported))
-		for _, r := range unsupported {
-			fmt.Printf("    %s.%s\n", r.ResourceType, r.ResourceName)
-		}
-		fmt.Println("  These resources must be migrated manually. Check the v5 migration guide:")
-		fmt.Println("  https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade")
-		fmt.Println()
-	}
-
-	if len(report.MovedBlocks) > 0 {
-		fmt.Printf("  Existing moved blocks found (%d):\n", len(report.MovedBlocks))
-		for _, mb := range report.MovedBlocks {
-			fmt.Printf("    %s: %s.%s → %s.%s\n", mb.File, mb.FromType, mb.FromName, mb.ToType, mb.ToName)
-		}
-		fmt.Println()
 	}
 }
