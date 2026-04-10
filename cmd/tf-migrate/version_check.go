@@ -115,7 +115,7 @@ func parseVersionFromLockFile(configDir string) (string, error) {
 // block and extracts the cloudflare provider version constraint.
 // Returns the version constraint string and the file path where it was found.
 func parseVersionFromRequiredProviders(cfg config) (versionConstraint, sourceFile string, err error) {
-	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
 	if err != nil {
 		return "", "", err
 	}
