@@ -41,9 +41,10 @@ type config struct {
 	dryRun                bool
 	backup                bool
 	recursive             bool
+	exclude               []string // directories to exclude from migration (relative to configDir)
 	logLevel              string
 	skipPhaseCheck        bool // skip phased migration prompt and run full migration directly (for CI/e2e)
-	skipVersionCheck      bool // skip minimum provider version check (for testing)
+	skipVersionCheck      bool // skip minimum provider version check (for testing/CI only)
 
 	// Diagnostic output options
 	quiet   bool // Suppress warnings, only show errors
@@ -170,7 +171,8 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 
 	cmd.Flags().StringVar(&cfg.outputDir, "output-dir", "", "Output directory for migrated configuration files (default: in-place)")
 	cmd.Flags().BoolVar(&cfg.backup, "backup", true, "Create backup of original files before migration")
-	cmd.Flags().BoolVar(&cfg.recursive, "recursive", true, "Recursively process subdirectories (useful for module structures)")
+	cmd.Flags().BoolVar(&cfg.recursive, "recursive", false, "Recursively process subdirectories (useful for module structures)")
+	cmd.Flags().StringSliceVar(&cfg.exclude, "exclude", []string{}, "Directories to exclude from migration (relative to config-dir, can be specified multiple times)")
 	cmd.Flags().StringVar(&cfg.targetProviderVersion, "target-provider-version", "", "Explicit provider version to set in required_providers (e.g. 5.19.0-beta.3); skips GitHub API lookup")
 
 	// --no-backup is a convenience alias for --backup=false
@@ -410,7 +412,7 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 		log.Debug("Provider version fetched from GitHub API", "version", targetVersion)
 	}
 
-	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
 	if err != nil {
 		return err
 	}
@@ -613,7 +615,7 @@ func printVersionFetchFailure(cfg config, diags hcl.Diagnostics) {
 // commented-out resource blocks from a previous phase-1 run, identified by
 // the phaseOneCommentPrefix marker.
 func findFilesWithPhaseOneComments(cfg config) []string {
-	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
 	if err != nil {
 		return nil
 	}
@@ -653,7 +655,7 @@ func confirmPhaseOneApplied(cfg config) (bool, error) {
 // detectPhaseOneResources scans all .tf files and returns a map of
 // filename → resource addresses for resources whose migrator implements PhaseOneTransformer.
 func detectPhaseOneResources(log hclog.Logger, cfg config) (map[string][]string, error) {
-	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -959,7 +961,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		cfg.outputDir = cfg.configDir
 	}
 
-	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to list .tf files: %w", err)
 	}
@@ -1326,10 +1328,10 @@ func regexReplaceSkippingMovedBlocks(content, pattern, replacement string) strin
 }
 
 func findTerraformFiles(dir string) ([]string, error) {
-	return findTerraformFilesWithRecursion(dir, false)
+	return findTerraformFilesWithRecursion(dir, false, nil)
 }
 
-func findTerraformFilesWithRecursion(dir string, recursive bool) ([]string, error) {
+func findTerraformFilesWithRecursion(dir string, recursive bool, exclude []string) ([]string, error) {
 	var files []string
 
 	entries, err := os.ReadDir(dir)
@@ -1340,8 +1342,12 @@ func findTerraformFilesWithRecursion(dir string, recursive bool) ([]string, erro
 	for _, entry := range entries {
 		path := filepath.Join(dir, entry.Name())
 		if entry.IsDir() && recursive {
+			// Check if this directory should be excluded
+			if shouldExclude(entry.Name(), exclude) {
+				continue
+			}
 			// Recursively search subdirectories
-			subFiles, err := findTerraformFilesWithRecursion(path, recursive)
+			subFiles, err := findTerraformFilesWithRecursion(path, recursive, exclude)
 			if err != nil {
 				// Log the error but continue processing other directories
 				continue
@@ -1353,6 +1359,21 @@ func findTerraformFilesWithRecursion(dir string, recursive bool) ([]string, erro
 	}
 
 	return files, nil
+}
+
+// shouldExclude checks if a directory name matches any of the exclusion patterns
+func shouldExclude(dirName string, exclude []string) bool {
+	for _, pattern := range exclude {
+		// Support both exact match and wildcard patterns
+		if matched, _ := filepath.Match(pattern, dirName); matched {
+			return true
+		}
+		// Also check for exact match
+		if pattern == dirName {
+			return true
+		}
+	}
+	return false
 }
 
 func validateVersions(c config) error {

@@ -57,7 +57,7 @@ type preflightReport struct {
 // runPreMigrationScan scans all .tf files and classifies resources and detects
 // existing moved blocks. It prints a summary and returns warnings for any issues.
 func runPreMigrationScan(log hclog.Logger, cfg config) (*preflightReport, error) {
-	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive)
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find terraform files: %w", err)
 	}
