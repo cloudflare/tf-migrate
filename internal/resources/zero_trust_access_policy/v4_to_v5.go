@@ -65,21 +65,25 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		// Generate a removed block for Atlantis-friendly state cleanup
 		removedBlock := tfhcl.CreateRemovedBlock("cloudflare_access_policy." + resourceName)
 
+		// Build an inline policy example for the user
+		inlinePolicy := m.buildInlinePolicyExample(body, resourceName)
+
 		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 			Severity: hcl.DiagWarning,
-			Summary:  "Application-scoped access policy cannot be automatically migrated",
+			Summary:  "Application-scoped access policy must be inlined",
 			Detail: fmt.Sprintf(
-				"Resource cloudflare_access_policy.%s has 'application_id' and cannot be automatically migrated to v5.\n\n"+
-					"Application-scoped policies use a different API endpoint than account-level policies. "+
-					"In v5, these must be converted to inline policies within cloudflare_zero_trust_access_application.\n\n"+
+				"Resource cloudflare_access_policy.%s has 'application_id' and must be converted to an inline policy in v5.\n\n"+
+					"Application-scoped policies are no longer separate resources in v5. "+
+					"They must be defined inline within the cloudflare_zero_trust_access_application resource.\n\n"+
 					"A 'removed' block has been generated to drop this resource from state without destroying it.\n\n"+
+					"Inline policy to add to your cloudflare_zero_trust_access_application:\n%s\n\n"+
 					"Manual steps required:\n"+
-					"1. Review the generated 'removed' block\n"+
-					"2. Add this policy inline in the application's 'policies' attribute\n"+
-					"3. Remove or rewrite any references to this resource (outputs, depends_on, etc.)\n"+
-					"4. Run terraform apply\n\n"+
+					"1. Add the inline policy shown above to your application's 'policies' attribute\n"+
+					"2. Update any references from cloudflare_access_policy.%s to the inline policy\n"+
+					"3. Run terraform apply\n"+
+					"4. Remove the 'removed' block after successful apply\n\n"+
 					"See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade#cloudflare_access_policy",
-				resourceName),
+				resourceName, inlinePolicy, resourceName),
 		})
 		// Return removed block and remove original resource from config
 		return &transform.TransformResult{
@@ -1097,4 +1101,44 @@ func (m *V4ToV5Migrator) normalizeIPsInSource(src string) string {
 	})
 
 	return result
+}
+
+// buildInlinePolicyExample creates a string representation of the inline policy
+// that the user should add to their cloudflare_zero_trust_access_application.
+// This helps users understand exactly what to add to their application resource.
+func (m *V4ToV5Migrator) buildInlinePolicyExample(body *hclwrite.Body, resourceName string) string {
+	// Extract key attributes from the policy
+	nameAttr := body.GetAttribute("name")
+	decisionAttr := body.GetAttribute("decision")
+
+	name := "Example Policy"
+	if nameAttr != nil {
+		name = tfhcl.ExtractStringFromAttribute(nameAttr)
+		if name == "" {
+			name = resourceName
+		}
+	}
+
+	decision := "allow"
+	if decisionAttr != nil {
+		d := tfhcl.ExtractStringFromAttribute(decisionAttr)
+		if d != "" {
+			decision = d
+		}
+	}
+
+	// Build the inline policy example
+	var sb strings.Builder
+	sb.WriteString("    {\n")
+	sb.WriteString(fmt.Sprintf("      name       = %q\n", name))
+	sb.WriteString(fmt.Sprintf("      decision   = %q\n", decision))
+	sb.WriteString("      precedence = 1\n")
+	sb.WriteString("      include = [\n")
+	sb.WriteString("        # Add your include conditions here\n")
+	sb.WriteString("        # Example: { email = { email = \"user@example.com\" } }\n")
+	sb.WriteString("        # Example: { everyone = {} }\n")
+	sb.WriteString("      ]\n")
+	sb.WriteString("    }")
+
+	return sb.String()
 }

@@ -716,7 +716,7 @@ resource "cloudflare_access_policy" "test" {
 	if ctx.Diagnostics[0].Severity != hcl.DiagWarning {
 		t.Errorf("Expected DiagWarning severity, got %v", ctx.Diagnostics[0].Severity)
 	}
-	if ctx.Diagnostics[0].Summary != "Application-scoped access policy cannot be automatically migrated" {
+	if ctx.Diagnostics[0].Summary != "Application-scoped access policy must be inlined" {
 		t.Errorf("Unexpected diagnostic summary: %s", ctx.Diagnostics[0].Summary)
 	}
 	if !strings.Contains(ctx.Diagnostics[0].Detail, "application_id") {
@@ -724,6 +724,10 @@ resource "cloudflare_access_policy" "test" {
 	}
 	if !strings.Contains(ctx.Diagnostics[0].Detail, "cloudflare_access_policy.test") {
 		t.Errorf("Expected diagnostic detail to mention resource name, got: %s", ctx.Diagnostics[0].Detail)
+	}
+	// Check that inline policy example is included
+	if !strings.Contains(ctx.Diagnostics[0].Detail, "Inline policy to add") {
+		t.Errorf("Expected diagnostic detail to include inline policy example, got: %s", ctx.Diagnostics[0].Detail)
 	}
 }
 

@@ -335,6 +335,7 @@ func RunE2ETests(cfg *RunConfig) error {
 	// (Real Atlantis users use the _phase1_cleanup.tf phased approach instead.)
 	obsoleteTypes := map[string]bool{
 		"cloudflare_zone_settings_override": true,
+		"cloudflare_access_policy":          true, // Application-scoped policies with application_id cannot be migrated; removed{} blocks handle state cleanup
 	}
 	stateFilePath := filepath.Join(v5Dir, "terraform.tfstate")
 	if removed, err := removeObsoleteStateEntries(stateFilePath, obsoleteTypes); err != nil {

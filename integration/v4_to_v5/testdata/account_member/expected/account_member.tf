@@ -47,6 +47,7 @@ resource "cloudflare_account_member" "example_no_status" {
   account_id = var.cloudflare_account_id
   email      = "no-status-user@cfapi.net"
   roles      = [local.admin_role_id]
+  status     = "accepted"
 }
 
 # Multiple Roles Examples

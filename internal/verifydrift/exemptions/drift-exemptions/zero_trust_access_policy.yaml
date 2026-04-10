@@ -15,6 +15,37 @@ exemptions:
       - 'session_duration.*->.*"24h"'
     enabled: false
 
+  # Application-scoped policies are converted to inline policies in v5.
+  # The inline policy shows as being removed from the application because
+  # the application resource needs to be updated to include the policy inline.
+  # This is expected behavior during migration - users must manually add
+  # the inline policy to their cloudflare_zero_trust_access_application resource.
+  - name: "inline_policy_normalization"
+    description: "Application-scoped policies are converted to inline policies. The policy appearing to be removed from the application is expected - users must manually inline the policy."
+    resource_types:
+      - "cloudflare_zero_trust_access_application"
+    patterns:
+      - '- policies\s*='
+      - '- precedence\s*='
+      - '- decision\s*='
+      - '- include\s*='
+      - '- exclude\s*='
+      - '- require\s*='
+      - '- name\s*=.*app-scoped'
+      - '- id\s*=.*-> null'
+      - '- everyone\s*=.*-> null'
+    enabled: true
+
+  # Access policies with application_id show as "will be created" because
+  # the v4 state entries are removed (they become inline policies).
+  # The moved blocks handle the state migration for migratable policies.
+  - name: "policy_state_migration"
+    description: "Access policies may show as 'will be created' during initial v5 plan because v4 state entries were removed. The moved blocks handle proper state migration."
+    resource_types:
+      - "cloudflare_zero_trust_access_policy"
+    allow_resource_creation: true
+    enabled: true
+
 settings:
   apply_exemptions: true
   verbose_exemptions: false
