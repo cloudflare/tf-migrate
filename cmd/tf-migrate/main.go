@@ -1149,30 +1149,13 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		log.Warn("Failed to collect removed block references for postprocessing", "error", err)
 	}
 
+	// Track which renames were actually applied (content changed)
+	appliedRenames := make(map[string]string)
+	appliedAttrRenames := make(map[string]transform.AttributeRename)               // key: ResourceType.OldAttribute
+	appliedComputedMappings := make(map[string]transform.ComputedAttributeMapping) // key: OldResourceType.OldAttribute
+
 	if cfg.verbose {
-		totalUpdates := len(renames) + len(attributeRenames) + len(computedAttrMappings)
-		fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
-
-		if len(renames) > 0 {
-			fmt.Println("\nResource type renames:")
-			for oldType, newType := range renames {
-				fmt.Printf("  %s → %s\n", oldType, newType)
-			}
-		}
-
-		if len(attributeRenames) > 0 {
-			fmt.Println("\nAttribute renames:")
-			for _, rename := range attributeRenames {
-				fmt.Printf("  %s.*.%s → %s.*.%s\n", rename.ResourceType, rename.OldAttribute, rename.ResourceType, rename.NewAttribute)
-			}
-		}
-
-		if len(computedAttrMappings) > 0 {
-			fmt.Println("\nComputed attribute mappings:")
-			for _, mapping := range computedAttrMappings {
-				fmt.Printf("  %s.*.%s → %s.*.%s\n", mapping.OldResourceType, mapping.OldAttribute, mapping.NewResourceType, mapping.NewAttribute)
-			}
-		}
+		fmt.Printf("\nApplying cross-file reference updates across %d files...\n", len(outputPaths))
 	}
 
 	// Apply renames to all files
@@ -1199,6 +1182,8 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 			if newContent != contentStr {
 				modified = true
 				contentStr = newContent
+				key := mapping.OldResourceType + "." + mapping.OldAttribute
+				appliedComputedMappings[key] = mapping
 				log.Debug("Updated computed attribute references",
 					"file", filepath.Base(outputPath),
 					"old_type", mapping.OldResourceType,
@@ -1214,6 +1199,7 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 			if newContent != contentStr {
 				modified = true
 				contentStr = newContent
+				appliedRenames[oldType] = newType
 				log.Debug("Updated references", "file", filepath.Base(outputPath), "old", oldType, "new", newType)
 			}
 		}
@@ -1231,6 +1217,8 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 			if newContent != contentStr {
 				modified = true
 				contentStr = newContent
+				key := rename.ResourceType + "." + rename.OldAttribute
+				appliedAttrRenames[key] = rename
 				log.Debug("Updated attribute references",
 					"file", filepath.Base(outputPath),
 					"resource_type", rename.ResourceType,
@@ -1248,7 +1236,38 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 	}
 
 	if cfg.verbose {
-		fmt.Printf("✓ Updated cross-file references (%d rule(s) applied)\n", len(renames)+len(attributeRenames)+len(computedAttrMappings))
+		totalApplied := len(appliedRenames) + len(appliedAttrRenames) + len(appliedComputedMappings)
+		if totalApplied > 0 {
+			fmt.Printf("✓ Updated cross-file references (%d of %d rules applied)\n",
+				totalApplied, len(renames)+len(attributeRenames)+len(computedAttrMappings))
+
+			if len(appliedRenames) > 0 {
+				fmt.Println("\n  Resource type renames applied:")
+				for oldType, newType := range appliedRenames {
+					fmt.Printf("    %s → %s\n", oldType, newType)
+				}
+			}
+
+			if len(appliedAttrRenames) > 0 {
+				fmt.Println("\n  Attribute renames applied:")
+				for _, rename := range appliedAttrRenames {
+					fmt.Printf("    %s.*.%s → %s.*.%s\n",
+						rename.ResourceType, rename.OldAttribute,
+						rename.ResourceType, rename.NewAttribute)
+				}
+			}
+
+			if len(appliedComputedMappings) > 0 {
+				fmt.Println("\n  Computed attribute mappings applied:")
+				for _, mapping := range appliedComputedMappings {
+					fmt.Printf("    %s.*.%s → %s.*.%s\n",
+						mapping.OldResourceType, mapping.OldAttribute,
+						mapping.NewResourceType, mapping.NewAttribute)
+				}
+			}
+		} else {
+			fmt.Println("✓ No cross-file references needed updating")
+		}
 	}
 	return nil
 }
