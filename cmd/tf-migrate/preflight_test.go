@@ -155,6 +155,57 @@ moved {
 	}
 }
 
+func TestRunPreMigrationScan_ClassifiesAppScopedAccessPolicyAsManual(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	content := `
+resource "cloudflare_access_policy" "app_scoped" {
+  account_id     = "abc123"
+  application_id = "app-123"
+  name           = "App Scoped"
+  decision       = "allow"
+
+  include {
+    everyone = true
+  }
+}
+`
+
+	err := os.WriteFile(filepath.Join(tmpDir, "main.tf"), []byte(content), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	log := hclog.NewNullLogger()
+	cfg := config{
+		configDir:     tmpDir,
+		sourceVersion: "v4",
+		targetVersion: "v5",
+	}
+
+	report, err := runPreMigrationScan(log, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(report.Resources) != 1 {
+		t.Fatalf("Expected 1 resource, got %d", len(report.Resources))
+	}
+
+	got := report.Resources[0]
+	if got.Class != classManualIntervention {
+		t.Fatalf("Expected classManualIntervention, got %d", got.Class)
+	}
+
+	if !contains(got.Detail, "application_id") {
+		t.Fatalf("Expected manual detail to mention application_id, got: %s", got.Detail)
+	}
+
+	if !contains(got.Detail, "do not use moved block") {
+		t.Fatalf("Expected manual detail to mention moved block guidance, got: %s", got.Detail)
+	}
+}
+
 func TestDetectMovedBlockConflicts_DuplicateMovedBlock(t *testing.T) {
 	renames := map[string]string{
 		"cloudflare_access_application": "cloudflare_zero_trust_access_application",
@@ -234,6 +285,42 @@ func TestDetectMovedBlockConflicts_NoConflict(t *testing.T) {
 	warnings := detectMovedBlockConflicts(report, renames)
 	if len(warnings) != 0 {
 		t.Errorf("Expected no warnings, got %d: %v", len(warnings), warnings)
+	}
+}
+
+func TestDetectMovedBlockConflicts_ManualResourceMovedBlock(t *testing.T) {
+	renames := map[string]string{
+		"cloudflare_access_policy": "cloudflare_zero_trust_access_policy",
+	}
+
+	report := &preflightReport{
+		Resources: []scannedResource{
+			{
+				ResourceType: "cloudflare_access_policy",
+				ResourceName: "app_scoped",
+				Class:        classManualIntervention,
+			},
+		},
+		MovedBlocks: []existingMovedBlock{
+			{
+				File:     "moved.tf",
+				FromType: "cloudflare_access_policy",
+				FromName: "app_scoped",
+				ToType:   "cloudflare_zero_trust_access_policy",
+				ToName:   "app_scoped",
+			},
+		},
+	}
+
+	warnings := detectMovedBlockConflicts(report, renames)
+	if len(warnings) != 1 {
+		t.Fatalf("Expected 1 warning, got %d: %v", len(warnings), warnings)
+	}
+	if !contains(warnings[0], "requires manual migration") {
+		t.Fatalf("Expected manual migration warning, got: %s", warnings[0])
+	}
+	if !contains(warnings[0], "Do not use a moved block") {
+		t.Fatalf("Expected moved-block guidance warning, got: %s", warnings[0])
 	}
 }
 

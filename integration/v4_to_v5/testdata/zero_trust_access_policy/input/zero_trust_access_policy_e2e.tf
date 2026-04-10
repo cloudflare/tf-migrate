@@ -2,11 +2,9 @@
 # Excludes resources that can't be created in the e2e environment:
 # - service_token_policy, multi_service_token_policy, combined_research_team_policy:
 #   require real cloudflare_access_service_token resources
-# - app_scoped_policy: requires a real domain/application setup (TKT-003)
 # - test_token, test_token_2: excluded since dependent policies are excluded
 #
-# The TKT-004 service_token fix and TKT-003 application_id handling
-# are validated by integration tests only.
+# The TKT-004 service_token fix is validated by integration tests only.
 
 # Variables
 variable "cloudflare_account_id" {
@@ -191,6 +189,28 @@ resource "cloudflare_access_policy" "multi_email_domain_policy" {
 
   include {
     email_domain = ["cloudflare.com", "example.com"]
+  }
+}
+
+# TKT-003: application-scoped policy (application_id + precedence)
+# This should migrate to a Terraform removed block in v5.
+resource "cloudflare_zero_trust_access_application" "test_app" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-test-app"
+  domain     = "test.${var.cloudflare_domain}"
+  type       = "self_hosted"
+}
+
+resource "cloudflare_access_policy" "app_scoped_policy" {
+  account_id       = var.cloudflare_account_id
+  application_id   = cloudflare_zero_trust_access_application.test_app.id
+  name             = "${local.name_prefix}-app-scoped"
+  decision         = "allow"
+  precedence       = 1
+  session_duration = "18h"
+
+  include {
+    everyone = true
   }
 }
 

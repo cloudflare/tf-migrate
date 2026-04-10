@@ -76,7 +76,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 					"Manual steps required:\n"+
 					"1. Review the generated 'removed' block\n"+
 					"2. Add this policy inline in the application's 'policies' attribute\n"+
-					"3. Run terraform apply\n\n"+
+					"3. Remove or rewrite any references to this resource (outputs, depends_on, etc.)\n"+
+					"4. Run terraform apply\n\n"+
 					"See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade#cloudflare_access_policy",
 				resourceName),
 		})

@@ -141,6 +141,20 @@ func classifyResource(block *hclwrite.Block, file string, providers transform.Mi
 		}
 	}
 
+	// cloudflare_access_policy resources with application_id are a special manual
+	// path in v4->v5: they become removed {} blocks and must be rewritten inline
+	// on cloudflare_zero_trust_access_application.policies.
+	if cfg.sourceVersion == "v4" && cfg.targetVersion == "v5" &&
+		resourceType == "cloudflare_access_policy" && block.Body().GetAttribute("application_id") != nil {
+		return &scannedResource{
+			File:         file,
+			ResourceType: resourceType,
+			ResourceName: resourceName,
+			Class:        classManualIntervention,
+			Detail:       "application_id detected -- tf-migrate will generate removed {}; migrate policy inline to cloudflare_zero_trust_access_application.policies (do not use moved block)",
+		}
+	}
+
 	// Check if this resource will be renamed
 	if newType, ok := renames[resourceType]; ok {
 		return &scannedResource{
@@ -220,8 +234,24 @@ func extractTraversalString(attr *hclwrite.Attribute) string {
 func detectMovedBlockConflicts(report *preflightReport, renames map[string]string) []string {
 	var warnings []string
 
+	manualAddrs := make(map[string]struct{})
+	for _, r := range report.Resources {
+		if r.Class == classManualIntervention {
+			manualAddrs[r.ResourceType+"."+r.ResourceName] = struct{}{}
+		}
+	}
+
 	for _, mb := range report.MovedBlocks {
 		addr := mb.FromType + "." + mb.FromName
+
+		if _, isManual := manualAddrs[addr]; isManual {
+			warnings = append(warnings, fmt.Sprintf(
+				"Conflicting moved block in %s: %s → %s.%s\n"+
+					"  This resource requires manual migration (application_id path).\n"+
+					"  Do not use a moved block; keep the generated removed {} block and migrate inline policies manually.",
+				mb.File, addr, mb.ToType, mb.ToName))
+			continue
+		}
 
 		// Check if the from-type is a v4 name that tf-migrate would rename
 		if newType, ok := renames[mb.FromType]; ok {
