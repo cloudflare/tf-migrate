@@ -971,7 +971,9 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		return nil, nil, nil
 	}
 
-	fmt.Printf("Found %d configuration files to migrate\n", len(files))
+	if cfg.verbose {
+		fmt.Printf("Found %d configuration files to migrate\n", len(files))
+	}
 
 	// Store file paths for global postprocessing
 	outputPaths := make([]string, 0, len(files))
@@ -1147,30 +1149,13 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		log.Warn("Failed to collect removed block references for postprocessing", "error", err)
 	}
 
+	// Track which renames were actually applied (content changed)
+	appliedRenames := make(map[string]string)
+	appliedAttrRenames := make(map[string]transform.AttributeRename)               // key: ResourceType.OldAttribute
+	appliedComputedMappings := make(map[string]transform.ComputedAttributeMapping) // key: OldResourceType.OldAttribute
+
 	if cfg.verbose {
-		totalUpdates := len(renames) + len(attributeRenames) + len(computedAttrMappings)
-		fmt.Printf("\nApplying cross-file reference updates (%d updates across %d files)...\n", totalUpdates, len(outputPaths))
-
-		if len(renames) > 0 {
-			fmt.Println("\nResource type renames:")
-			for oldType, newType := range renames {
-				fmt.Printf("  %s → %s\n", oldType, newType)
-			}
-		}
-
-		if len(attributeRenames) > 0 {
-			fmt.Println("\nAttribute renames:")
-			for _, rename := range attributeRenames {
-				fmt.Printf("  %s.*.%s → %s.*.%s\n", rename.ResourceType, rename.OldAttribute, rename.ResourceType, rename.NewAttribute)
-			}
-		}
-
-		if len(computedAttrMappings) > 0 {
-			fmt.Println("\nComputed attribute mappings:")
-			for _, mapping := range computedAttrMappings {
-				fmt.Printf("  %s.*.%s → %s.*.%s\n", mapping.OldResourceType, mapping.OldAttribute, mapping.NewResourceType, mapping.NewAttribute)
-			}
-		}
+		fmt.Printf("\nApplying cross-file reference updates across %d files...\n", len(outputPaths))
 	}
 
 	// Apply renames to all files
@@ -1197,6 +1182,8 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 			if newContent != contentStr {
 				modified = true
 				contentStr = newContent
+				key := mapping.OldResourceType + "." + mapping.OldAttribute
+				appliedComputedMappings[key] = mapping
 				log.Debug("Updated computed attribute references",
 					"file", filepath.Base(outputPath),
 					"old_type", mapping.OldResourceType,
@@ -1212,6 +1199,7 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 			if newContent != contentStr {
 				modified = true
 				contentStr = newContent
+				appliedRenames[oldType] = newType
 				log.Debug("Updated references", "file", filepath.Base(outputPath), "old", oldType, "new", newType)
 			}
 		}
@@ -1229,6 +1217,8 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 			if newContent != contentStr {
 				modified = true
 				contentStr = newContent
+				key := rename.ResourceType + "." + rename.OldAttribute
+				appliedAttrRenames[key] = rename
 				log.Debug("Updated attribute references",
 					"file", filepath.Base(outputPath),
 					"resource_type", rename.ResourceType,
@@ -1246,7 +1236,38 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 	}
 
 	if cfg.verbose {
-		fmt.Printf("✓ Updated cross-file references (%d rule(s) applied)\n", len(renames)+len(attributeRenames)+len(computedAttrMappings))
+		totalApplied := len(appliedRenames) + len(appliedAttrRenames) + len(appliedComputedMappings)
+		if totalApplied > 0 {
+			fmt.Printf("✓ Updated cross-file references (%d of %d rules applied)\n",
+				totalApplied, len(renames)+len(attributeRenames)+len(computedAttrMappings))
+
+			if len(appliedRenames) > 0 {
+				fmt.Println("\n  Resource type renames applied:")
+				for oldType, newType := range appliedRenames {
+					fmt.Printf("    %s → %s\n", oldType, newType)
+				}
+			}
+
+			if len(appliedAttrRenames) > 0 {
+				fmt.Println("\n  Attribute renames applied:")
+				for _, rename := range appliedAttrRenames {
+					fmt.Printf("    %s.*.%s → %s.*.%s\n",
+						rename.ResourceType, rename.OldAttribute,
+						rename.ResourceType, rename.NewAttribute)
+				}
+			}
+
+			if len(appliedComputedMappings) > 0 {
+				fmt.Println("\n  Computed attribute mappings applied:")
+				for _, mapping := range appliedComputedMappings {
+					fmt.Printf("    %s.*.%s → %s.*.%s\n",
+						mapping.OldResourceType, mapping.OldAttribute,
+						mapping.NewResourceType, mapping.NewAttribute)
+				}
+			}
+		} else {
+			fmt.Println("✓ No cross-file references needed updating")
+		}
 	}
 	return nil
 }
@@ -1482,6 +1503,73 @@ func getProviders(resources ...string) transform.MigrationProvider {
 	return transform.NewMigrationProvider(getFunc, getAllFunc)
 }
 
+// consolidatedDiagnostic groups multiple diagnostics with the same summary
+type consolidatedDiagnostic struct {
+	Summary  string
+	Severity hcl.DiagnosticSeverity
+	Details  []string // Multiple detail messages for resources with same issue
+	Sample   string   // Full detail from first occurrence (for reference)
+}
+
+// consolidateDiagnostics groups diagnostics by summary to avoid repetition
+func consolidateDiagnostics(diags hcl.Diagnostics) []consolidatedDiagnostic {
+	groups := make(map[string]*consolidatedDiagnostic)
+
+	for _, diag := range diags {
+		key := fmt.Sprintf("%s:%d", diag.Summary, diag.Severity)
+
+		if existing, ok := groups[key]; ok {
+			// Extract resource name from detail (first line typically contains it)
+			existing.Details = append(existing.Details, extractResourceName(diag.Detail))
+		} else {
+			groups[key] = &consolidatedDiagnostic{
+				Summary:  diag.Summary,
+				Severity: diag.Severity,
+				Details:  []string{extractResourceName(diag.Detail)},
+				Sample:   diag.Detail,
+			}
+		}
+	}
+
+	// Convert map to slice
+	result := make([]consolidatedDiagnostic, 0, len(groups))
+	for _, g := range groups {
+		result = append(result, *g)
+	}
+	return result
+}
+
+// extractResourceName extracts the resource identifier from diagnostic detail
+// Expected format: "Resource cloudflare_XXXX.name has ..." or similar
+func extractResourceName(detail string) string {
+	lines := strings.Split(detail, "\n")
+	if len(lines) == 0 {
+		return detail
+	}
+
+	firstLine := lines[0]
+	// Look for patterns like "Resource cloudflare_type.name has..." or "cloudflare_type.name has..."
+	if strings.HasPrefix(firstLine, "Resource ") {
+		// Extract the resource reference
+		parts := strings.SplitN(firstLine, " ", 3)
+		if len(parts) >= 2 {
+			return parts[1]
+		}
+	}
+
+	// Try to find resource reference in the first line
+	if idx := strings.Index(firstLine, "cloudflare_"); idx != -1 {
+		// Extract from cloudflare_ to the next space or end
+		rest := firstLine[idx:]
+		if spaceIdx := strings.Index(rest, " "); spaceIdx != -1 {
+			return rest[:spaceIdx]
+		}
+		return rest
+	}
+
+	return firstLine
+}
+
 // printDiagnostics prints diagnostics to the user based on verbosity settings
 // Default (medium verbosity): show warnings and errors
 // Quiet mode (--quiet): only show errors
@@ -1552,14 +1640,17 @@ func printDiagnostics(diags hcl.Diagnostics, cfg config) {
 	fmt.Printf("Migration diagnostics: %s\n", strings.Join(parts, ", "))
 	fmt.Println(strings.Repeat("─", 70))
 
-	for i, diag := range filtered {
+	// Consolidate diagnostics by summary
+	consolidated := consolidateDiagnostics(filtered)
+
+	for i, cd := range consolidated {
 		if i > 0 {
 			fmt.Println()
 		}
 
 		// Print severity icon
 		var icon string
-		switch diag.Severity {
+		switch cd.Severity {
 		case hcl.DiagError:
 			icon = "✗"
 		case hcl.DiagWarning:
@@ -1568,9 +1659,39 @@ func printDiagnostics(diags hcl.Diagnostics, cfg config) {
 			icon = "ℹ"
 		}
 
-		fmt.Printf("\n%s %s\n", icon, diag.Summary)
-		if diag.Detail != "" {
-			fmt.Printf("\n%s\n", diag.Detail)
+		// If there are multiple resources with the same issue, consolidate them
+		if len(cd.Details) > 1 {
+			fmt.Printf("\n%s %s (%d resources)\n", icon, cd.Summary, len(cd.Details))
+			fmt.Println()
+			// List affected resources
+			for _, detail := range cd.Details {
+				fmt.Printf("  - %s\n", detail)
+			}
+			// Show the full instructions once
+			if cd.Sample != "" {
+				// Extract the instructions part (after the first line/resource description)
+				lines := strings.Split(cd.Sample, "\n")
+				if len(lines) > 1 {
+					fmt.Println()
+					// Find where the actual instructions start (skip resource-specific lines)
+					for j := 1; j < len(lines); j++ {
+						line := lines[j]
+						// Skip empty lines at the start
+						if strings.TrimSpace(line) == "" && j < len(lines)-1 {
+							continue
+						}
+						// Print remaining lines
+						fmt.Println(strings.Join(lines[j:], "\n"))
+						break
+					}
+				}
+			}
+		} else {
+			// Single resource - show full detail
+			fmt.Printf("\n%s %s\n", icon, cd.Summary)
+			if cd.Sample != "" {
+				fmt.Printf("\n%s\n", cd.Sample)
+			}
 		}
 	}
 	fmt.Println(strings.Repeat("─", 70))
