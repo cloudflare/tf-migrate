@@ -1,14 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2"
@@ -349,43 +346,21 @@ func runFullMigration(log hclog.Logger, cfg config) error {
 	return nil
 }
 
-// targetProviderVersion fetches the latest provider release for the given
-// target migration version from the GitHub releases API.
-//
-// Pre-releases (betas) are included because v5 is currently in beta. Draft
-// releases are excluded as they are unpublished works-in-progress.
-//
-// Returns ("", false) if the API is unreachable or rate-limited — callers
-// should warn the user to update the version manually rather than silently
-// writing a stale hardcoded version.
+// defaultProviderVersions maps migration target versions to their default
+// provider versions. These are used when --target-provider-version is not specified.
+// Use --target-provider-version to override these defaults.
+var defaultProviderVersions = map[string]string{
+	"v4": "4.52.7",
+	"v5": "5.19.0-beta.5",
+}
+
+// targetProviderVersion returns the default provider version for the given
+// target migration version. It no longer fetches from GitHub API.
+// Returns the default version and true if found, empty string and false otherwise.
 func targetProviderVersion(targetVersion string) (string, bool) {
-	majorPrefix := strings.TrimPrefix(targetVersion, "v") + "."
-
-	type release struct {
-		TagName    string `json:"tag_name"`
-		Draft      bool   `json:"draft"`
-		PreRelease bool   `json:"prerelease"`
+	if v, ok := defaultProviderVersions[targetVersion]; ok {
+		return v, true
 	}
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get("https://api.github.com/repos/cloudflare/terraform-provider-cloudflare/releases?per_page=50")
-	if err == nil && resp.StatusCode == http.StatusOK {
-		defer resp.Body.Close()
-		var releases []release
-		if json.NewDecoder(resp.Body).Decode(&releases) == nil {
-			for _, r := range releases {
-				// Skip unpublished drafts; include pre-releases (betas).
-				if r.Draft {
-					continue
-				}
-				version := strings.TrimPrefix(r.TagName, "v")
-				if strings.HasPrefix(version, majorPrefix) {
-					return version, true
-				}
-			}
-		}
-	}
-
 	return "", false
 }
 
@@ -400,16 +375,13 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 		targetVersion = cfg.targetProviderVersion
 		log.Debug("Using explicit provider version from --target-provider-version flag", "version", targetVersion)
 	} else {
-		var fromAPI bool
-		targetVersion, fromAPI = targetProviderVersion(cfg.targetVersion)
-		if !fromAPI {
-			// GitHub API was unreachable (rate-limited, offline, etc.).
-			// Do not write a stale hardcoded version — tell the user to update manually.
-			log.Debug("GitHub API unavailable — skipping provider version update")
-			printVersionFetchFailure(cfg, diags)
-			return nil
+		// Use default provider version for the target version
+		var ok bool
+		targetVersion, ok = targetProviderVersion(cfg.targetVersion)
+		if !ok {
+			return fmt.Errorf("no default provider version for target version %s", cfg.targetVersion)
 		}
-		log.Debug("Provider version fetched from GitHub API", "version", targetVersion)
+		log.Debug("Using default provider version", "version", targetVersion)
 	}
 
 	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
@@ -557,9 +529,8 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 	return nil
 }
 
-// printVersionFetchFailure is called when the GitHub API is unreachable.
-// Instead of silently writing a stale hardcoded version it tells the user
-// to look up the latest version and update required_providers manually.
+// printVersionFetchFailure is called when the GitHub API is unreachable
+// and no fallback version is available. This is a rare edge case.
 func printVersionFetchFailure(cfg config, diags hcl.Diagnostics) {
 	fmt.Println()
 	fmt.Println("⚠ Could not fetch the latest provider version from GitHub (network unavailable or rate-limited).")

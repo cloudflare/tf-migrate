@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/go-hclog"
@@ -392,4 +393,83 @@ func searchString(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestRunPreMigrationScan_AutoFixMovedBlocks(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a resource file with a v4 resource
+	resourceContent := `resource "cloudflare_access_identity_provider" "myid_saml" {
+  account_id = "test-account"
+  name       = "MyIdentity"
+  type       = "saml"
+}
+`
+	err := os.WriteFile(filepath.Join(tmpDir, "resources.tf"), []byte(resourceContent), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a moved block with v4 type names that should be auto-fixed
+	movedContent := `moved {
+  from = cloudflare_access_identity_provider.old_saml
+  to   = cloudflare_access_identity_provider.myid_saml
+}
+`
+	err = os.WriteFile(filepath.Join(tmpDir, "moved.tf"), []byte(movedContent), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	log := hclog.NewNullLogger()
+	cfg := config{
+		configDir:     tmpDir,
+		sourceVersion: "v4",
+		targetVersion: "v5",
+		verbose:       true,
+	}
+
+	report, err := runPreMigrationScan(log, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should find the resource
+	if len(report.Resources) != 1 {
+		t.Fatalf("Expected 1 resource, got %d", len(report.Resources))
+	}
+
+	// Should find the moved block
+	if len(report.MovedBlocks) != 1 {
+		t.Fatalf("Expected 1 moved block, got %d", len(report.MovedBlocks))
+	}
+
+	// Verify the moved block was updated in the report
+	mb := report.MovedBlocks[0]
+	if mb.FromType != "cloudflare_zero_trust_access_identity_provider" {
+		t.Errorf("Expected FromType to be updated to 'cloudflare_zero_trust_access_identity_provider', got %q", mb.FromType)
+	}
+	if mb.ToType != "cloudflare_zero_trust_access_identity_provider" {
+		t.Errorf("Expected ToType to be updated to 'cloudflare_zero_trust_access_identity_provider', got %q", mb.ToType)
+	}
+
+	// Verify the file was actually updated on disk
+	updatedContent, err := os.ReadFile(filepath.Join(tmpDir, "moved.tf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(string(updatedContent), "cloudflare_zero_trust_access_identity_provider.old_saml") {
+		t.Errorf("Updated file should contain v5 type in 'from' field")
+	}
+	if !strings.Contains(string(updatedContent), "cloudflare_zero_trust_access_identity_provider.myid_saml") {
+		t.Errorf("Updated file should contain v5 type in 'to' field")
+	}
+
+	// Should NOT have the "Conflicting moved block" warning since it was auto-fixed
+	for _, w := range report.Warnings {
+		if strings.Contains(w, "Conflicting moved block") {
+			t.Errorf("Should not have 'Conflicting moved block' warning after auto-fix, but got: %s", w)
+		}
+	}
 }

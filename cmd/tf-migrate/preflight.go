@@ -114,6 +114,9 @@ func runPreMigrationScan(log hclog.Logger, cfg config) (*preflightReport, error)
 		}
 	}
 
+	// Auto-fix moved blocks that use v4 type names before detecting conflicts
+	autoFixMovedBlocks(report, renames, files, log, cfg.verbose)
+
 	// Check for conflicting moved blocks
 	report.Warnings = detectMovedBlockConflicts(report, renames)
 
@@ -229,6 +232,161 @@ func extractTraversalString(attr *hclwrite.Attribute) string {
 	return strings.Join(parts, "")
 }
 
+// autoFixMovedBlocks updates moved blocks that use v4 resource type names to use v5 type names.
+// This is done automatically so users don't need to manually update their moved blocks.
+// Only fixes moved blocks where BOTH from and to are v4 types (conflicting case).
+// Moved blocks that already correctly map v4->v5 are left untouched.
+func autoFixMovedBlocks(report *preflightReport, renames map[string]string, files []string, log hclog.Logger, verbose bool) {
+	// Track which files need updating and what changes were made
+	type fileUpdate struct {
+		path        string
+		oldBlocks   []existingMovedBlock
+		newBlocks   []existingMovedBlock
+		needsUpdate bool
+	}
+
+	// Build file map using basenames (report.MovedBlocks use basename, files use full path)
+	fileMap := make(map[string]*fileUpdate)
+	for _, f := range files {
+		basename := filepath.Base(f)
+		fileMap[basename] = &fileUpdate{path: f}
+	}
+
+	// Find moved blocks that need updating
+	for i := range report.MovedBlocks {
+		mb := &report.MovedBlocks[i]
+		fu := fileMap[mb.File]
+		if fu == nil {
+			continue
+		}
+
+		oldFromType := mb.FromType
+		oldToType := mb.ToType
+		needsUpdate := false
+
+		// Check if from-type is a v4 name that gets renamed
+		newFromType, fromIsV4 := renames[mb.FromType]
+		// Check if to-type is a v4 name that gets renamed
+		newToType, toIsV4 := renames[mb.ToType]
+
+		// Only auto-fix if BOTH from and to are v4 types (the problematic case)
+		// If from is v4 and to is already v5, that's a correct mapping - don't touch it
+		if fromIsV4 && toIsV4 {
+			if newFromType != mb.FromType {
+				mb.FromType = newFromType
+				needsUpdate = true
+			}
+			if newToType != mb.ToType {
+				mb.ToType = newToType
+				needsUpdate = true
+			}
+		}
+
+		if needsUpdate {
+			fu.needsUpdate = true
+			fu.oldBlocks = append(fu.oldBlocks, existingMovedBlock{
+				File:     mb.File,
+				FromType: oldFromType,
+				FromName: mb.FromName,
+				ToType:   oldToType,
+				ToName:   mb.ToName,
+			})
+			fu.newBlocks = append(fu.newBlocks, *mb)
+		}
+	}
+
+	// Apply updates to files
+	for _, fu := range fileMap {
+		if !fu.needsUpdate {
+			continue
+		}
+
+		content, err := os.ReadFile(fu.path)
+		if err != nil {
+			log.Warn("Failed to read file for moved block auto-fix", "file", fu.path, "error", err)
+			continue
+		}
+
+		parsed, diags := hclwrite.ParseConfig(content, filepath.Base(fu.path), hcl.InitialPos)
+		if diags.HasErrors() {
+			log.Warn("Failed to parse file for moved block auto-fix", "file", fu.path, "error", diags)
+			continue
+		}
+
+		// Update moved blocks in the parsed HCL
+		for _, block := range parsed.Body().Blocks() {
+			if block.Type() != "moved" {
+				continue
+			}
+
+			body := block.Body()
+			fromAttr := body.GetAttribute("from")
+			toAttr := body.GetAttribute("to")
+			if fromAttr == nil || toAttr == nil {
+				continue
+			}
+
+			fromStr := extractTraversalString(fromAttr)
+			toStr := extractTraversalString(toAttr)
+			if fromStr == "" || toStr == "" {
+				continue
+			}
+
+			fromParts := strings.SplitN(fromStr, ".", 2)
+			toParts := strings.SplitN(toStr, ".", 2)
+			if len(fromParts) != 2 || len(toParts) != 2 {
+				continue
+			}
+
+			// Check if this moved block needs updating
+			fromType := fromParts[0]
+			toType := toParts[0]
+			fromName := fromParts[1]
+			toName := toParts[1]
+
+			newFromType, fromNeedsUpdate := renames[fromType]
+			newToType, toNeedsUpdate := renames[toType]
+
+			if fromNeedsUpdate {
+				// Rebuild the from traversal with new type
+				fromTraversal := hcl.Traversal{
+					hcl.TraverseRoot{Name: newFromType},
+					hcl.TraverseAttr{Name: fromName},
+				}
+				body.SetAttributeTraversal("from", fromTraversal)
+			}
+
+			if toNeedsUpdate {
+				// Rebuild the to traversal with new type
+				toTraversal := hcl.Traversal{
+					hcl.TraverseRoot{Name: newToType},
+					hcl.TraverseAttr{Name: toName},
+				}
+				body.SetAttributeTraversal("to", toTraversal)
+			}
+		}
+
+		// Write the updated file
+		if err := os.WriteFile(fu.path, parsed.Bytes(), 0644); err != nil {
+			log.Warn("Failed to write file for moved block auto-fix", "file", fu.path, "error", err)
+			continue
+		}
+
+		// Log the changes
+		if verbose {
+			for i, old := range fu.oldBlocks {
+				new := fu.newBlocks[i]
+				log.Info("Auto-fixed moved block",
+					"file", filepath.Base(fu.path),
+					"old_from", old.FromType+"."+old.FromName,
+					"old_to", old.ToType+"."+old.ToName,
+					"new_from", new.FromType+"."+new.FromName,
+					"new_to", new.ToType+"."+new.ToName)
+			}
+		}
+	}
+}
+
 // detectMovedBlockConflicts checks for hand-written moved blocks that may conflict
 // with what tf-migrate would generate.
 func detectMovedBlockConflicts(report *preflightReport, renames map[string]string) []string {
@@ -262,15 +420,9 @@ func detectMovedBlockConflicts(report *preflightReport, renames map[string]strin
 						"  tf-migrate will generate this moved block automatically.\n"+
 						"  Consider removing it to avoid duplicates.",
 					mb.File, addr, mb.ToType, mb.ToName))
-			} else {
-				// User's moved block targets a different type than expected
-				warnings = append(warnings, fmt.Sprintf(
-					"Conflicting moved block in %s: %s → %s.%s\n"+
-						"  tf-migrate would rename %s to %s, not %s.\n"+
-						"  Please remove or correct this moved block before proceeding.",
-					mb.File, addr, mb.ToType, mb.ToName,
-					mb.FromType, newType, mb.ToType))
 			}
+			// Note: We no longer warn about "Conflicting moved block" with wrong target type
+			// because autoFixMovedBlocks already updates those to the correct v5 types.
 		}
 
 		// Check if from-type doesn't exist in v5 provider at all and has no transformer
