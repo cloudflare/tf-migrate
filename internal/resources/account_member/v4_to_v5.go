@@ -40,9 +40,18 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	tfhcl.RenameAttribute(body, "email_address", "email")
 	tfhcl.RenameAttribute(body, "role_ids", "roles")
 
+	// Ensure status is set to prevent drift.
+	// In v5, if status is not set, the provider defaults to "pending" which can cause
+	// unnecessary changes and may fail with "cannot update membership for own user"
+	// when the service account tries to modify its own membership.
+	// If no status is set, default to "accepted". If status is already set,
+	// preserve the original value (e.g., "pending" should remain "pending").
+	if body.GetAttribute("status") == nil {
+		tfhcl.SetAttribute(body, "status", "accepted")
+	}
+
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
 }
-

@@ -1,8 +1,11 @@
 package dns_record
 
 import (
+	"strings"
+
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
 
@@ -99,6 +102,14 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		}
 	}
 
+	// Lowercase the name attribute for CNAME records to prevent drift.
+	// The Cloudflare API normalizes DNS names to lowercase, so records with
+	// uppercase characters (e.g., "_6D3873F30BCDB90ECA2F924ED54CF8DB.example.com")
+	// would show perpetual drift without this normalization.
+	if recordType == "CNAME" {
+		m.lowercaseNameAttribute(body)
+	}
+
 	// Remove deprecated attributes
 	tfhcl.RemoveAttributes(body, "allow_overwrite", "hostname")
 
@@ -125,6 +136,28 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
+}
+
+// lowercaseNameAttribute lowercases the name attribute value to match API normalization.
+// This prevents perpetual drift for DNS records with uppercase characters.
+func (m *V4ToV5Migrator) lowercaseNameAttribute(body *hclwrite.Body) {
+	nameAttr := body.GetAttribute("name")
+	if nameAttr == nil {
+		return
+	}
+
+	// Extract the current value
+	nameValue := tfhcl.ExtractStringFromAttribute(nameAttr)
+	if nameValue == "" {
+		return
+	}
+
+	// Check if the value contains uppercase characters
+	lowerValue := strings.ToLower(nameValue)
+	if lowerValue != nameValue {
+		// Replace with lowercased version
+		body.SetAttributeValue("name", cty.StringVal(lowerValue))
+	}
 }
 
 // processDataBlocks converts data blocks to attribute format

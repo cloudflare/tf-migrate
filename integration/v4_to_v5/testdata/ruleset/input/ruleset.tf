@@ -95,8 +95,8 @@ resource "cloudflare_ruleset" "redirect" {
 
     action_parameters {
       from_value {
-        status_code            = 301
-        preserve_query_string  = true
+        status_code           = 301
+        preserve_query_string = true
 
         target_url {
           value = "https://example.com/new-page"
@@ -178,39 +178,18 @@ resource "cloudflare_ruleset" "log_custom_fields" {
     enabled     = true
 
     action_parameters {
-      cookie_fields = ["session_id", "user_token", "preferences"]
-      request_fields = ["cf.bot_score", "cf.threat_score"]
+      cookie_fields   = ["session_id", "user_token", "preferences"]
+      request_fields  = ["cf.bot_score", "cf.threat_score"]
       response_fields = ["cf.cache_status"]
     }
   }
 }
 
-# Test Case 12: WAF managed ruleset with overrides
-resource "cloudflare_ruleset" "waf_with_overrides" {
-  zone_id     = var.cloudflare_zone_id
-  name        = "${local.name_prefix}-waf-overrides"
-  kind        = "zone"
-  phase       = "http_request_firewall_managed"
-  description = "WAF ruleset with basic overrides"
+# Note: WAF managed ruleset test removed - Cloudflare only allows one custom ruleset
+# per zone for http_request_firewall_managed phase. Testing WAF ruleset overrides
+# requires manual setup or importing existing rulesets.
 
-  rules {
-    action      = "execute"
-    expression  = "true"
-    description = "Execute OWASP ruleset with sensitivity override"
-    enabled     = true
-
-    action_parameters {
-      id = "4814384a9e5d4991b9815dcfc25d2f1f"
-
-      overrides {
-        enabled = true
-        action  = "log"
-      }
-    }
-  }
-}
-
-# Test Case 13: Cache settings with cache_reserve and query_string
+# Test Case 12: Cache settings with cache_reserve and query_string
 resource "cloudflare_ruleset" "cache_with_reserve" {
   zone_id     = var.cloudflare_zone_id
   name        = "${local.name_prefix}-cache-reserve"
@@ -294,26 +273,5 @@ resource "cloudflare_ruleset" "origin_with_sni" {
   }
 }
 
-# Test Case 17: DDoS with algorithms override
-resource "cloudflare_ruleset" "ddos_algorithms" {
-  account_id  = var.cloudflare_account_id
-  name        = "${local.name_prefix}-ddos-algorithms"
-  kind        = "root"
-  phase       = "ddos_l7"
-  description = "DDoS protection with algorithm override"
-
-  rules {
-    action      = "execute"
-    expression  = "true"
-    description = "Execute DDoS rules with sensitivity"
-    enabled     = true
-
-    action_parameters {
-      id = "4d21379b4f9f4bb088e0729962c8b3cf"
-
-      overrides {
-        sensitivity_level = "medium"
-      }
-    }
-  }
-}
+# Note: DDoS L7 ruleset test removed - Cloudflare only allows one ddos_l7 ruleset per account
+# and it cannot be deleted once created. Testing DDoS rulesets requires manual setup.

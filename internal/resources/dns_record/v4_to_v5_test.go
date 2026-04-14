@@ -491,6 +491,75 @@ moved {
   to   = cloudflare_dns_record.ipv6_content
 }`,
 			},
+			{
+				Name: "CNAME record with uppercase name - should be lowercased",
+				Input: `
+resource "cloudflare_record" "validation_cname" {
+  zone_id = "abc123"
+  name    = "_6D3873F30BCDB90ECA2F924ED54CF8DB.staging.example.com"
+  type    = "CNAME"
+  content = "example.com"
+  ttl     = 3600
+}`,
+				Expected: `resource "cloudflare_dns_record" "validation_cname" {
+  zone_id = "abc123"
+  name    = "_6d3873f30bcdb90eca2f924ed54cf8db.staging.example.com"
+  type    = "CNAME"
+  content = "example.com"
+  ttl     = 3600
+}
+
+moved {
+  from = cloudflare_record.validation_cname
+  to   = cloudflare_dns_record.validation_cname
+}`,
+			},
+			{
+				Name: "CNAME record with already lowercase name - should remain unchanged",
+				Input: `
+resource "cloudflare_record" "www_cname" {
+  zone_id = "abc123"
+  name    = "www.example.com"
+  type    = "CNAME"
+  content = "example.com"
+  ttl     = 3600
+}`,
+				Expected: `resource "cloudflare_dns_record" "www_cname" {
+  zone_id = "abc123"
+  name    = "www.example.com"
+  type    = "CNAME"
+  content = "example.com"
+  ttl     = 3600
+}
+
+moved {
+  from = cloudflare_record.www_cname
+  to   = cloudflare_dns_record.www_cname
+}`,
+			},
+			{
+				Name: "A record with uppercase name - should NOT be lowercased (only CNAME)",
+				Input: `
+resource "cloudflare_record" "a_record" {
+  zone_id = "abc123"
+  name    = "MyHost.example.com"
+  type    = "A"
+  value   = "192.0.2.1"
+  ttl     = 3600
+}`,
+				Expected: `resource "cloudflare_dns_record" "a_record" {
+  zone_id = "abc123"
+  name    = "MyHost.example.com"
+  type    = "A"
+  content = "192.0.2.1"
+  ttl     = 3600
+}
+
+moved {
+  from = cloudflare_record.a_record
+  to   = cloudflare_dns_record.a_record
+}`,
+			},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)

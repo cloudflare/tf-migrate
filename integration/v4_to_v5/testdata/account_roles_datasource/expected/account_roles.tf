@@ -3,7 +3,7 @@ variable "cloudflare_account_id" {
   type        = string
 }
 
-# Look up all account roles
+# Look up all account roles - this is a datasource test
 data "cloudflare_account_roles" "all" {
   account_id = var.cloudflare_account_id
 }
@@ -16,15 +16,6 @@ locals {
   }
 }
 
-# Reference roles by name in a resource
-resource "cloudflare_account_member" "example" {
-  account_id = var.cloudflare_account_id
-  email      = "user@example.com"
-  roles = [
-    local.account_member_roles["Administrator"].id,
-  ]
-}
-
 # Direct attribute references (v4: .roles)
 output "all_role_ids" {
   value = [for r in data.cloudflare_account_roles.all.result : r.id]
@@ -32,4 +23,9 @@ output "all_role_ids" {
 
 output "all_role_names" {
   value = [for r in data.cloudflare_account_roles.all.result : r.name]
+}
+
+# Output the role map to verify the lookup works
+output "admin_role_id" {
+  value = local.account_member_roles["Administrator"].id
 }
