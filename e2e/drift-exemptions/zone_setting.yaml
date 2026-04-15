@@ -15,6 +15,14 @@ exemptions:
     allow_resource_creation: true
     enabled: true
 
+  - name: "zone_setting_value_type_coercion"
+    description: "In v4, the cloudflare_zone_settings_override resource used individually-typed attributes for each setting (e.g. max_upload was TypeInt). In v5, cloudflare_zone_setting uses a single DynamicAttribute for 'value' that normalizes all values. The migrator writes the value as an integer (e.g. value = 300) matching the v4 type, but the v5 provider normalizes it to a string (value = \"300\"). The underlying setting is unchanged. The drift resolves after running terraform apply."
+    resource_types:
+      - "cloudflare_zone_setting"
+    patterns:
+      - 'value\s+=\s+\d+\s+->\s+"\d+"'
+    enabled: true
+
 settings:
   apply_exemptions: true
   verbose_exemptions: false

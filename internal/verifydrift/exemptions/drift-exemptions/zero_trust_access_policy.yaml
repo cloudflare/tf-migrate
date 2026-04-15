@@ -3,18 +3,6 @@
 version: 1
 
 exemptions:
-  # NOTE: session_duration_normalization exemption removed as the bug is fixed.
-  # tf-migrate now correctly preserves session_duration during migration.
-  # The exemption is kept here (disabled) for historical reference.
-  - name: "session_duration_normalization"
-    description: "DEPRECATED: tf-migrate now preserves session_duration. This exemption is no longer needed."
-    resource_types:
-      - "cloudflare_zero_trust_access_policy"
-    patterns:
-      - '~ session_duration\s*='
-      - 'session_duration.*->.*"24h"'
-    enabled: false
-
   # Application-scoped policies are converted to inline policies in v5.
   # The inline policy shows as being removed from the application because
   # the application resource needs to be updated to include the policy inline.

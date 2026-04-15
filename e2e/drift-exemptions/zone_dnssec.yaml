@@ -27,25 +27,19 @@ exemptions:
       - '~ status\s*=\s*"pending-disabled"\s*->\s*"disabled"'
     enabled: true
 
-  # occurs when status field doesn't exist in the config (v4 > v5)
-  - name: "status_pending_to_null"
-    description: "When DNSSEC is being activated, the Cloudflare API returns a status of 'pending' before the DS records have fully propagated. If your config does not explicitly set the status field, Terraform will show 'status = \"pending\" -> null'. This is expected during the activation window and does not indicate a problem. Once DNSSEC activation completes, this drift will disappear on its own."
-    patterns:
-      - 'status.*=.*"pending".*->.*null'
-      - '-\s+status\s*=\s*"pending"\s*->\s*null'
-    enabled: true
+  # NOTE: status_pending_to_null exemption removed — it was fully subsumed by status_to_null below.
 
-  # Status field drift when migration doesn't preserve state value
+  # Status field drift when migration doesn't preserve state value.
+  # Covers status going to null (removal) for all possible status values.
   - name: "status_to_null"
-    description: "Status field going to null when state is not available during migration"
+    description: "The v4 provider stored DNSSEC status as a Computed attribute. During migration, the status may not be preserved in state, causing the plan to show the status being removed. Your DNSSEC configuration is not changed. This drift resolves after the next terraform apply."
     patterns:
       - 'status\s*=\s*"pending"\s*->\s*null'
       - 'status\s*=\s*"active"\s*->\s*null'
       - 'status\s*=\s*"disabled"\s*->\s*null'
-      - '-\s*status\s*=\s*"pending"'
-      - '-\s*status\s*=\s*"active"'
-      # Match the terraform plan format with varying whitespace
-      - '-\s+status\s+=\s+"pending"\s+->\s+null'
+      - '-\s*status\s*=\s*"pending"\s*->\s*null'
+      - '-\s*status\s*=\s*"active"\s*->\s*null'
+      - '-\s*status\s*=\s*"disabled"\s*->\s*null'
     enabled: true
 
 settings:
