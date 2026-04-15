@@ -2,6 +2,7 @@ package api_token
 
 import (
 	"regexp"
+	"sort"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -95,6 +96,7 @@ func (m *V4ToV5Migrator) transformPolicyBlocks(body *hclwrite.Body) {
 // transformPermissionGroups converts permission_groups from list of strings to list of objects
 // v4: permission_groups = ["id1", "id2"]
 // v5: permission_groups = [{ id = "id1" }, { id = "id2" }]
+// The IDs are sorted alphabetically to match the v5 provider's canonical ordering.
 func (m *V4ToV5Migrator) transformPermissionGroups(body *hclwrite.Body) {
 	permGroupsAttr := body.GetAttribute("permission_groups")
 	if permGroupsAttr == nil {
@@ -104,13 +106,9 @@ func (m *V4ToV5Migrator) transformPermissionGroups(body *hclwrite.Body) {
 	// Parse the existing list expression to extract the permission IDs
 	exprTokens := permGroupsAttr.Expr().BuildTokens(nil)
 
-	// Build a list of objects where each string ID becomes { id = "..." }
-	var permObjects []hclwrite.Tokens
-
-	// We need to manually parse the tokens to extract string values
-	// For simplicity, we'll reconstruct the structure
+	// Collect all permission group IDs first
+	var permIDs []string
 	inList := false
-	var currentID string
 
 	for _, token := range exprTokens {
 		switch token.Type {
@@ -120,26 +118,33 @@ func (m *V4ToV5Migrator) transformPermissionGroups(body *hclwrite.Body) {
 			inList = false
 		case hclsyntax.TokenQuotedLit:
 			if inList {
-				// Extract the ID from the quoted literal (remove quotes)
-				currentID = string(token.Bytes)
-				// Create an object: { id = "currentID" }
-				objAttrs := []hclwrite.ObjectAttrTokens{
-					{
-						Name:  hclwrite.TokensForIdentifier("id"),
-						Value: hclwrite.TokensForValue(cty.StringVal(currentID)),
-					},
-				}
-				permObjects = append(permObjects, hclwrite.TokensForObject(objAttrs))
+				permIDs = append(permIDs, string(token.Bytes))
 			}
 		}
 	}
 
-	// If we found any permission IDs, replace the attribute with the new format
-	if len(permObjects) > 0 {
-		body.RemoveAttribute("permission_groups")
-		listTokens := hclwrite.TokensForTuple(permObjects)
-		body.SetAttributeRaw("permission_groups", listTokens)
+	if len(permIDs) == 0 {
+		return
 	}
+
+	// Sort IDs alphabetically to match the v5 provider's canonical ordering
+	sort.Strings(permIDs)
+
+	// Build a list of objects where each string ID becomes { id = "..." }
+	var permObjects []hclwrite.Tokens
+	for _, id := range permIDs {
+		objAttrs := []hclwrite.ObjectAttrTokens{
+			{
+				Name:  hclwrite.TokensForIdentifier("id"),
+				Value: hclwrite.TokensForValue(cty.StringVal(id)),
+			},
+		}
+		permObjects = append(permObjects, hclwrite.TokensForObject(objAttrs))
+	}
+
+	body.RemoveAttribute("permission_groups")
+	listTokens := hclwrite.TokensForTuple(permObjects)
+	body.SetAttributeRaw("permission_groups", listTokens)
 }
 
 // transformResources wraps the resources map with jsonencode()
@@ -200,4 +205,3 @@ func (m *V4ToV5Migrator) transformConditionBlock(body *hclwrite.Body) {
 	body.SetAttributeRaw("condition", conditionTokens)
 	body.RemoveBlock(conditionBlock)
 }
-

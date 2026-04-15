@@ -59,9 +59,9 @@ resource "cloudflare_api_token" "example" {
       "com.cloudflare.api.account.*" = "*"
     })
     permission_groups = [{
-      id = "c8fed203ed3043cba015a93ad1616f1f"
-      }, {
       id = "82e64a83756745bbbb1c9c2701bf816b"
+      }, {
+      id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
   }]
 }`,
@@ -461,9 +461,9 @@ resource "cloudflare_api_token" "full_example" {
       "com.cloudflare.api.account.billing.*" = "read"
     })
     permission_groups = [{
-      id = "c8fed203ed3043cba015a93ad1616f1f"
-      }, {
       id = "82e64a83756745bbbb1c9c2701bf816b"
+      }, {
+      id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
     }, {
     effect = "deny"
