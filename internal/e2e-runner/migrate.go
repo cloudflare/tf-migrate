@@ -103,6 +103,7 @@ func RunMigrate(resources string, yes bool, targetProviderVersion string) error 
 		"migrate",
 		"--backup=false",
 		"--recursive",
+		"--skip-version-check", // Skip version check: e2e tests control their own provider/state
 	}
 	if yes {
 		args = append(args, "--skip-phase-check")
