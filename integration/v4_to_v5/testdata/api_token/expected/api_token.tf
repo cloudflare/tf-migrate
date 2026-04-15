@@ -27,9 +27,9 @@ resource "cloudflare_api_token" "basic_token" {
       "com.cloudflare.api.account.*" = "*"
     })
     permission_groups = [{
-      id = "c8fed203ed3043cba015a93ad1616f1f"
-      }, {
       id = "82e64a83756745bbbb1c9c2701bf816b"
+      }, {
+      id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
   }]
 }
@@ -237,9 +237,9 @@ resource "cloudflare_api_token" "multi_perms_token" {
       "com.cloudflare.api.account.*" = "*"
     })
     permission_groups = [{
-      id = "c8fed203ed3043cba015a93ad1616f1f"
-      }, {
       id = "82e64a83756745bbbb1c9c2701bf816b"
+      }, {
+      id = "c8fed203ed3043cba015a93ad1616f1f"
     }]
   }]
 }
