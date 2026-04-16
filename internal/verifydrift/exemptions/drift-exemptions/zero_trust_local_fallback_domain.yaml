@@ -1,3 +1,8 @@
+# Drift Exemptions for zero_trust_local_fallback_domain resource
+#
+# This module also manages cloudflare_zero_trust_device_custom_profile resources,
+# which can show precedence recalculation drift after migration.
+
 version: 1
 
 exemptions:
@@ -11,4 +16,4 @@ exemptions:
 
 settings:
   apply_exemptions: true
-  verbose_exemptions: true
+  verbose_exemptions: false

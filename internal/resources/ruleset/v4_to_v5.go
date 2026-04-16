@@ -93,6 +93,11 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			convertStringArrayToNameObjectArray(actionParamsBody, "cookie_fields")
 			convertStringArrayToNameObjectArray(actionParamsBody, "request_fields")
 			convertStringArrayToNameObjectArray(actionParamsBody, "response_fields")
+
+			// Transform action_parameters.rules map values from comma-separated strings to lists
+			// v4: rules = { ruleset_id = "rule1,rule2,rule3" }
+			// v5: rules = { ruleset_id = ["rule1", "rule2", "rule3"] }
+			convertRulesMapValuesToLists(actionParamsBody)
 		}
 	}
 
@@ -395,6 +400,108 @@ func convertStringArrayToNameObjectArray(body *hclwrite.Body, fieldName string) 
 
 	// Set the new attribute value
 	body.SetAttributeRaw(fieldName, tokens)
+}
+
+// convertRulesMapValuesToLists converts action_parameters.rules map values from strings
+// to lists of strings.
+// v4: rules = { efb7b8c9... = "rule1,rule2,rule3" } or rules = { efb7b8c9... = "rule1" }
+// v5: rules = { efb7b8c9... = ["rule1", "rule2", "rule3"] } or rules = { efb7b8c9... = ["rule1"] }
+// In v4, action_parameters.rules was a map(string) where values could be single or comma-separated rule IDs.
+// In v5, it changed to map(list(string)) where every value must be a list.
+func convertRulesMapValuesToLists(body *hclwrite.Body) {
+	rulesAttr := body.GetAttribute("rules")
+	if rulesAttr == nil {
+		return
+	}
+
+	// Get the expression tokens and check if it looks like a map literal
+	exprTokens := rulesAttr.Expr().BuildTokens(nil)
+	exprStr := strings.TrimSpace(string(exprTokens.Bytes()))
+
+	// Only process if it starts with { (a map literal)
+	if !strings.HasPrefix(exprStr, "{") {
+		return
+	}
+
+	// Check if this map has any string values (as opposed to already being lists or other types).
+	// We need to distinguish map keys (quoted strings before =) from map values (quoted strings after =).
+	// Track whether we've seen an = sign to know if a quoted string is a key or value.
+	hasStringValues := false
+	afterEqual := false
+	for _, token := range exprTokens {
+		if token.Type == hclsyntax.TokenEqual {
+			afterEqual = true
+			continue
+		}
+		if afterEqual && token.Type == hclsyntax.TokenOQuote {
+			hasStringValues = true
+			break
+		}
+		if token.Type == hclsyntax.TokenNewline || token.Type == hclsyntax.TokenOBrace || token.Type == hclsyntax.TokenCBrace {
+			afterEqual = false
+		}
+	}
+
+	if !hasStringValues {
+		return
+	}
+
+	// Build new tokens converting all map string values to lists.
+	// We track whether we're after an = sign to only convert values (not keys).
+	var newTokens hclwrite.Tokens
+	afterEq := false
+	for i := 0; i < len(exprTokens); i++ {
+		token := exprTokens[i]
+
+		if token.Type == hclsyntax.TokenEqual {
+			afterEq = true
+			newTokens = append(newTokens, token)
+			continue
+		}
+
+		// Reset afterEq on newline or braces (next line is a new key-value pair)
+		if token.Type == hclsyntax.TokenNewline || token.Type == hclsyntax.TokenCBrace {
+			afterEq = false
+			newTokens = append(newTokens, token)
+			continue
+		}
+
+		// Look for pattern: TokenOQuote TokenQuotedLit TokenCQuote after an = sign
+		// These are map values that need to be converted to lists
+		if afterEq && token.Type == hclsyntax.TokenOQuote &&
+			i+2 < len(exprTokens) &&
+			exprTokens[i+1].Type == hclsyntax.TokenQuotedLit &&
+			exprTokens[i+2].Type == hclsyntax.TokenCQuote {
+
+			quotedVal := string(exprTokens[i+1].Bytes)
+
+			// Split by comma (handles both single values and comma-separated)
+			parts := strings.Split(quotedVal, ",")
+			newTokens = append(newTokens, &hclwrite.Token{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")})
+
+			for j, part := range parts {
+				part = strings.TrimSpace(part)
+				if j > 0 {
+					newTokens = append(newTokens, &hclwrite.Token{Type: hclsyntax.TokenComma, Bytes: []byte(",")})
+					newTokens = append(newTokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" ")})
+				}
+				newTokens = append(newTokens, &hclwrite.Token{Type: hclsyntax.TokenOQuote, Bytes: []byte("\"")})
+				newTokens = append(newTokens, &hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(part)})
+				newTokens = append(newTokens, &hclwrite.Token{Type: hclsyntax.TokenCQuote, Bytes: []byte("\"")})
+			}
+
+			newTokens = append(newTokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
+
+			// Skip the original 3 tokens (OQuote, QuotedLit, CQuote)
+			i += 2
+			afterEq = false
+			continue
+		}
+
+		newTokens = append(newTokens, token)
+	}
+
+	body.SetAttributeRaw("rules", newTokens)
 }
 
 // convertDynamicRulesToForExpression converts dynamic "rules" blocks to rules = [for ...] syntax

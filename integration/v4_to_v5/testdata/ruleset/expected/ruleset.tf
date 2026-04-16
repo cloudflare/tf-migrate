@@ -194,9 +194,98 @@ resource "cloudflare_ruleset" "log_custom_fields" {
   ]
 }
 
-# Note: WAF managed ruleset test removed - Cloudflare only allows one custom ruleset
-# per zone for http_request_firewall_managed phase. Testing WAF ruleset overrides
-# requires manual setup or importing existing rulesets.
+# Test Case: WAF managed ruleset with skip rules (action_parameters.rules map)
+# Tests conversion of comma-separated rule IDs to lists
+resource "cloudflare_ruleset" "waf_with_skip_rules" {
+  zone_id     = var.cloudflare_zone_id
+  name        = "${local.name_prefix}-waf-skip"
+  kind        = "zone"
+  phase       = "http_request_firewall_managed"
+  description = "WAF managed ruleset with skip rules"
+
+
+
+
+
+  rules = [
+    {
+      action      = "skip"
+      description = "Exempt firewall rule expressions from log4j WAF block"
+      enabled     = true
+      expression  = "(http.request.uri.path contains \"/filters\")"
+      action_parameters = {
+        rules = {
+          efb7b8c949ac4650a09736fc376e9aee = ["0c054d4e4dd5455c9ff8f01efe5abb10", "3536f964ccc345308b6445e8dc29b753", "e7e4b386797e417c998d872956c390a1"]
+        }
+      }
+      logging = {
+        enabled = true
+      }
+    },
+    {
+      action      = "skip"
+      description = "Single rule skip"
+      enabled     = true
+      expression  = "(http.request.uri.path contains \"/graphql\")"
+      action_parameters = {
+        rules = {
+          efb7b8c949ac4650a09736fc376e9aee = ["5f6744fa026a4638bda5b3d7d5e015dd"]
+        }
+      }
+      logging = {
+        enabled = true
+      }
+    },
+    {
+      action      = "skip"
+      description = "Multi-ruleset skip with mixed values"
+      enabled     = true
+      expression  = "(ip.src in {64.39.96.0/20})"
+      action_parameters = {
+        rules = {
+          "4814384a9e5d4991b9815dcfc25d2f1f" = ["6179ae15870a4bb7b2d480d4843b323c"]
+          "efb7b8c949ac4650a09736fc376e9aee" = ["0242110ae62e44028a13bf4834780914", "6b1cc72dff9746469d4695a474430f12"]
+        }
+      }
+      logging = {
+        enabled = true
+      }
+    },
+    {
+      action      = "skip"
+      description = "Skip current ruleset"
+      enabled     = true
+      expression  = "(http.request.uri.path contains \"/exempt\")"
+      action_parameters = {
+        ruleset = "current"
+      }
+      logging = {
+        enabled = true
+      }
+    },
+    {
+      action      = "execute"
+      enabled     = true
+      description = "Execute managed ruleset"
+      expression  = "true"
+      action_parameters = {
+        id = "efb7b8c949ac4650a09736fc376e9aee"
+        overrides = {
+          rules = [
+            {
+              enabled = false
+              id      = "5de7edfa648c4d6891dc3e7f84534ffa"
+            },
+            {
+              enabled = false
+              id      = "e3a567afc347477d9702d9047e97d760"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
 
 # Test Case 12: Cache settings with cache_reserve and query_string
 resource "cloudflare_ruleset" "cache_with_reserve" {

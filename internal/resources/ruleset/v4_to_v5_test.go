@@ -467,6 +467,149 @@ func TestV4ToV5Transformation(t *testing.T) {
 }`,
 			},
 			{
+				Name: "WAF managed ruleset skip with action_parameters.rules comma-separated strings to lists",
+				Input: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "zone"
+  kind    = "zone"
+  phase   = "http_request_firewall_managed"
+
+  rules {
+    action = "skip"
+    action_parameters {
+      rules = {
+        efb7b8c949ac4650a09736fc376e9aee = "0c054d4e4dd5455c9ff8f01efe5abb10,3536f964ccc345308b6445e8dc29b753,e7e4b386797e417c998d872956c390a1"
+      }
+    }
+    description = "Exempt firewall rule expressions from log4j WAF block"
+    enabled     = true
+    expression  = "(http.request.uri.path contains \"/filters\")"
+    logging {
+      enabled = true
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "zone"
+  kind    = "zone"
+  phase   = "http_request_firewall_managed"
+
+  rules = [
+    {
+      action      = "skip"
+      description = "Exempt firewall rule expressions from log4j WAF block"
+      enabled     = true
+      expression  = "(http.request.uri.path contains \"/filters\")"
+      action_parameters = {
+        rules = {
+          efb7b8c949ac4650a09736fc376e9aee = ["0c054d4e4dd5455c9ff8f01efe5abb10", "3536f964ccc345308b6445e8dc29b753", "e7e4b386797e417c998d872956c390a1"]
+        }
+      }
+      logging = {
+        enabled = true
+      }
+    }
+  ]
+}`,
+			},
+			{
+				Name: "WAF managed ruleset skip with single rule ID (no comma) also becomes list",
+				Input: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "zone"
+  kind    = "zone"
+  phase   = "http_request_firewall_managed"
+
+  rules {
+    action = "skip"
+    action_parameters {
+      rules = {
+        efb7b8c949ac4650a09736fc376e9aee = "5f6744fa026a4638bda5b3d7d5e015dd"
+      }
+    }
+    description = "Single rule skip"
+    enabled     = true
+    expression  = "true"
+    logging {
+      enabled = true
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "zone"
+  kind    = "zone"
+  phase   = "http_request_firewall_managed"
+
+  rules = [
+    {
+      action      = "skip"
+      description = "Single rule skip"
+      enabled     = true
+      expression  = "true"
+      action_parameters = {
+        rules = {
+          efb7b8c949ac4650a09736fc376e9aee = ["5f6744fa026a4638bda5b3d7d5e015dd"]
+        }
+      }
+      logging = {
+        enabled = true
+      }
+    }
+  ]
+}`,
+			},
+			{
+				Name: "WAF managed ruleset skip with multiple map entries and mixed comma values",
+				Input: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "zone"
+  kind    = "zone"
+  phase   = "http_request_firewall_managed"
+
+  rules {
+    action = "skip"
+    action_parameters {
+      rules = {
+        "4814384a9e5d4991b9815dcfc25d2f1f" = "6179ae15870a4bb7b2d480d4843b323c"
+        "efb7b8c949ac4650a09736fc376e9aee" = "0242110ae62e44028a13bf4834780914,6b1cc72dff9746469d4695a474430f12,55b100786189495c93744db0e1efdffb"
+      }
+    }
+    description = "Multiple map entries"
+    enabled     = true
+    expression  = "true"
+    logging {
+      enabled = true
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "zone"
+  kind    = "zone"
+  phase   = "http_request_firewall_managed"
+
+  rules = [
+    {
+      action      = "skip"
+      description = "Multiple map entries"
+      enabled     = true
+      expression  = "true"
+      action_parameters = {
+        rules = {
+          "4814384a9e5d4991b9815dcfc25d2f1f" = ["6179ae15870a4bb7b2d480d4843b323c"]
+          "efb7b8c949ac4650a09736fc376e9aee" = ["0242110ae62e44028a13bf4834780914", "6b1cc72dff9746469d4695a474430f12", "55b100786189495c93744db0e1efdffb"]
+        }
+      }
+      logging = {
+        enabled = true
+      }
+    }
+  ]
+}`,
+			},
+			{
 				Name: "Cache key query_string with only exclude",
 				Input: `resource "cloudflare_ruleset" "example" {
   zone_id = "test123"

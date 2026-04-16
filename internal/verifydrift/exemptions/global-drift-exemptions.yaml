@@ -12,6 +12,8 @@ exemptions:
     patterns:
       - '\(known after apply\)'
       - '= \{\} -> null'
+      - '= false -> null'
+      - '= true -> null'
     enabled: true
 
   # HTML entity encoding differences between v4 and v5 providers

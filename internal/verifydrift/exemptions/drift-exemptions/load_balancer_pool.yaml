@@ -8,14 +8,20 @@ version: 1
 
 exemptions:
   - name: "origins_reorder_drift"
-    description: "After migration, the v5 provider may show origins in a different order and report the 'enabled' field toggling between true/false and null. This is caused by a gap in the provider's state upgrader — the underlying load balancer pool and its origins are not changed in Cloudflare. Run terraform apply to re-sync state; the drift will not reappear on subsequent plans."
+    description: "After migration, the v5 provider may show origins in a different order and report computed fields changing. This is caused by a gap in the provider's state upgrader — the underlying load balancer pool and its origins are not changed in Cloudflare. Run terraform apply to re-sync state; the drift will not reappear on subsequent plans."
     patterns:
-      - 'enabled\s*=\s*(true|false)\s*->\s*null'
-      - 'enabled\s*=\s*(true|false)'
+      # NOTE: 'enabled = true/false -> null' patterns removed — now covered by
+      # global computed_value_refreshes exemption ('= false -> null', '= true -> null')
       - 'disabled_at'
-      - 'address.*192\.0\.2\.201'
-      - 'name.*static-origin'
-      - 'weight\s*=\s*1'
+    enabled: true
+
+  - name: "notification_filter_empty_removal"
+    description: "The 'notification_filter' attribute is new in the v5 provider (it did not exist in v4). After migration, the v5 provider may read an empty notification_filter from the API and include it in state, but since it is not present in the Terraform config, the plan shows it being removed (notification_filter = { pool = {} } -> null). This is safe — there are no actual notification filter settings configured. The drift resolves after running terraform apply."
+    resource_types:
+      - "cloudflare_load_balancer_pool"
+    patterns:
+      - 'notification_filter\s*='
+      - 'pool\s*=\s*\{\}\s*->\s*null'
     enabled: true
 
 settings:
