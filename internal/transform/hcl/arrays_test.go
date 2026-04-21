@@ -621,12 +621,196 @@ resource "test" "example" {
 
 		assert.True(t, modified)
 	})
+
+	t.Run("Comments with blank lines between sections produce no phantom elements", func(t *testing.T) {
+		// Regression test: blank lines between comment-separated sections in a string
+		// array generated phantom `{ value =\n description = null }` entries.
+		// The blank line TokenNewline at the top level was collected into currentElement
+		// and saved as a phantom element on the next comma. Real-world pattern from
+		// contractor_allow_list_macos in zero-trust-global/teams_lists.tf:
+		//   items = [
+		//     ### Source header
+		//     ## Section one
+		//     "captive.apple.com",
+		//                          ← blank line here became phantom element
+		//     ## Section two
+		//     "push.apple.com"
+		//   ]
+		input := `
+resource "test" "example" {
+  items = [
+    ### Source: https://support.apple.com
+    ### Date: 2024-08-20
+
+    ## Device setup
+    # comment about device setup
+    "captive.apple.com",
+    "gs.apple.com",
+    "humb.apple.com",
+
+    ## Device management
+    # comment about MDM
+    "push.apple.com",
+    "deviceenrollment.apple.com"
+  ]
+}`
+
+		file, diags := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+		require.False(t, diags.HasErrors())
+
+		body := file.Body().Blocks()[0].Body()
+		modified := MergeAttributeAndBlocksToObjectArray(
+			body,
+			"items",
+			"items_with_description",
+			"items",
+			"value",
+			[]string{"description"},
+			true,
+		)
+
+		assert.True(t, modified)
+		output := string(file.Bytes())
+
+		// Output must be valid HCL — no bare `value =` with nothing after it
+		_, parseDiags := hclwrite.ParseConfig([]byte(output), "", hcl.InitialPos)
+		assert.False(t, parseDiags.HasErrors(), "output must be valid HCL:\n%s", output)
+
+		// Must contain all 5 real string values
+		for _, v := range []string{"captive.apple.com", "gs.apple.com", "humb.apple.com", "push.apple.com", "deviceenrollment.apple.com"} {
+			assert.Contains(t, output, `"`+v+`"`, "missing value %q in output", v)
+		}
+
+		// Bare `value =\n` is the failure signature — must not appear
+		assert.NotContains(t, output, "value =\n", "bare 'value =' found — phantom element from blank line")
+	})
+
+	t.Run("Resource references as array elements are preserved on one line", func(t *testing.T) {
+		// Regression test: items = [resource.name.attr, resource.name.attr]
+		// Reference-type elements must produce `value = resource.name.attr` (inline),
+		// not `value =\n  resource.name.attr` split across lines.
+		input := `
+resource "test" "example" {
+  items = [
+    cloudflare_zero_trust_tunnel_cloudflared_route.athens_ipv4.network,
+    cloudflare_zero_trust_tunnel_cloudflared_route.athens_ipv6.network
+  ]
+}`
+
+		file, diags := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+		require.False(t, diags.HasErrors())
+
+		body := file.Body().Blocks()[0].Body()
+		modified := MergeAttributeAndBlocksToObjectArray(
+			body,
+			"items",
+			"items_with_description",
+			"items",
+			"value",
+			[]string{"description"},
+			true,
+		)
+
+		assert.True(t, modified)
+		output := string(file.Bytes())
+
+		// Output must be valid HCL
+		_, parseDiags := hclwrite.ParseConfig([]byte(output), "", hcl.InitialPos)
+		assert.False(t, parseDiags.HasErrors(), "output must be valid HCL:\n%s", output)
+
+		// References must not be split to next line
+		assert.NotContains(t, output, "value =\n", "bare 'value =' found — reference split across lines")
+		assert.Contains(t, output, "cloudflare_zero_trust_tunnel_cloudflared_route.athens_ipv4.network")
+		assert.Contains(t, output, "cloudflare_zero_trust_tunnel_cloudflared_route.athens_ipv6.network")
+	})
 }
 
 // Helper function to extract string value from an ArrayElement (for testing)
 func ExtractStringFromElement(elem ArrayElement) string {
 	val, _ := extractStringFieldFromArrayElement(elem)
 	return val
+}
+
+// TestForExpressionHandling verifies that for expressions in array attributes
+// are left completely untouched by MergeAttributeAndBlocksToObjectArray.
+// Splitting [for k, v in map : v] at the comma would produce invalid HCL.
+func TestForExpressionHandling(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name: "for expression with two iteration variables is preserved",
+			input: `
+resource "test" "example" {
+  items = [for cidr, _ in local.vault_cidrs : cidr]
+}`,
+		},
+		{
+			name: "for expression with single iteration variable is preserved",
+			input: `
+resource "test" "example" {
+  items = [for cidr in local.cidrs : cidr]
+}`,
+		},
+		{
+			name: "for expression with function call is preserved",
+			input: `
+resource "test" "example" {
+  items = [for cidr, _ in merge(local.pdx_cidrs, local.ams_cidrs) : cidr]
+}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := hclwrite.ParseConfig([]byte(tt.input), "", hcl.InitialPos)
+			require.False(t, diags.HasErrors(), "input must be valid HCL")
+
+			body := file.Body().Blocks()[0].Body()
+			original := string(file.Bytes())
+
+			modified := MergeAttributeAndBlocksToObjectArray(
+				body,
+				"items",
+				"items_with_description",
+				"items",
+				"value",
+				[]string{"description"},
+				true,
+			)
+
+			// Must not modify anything — the for expression is opaque
+			assert.False(t, modified, "should not report modification for for expressions")
+			assert.Equal(t, original, string(file.Bytes()), "for expression must be preserved verbatim")
+
+			// Output must still be valid HCL
+			_, parseDiags := hclwrite.ParseConfig(file.Bytes(), "", hcl.InitialPos)
+			assert.False(t, parseDiags.HasErrors(), "output must be valid HCL: %s", parseDiags.Error())
+		})
+	}
+}
+
+// TestParseArrayAttributeForExpression verifies ParseArrayAttribute returns nil for for expressions
+func TestParseArrayAttributeForExpression(t *testing.T) {
+	inputs := []string{
+		`items = [for cidr, _ in local.vault_cidrs : cidr]`,
+		`items = [for cidr in local.cidrs : cidr]`,
+		`items = [for k, v in merge(local.a, local.b) : v]`,
+	}
+
+	for _, input := range inputs {
+		t.Run(input, func(t *testing.T) {
+			file, diags := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+			require.False(t, diags.HasErrors())
+
+			attr := file.Body().GetAttribute("items")
+			require.NotNil(t, attr)
+
+			elements := ParseArrayAttribute(attr)
+			assert.Nil(t, elements, "ParseArrayAttribute must return nil for for expressions")
+		})
+	}
 }
 
 // TestOrderPreservation verifies that TupleVal preserves insertion order
