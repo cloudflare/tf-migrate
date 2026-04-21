@@ -42,7 +42,7 @@ func ParseArrayAttribute(attr *hclwrite.Attribute) []ArrayElement {
 	}
 
 	tokens := attr.Expr().BuildTokens(nil)
-	var elements []ArrayElement
+	elements := []ArrayElement{} // non-nil: empty array returns [] not nil
 
 	// Find the opening bracket
 	inArray := false
@@ -64,6 +64,23 @@ func ParseArrayAttribute(attr *hclwrite.Attribute) []ArrayElement {
 		if token.Type == hclsyntax.TokenOBrack && !inArray {
 			inArray = true
 			continue
+		}
+
+		// Skip comments and bare newlines at the top level — they are not array
+		// elements. Newlines inside strings or objects are handled by their own
+		// tracking logic below and must not be skipped here.
+		if token.Type == hclsyntax.TokenComment {
+			continue
+		}
+		if token.Type == hclsyntax.TokenNewline && !inObject && !inQuotedString && templateDepth == 0 {
+			continue
+		}
+
+		// Detect a for expression: [for ...] is a comprehension, not a static
+		// list of elements. Return nil so callers know to treat it as opaque.
+		if inArray && len(currentElement) == 0 && !inObject &&
+			token.Type == hclsyntax.TokenIdent && string(token.Bytes) == "for" {
+			return nil
 		}
 		if token.Type == hclsyntax.TokenCBrack && inArray && bracketDepth == 0 && templateDepth == 0 && !inQuotedString {
 			// End of array - save any pending element
@@ -488,6 +505,12 @@ func MergeAttributeAndBlocksToObjectArray(
 	var arrayItemTokens []map[string]hclwrite.Tokens
 	if attr := body.GetAttribute(arrayAttrName); attr != nil {
 		elements := ParseArrayAttribute(attr)
+
+		// nil means the array is a for expression (or other opaque expression).
+		// Leave it completely untouched — don't remove it, don't rewrite it.
+		if elements == nil {
+			return modified
+		}
 
 		for _, elem := range elements {
 			// First try to extract a plain string value

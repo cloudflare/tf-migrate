@@ -316,6 +316,103 @@ moved {
 	})
 }
 
+// TestV4ToV5Transformation_ForExpression tests that items containing a Terraform
+// for expression (comprehension) are left completely untouched. Attempting to
+// parse [for k, v in map : v] as a static element list would split it at the
+// comma, producing invalid HCL (value =\n  _ in …).
+func TestV4ToV5Transformation_ForExpression(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	tests := []testhelpers.ConfigTestCase{
+		{
+			Name: "for expression with two iteration variables preserved verbatim",
+			Input: `
+resource "cloudflare_teams_list" "vault_cidrs" {
+  account_id  = var.account_id
+  name        = "vault_cidrs"
+  description = "CIDR list of Vault endpoints"
+  type        = "IP"
+  items       = [for cidr, _ in local.vault_cidrs : cidr]
+}`,
+			Expected: `resource "cloudflare_zero_trust_list" "vault_cidrs" {
+  account_id  = var.account_id
+  name        = "vault_cidrs"
+  description = "CIDR list of Vault endpoints"
+  type        = "IP"
+  items       = [for cidr, _ in local.vault_cidrs : cidr]
+}
+
+moved {
+  from = cloudflare_teams_list.vault_cidrs
+  to   = cloudflare_zero_trust_list.vault_cidrs
+}`,
+		},
+		{
+			Name: "for expression with single iteration variable preserved verbatim",
+			Input: `
+resource "cloudflare_teams_list" "cidrs" {
+  account_id = var.account_id
+  name       = "cidrs"
+  type       = "IP"
+  items      = [for cidr in local.cidrs : cidr]
+}`,
+			Expected: `resource "cloudflare_zero_trust_list" "cidrs" {
+  account_id = var.account_id
+  name       = "cidrs"
+  type       = "IP"
+  items      = [for cidr in local.cidrs : cidr]
+}
+
+moved {
+  from = cloudflare_teams_list.cidrs
+  to   = cloudflare_zero_trust_list.cidrs
+}`,
+		},
+		{
+			Name: "for expression with object projection preserved verbatim",
+			Input: `
+resource "cloudflare_teams_list" "tunnels" {
+  account_id = var.account_id
+  name       = "tunnels"
+  type       = "IP"
+  items      = [for cidr, _ in merge(local.pdx_cidrs, local.ams_cidrs) : cidr]
+}`,
+			Expected: `resource "cloudflare_zero_trust_list" "tunnels" {
+  account_id = var.account_id
+  name       = "tunnels"
+  type       = "IP"
+  items      = [for cidr, _ in merge(local.pdx_cidrs, local.ams_cidrs) : cidr]
+}
+
+moved {
+  from = cloudflare_teams_list.tunnels
+  to   = cloudflare_zero_trust_list.tunnels
+}`,
+		},
+		{
+			Name: "already-v5-named resource with for expression preserved verbatim",
+			Input: `
+resource "cloudflare_zero_trust_list" "vault_cidrs" {
+  account_id  = var.account_id
+  name        = "vault_cidrs"
+  description = "CIDR list of Vault endpoints"
+  type        = "IP"
+  items       = [for cidr, _ in local.vault_cidrs : cidr]
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_list" "vault_cidrs" {
+  account_id  = var.account_id
+  name        = "vault_cidrs"
+  description = "CIDR list of Vault endpoints"
+  type        = "IP"
+  items       = [for cidr, _ in local.vault_cidrs : cidr]
+}`,
+		},
+	}
+
+	testhelpers.RunConfigTransformTests(t, tests, migrator)
+}
+
 // TestV4ToV5Transformation_AlreadyV5Named tests the scenario from BUGS-2009:
 // The user has already run tf-migrate once (or manually renamed resources),
 // so the resource type is already "cloudflare_zero_trust_list" (v5 name),
