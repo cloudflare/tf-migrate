@@ -1,0 +1,45 @@
+# Drift Exemptions for pages_project resource
+#
+# Resource-specific exemptions for cloudflare_pages_project
+#
+# Two known drift patterns arise when upgrading from the v4 to v5 Cloudflare
+# provider for Pages projects:
+#
+# 1. build_image_major_version: the v5 provider defaults to version 3 (up from
+#    the v4 default of 2). If the config does not pin this value, the provider
+#    reports an in-place update. The underlying build image used for future
+#    deployments changes, but no Pages content or settings are destroyed.
+#
+# 2. env_vars inside deployment_configs: the v5 provider schema treats
+#    deployment_configs.{preview,production}.env_vars as a computed attribute.
+#    Values that were tracked in v4 state are no longer surfaced by the v5
+#    provider's read, so Terraform plans to remove them. The environment
+#    variables themselves are NOT deleted from Cloudflare — they remain in
+#    place and are simply no longer managed via this attribute path.
+
+version: 1
+
+exemptions:
+  - name: "pages_project_build_image_version"
+    description: "The v5 Cloudflare provider changed the default build image from major version 2 to 3. If the Terraform config does not explicitly pin build_image_major_version, the v5 provider will plan an in-place update from 2 to 3. This does not affect live Pages deployments or content — it only changes the build environment used for future deployments. The drift resolves after running terraform apply."
+    resource_types:
+      - "cloudflare_pages_project"
+    patterns:
+      - 'build_image_major_version\s+=\s+\d+\s+->\s+\d+'
+    enabled: true
+
+  - name: "pages_project_env_vars_computed"
+    description: "In v5, the deployment_configs.{preview,production}.env_vars attribute is treated as computed by the provider. Values stored in v4 state are not returned by the v5 provider's Read, so Terraform plans to remove them. The environment variables are NOT deleted from Cloudflare — they continue to exist and function. This is a state representation change only, not a destructive action."
+    resource_types:
+      - "cloudflare_pages_project"
+    patterns:
+      - 'env_vars\s+=\s+\{.*->.*null'
+      - 'env_vars\s+=\s+\{'
+      - '"[A-Z_]+"\s+=\s+\{'
+      - 'type\s+=\s+"(plain_text|secret_text)"\s+->\s+null'
+      - 'value\s+=\s+\(sensitive value\)\s+->\s+null'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false
