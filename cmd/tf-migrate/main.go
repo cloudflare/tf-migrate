@@ -1539,32 +1539,32 @@ func consolidateDiagnostics(diags hcl.Diagnostics) []consolidatedDiagnostic {
 	return result
 }
 
-// extractResourceName extracts the resource identifier from diagnostic detail
-// Expected format: "Resource cloudflare_XXXX.name has ..." or similar
+// extractResourceName extracts the resource identifier from diagnostic detail.
+// Returns the entire first line so that context such as file paths is preserved
+// in the consolidated bullet list.
+// Expected formats:
+//   - "cloudflare_type.name  (/path/to/file.tf)"  — new consolidated format
+//   - "Resource cloudflare_type.name has ..."      — legacy format
 func extractResourceName(detail string) string {
 	lines := strings.Split(detail, "\n")
 	if len(lines) == 0 {
 		return detail
 	}
 
-	firstLine := lines[0]
-	// Look for patterns like "Resource cloudflare_type.name has..." or "cloudflare_type.name has..."
+	firstLine := strings.TrimSpace(lines[0])
+
+	// Legacy format: "Resource cloudflare_type.name ..."
 	if strings.HasPrefix(firstLine, "Resource ") {
-		// Extract the resource reference
 		parts := strings.SplitN(firstLine, " ", 3)
 		if len(parts) >= 2 {
 			return parts[1]
 		}
 	}
 
-	// Try to find resource reference in the first line
-	if idx := strings.Index(firstLine, "cloudflare_"); idx != -1 {
-		// Extract from cloudflare_ to the next space or end
-		rest := firstLine[idx:]
-		if spaceIdx := strings.Index(rest, " "); spaceIdx != -1 {
-			return rest[:spaceIdx]
-		}
-		return rest
+	// New consolidated format: "cloudflare_type.name  (/path/to/file)"
+	// Return the whole first line so the file path is visible in the bullet list.
+	if strings.Contains(firstLine, "cloudflare_") {
+		return firstLine
 	}
 
 	return firstLine
