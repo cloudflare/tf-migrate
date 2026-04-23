@@ -14,6 +14,28 @@ import (
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
 
+// splitTunnelInstructions is the shared action text appended to every split tunnel
+// diagnostic. Using a single summary + this shared body causes all occurrences to
+// consolidate into one entry that lists affected resources then prints these instructions once.
+const splitTunnelInstructions = `
+cloudflare_split_tunnel no longer exists in v5. Tunnel configuration must
+live in the 'exclude' or 'include' attribute of the device profile:
+  - cloudflare_zero_trust_device_default_profile
+  - cloudflare_zero_trust_device_custom_profile
+
+tf-migrate has:
+  ✓ Generated a 'removed' block to drop the state entry without destroying
+    the Cloudflare resource.
+  ✓ Merged static 'tunnels {}' blocks into the associated device profile
+    (if the profile is in the same file).
+
+Action required — if your resource uses 'dynamic "tunnels"' blocks:
+  tf-migrate cannot evaluate dynamic expressions. Move the tunnel entries
+  manually into the 'exclude' or 'include' attribute of the device profile.
+
+Run 'terraform validate' to confirm. Any remaining cloudflare_zero_trust_split_tunnel
+or cloudflare_split_tunnel blocks will produce an "Invalid resource type" error.`
+
 // V4ToV5Migrator handles migration of cloudflare_split_tunnel resources from v4 to v5.
 type V4ToV5Migrator struct{}
 
@@ -46,18 +68,14 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Generate removed block for Atlantis-friendly state cleanup
 	removedBlock := tfhcl.CreateRemovedBlock("cloudflare_split_tunnel." + resourceName)
 
-	// Add warning about resource removal
+	// Use a shared, static summary so all split tunnel removals consolidate
+	// into a single diagnostic entry in the output. The detail format is:
+	//   line 0: "cloudflare_split_tunnel.<name>  (<file>)"  — used as the bullet point
+	//   lines 1+: shared instructions — printed once from the first occurrence
 	ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 		Severity: hcl.DiagWarning,
-		Summary:  fmt.Sprintf("Resource removed: cloudflare_split_tunnel.%s", resourceName),
-		Detail: `The cloudflare_split_tunnel resource has been removed in v5.
-
-Split tunnel configuration is now managed directly within device profile resources:
-  - cloudflare_zero_trust_device_default_profile.exclude/include
-  - cloudflare_zero_trust_device_custom_profile.exclude/include
-
-The migrator will attempt to merge split_tunnel entries into associated device profiles.
-A 'removed' block has been generated to drop this resource from state without destroying it.`,
+		Summary:  "Manual action required: cloudflare_split_tunnel removed in v5",
+		Detail: fmt.Sprintf("cloudflare_split_tunnel.%s  (%s)\n%s", resourceName, ctx.FilePath, splitTunnelInstructions),
 	})
 
 	// Return removed block - ProcessCrossResourceConfigMigration handles config removal
