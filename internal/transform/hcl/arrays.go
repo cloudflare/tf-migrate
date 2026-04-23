@@ -435,7 +435,7 @@ func MergeAttributeAndBlocksToObjectArray(
 	modified := false
 	var allItems []cty.Value
 
-	// Collect items from blocks
+	// Collect items from blocks (existing behaviour: blockType as HCL block).
 	var blocksToRemove []*hclwrite.Block
 	var blockItems []cty.Value
 	var blockItemTokens []map[string]hclwrite.Tokens
@@ -500,7 +500,60 @@ func MergeAttributeAndBlocksToObjectArray(
 		body.RemoveBlock(block)
 	}
 
-	// Collect items from array attribute
+	// Bug #001 fix: also handle blockType written as an HCL *attribute* rather than
+	// a block.  This is valid HCL and used in production configs in two patterns:
+	//
+	//   Pattern A — opaque expression (local ref, for-expression, concat(), …):
+	//     items_with_description = local.my_tunnels
+	//   Pattern B — inline object list:
+	//     items_with_description = [{ value = "x", description = "y" }, …]
+	//
+	// When blockType != arrayAttrName we need to look for it as an attribute too.
+	if blockType != arrayAttrName {
+		if blockAttr := body.GetAttribute(blockType); blockAttr != nil {
+			exprTokens := blockAttr.Expr().BuildTokens(nil)
+
+			// Determine whether the expression starts with "[" (array literal) or not.
+			isArrayLiteral := false
+			for _, tok := range exprTokens {
+				if tok.Type == hclsyntax.TokenNewline || tok.Type == hclsyntax.TokenComment {
+					continue
+				}
+				if tok.Type == hclsyntax.TokenOBrack {
+					isArrayLiteral = true
+				}
+				break
+			}
+
+			if !isArrayLiteral {
+				// Pattern A: opaque expression (local ref, for-expression, function call, …).
+				// Cannot be statically evaluated — rename the attribute verbatim to
+				// outputAttrName and return immediately.  Merging with arrayAttrName
+				// items is not possible without evaluating the expression.
+				body.RemoveAttribute(blockType)
+				body.SetAttributeRaw(outputAttrName, exprTokens)
+				return true
+			}
+
+			// Pattern B: inline object list.
+			// Use a dedicated token-level parser that correctly extracts all fields
+			// (including multi-token values like resource references) without the
+			// lossy heuristics in ParseArrayAttribute.
+			parsedItems := parseInlineObjectListTokens(exprTokens, primaryField, optionalFields)
+			for _, itemTokens := range parsedItems {
+				blockItemTokens = append(blockItemTokens, itemTokens)
+				modified = true
+			}
+
+			body.RemoveAttribute(blockType)
+			if !modified {
+				// Empty inline list — nothing added, but attribute was removed.
+				modified = true
+			}
+		}
+	}
+
+	// Collect items from the primary array attribute (arrayAttrName, e.g. "items").
 	var arrayItems []cty.Value
 	var arrayItemTokens []map[string]hclwrite.Tokens
 	if attr := body.GetAttribute(arrayAttrName); attr != nil {
@@ -512,36 +565,109 @@ func MergeAttributeAndBlocksToObjectArray(
 			return modified
 		}
 
-		for _, elem := range elements {
-			// First try to extract a plain string value
-			if val, ok := extractStringFieldFromArrayElement(elem); ok {
-				itemAttrs := make(map[string]cty.Value)
-				itemAttrs[primaryField] = cty.StringVal(val)
+		// Empty slice can mean either an empty array literal ([]) OR an array that
+		// ParseArrayAttribute couldn't decompose (e.g. already-migrated object list
+		// like items = [{ description = null, value = "x" }, ...]).
+		// Distinguish the two by checking whether the raw token sequence starts with
+		// "[" immediately followed by "{" (object list) vs "[" followed by a quote or
+		// ident (simple string/reference array) vs just "[]" (empty).
+		hasBlockItems := len(blockItems) > 0 || len(blockItemTokens) > 0
 
-				// Add null values for optional fields
-				for _, fieldName := range optionalFields {
-					itemAttrs[fieldName] = cty.NullVal(cty.String)
+		if len(elements) == 0 {
+			// Check whether the existing attr is an already-migrated object list or
+			// a genuine empty array.
+			rawTokens := attr.Expr().BuildTokens(nil)
+			isObjectList := false
+			for _, t := range rawTokens {
+				if t.Type == hclsyntax.TokenNewline || t.Type == hclsyntax.TokenComment {
+					continue
 				}
+				if t.Type == hclsyntax.TokenOBrack {
+					continue
+				}
+				if t.Type == hclsyntax.TokenOBrace {
+					isObjectList = true
+				}
+				break
+			}
 
-				arrayItems = append(arrayItems, cty.ObjectVal(itemAttrs))
-			} else if tokens, ok := extractValueTokensFromArrayElement(elem); ok {
-				// If we can't extract a plain string, preserve the raw tokens (interpolations, references, etc)
-				itemTokens := make(map[string]hclwrite.Tokens)
-				itemTokens[primaryField] = tokens
+			if isObjectList {
+				if !hasBlockItems {
+					// Nothing to prepend/append — leave the already-migrated attr untouched.
+					return modified
+				}
+				// We have block/blockAttr items to prepend (blocksFirst) or append.
+				// Preserve the existing object list as raw token items so they appear in
+				// the merged output.  Parse them with parseInlineObjectListTokens.
+				existingItems := parseInlineObjectListTokens(rawTokens, primaryField, optionalFields)
+				for _, itemTokens := range existingItems {
+					arrayItemTokens = append(arrayItemTokens, itemTokens)
+				}
+				body.RemoveAttribute(arrayAttrName)
+				modified = true
+			} else {
+				// Genuine empty array — remove it (same as before); nothing to merge.
+				body.RemoveAttribute(arrayAttrName)
+				modified = true
+			}
+		} else {
+			// Non-empty slice of elements. Accumulate simple strings and references.
+			// Track whether any element was actually parseable as a simple value.
+			parsedAny := false
+			for _, elem := range elements {
+				// First try to extract a plain string value
+				if val, ok := extractStringFieldFromArrayElement(elem); ok {
+					itemAttrs := make(map[string]cty.Value)
+					itemAttrs[primaryField] = cty.StringVal(val)
 
-				// Add null tokens for optional fields
-				for _, fieldName := range optionalFields {
-					itemTokens[fieldName] = hclwrite.Tokens{
-						{Type: hclsyntax.TokenIdent, Bytes: []byte("null")},
+					// Add null values for optional fields
+					for _, fieldName := range optionalFields {
+						itemAttrs[fieldName] = cty.NullVal(cty.String)
 					}
-				}
 
-				arrayItemTokens = append(arrayItemTokens, itemTokens)
+					arrayItems = append(arrayItems, cty.ObjectVal(itemAttrs))
+					parsedAny = true
+				} else if tokens, ok := extractValueTokensFromArrayElement(elem); ok {
+					// If we can't extract a plain string, preserve the raw tokens
+					itemTokens := make(map[string]hclwrite.Tokens)
+					itemTokens[primaryField] = tokens
+
+					// Add null tokens for optional fields
+					for _, fieldName := range optionalFields {
+						itemTokens[fieldName] = hclwrite.Tokens{
+							{Type: hclsyntax.TokenIdent, Bytes: []byte("null")},
+						}
+					}
+
+					arrayItemTokens = append(arrayItemTokens, itemTokens)
+					parsedAny = true
+				}
+			}
+
+			if !parsedAny {
+				// ParseArrayAttribute returned non-nil but unparseable elements — this
+				// happens for already-migrated object lists like
+				//   items = [{ description = null, value = "x" }, ...]
+				// where each element has type="object" but no extractable tokens.
+				// Treat the same as the isObjectList case above.
+				if !hasBlockItems {
+					return modified
+				}
+				rawTokens := attr.Expr().BuildTokens(nil)
+				existingItems := parseInlineObjectListTokens(rawTokens, primaryField, optionalFields)
+				for _, itemTokens := range existingItems {
+					// Append to the SECOND set of items (respecting blocksFirst).
+					// We add to arrayItemTokens so they are placed after blockItemTokens
+					// when blocksFirst=true, or before when blocksFirst=false.
+					arrayItemTokens = append(arrayItemTokens, itemTokens)
+				}
+				body.RemoveAttribute(arrayAttrName)
+				modified = true
+			} else {
+				body.RemoveAttribute(arrayAttrName)
+				modified = true
 			}
 		}
-
-		body.RemoveAttribute(arrayAttrName)
-		modified = true
 	}
 
 	// Combine items in the requested order
@@ -831,4 +957,258 @@ func BuildArrayFromObjects(objects []hclwrite.Tokens) hclwrite.Tokens {
 		return TokensForEmptyArray()
 	}
 	return hclwrite.TokensForTuple(objects)
+}
+
+// parseInlineObjectListTokens parses a token sequence of the form
+// [ { field = value, … }, { field = value, … }, … ] and returns one
+// map[fieldName]tokens entry per object element.
+//
+// This is used instead of ParseArrayAttribute for the items_with_description
+// attribute case because ParseArrayAttribute's object-field extraction is lossy:
+// it relies on a lookahead heuristic that misses string-literal field values.
+// This parser consumes the full value token sequence for each field correctly.
+//
+// primaryField and optionalFields are used to populate null tokens for absent
+// optional fields, ensuring output objects have a consistent shape.
+func parseInlineObjectListTokens(
+	tokens hclwrite.Tokens,
+	primaryField string,
+	optionalFields []string,
+) []map[string]hclwrite.Tokens {
+	var result []map[string]hclwrite.Tokens
+
+	// State machine:
+	//   outside → inside [ → inside { → field name → = → field value tokens → , or }
+	inArray := false
+	inObject := false
+	objectDepth := 0
+	arrayBrackDepth := 0
+	inQuote := false
+	templateDepth := 0
+
+	currentObject := make(map[string]hclwrite.Tokens)
+	currentFieldName := ""
+	var currentValueTokens hclwrite.Tokens
+	inFieldValue := false
+
+	for i := 0; i < len(tokens); i++ {
+		tok := tokens[i]
+
+		// Outermost "[" opens the array.
+		if !inArray {
+			if tok.Type == hclsyntax.TokenOBrack {
+				inArray = true
+			}
+			continue
+		}
+
+		// Outermost "]" closes the array.
+		if tok.Type == hclsyntax.TokenCBrack && !inObject && arrayBrackDepth == 0 && !inQuote && templateDepth == 0 {
+			break
+		}
+
+		// Track string quoting.
+		if tok.Type == hclsyntax.TokenOQuote {
+			inQuote = true
+			if inFieldValue {
+				currentValueTokens = append(currentValueTokens, tok)
+			}
+			continue
+		}
+		if tok.Type == hclsyntax.TokenCQuote && templateDepth == 0 {
+			inQuote = false
+			if inFieldValue {
+				currentValueTokens = append(currentValueTokens, tok)
+			}
+			continue
+		}
+		if inQuote && templateDepth == 0 {
+			if inFieldValue {
+				currentValueTokens = append(currentValueTokens, tok)
+			}
+			continue
+		}
+
+		// Track template interpolation depth inside strings.
+		if tok.Type == hclsyntax.TokenTemplateInterp {
+			templateDepth++
+			if inFieldValue {
+				currentValueTokens = append(currentValueTokens, tok)
+			}
+			continue
+		}
+		if tok.Type == hclsyntax.TokenTemplateSeqEnd {
+			templateDepth--
+			if inFieldValue {
+				currentValueTokens = append(currentValueTokens, tok)
+			}
+			continue
+		}
+
+		// Object open "{".
+		if tok.Type == hclsyntax.TokenOBrace {
+			if !inObject {
+				inObject = true
+				objectDepth = 1
+				currentObject = make(map[string]hclwrite.Tokens)
+				currentFieldName = ""
+				currentValueTokens = nil
+				inFieldValue = false
+			} else {
+				// Nested brace inside a field value.
+				objectDepth++
+				if inFieldValue {
+					currentValueTokens = append(currentValueTokens, tok)
+				}
+			}
+			continue
+		}
+
+		// Object close "}".
+		if tok.Type == hclsyntax.TokenCBrace {
+			if inObject {
+				objectDepth--
+				if objectDepth == 0 {
+					// Flush any pending field value.
+					if inFieldValue && currentFieldName != "" {
+						currentObject[currentFieldName] = trimTrailingWhitespace(currentValueTokens)
+					}
+					// Save the completed object.
+					result = append(result, buildNormalisedItemTokens(currentObject, primaryField, optionalFields))
+					inObject = false
+					currentFieldName = ""
+					currentValueTokens = nil
+					inFieldValue = false
+				} else {
+					// Nested brace closing inside a field value.
+					if inFieldValue {
+						currentValueTokens = append(currentValueTokens, tok)
+					}
+				}
+			}
+			continue
+		}
+
+		if !inObject {
+			// Between objects (commas, newlines) — skip.
+			continue
+		}
+
+		// Inside an object at depth 1.
+		if objectDepth == 1 {
+			// A newline while reading a field value may signal end-of-field when
+			// the next non-whitespace token is another identifier (next field name).
+			// We look ahead to decide: if so, flush current field and switch to
+			// field-name mode. If the next non-whitespace token is NOT an ident
+			// (e.g. it's a quote or another token type), the newline is part of the
+			// value and we continue accumulating.
+			if tok.Type == hclsyntax.TokenNewline && inFieldValue && !inQuote && templateDepth == 0 {
+				// Look ahead past any additional newlines to the next meaningful token.
+				nextMeaningfulIdx := -1
+				for j := i + 1; j < len(tokens); j++ {
+					tt := tokens[j].Type
+					if tt != hclsyntax.TokenNewline && tt != hclsyntax.TokenComment {
+						nextMeaningfulIdx = j
+						break
+					}
+				}
+				if nextMeaningfulIdx >= 0 {
+					nextType := tokens[nextMeaningfulIdx].Type
+					// If next token is an ident or a closing brace, this newline ends the field.
+					if nextType == hclsyntax.TokenIdent || nextType == hclsyntax.TokenCBrace {
+						currentObject[currentFieldName] = trimTrailingWhitespace(currentValueTokens)
+						currentFieldName = ""
+						currentValueTokens = nil
+						inFieldValue = false
+						continue
+					}
+				}
+				// Otherwise the newline is interior to the value (e.g. heredoc) — skip it.
+				continue
+			}
+
+			// Skip bare newlines and whitespace between fields.
+			if tok.Type == hclsyntax.TokenNewline && !inFieldValue {
+				continue
+			}
+
+			// Field name identifier (when not yet reading a value).
+			if tok.Type == hclsyntax.TokenIdent && !inFieldValue {
+				currentFieldName = string(tok.Bytes)
+				continue
+			}
+
+			// "=" separator starts the value.
+			if tok.Type == hclsyntax.TokenEqual && currentFieldName != "" && !inFieldValue {
+				inFieldValue = true
+				currentValueTokens = nil
+				continue
+			}
+
+			// Comma at depth 1 separates fields inside the object.
+			if tok.Type == hclsyntax.TokenComma && inFieldValue && objectDepth == 1 && !inQuote && templateDepth == 0 {
+				currentObject[currentFieldName] = trimTrailingWhitespace(currentValueTokens)
+				currentFieldName = ""
+				currentValueTokens = nil
+				inFieldValue = false
+				continue
+			}
+
+			// Collect field value tokens.
+			if inFieldValue {
+				// Skip leading whitespace/newline at the very start of a value.
+				if len(currentValueTokens) == 0 &&
+					(tok.Type == hclsyntax.TokenNewline || tok.Type == hclsyntax.TokenComment) {
+					continue
+				}
+				currentValueTokens = append(currentValueTokens, tok)
+			}
+		} else {
+			// Inside a nested brace — just accumulate tokens.
+			if inFieldValue {
+				currentValueTokens = append(currentValueTokens, tok)
+			}
+		}
+	}
+
+	return result
+}
+
+// buildNormalisedItemTokens builds a map[fieldName]tokens from a parsed object,
+// inserting null tokens for optional fields that were absent.
+func buildNormalisedItemTokens(
+	obj map[string]hclwrite.Tokens,
+	primaryField string,
+	optionalFields []string,
+) map[string]hclwrite.Tokens {
+	result := make(map[string]hclwrite.Tokens)
+
+	if fieldTokens, ok := obj[primaryField]; ok {
+		result[primaryField] = cleanTokens(fieldTokens)
+	}
+	for _, fieldName := range optionalFields {
+		if fieldTokens, ok := obj[fieldName]; ok {
+			result[fieldName] = cleanTokens(fieldTokens)
+		} else {
+			result[fieldName] = hclwrite.Tokens{
+				{Type: hclsyntax.TokenIdent, Bytes: []byte("null")},
+			}
+		}
+	}
+
+	return result
+}
+
+// trimTrailingWhitespace removes trailing newline/whitespace tokens from a token slice.
+func trimTrailingWhitespace(tokens hclwrite.Tokens) hclwrite.Tokens {
+	end := len(tokens)
+	for end > 0 {
+		tt := tokens[end-1].Type
+		if tt == hclsyntax.TokenNewline || tt == hclsyntax.TokenComment {
+			end--
+		} else {
+			break
+		}
+	}
+	return tokens[:end]
 }
