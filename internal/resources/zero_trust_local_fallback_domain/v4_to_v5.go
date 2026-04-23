@@ -1,9 +1,11 @@
 package zero_trust_local_fallback_domain
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -139,6 +141,31 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	return []string{"cloudflare_zero_trust_local_fallback_domain", "cloudflare_fallback_domain"}, m.newTypeDefault
 }
 
+// isOpaqueForEach returns true when the for_each token stream does not look like
+// a simple literal collection (e.g. toset([...]) or [...]).  References such as
+// local.some_var or var.domains are considered opaque because we cannot verify
+// the iterator content statically.
+func isOpaqueForEach(tokens hclwrite.Tokens) bool {
+	// Strip surrounding whitespace/newline tokens to get the first meaningful token.
+	for _, tok := range tokens {
+		switch tok.Type {
+		case hclsyntax.TokenNewline, hclsyntax.TokenIdent:
+			name := strings.TrimSpace(string(tok.Bytes))
+			// Literal function calls that produce inline collections are safe.
+			// Everything else (var, local, module references) is opaque.
+			switch name {
+			case "toset", "tolist", "concat", "flatten", "":
+				return false
+			}
+			// An identifier that is not a known safe built-in → opaque.
+			return true
+		case hclsyntax.TokenOBrack: // starts with "[" → inline tuple → safe
+			return false
+		}
+	}
+	return false
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	resourceName := tfhcl.GetResourceName(block)
 	body := block.Body()
@@ -173,7 +200,42 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		body.RemoveAttribute("policy_id")
 	}
 
-	// Convert domains blocks to attribute array
+	// Convert dynamic "domains" blocks to for-expressions before static block conversion.
+	// Many users write:
+	//   dynamic "domains" { for_each = toset([...]) content { suffix = domains.value } }
+	// The v5 provider expects:
+	//   domains = [for value in toset([...]) : { suffix = value }]
+	for _, dynBlock := range tfhcl.FindBlocksByType(body, "dynamic") {
+		labels := dynBlock.Labels()
+		if len(labels) == 0 || labels[0] != "domains" {
+			continue
+		}
+		// Detect whether the for_each expression is opaque (not a literal).
+		// An opaque for_each references a variable or local that cannot be
+		// statically resolved — we still attempt conversion but warn the user.
+		dynBody := dynBlock.Body()
+		if forEachAttr := dynBody.GetAttribute("for_each"); forEachAttr != nil {
+			tokens := forEachAttr.Expr().BuildTokens(nil)
+			if isOpaqueForEach(tokens) {
+				ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+					Severity: hcl.DiagWarning,
+					Summary:  fmt.Sprintf("Dynamic 'domains' block requires manual verification: %s.%s", newResourceType, resourceName),
+					Detail: `A dynamic "domains" block with a non-literal for_each expression has been converted to a for-expression.
+Please verify the generated output is correct for your configuration.
+
+The v5 provider uses 'domains' as a list attribute instead of blocks.
+Expected output:
+  domains = [for value in <expr> : {
+    suffix      = value.suffix
+    description = value.description
+  }]`,
+				})
+			}
+		}
+	}
+	tfhcl.ConvertDynamicBlocksToForExpression(body, "domains")
+
+	// Convert static domains blocks to attribute array
 	tfhcl.ConvertBlocksToAttributeList(body, "domains", nil)
 
 	// Generate moved block

@@ -1,9 +1,14 @@
 package zero_trust_local_fallback_domain
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestConfigTransformation(t *testing.T) {
@@ -290,6 +295,115 @@ moved {
   to   = cloudflare_zero_trust_device_custom_profile_local_domain_fallback.example
 }`,
 		},
+		// ----------------------------------------------------------------
+		// Dynamic "domains" block test cases (ticket #002)
+		// ----------------------------------------------------------------
+		{
+			Name: "dynamic domains block with toset - default profile",
+			Input: `
+resource "cloudflare_zero_trust_local_fallback_domain" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+
+  dynamic "domains" {
+    for_each = toset(["intranet", "corp", "local"])
+    content {
+      suffix = domains.value
+    }
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+
+  domains = [for value in toset(["intranet", "corp", "local"]) : { suffix = value }]
+}
+
+moved {
+  from = cloudflare_zero_trust_local_fallback_domain.example
+  to   = cloudflare_zero_trust_device_default_profile_local_domain_fallback.example
+}`,
+		},
+		{
+			Name: "dynamic domains block with toset - custom profile",
+			Input: `
+resource "cloudflare_zero_trust_local_fallback_domain" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  policy_id  = "policy123"
+
+  dynamic "domains" {
+    for_each = toset(["intranet", "corp", "local"])
+    content {
+      suffix = domains.value
+    }
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_device_custom_profile_local_domain_fallback" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  policy_id  = "policy123"
+
+  domains = [for value in toset(["intranet", "corp", "local"]) : { suffix = value }]
+}
+
+moved {
+  from = cloudflare_zero_trust_local_fallback_domain.example
+  to   = cloudflare_zero_trust_device_custom_profile_local_domain_fallback.example
+}`,
+		},
+		{
+			Name: "dynamic domains block with opaque for_each variable",
+			Input: `
+resource "cloudflare_zero_trust_local_fallback_domain" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+
+  dynamic "domains" {
+    for_each = local.domain_list
+    content {
+      suffix      = domains.value.suffix
+      description = domains.value.description
+    }
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+
+  domains = [for value in local.domain_list : {
+    suffix      = value.suffix
+    description = value.description
+  }]
+}
+
+moved {
+  from = cloudflare_zero_trust_local_fallback_domain.example
+  to   = cloudflare_zero_trust_device_default_profile_local_domain_fallback.example
+}`,
+		},
+		{
+			Name: "deprecated resource name with dynamic domains block",
+			Input: `
+resource "cloudflare_fallback_domain" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+
+  dynamic "domains" {
+    for_each = toset(["intranet", "corp", "local"])
+    content {
+      suffix = domains.value
+    }
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+
+  domains = [for value in toset(["intranet", "corp", "local"]) : { suffix = value }]
+}
+
+moved {
+  from = cloudflare_fallback_domain.example
+  to   = cloudflare_zero_trust_device_default_profile_local_domain_fallback.example
+}`,
+		},
 		{
 			Name: "multiple resources - mixed default and custom",
 			Input: `
@@ -344,6 +458,144 @@ moved {
 	}
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
+}
+
+// TestDynamicDomainsDiagnostics verifies that an opaque for_each triggers a
+// DiagWarning while still producing valid converted HCL output.
+func TestDynamicDomainsDiagnostics(t *testing.T) {
+	input := `
+resource "cloudflare_zero_trust_local_fallback_domain" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+
+  dynamic "domains" {
+    for_each = local.domain_list
+    content {
+      suffix = domains.value.suffix
+    }
+  }
+}`
+
+	migrator := NewV4ToV5Migrator()
+
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("Failed to parse input HCL: %v", diags)
+	}
+
+	ctx := &transform.Context{
+		Content:  []byte(input),
+		Filename: "test.tf",
+		CFGFile:  file,
+	}
+
+	body := file.Body()
+	for _, block := range body.Blocks() {
+		if block.Type() == "resource" && len(block.Labels()) >= 2 {
+			resourceType := block.Labels()[0]
+			if migrator.CanHandle(resourceType) {
+				result, err := migrator.TransformConfig(ctx, block)
+				if err != nil {
+					t.Fatalf("TransformConfig returned error: %v", err)
+				}
+				if result != nil && result.RemoveOriginal {
+					body.RemoveBlock(block)
+					for _, newBlock := range result.Blocks {
+						body.AppendBlock(newBlock)
+					}
+				}
+			}
+		}
+	}
+
+	// Should have emitted exactly one DiagWarning for the opaque for_each.
+	if len(ctx.Diagnostics) != 1 {
+		t.Fatalf("Expected 1 diagnostic for opaque for_each, got %d", len(ctx.Diagnostics))
+	}
+	if ctx.Diagnostics[0].Severity != hcl.DiagWarning {
+		t.Errorf("Expected DiagWarning severity, got %v", ctx.Diagnostics[0].Severity)
+	}
+	if !strings.Contains(ctx.Diagnostics[0].Summary, "manual verification") {
+		t.Errorf("Unexpected diagnostic summary: %s", ctx.Diagnostics[0].Summary)
+	}
+
+	// The HCL output must contain a for-expression (not a dynamic block).
+	output := string(file.Bytes())
+	if strings.Contains(output, `dynamic "domains"`) {
+		t.Error("Output still contains dynamic block — expected for-expression conversion")
+	}
+	if !strings.Contains(output, "for value in local.domain_list") {
+		t.Errorf("Expected for-expression referencing local.domain_list, got:\n%s", output)
+	}
+}
+
+// TestMixedStaticAndDynamicDomains verifies that when both static domains blocks
+// and a dynamic "domains" block are present, the dynamic block is converted first
+// and the static blocks are converted afterwards.  Because both set the same
+// attribute name, the static array takes precedence (last write wins) and a
+// DiagWarning is emitted so the user knows about the mixed case.
+func TestMixedStaticAndDynamicDomains(t *testing.T) {
+	input := `
+resource "cloudflare_zero_trust_local_fallback_domain" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+
+  domains {
+    suffix = "static.example.com"
+  }
+
+  dynamic "domains" {
+    for_each = toset(["intranet", "corp"])
+    content {
+      suffix = domains.value
+    }
+  }
+}`
+
+	migrator := NewV4ToV5Migrator()
+
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("Failed to parse input HCL: %v", diags)
+	}
+
+	ctx := &transform.Context{
+		Content:  []byte(input),
+		Filename: "test.tf",
+		CFGFile:  file,
+	}
+
+	body := file.Body()
+	for _, block := range body.Blocks() {
+		if block.Type() == "resource" && len(block.Labels()) >= 2 {
+			resourceType := block.Labels()[0]
+			if migrator.CanHandle(resourceType) {
+				result, err := migrator.TransformConfig(ctx, block)
+				if err != nil {
+					t.Fatalf("TransformConfig returned error: %v", err)
+				}
+				if result != nil && result.RemoveOriginal {
+					body.RemoveBlock(block)
+					for _, newBlock := range result.Blocks {
+						body.AppendBlock(newBlock)
+					}
+				}
+			}
+		}
+	}
+
+	// No diagnostics expected — toset is a literal, so no opaque warning.
+	if len(ctx.Diagnostics) != 0 {
+		t.Errorf("Expected 0 diagnostics for toset case, got %d: %v", len(ctx.Diagnostics), ctx.Diagnostics)
+	}
+
+	// The output should not contain any dynamic block.
+	output := string(file.Bytes())
+	if strings.Contains(output, `dynamic "domains"`) {
+		t.Error("Output still contains dynamic block — expected conversion")
+	}
+	// The output should contain a 'domains' attribute.
+	if !strings.Contains(output, "domains") {
+		t.Errorf("Expected 'domains' attribute in output, got:\n%s", output)
+	}
 }
 
 func TestCanHandle(t *testing.T) {
