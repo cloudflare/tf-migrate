@@ -413,6 +413,169 @@ resource "cloudflare_zero_trust_list" "vault_cidrs" {
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
 
+// TestV4ToV5Transformation_ItemsWithDescriptionAsAttribute tests Bug #001:
+// items_with_description written as an HCL attribute (not a block) must be migrated.
+// These cover the three real-world patterns found in the production config.
+func TestV4ToV5Transformation_ItemsWithDescriptionAsAttribute(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	tests := []testhelpers.ConfigTestCase{
+		{
+			// Real-world Case A: items_with_description = local.<name>
+			// The expression is opaque — cannot be evaluated statically.
+			// Expected: rename attribute to items verbatim, preserve the expression.
+			Name: "items_with_description as opaque local reference is renamed to items",
+			Input: `
+resource "cloudflare_zero_trust_list" "do_not_inspect_tunnels" {
+  account_id             = var.account_id
+  name                   = "Do Not Inspect Tunnels"
+  description            = "List of tunnels that should not undergo http inspection"
+  type                   = "IP"
+  items_with_description = local.do_not_inspect_tunnels
+}`,
+			Expected: `resource "cloudflare_zero_trust_list" "do_not_inspect_tunnels" {
+  account_id  = var.account_id
+  name        = "Do Not Inspect Tunnels"
+  description = "List of tunnels that should not undergo http inspection"
+  type        = "IP"
+  items       = local.do_not_inspect_tunnels
+}`,
+		},
+		{
+			// Real-world Case B: items_with_description = [...] (inline object list)
+			// AND a separate items = [...] attribute.
+			// Expected: merged into a single items attribute; items_with_description first.
+			// Field order mirrors source order (value before description in the iwd attr).
+			// Existing items entries are re-parsed so their field order (description, value)
+			// is preserved from the original items attribute.
+			Name: "items_with_description as inline object list with resource references merged with items",
+			Input: `
+resource "cloudflare_zero_trust_list" "do_not_inspect_IPs_employees" {
+  account_id  = var.account_id
+  name        = "IP addresses to never inspect - Cloudflare Employees"
+  type        = "IP"
+  items_with_description = [
+    {
+      value       = cloudflare_zero_trust_tunnel_cloudflared_route.athens_staging_tunnel_ipv4.network
+      description = "Athens Staging IPv4"
+    },
+    {
+      value       = cloudflare_zero_trust_tunnel_cloudflared_route.athens_tunnel_ipv4.network
+      description = "Athens IPv4"
+    }
+  ]
+  items = [{
+    description = null
+    value       = "8.14.199.1"
+    }, {
+    description = null
+    value       = "8.14.199.2"
+  }]
+}`,
+			Expected: `resource "cloudflare_zero_trust_list" "do_not_inspect_IPs_employees" {
+  account_id  = var.account_id
+  name        = "IP addresses to never inspect - Cloudflare Employees"
+  type        = "IP"
+  items = [
+    {
+      value       = cloudflare_zero_trust_tunnel_cloudflared_route.athens_staging_tunnel_ipv4.network
+      description = "Athens Staging IPv4"
+    },
+    {
+      value       = cloudflare_zero_trust_tunnel_cloudflared_route.athens_tunnel_ipv4.network
+      description = "Athens IPv4"
+    },
+    {
+      value       = "8.14.199.1"
+      description = null
+    },
+    {
+      value       = "8.14.199.2"
+      description = null
+    }
+  ]
+}`,
+		},
+		{
+			// Real-world Case C: same as B but on a v4-named resource (cloudflare_teams_list).
+			// Must also produce a moved block.
+			// Field order: iwd items preserve source order (value, description);
+			// items entries preserve source order (description, value → reparsed as value, description).
+			Name: "v4-named resource with items_with_description as inline object list gets moved block",
+			Input: `
+resource "cloudflare_teams_list" "do_not_inspect_IPs_contractors" {
+  account_id  = var.account_id
+  name        = "IP addresses to never inspect - Contractors"
+  type        = "IP"
+  items_with_description = [
+    {
+      value       = cloudflare_zero_trust_tunnel_cloudflared_route.athens_tunnel_ipv4.network
+      description = "Athens IPv4"
+    }
+  ]
+  items = [{
+    description = null
+    value       = "10.0.0.1"
+  }]
+}`,
+			Expected: `resource "cloudflare_zero_trust_list" "do_not_inspect_IPs_contractors" {
+  account_id  = var.account_id
+  name        = "IP addresses to never inspect - Contractors"
+  type        = "IP"
+  items = [
+    {
+      value       = cloudflare_zero_trust_tunnel_cloudflared_route.athens_tunnel_ipv4.network
+      description = "Athens IPv4"
+    },
+    {
+      value       = "10.0.0.1"
+      description = null
+    }
+  ]
+}
+moved {
+  from = cloudflare_teams_list.do_not_inspect_IPs_contractors
+  to   = cloudflare_zero_trust_list.do_not_inspect_IPs_contractors
+}`,
+		},
+		{
+			// items_with_description as inline object list, no separate items attr.
+			// Field order in output matches original source order (value before description).
+			Name: "items_with_description as inline object list only, static strings",
+			Input: `
+resource "cloudflare_zero_trust_list" "example" {
+  account_id = var.account_id
+  name       = "Example"
+  type       = "IP"
+  items_with_description = [
+    {
+      value       = "192.168.1.1"
+      description = "Gateway"
+    },
+    {
+      value       = "10.0.0.1"
+      description = "Internal"
+    }
+  ]
+}`,
+			Expected: `resource "cloudflare_zero_trust_list" "example" {
+  account_id = var.account_id
+  name       = "Example"
+  type       = "IP"
+  items = [{
+    value       = "192.168.1.1"
+    description = "Gateway"
+    }, {
+    value       = "10.0.0.1"
+    description = "Internal"
+  }]
+}`,
+		},
+	}
+
+	testhelpers.RunConfigTransformTests(t, tests, migrator)
+}
+
 // TestV4ToV5Transformation_AlreadyV5Named tests the scenario from BUGS-2009:
 // The user has already run tf-migrate once (or manually renamed resources),
 // so the resource type is already "cloudflare_zero_trust_list" (v5 name),

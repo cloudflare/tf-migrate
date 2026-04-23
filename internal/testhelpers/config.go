@@ -54,8 +54,12 @@ func runConfigTransformTest(t *testing.T, tt ConfigTestCase, migrator transform.
 				// Handle resource splits or removals
 				if result != nil && result.RemoveOriginal {
 					body.RemoveBlock(block)
-					for _, newBlock := range result.Blocks {
+					body.AppendNewline()
+					for i, newBlock := range result.Blocks {
 						body.AppendBlock(newBlock)
+						if i < len(result.Blocks)-1 {
+							body.AppendNewline()
+						}
 					}
 				}
 			}

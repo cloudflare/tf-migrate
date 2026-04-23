@@ -964,3 +964,214 @@ resource "test" "example" {
 	// Verify the names attribute exists
 	assert.Contains(t, actual, "names =")
 }
+
+// TestMergeAttributeAndBlocksToObjectArray_AttributeSyntax tests Bug #001:
+// items_with_description written as an attribute (not a block) is not migrated.
+// These tests should FAIL before the fix is applied.
+func TestMergeAttributeAndBlocksToObjectArray_AttributeSyntax(t *testing.T) {
+	// Case A: blockType attr is an opaque expression (local reference).
+	// Expected behaviour: rename items_with_description → items verbatim.
+	t.Run("blockType_as_opaque_local_reference", func(t *testing.T) {
+		input := `
+resource "cloudflare_zero_trust_list" "do_not_inspect_tunnels" {
+  account_id             = var.account_id
+  name                   = "Do Not Inspect Tunnels"
+  type                   = "IP"
+  items_with_description = local.do_not_inspect_tunnels
+}`
+		file, diags := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+		require.False(t, diags.HasErrors())
+
+		body := file.Body().Blocks()[0].Body()
+		modified := MergeAttributeAndBlocksToObjectArray(
+			body,
+			"items",
+			"items_with_description",
+			"items",
+			"value",
+			[]string{"description"},
+			true,
+		)
+
+		assert.True(t, modified, "should be modified when items_with_description attr is present")
+
+		actual := string(file.Bytes())
+		// items_with_description must be gone
+		assert.NotContains(t, actual, "items_with_description", "items_with_description attribute must be removed")
+		// items must now reference the local
+		assert.Contains(t, actual, "items", "items attribute must be present")
+		assert.Contains(t, actual, "local.do_not_inspect_tunnels", "local reference must be preserved")
+	})
+
+	// Case B: blockType attr is an inline object list with resource references.
+	// Expected behaviour: merge with existing items array, preserve references.
+	t.Run("blockType_as_inline_object_list_with_references", func(t *testing.T) {
+		input := `
+resource "cloudflare_zero_trust_list" "do_not_inspect_IPs_employees" {
+  account_id  = var.account_id
+  name        = "IP addresses to never inspect - Cloudflare Employees"
+  type        = "IP"
+  items_with_description = [
+    {
+      value       = cloudflare_zero_trust_tunnel_cloudflared_route.athens_staging_tunnel_ipv4.network
+      description = "Athens Staging IPv4"
+    },
+    {
+      value       = cloudflare_zero_trust_tunnel_cloudflared_route.athens_tunnel_ipv4.network
+      description = "Athens IPv4"
+    }
+  ]
+  items = [{
+    description = null
+    value       = "8.14.199.1"
+    }, {
+    description = null
+    value       = "8.14.199.2"
+  }]
+}`
+		file, diags := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+		require.False(t, diags.HasErrors())
+
+		body := file.Body().Blocks()[0].Body()
+		modified := MergeAttributeAndBlocksToObjectArray(
+			body,
+			"items",
+			"items_with_description",
+			"items",
+			"value",
+			[]string{"description"},
+			true, // blocksFirst: items_with_description entries come first
+		)
+
+		assert.True(t, modified)
+
+		actual := string(file.Bytes())
+		assert.NotContains(t, actual, "items_with_description", "items_with_description must be removed")
+		// Reference items (from items_with_description) must appear before static items
+		athensIdx := strings.Index(actual, "athens_staging_tunnel_ipv4")
+		staticIdx := strings.Index(actual, "8.14.199.1")
+		assert.Greater(t, athensIdx, 0, "Athens reference must be present")
+		assert.Greater(t, staticIdx, 0, "static IP must be present")
+		assert.Less(t, athensIdx, staticIdx, "items_with_description entries (blocksFirst=true) must precede items entries")
+		// Both descriptions must be preserved
+		assert.Contains(t, actual, `"Athens Staging IPv4"`)
+		assert.Contains(t, actual, `"Athens IPv4"`)
+		// Static items null descriptions must be preserved
+		assert.Contains(t, actual, "8.14.199.2")
+	})
+
+	// Case B2: blockType attr is an inline object list with STATIC strings only.
+	// Expected behaviour: fully merge into items, all values present.
+	t.Run("blockType_as_inline_object_list_static_strings", func(t *testing.T) {
+		input := `
+resource "cloudflare_zero_trust_list" "example" {
+  account_id = "abc123"
+  type       = "IP"
+  items_with_description = [
+    {
+      value       = "192.168.1.1"
+      description = "Gateway"
+    },
+    {
+      value       = "10.0.0.1"
+      description = "Internal"
+    }
+  ]
+}`
+		file, diags := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+		require.False(t, diags.HasErrors())
+
+		body := file.Body().Blocks()[0].Body()
+		modified := MergeAttributeAndBlocksToObjectArray(
+			body,
+			"items",
+			"items_with_description",
+			"items",
+			"value",
+			[]string{"description"},
+			true,
+		)
+
+		assert.True(t, modified)
+		actual := string(file.Bytes())
+		assert.NotContains(t, actual, "items_with_description")
+		assert.Contains(t, actual, `"192.168.1.1"`)
+		assert.Contains(t, actual, `"Gateway"`)
+		assert.Contains(t, actual, `"10.0.0.1"`)
+		assert.Contains(t, actual, `"Internal"`)
+	})
+
+	// Case C: items_with_description attr present AND items_with_description blocks present.
+	// This is a pathological case — both syntaxes coexist. Both must be merged.
+	t.Run("blockType_as_attribute_and_blocks_coexist", func(t *testing.T) {
+		input := `
+resource "cloudflare_zero_trust_list" "example" {
+  account_id = "abc123"
+  type       = "IP"
+  items_with_description = [
+    {
+      value       = "192.168.1.1"
+      description = "From attr"
+    }
+  ]
+  items_with_description {
+    value       = "10.0.0.1"
+    description = "From block"
+  }
+}`
+		file, diags := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+		require.False(t, diags.HasErrors())
+
+		body := file.Body().Blocks()[0].Body()
+		modified := MergeAttributeAndBlocksToObjectArray(
+			body,
+			"items",
+			"items_with_description",
+			"items",
+			"value",
+			[]string{"description"},
+			true,
+		)
+
+		assert.True(t, modified)
+		actual := string(file.Bytes())
+		assert.NotContains(t, actual, "items_with_description")
+		assert.Contains(t, actual, `"192.168.1.1"`)
+		assert.Contains(t, actual, `"10.0.0.1"`)
+		assert.Contains(t, actual, `"From attr"`)
+		assert.Contains(t, actual, `"From block"`)
+	})
+
+	// Case D: No items_with_description attribute, no blocks — nothing to do.
+	t.Run("no_blockType_attribute_or_block_is_noop", func(t *testing.T) {
+		input := `
+resource "cloudflare_zero_trust_list" "example" {
+  account_id = "abc123"
+  type       = "IP"
+  items = [{
+    description = null
+    value       = "1.2.3.4"
+  }]
+}`
+		file, diags := hclwrite.ParseConfig([]byte(input), "", hcl.InitialPos)
+		require.False(t, diags.HasErrors())
+
+		body := file.Body().Blocks()[0].Body()
+		// Already-migrated resource — items_with_description is absent as both attr and block.
+		// The items attr is already an object list; ParseArrayAttribute returns [] for object arrays.
+		// This call should not corrupt the existing items attribute.
+		MergeAttributeAndBlocksToObjectArray(
+			body,
+			"items",
+			"items_with_description",
+			"items",
+			"value",
+			[]string{"description"},
+			true,
+		)
+
+		actual := string(file.Bytes())
+		assert.NotContains(t, actual, "items_with_description")
+		assert.Contains(t, actual, "1.2.3.4")
+	})
+}
