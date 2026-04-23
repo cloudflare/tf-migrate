@@ -18,7 +18,7 @@ locals {
 # Expected: attribute is renamed to items, expression preserved verbatim.
 resource "cloudflare_zero_trust_list" "iwd_opaque_local" {
   account_id             = var.cloudflare_account_id
-  name                   = "Do Not Inspect Tunnels IWD Opaque"
+  name                   = "cftftest Do Not Inspect Tunnels IWD Opaque"
   description            = "List using items_with_description as a local reference"
   type                   = "IP"
   items_with_description = local.tunnel_routes
@@ -29,7 +29,7 @@ resource "cloudflare_zero_trust_list" "iwd_opaque_local" {
 # Expected: merged into a single items attribute; items_with_description entries first.
 resource "cloudflare_zero_trust_list" "iwd_inline_with_refs" {
   account_id  = var.cloudflare_account_id
-  name        = "Do Not Inspect IPs IWD Inline"
+  name        = "cftftest Do Not Inspect IPs IWD Inline"
   description = "List using items_with_description as an inline object list with references"
   type        = "IP"
   items_with_description = [
@@ -52,7 +52,7 @@ resource "cloudflare_zero_trust_list" "iwd_inline_with_refs" {
 # Expected: items_with_description replaced by items with object entries.
 resource "cloudflare_zero_trust_list" "iwd_inline_static" {
   account_id = var.cloudflare_account_id
-  name       = "Do Not Inspect IPs IWD Static"
+  name       = "cftftest Do Not Inspect IPs IWD Static"
   type       = "IP"
   items_with_description = [
     {
