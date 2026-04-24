@@ -20,6 +20,7 @@ func TestV4ToV5Transformation(t *testing.T) {
 		}
 		mappings := mapper.GetComputedAttributeMappings()
 
+		// Build a lookup by OldResourceType for easy assertions.
 		byOldType := make(map[string]transform.ComputedAttributeMapping, len(mappings))
 		for _, m := range mappings {
 			byOldType[m.OldResourceType] = m
