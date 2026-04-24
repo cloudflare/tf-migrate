@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: cloudflare/terraform-provider-cloudflare
-          ref: next
+          ref: vaishak/fix-client
           path: provider
 
       - name: Setup go
