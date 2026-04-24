@@ -1,17 +1,19 @@
 # tf-migrate - Claude Context Guide
 
-This document provides comprehensive context about the tf-migrate project for AI agents starting with empty context.
+This document provides accurate, code-verified context about the tf-migrate project for AI agents starting with empty context. All patterns, function names, and interfaces are taken directly from the source code.
 
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
 2. [Architecture](#architecture)
-3. [How Migrations Work](#how-migrations-work)
-4. [Resource Transformers](#resource-transformers)
-5. [Testing System](#testing-system)
-6. [Drift Exemptions System](#drift-exemptions-system)
-7. [Development Guide](#development-guide)
-8. [Common Patterns](#common-patterns)
+3. [Core Interfaces](#core-interfaces)
+4. [How Migrations Work](#how-migrations-work)
+5. [Resource Transformers](#resource-transformers)
+6. [HCL Utilities Reference](#hcl-utilities-reference)
+7. [Testing System](#testing-system)
+8. [Drift Exemptions System](#drift-exemptions-system)
+9. [Development Guide](#development-guide)
+10. [Common Patterns](#common-patterns)
 
 ---
 
@@ -21,446 +23,453 @@ This document provides comprehensive context about the tf-migrate project for AI
 
 ### What It Does
 
-- **Transforms `.tf` configuration files** - Updates resource types, attribute names, and block structures
-- **Handles complex transformations** - One-to-many resource splits, nested block restructuring, API-based migrations
-- **Generates import blocks** - For new v5 resources that don't exist in state yet
+- **Transforms `.tf` configuration files** — Updates resource types, attribute names, and block structures
+- **Generates `moved {}` blocks** — For resource renames so state is updated without recreation
+- **Generates `import {}` blocks** — For new v5 resources that don't exist in state yet
+- **Generates `removed {}` blocks** — For resources removed from v5 that need state cleanup
+- **Rewrites cross-file references** — Updates resource type names, attribute references, and computed attribute references across all files in the directory
+- **Updates `required_providers`** — Fetches latest provider version from GitHub and updates provider version constraint
+- **Phased migration** — Handles resources with no v5 schema via a two-phase workflow (comment out + `removed {}` first, full migration second)
 
-### Current Support
+### Supported Migration Paths
 
-- **v4 → v5**: Cloudflare Provider v4 to v5 (60+ resource types)
-- Future: v5 → v6, etc.
-
-### Key Use Cases
-
-1. **Automated provider upgrades** - Bulk migrate large Terraform codebases
-2. **API-aware migrations** - Fetch data from Cloudflare API when needed (e.g., tunnel route UUIDs)
-3. **Testing infrastructure** - Validate migrations with real resources via E2E tests
+- **v4 → v5**: Cloudflare Provider v4 to v5 (80+ resource types, 6+ data sources)
+- **v5 → v5**: Bypass mode — generates `moved {}` blocks only (used for provider-level schema moves within v5)
 
 ### Technology Stack
 
 - **Language**: Go 1.25+
 - **HCL Parsing**: `github.com/hashicorp/hcl/v2`
-- **JSON querying**: `github.com/tidwall/gjson` (used in TransformConfig for config-level decisions)
-- **Cloudflare API**: `github.com/cloudflare/cloudflare-go/v6`
+- **JSON manipulation**: `github.com/tidwall/gjson` + `github.com/tidwall/sjson` (used in state value transforms)
 - **CLI Framework**: `github.com/spf13/cobra`
+- **No Cloudflare API client** — tf-migrate does not call the Cloudflare API. The only outbound call is to the GitHub API to fetch the latest provider version.
 
 ---
 
 ## Architecture
 
-### Design Patterns
+### Pipeline Design
 
-**Chain of Responsibility Pattern** - Transformations flow through a pipeline of handlers:
+Config file transformation follows a four-handler chain of responsibility:
 
 ```
-Input → Preprocess → Parse → Transform → Format → Output
+Input bytes
+  → PreprocessHandler   (string-level transforms before HCL parsing)
+  → ParseHandler        (bytes → hclwrite.File AST)
+  → ResourceTransformHandler  (calls migrator.TransformConfig per resource block)
+  → FormatterHandler    (AST → formatted bytes)
+Output bytes
 ```
 
-### Core Components
+Built by `BuildConfigPipeline(log, provider)` in `internal/pipeline/pipeline.go`.
+
+### Directory Structure
 
 ```
 tf-migrate/
 ├── cmd/
-│   ├── tf-migrate/          # Main migration CLI binary
-│   └── e2e-runner/          # E2E test runner CLI binary
+│   ├── tf-migrate/          # Main CLI binary (migrate, verify-drift, version commands)
+│   └── e2e/                 # E2E test runner binary
 │
 ├── internal/
-│   ├── pipeline/            # Pipeline orchestration
-│   │   └── pipeline.go      # BuildConfigPipeline
-│   │
-│   ├── handlers/            # Pipeline handlers (chain of responsibility)
-│   │   ├── pre_process.go   # Resource filtering, validation
-│   │   ├── parse.go         # HCL parsing
-│   │   ├── resource_transform.go  # Resource transformation orchestration
-│   │   └── formatter.go     # HCL formatting
-│   │
-│   ├── resources/           # Per-resource migration implementations
-│   │   ├── dns_record/      # cloudflare_dns_record v4→v5
-│   │   ├── zone_setting/    # cloudflare_zone_settings_override v4→v5
-│   │   ├── bot_management/  # cloudflare_bot_management v4→v5
-│   │   └── ...              # 60+ resources
-│   │
+│   ├── migrator.go          # Central migrator registry (RegisterMigrator, GetMigrator, GetAllMigrators)
+│   ├── pipeline/            # Pipeline orchestration (BuildConfigPipeline)
+│   ├── handlers/            # Pipeline handlers
+│   │   ├── pre_process.go
+│   │   ├── parse.go
+│   │   ├── resource_transform.go
+│   │   └── formatter.go
+│   ├── resources/           # Per-resource migration implementations (80+ resources)
 │   ├── datasources/         # Data source migrations
-│   │   ├── zone/
-│   │   └── ...
-│   │
-│   ├── registry/            # Resource transformer registry
-│   │   └── registry.go      # Register, GetTransformer
-│   │
-│   ├── transform/           # Transformation interfaces and utilities
-│   │   ├── transformer.go   # ResourceTransformer interface, Context, TransformResult
-│   │   ├── hcl/             # HCL manipulation helpers (RenameAttribute, etc.)
-│   │   └── state/           # JSON utilities for reading state in TransformConfig
-│   │
+│   ├── registry/            # registry.go — calls NewV4ToV5Migrator() for every package (bootstrap only)
+│   ├── transform/           # Interfaces, Context, TransformResult, utilities
+│   │   ├── transformer.go   # All interfaces: ResourceTransformer, PhaseOneTransformer, ResourceRenamer, etc.
+│   │   ├── handler.go       # TransformationHandler interface
+│   │   ├── empty_values.go  # TransformEmptyValuesToNull
+│   │   ├── utils.go         # ConvertDateToRFC3339
+│   │   └── hcl/             # HCL manipulation helpers
+│   ├── verifydrift/         # verify-drift command implementation (embedded exemptions)
 │   ├── e2e-runner/          # E2E test runner implementation
-│   │   ├── runner.go        # Test orchestration
-│   │   ├── drift.go         # Drift detection & exemptions
-│   │   ├── init.go          # Test initialization
-│   │   └── migrate.go       # Migration step
-│   │
 │   └── logger/              # Logging utilities
 │
-├── integration/             # Integration tests
-│   ├── v4_to_v5/           # v4→v5 migration tests
-│   │   ├── integration_test.go
-│   │   └── testdata/        # Test fixtures per resource
-│   │       ├── dns_record/
-│   │       ├── zone_setting/
-│   │       └── ...
-│   └── test_runner.go       # Shared test infrastructure
+├── integration/
+│   └── v4_to_v5/
+│       ├── integration_test.go
+│       └── testdata/        # Input/expected fixtures per resource
 │
-├── e2e/                     # End-to-end tests
-│   ├── tf/v4/              # v4 test resources (generated)
-│   ├── migrated-v4_to_v5/  # Migration output (generated)
-│   ├── global-drift-exemptions.yaml    # Global drift exemptions
-│   ├── drift-exemptions/    # Resource-specific drift exemptions
-│   │   ├── zone_setting.yaml
-│   │   ├── zone_dnssec.yaml
-│   │   └── bot_management.yaml
-│   └── DRIFT-EXEMPTIONS.md  # Drift exemptions docs (deprecated, see CLAUDE.md)
-│
-└── scripts/                 # Helper scripts
-    ├── run-e2e-tests.sh    # E2E test runner
-    └── ...
+└── e2e/
+    ├── global-drift-exemptions.yaml
+    └── drift-exemptions/    # Resource-specific drift exemption configs
 ```
 
-### Pipeline Flow
+---
 
-#### Config File Pipeline
+## Core Interfaces
 
-```
-1. Preprocess Handler
-   ↓ (filters resources, validates)
-2. Parse Handler
-   ↓ (HCL → AST)
-3. Resource Transform Handler
-   ↓ (registry.GetTransformer → resource.TransformConfig)
-4. Formatter Handler
-   ↓ (AST → formatted HCL)
-Output: Migrated .tf file
-```
+All interfaces are defined in `internal/transform/transformer.go`.
 
-### Resource Transformer Registry
+### `ResourceTransformer` (required)
 
-All resource transformers register themselves in `init()`:
+Every migrator must implement all four methods:
 
 ```go
-// internal/resources/dns_record/v4_to_v5.go
-func init() {
-    registry.Register(registry.ResourceEntry{
-        Version:      "v4_to_v5",
-        ResourceType: "cloudflare_dns_record",
-        Transformer:  &DNSRecordTransformer{},
-    })
+type ResourceTransformer interface {
+    CanHandle(resourceType string) bool
+    TransformConfig(ctx *Context, block *hclwrite.Block) (*TransformResult, error)
+    GetResourceType() string
+    Preprocess(content string) string
 }
 ```
 
-The registry provides:
-- **GetTransformer(version, resourceType)** - Lookup transformer
-- **ListResources(version)** - List all available resources
-- **IsRegistered(version, resourceType)** - Check if resource supported
+- `CanHandle` — returns true if this migrator handles the given resource type string
+- `TransformConfig` — performs HCL AST transformation; see return values below
+- `GetResourceType` — returns the primary v4 resource type string this migrator handles
+- `Preprocess` — string-level transform applied before HCL parsing (most migrators return `content` unchanged)
+
+### `TransformResult`
+
+```go
+type TransformResult struct {
+    Blocks         []*hclwrite.Block  // Output blocks to write
+    RemoveOriginal bool               // Whether to remove the original block
+}
+```
+
+Common patterns:
+- **In-place**: `{Blocks: [modifiedBlock], RemoveOriginal: false}`
+- **Split** (one-to-many): `{Blocks: newBlocks, RemoveOriginal: true}`
+- **Remove** (resource gone in v5): `{Blocks: nil, RemoveOriginal: true}`
+
+### `Context`
+
+```go
+type Context struct {
+    Content       []byte
+    Filename      string              // Base filename (e.g., "main.tf")
+    FilePath      string              // Full path
+    CFGFile       *hclwrite.File      // Parsed HCL AST (set by ParseHandler)
+    CFGFiles      map[string]*hclwrite.File  // All files (for cross-file transforms)
+    Diagnostics   hcl.Diagnostics
+    Metadata      map[string]interface{}
+    Resources     []string           // Filtered resource list (from --resources flag)
+    SourceVersion string             // e.g., "v4"
+    TargetVersion string             // e.g., "v5"
+}
+```
+
+### Optional Interfaces
+
+Implement these on your migrator struct to opt into additional framework features:
+
+```go
+// PhaseOneTransformer — for resources with no v5 schema.
+// TransformPhaseOne is called in the first pass; it should return a removed {} block.
+// Full TransformConfig is called in the second pass after state is cleaned up.
+type PhaseOneTransformer interface {
+    TransformPhaseOne(ctx *Context, block *hclwrite.Block) (*TransformResult, error)
+}
+
+// ResourceRenamer — enables cross-file resource type reference rewriting.
+// Return all v4 names that map to the v5 name, even if only one exists.
+type ResourceRenamer interface {
+    GetResourceRename() (oldTypes []string, newType string)
+}
+
+// AttributeRenamer — enables cross-file attribute reference rewriting.
+type AttributeRenamer interface {
+    GetAttributeRenames() []AttributeRename
+}
+
+// ComputedAttributeMapper — rewrites computed attribute references across files
+// when both the resource type and the attribute name change.
+// Example: cloudflare_record.example.hostname → cloudflare_dns_record.example.name
+type ComputedAttributeMapper interface {
+    GetComputedAttributeMappings() []ComputedAttributeMapping
+}
+```
+
+Supporting types:
+
+```go
+type AttributeRename struct {
+    ResourceType string  // e.g., "data.cloudflare_zones"
+    OldAttribute string  // e.g., "zones"
+    NewAttribute string  // e.g., "result"
+}
+
+type ComputedAttributeMapping struct {
+    OldResourceType string  // e.g., "cloudflare_record"
+    OldAttribute    string  // e.g., "hostname"
+    NewResourceType string  // e.g., "cloudflare_dns_record"
+    NewAttribute    string  // e.g., "name"
+}
+```
+
+### Diagnostic Severity
+
+```go
+const DiagInfo = hcl.DiagnosticSeverity(0)  // Shown only with --verbose
+// hcl.DiagWarning — shown unless --quiet
+// hcl.DiagError   — always shown, blocks migration of this resource
+```
 
 ---
 
 ## How Migrations Work
 
-### Transformation Types
+### Migrator Registration
 
-#### 1. Simple Attribute Rename
-
-```hcl
-# v4
-resource "cloudflare_dns_record" "example" {
-  zone_id = "abc123"
-  name    = "example.com"
-  type    = "A"
-  value   = "192.0.2.1"
-  proxied = true
-}
-
-# v5 (no changes needed for dns_record)
-resource "cloudflare_dns_record" "example" {
-  zone_id = "abc123"
-  name    = "example.com"
-  type    = "A"
-  content = "192.0.2.1"  # value → content
-  proxied = true
-}
-```
-
-#### 2. Resource Type Rename
-
-```hcl
-# v4
-resource "cloudflare_access_application" "example" {
-  # ...
-}
-
-# v5
-resource "cloudflare_zero_trust_access_application" "example" {
-  # ...
-}
-```
-
-#### 3. One-to-Many Resource Split
-
-**Most complex transformation pattern**
-
-```hcl
-# v4 - ONE resource
-resource "cloudflare_zone_settings_override" "example" {
-  zone_id = "abc123"
-  settings {
-    tls_1_3 = "on"
-    minify {
-      css = "on"
-      js  = "on"
-    }
-  }
-}
-
-# v5 - MULTIPLE resources
-resource "cloudflare_zone_setting" "example_tls_1_3" {
-  zone_id    = "abc123"
-  setting_id = "tls_1_3"
-  value      = "on"
-}
-
-resource "cloudflare_zone_setting" "example_minify" {
-  zone_id    = "abc123"
-  setting_id = "minify"
-  value = {
-    css = "on"
-    js  = "on"
-  }
-}
-```
-
-#### 4. Nested Block Restructuring
-
-```hcl
-# v4
-resource "cloudflare_access_policy" "example" {
-  application_id = "abc123"
-  include {
-    email = ["user@example.com"]
-  }
-  exclude {
-    email_domain = ["contractor.com"]
-  }
-}
-
-# v5
-resource "cloudflare_zero_trust_access_policy" "example" {
-  application_id = "abc123"
-  include = [{
-    email = ["user@example.com"]
-  }]
-  exclude = [{
-    email_domain = ["contractor.com"]
-  }]
-}
-```
-
-#### 5. API-Based Migration
-
-Some resources require API calls to complete migration:
-
-```hcl
-# v4
-resource "cloudflare_tunnel_route" "example" {
-  account_id = "abc123"
-  tunnel_id  = "def456"
-  network    = "10.0.0.0/16"  # v4 used this as the ID
-}
-
-# v5
-resource "cloudflare_zero_trust_tunnel_cloudflared_route" "example" {
-  account_id = "abc123"
-  tunnel_id  = "def456"
-  network    = "10.0.0.0/16"
-  # ID must be UUID from API (not the network CIDR)
-}
-```
-
-The transformer calls the Cloudflare API to fetch the UUID inside `TransformConfig`, resolving the resource ID before writing the import block.
-
----
-
-## Resource Transformers
-
-Each resource has a `v4_to_v5.go` file implementing:
-
-```go
-type ResourceTransformer interface {
-    // Transform HCL configuration
-    TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error)
-}
-```
-
-### Example: DNS Record Transformer
+Each resource package exports a `NewV4ToV5Migrator()` function that creates the migrator struct and registers it:
 
 ```go
 // internal/resources/dns_record/v4_to_v5.go
-type DNSRecordTransformer struct{}
-
-func (t *DNSRecordTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-    // No changes needed for dns_record in v4→v5
-    return &transform.TransformResult{
-        Blocks:         []*hclwrite.Block{block},
-        RemoveOriginal: false,
-    }, nil
+func NewV4ToV5Migrator() transform.ResourceTransformer {
+    migrator := &V4ToV5Migrator{}
+    internal.RegisterMigrator("cloudflare_record", "v4", "v5", migrator)
+    return migrator
 }
 ```
 
-### Common Transformation Utilities
+`internal/registry/registry.go` imports every resource package and calls all `NewV4ToV5Migrator()` functions from a single `RegisterAllMigrations()` function. `cmd/tf-migrate/main.go` calls `RegisterAllMigrations()` at startup.
 
-**HCL Utilities** (`internal/transform/hcl/`):
-- `RenameAttribute(block, old, new)` - Rename attribute
-- `RenameBlock(block, old, new)` - Rename block type
-- `RemoveAttribute(block, name)` - Remove attribute
-- `GetAttribute(block, name)` - Get attribute value
-- `SetAttribute(block, name, value)` - Set attribute value
-
-### Multi-Name Resources and Cross-File References
-
-Some resources accept multiple v4 resource type names. For example, `zero_trust_tunnel_cloudflared_route` accepts both:
-- `cloudflare_tunnel_route` (deprecated v4 name)
-- `cloudflare_zero_trust_tunnel_route` (preferred v4 name)
-
-Both map to the same v5 name: `cloudflare_zero_trust_tunnel_cloudflared_route`
-
-#### The Solution
-
-The `GetResourceRename()` interface returns ALL v4 names that map to the v5 name:
+The actual registry is `internal/migrator.go` (package `internal`):
 
 ```go
-type ResourceRenamer interface {
-    GetResourceRename() (oldTypes []string, newType string)
+// Key format: "resourceType:sourceVersion:targetVersion"
+func RegisterMigrator(sourceVersionResourceType, sourceVersion, targetVersion string, migrator transform.ResourceTransformer)
+func GetMigrator(resourceType, sourceVersion, targetVersion string) transform.ResourceTransformer
+func GetAllMigrators(sourceVersion, targetVersion string, resources ...string) []transform.ResourceTransformer
+```
+
+### Multiple v4 Names → One v5 Name
+
+When multiple v4 type names map to the same v5 type, call `RegisterMigrator` multiple times with the same migrator instance:
+
+```go
+func NewV4ToV5Migrator() transform.ResourceTransformer {
+    migrator := &V4ToV5Migrator{}
+    internal.RegisterMigrator("cloudflare_tunnel_route", "v4", "v5", migrator)
+    internal.RegisterMigrator("cloudflare_zero_trust_tunnel_route", "v4", "v5", migrator)
+    return migrator
 }
 
-// Example implementation with multiple v4 names
 func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
     return []string{
         "cloudflare_tunnel_route",
         "cloudflare_zero_trust_tunnel_route",
     }, "cloudflare_zero_trust_tunnel_cloudflared_route"
 }
+```
 
-// Example implementation with single v4 name
-func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
-    return []string{"cloudflare_dns_record"}, "cloudflare_dns_record"
+Return all v4 names in `GetResourceRename()` so cross-file references from any of those names are rewritten.
+
+### Phased Migration
+
+Resources whose v4 type has no schema in v5 (e.g., `cloudflare_zone_settings_override`) require two passes:
+
+**Phase 1** — detected automatically; `TransformPhaseOne` is called:
+- Comments out the original resource block with `# tf-migrate: ` prefix
+- Appends a `removed { lifecycle { destroy = false } }` block
+- Writes the file and exits — user must commit, apply with v4 provider to drop state, then re-run
+
+**Phase 2** — tf-migrate detects the commented blocks, prompts the user (bypassed by `--skip-phase-check`), uncomments them, and runs the full `TransformConfig` pass.
+
+### Global Postprocessing
+
+After all files are transformed, `applyGlobalPostprocessing` runs over every file to rewrite cross-file references. It collects:
+
+1. `ResourceRenamer.GetResourceRename()` → updates resource type references everywhere
+2. `AttributeRenamer.GetAttributeRenames()` → updates attribute references
+3. `ComputedAttributeMapper.GetComputedAttributeMappings()` → updates computed attribute references (e.g., `.hostname` → `.name`)
+
+References inside `moved {}` and `removed {}` blocks are skipped.
+
+### Transformation Types
+
+#### Simple attribute rename
+
+```go
+func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+    tfhcl.RenameAttribute(block.Body(), "old_name", "new_name")
+    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}}, nil
 }
 ```
 
-The global postprocessing step in `cmd/tf-migrate/main.go` loops through all old types and updates **all** cross-file references, regardless of which v4 name was used.
+#### Resource type rename
 
-**Example that now works correctly:**
+Handled automatically by `ResourceRenamer` + global postprocessing. Within `TransformConfig`, the block's label is already the v4 type — do not rename it manually.
 
-```hcl
-# File: virtual_network.tf
-resource "cloudflare_zero_trust_tunnel_virtual_network" "my_vnet" {
-  # ... (using "second" v4 name)
-}
+#### One-to-many resource split
 
-# File: route.tf
-resource "cloudflare_tunnel_route" "my_route" {
-  virtual_network_id = cloudflare_zero_trust_tunnel_virtual_network.my_vnet.id
-  # After migration, this reference WILL be updated! ✅
+Return `RemoveOriginal: true` with multiple blocks. See `internal/resources/zone_setting/v4_to_v5.go` for the full example.
+
+#### Nested block restructuring (block → attribute)
+
+Use `tfhcl.ConvertBlocksToAttribute`, `tfhcl.ConvertSingleBlockToAttribute`, `tfhcl.ConvertBlocksToArrayAttribute`, etc.
+
+#### Resource removed in v5
+
+```go
+func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+    // Emit warning, generate removed block
+    removedBlock := tfhcl.CreateRemovedBlock("cloudflare_old_type." + tfhcl.GetResourceName(block))
+    return &transform.TransformResult{Blocks: []*hclwrite.Block{removedBlock}, RemoveOriginal: true}, nil
 }
 ```
 
-#### When to Use Multiple Old Names
+#### Cross-resource config migration
 
-Return multiple old names in `GetResourceRename()` when:
-- Your migrator calls `internal.RegisterMigrator()` multiple times with different v4 names
-- Users might have cross-file references using any of the v4 names
-- All v4 names map to the same v5 name
+Some migrators implement `ProcessCrossResourceConfigMigration(file *hclwrite.File) error` (not part of any interface — called explicitly from the resource transform handler for resources that need it). Examples: `list_item` (merges into parent `cloudflare_list`), `zero_trust_split_tunnel` (merges into device profiles).
 
-**Important:** Include ALL v4 names in the array, even if one of them matches the v5 name. This ensures cross-file references are updated correctly.
+---
 
-#### Resources Using Multiple Old Names
+## Resource Transformers
 
-The following resources return multiple old names (22 total):
+### File structure
 
-1. `zero_trust_tunnel_cloudflared_route`
-   - Old names: `cloudflare_tunnel_route`, `cloudflare_zero_trust_tunnel_route`
+```
+internal/resources/<resource_name>/
+├── v4_to_v5.go         # Migrator implementation
+├── v4_to_v5_test.go    # Unit tests
+└── README.md           # Documents v4→v5 changes and examples
+```
 
-2. `zero_trust_tunnel_cloudflared_virtual_network`
-   - Old names: `cloudflare_tunnel_virtual_network`, `cloudflare_zero_trust_tunnel_virtual_network`
+### Minimal implementation
 
-3. `zero_trust_tunnel_cloudflared`
-   - Old names: `cloudflare_tunnel`, `cloudflare_zero_trust_tunnel_cloudflared`
+```go
+package my_resource
 
-4. `zero_trust_tunnel_cloudflared_config`
-   - Old names: `cloudflare_tunnel_config`, `cloudflare_zero_trust_tunnel_cloudflared_config`
+import (
+    "github.com/cloudflare/tf-migrate/internal"
+    "github.com/cloudflare/tf-migrate/internal/transform"
+    tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
+    "github.com/hashicorp/hcl/v2/hclwrite"
+)
 
-5. `zero_trust_device_profiles`
-   - Old names: `cloudflare_zero_trust_device_profiles`, `cloudflare_device_settings_policy`
+type V4ToV5Migrator struct{}
 
-6. `zero_trust_local_fallback_domain`
-   - Old names: `cloudflare_zero_trust_local_fallback_domain`, `cloudflare_fallback_domain`
+func NewV4ToV5Migrator() transform.ResourceTransformer {
+    migrator := &V4ToV5Migrator{}
+    internal.RegisterMigrator("cloudflare_my_resource", "v4", "v5", migrator)
+    return migrator
+}
 
-7. `zero_trust_dlp_custom_profile`
-   - Old names: `cloudflare_dlp_profile`, `cloudflare_zero_trust_dlp_profile`
+func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
+    return resourceType == "cloudflare_my_resource"
+}
 
-8. `zero_trust_gateway_settings`
-   - Old names: `cloudflare_teams_account`, `cloudflare_zero_trust_gateway_settings`
+func (m *V4ToV5Migrator) GetResourceType() string {
+    return "cloudflare_my_resource"
+}
 
-9. `zero_trust_organization`
-   - Old names: `cloudflare_access_organization`, `cloudflare_zero_trust_access_organization`
+func (m *V4ToV5Migrator) Preprocess(content string) string {
+    return content
+}
 
-10. `zero_trust_access_application`
-    - Old names: `cloudflare_access_application`, `cloudflare_zero_trust_access_application`
+func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+    body := block.Body()
+    tfhcl.RenameAttribute(body, "old_attr", "new_attr")
+    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}}, nil
+}
+```
 
-11. `zero_trust_access_group`
-    - Old names: `cloudflare_access_group`, `cloudflare_zero_trust_access_group`
+If the resource is renamed, also add to `registry.go` and implement `GetResourceRename()`.
 
-12. `zero_trust_access_identity_provider`
-    - Old names: `cloudflare_access_identity_provider`, `cloudflare_zero_trust_access_identity_provider`
+---
 
-13. `zero_trust_access_mtls_certificate`
-    - Old names: `cloudflare_access_mutual_tls_certificate`, `cloudflare_zero_trust_access_mtls_certificate`
+## HCL Utilities Reference
 
-14. `zero_trust_access_service_token`
-    - Old names: `cloudflare_access_service_token`, `cloudflare_zero_trust_access_service_token`
+All helpers live in `internal/transform/hcl/`. Import as `tfhcl`.
 
-15. `zero_trust_device_managed_networks`
-    - Old names: `cloudflare_device_managed_networks`, `cloudflare_zero_trust_device_managed_networks`
+### Attributes (`attributes.go`)
 
-16. `zero_trust_device_posture_integration`
-    - Old names: `cloudflare_device_posture_integration`, `cloudflare_zero_trust_device_posture_integration`
+| Function | Description |
+|----------|-------------|
+| `RenameAttribute(body, oldName, newName string) bool` | Rename attribute; also updates lifecycle ignore_changes references |
+| `RemoveAttributes(body, attrNames ...string) int` | Remove one or more attributes; returns count removed |
+| `SetAttribute(body, attrName string, value interface{})` | Set attribute unconditionally |
+| `EnsureAttribute(body, attrName, defaultValue string)` | Set attribute only if not already present |
+| `HasAttribute(body, attrName string) bool` | Check if attribute exists |
+| `ExtractStringFromAttribute(attr *hclwrite.Attribute) string` | Get string value from attribute |
+| `ExtractBoolFromAttribute(attr *hclwrite.Attribute) (bool, bool)` | Get bool value; second return is ok |
+| `CopyAttribute(from, to *hclwrite.Body, attrName string)` | Copy attribute between bodies |
+| `CopyAndRenameAttribute(from, to *hclwrite.Body, oldName, newName string) bool` | Copy with rename |
+| `ApplyAttributeRenames(body *hclwrite.Body, renames map[string]string) int` | Apply a map of renames |
+| `ConditionalRenameAttribute(body, oldName, newName string, condition func() bool) bool` | Rename only if condition holds |
+| `MoveAttributesToNestedObject(body, nestedAttrName string, fieldNames []string) int` | Group fields into a nested object |
+| `WrapMapValuesInObjects(body, attrName, wrapFieldName string) bool` | TypeMap → MapNestedAttribute pattern |
+| `SortStringArrayAttribute(body, attrName string, customSort ...func(a, b string) bool)` | Sort string array attribute |
 
-17. `zero_trust_device_posture_rule`
-    - Old names: `cloudflare_device_posture_rule`, `cloudflare_zero_trust_device_posture_rule`
+### Blocks (`blocks.go`)
 
-18. `zero_trust_dex_test`
-    - Old names: `cloudflare_device_dex_test`, `cloudflare_zero_trust_dex_test`
+| Function | Description |
+|----------|-------------|
+| `RenameResourceType(block *hclwrite.Block, oldType, newType string) bool` | Update the resource type label |
+| `GetResourceType(block *hclwrite.Block) string` | Get resource type label |
+| `GetResourceName(block *hclwrite.Block) string` | Get resource name label |
+| `FindBlockByType(body, blockType string) *hclwrite.Block` | First block of given type |
+| `FindBlocksByType(body, blockType string) []*hclwrite.Block` | All blocks of given type |
+| `RemoveBlocksByType(body, blockType string) int` | Remove all blocks of given type |
+| `ProcessBlocksOfType(body, blockType string, processor func(*hclwrite.Block) error) error` | Iterate blocks with callback |
+| `HoistAttributeFromBlock(parentBody *hclwrite.Body, blockType, attrName string) bool` | Pull attribute up from nested block |
+| `HoistAttributesFromBlock(parentBody *hclwrite.Body, blockType string, attrNames ...string) int` | Pull multiple attributes up |
+| `ConvertBlocksToAttribute(body, blockType, attrName string, preProcess func(*hclwrite.Block))` | Convert repeated blocks to object attribute |
+| `ConvertSingleBlockToAttribute(body, blockType, attrName string) bool` | Convert single block to attribute |
+| `ConvertBlocksToArrayAttribute(body, blockType string, emptyIfNone bool) bool` | Convert blocks to array attribute |
+| `ConvertBlocksToAttributeList(body, blockType string, preProcess func(*hclwrite.Block)) bool` | Convert blocks to list attribute |
+| `ConvertDynamicBlocksToForExpression(body, targetBlockType string)` | Convert dynamic blocks to for expressions |
+| `CreateMovedBlock(from, to string) *hclwrite.Block` | Generate `moved {}` block |
+| `CreateRemovedBlock(from string) *hclwrite.Block` | Generate `removed { lifecycle { destroy = false } }` block |
+| `CreateImportBlock(resourceType, resourceName, importID string) *hclwrite.Block` | Generate `import {}` block with string ID |
+| `CreateImportBlockWithTokens(resourceType, resourceName string, idTokens hclwrite.Tokens) *hclwrite.Block` | Generate `import {}` block with expression ID |
+| `CreateDerivedBlock(original *hclwrite.Block, newResourceType, newResourceName string, transform AttributeTransform) *hclwrite.Block` | Create a new block derived from an existing one |
+| `AddLifecycleIgnoreChanges(body *hclwrite.Body, attrNames ...string)` | Add or merge lifecycle ignore_changes |
 
-19. `worker_route`
-    - Old names: `cloudflare_workers_route`, `cloudflare_worker_route`
+`AttributeTransform` struct used with `CreateDerivedBlock`:
 
-20. `workers_script`
-    - Old names: `cloudflare_workers_script`, `cloudflare_worker_script`
+```go
+type AttributeTransform struct {
+    Copy              []string            // Attribute names to copy verbatim
+    Rename            map[string]string   // old → new attribute renames to apply
+    Set               map[string]interface{} // Attributes to set to fixed values
+    CopyMetaArguments bool                // Whether to copy depends_on, count, for_each
+}
+```
 
-21. `workers_for_platforms_dispatch_namespace`
-    - Old names: `cloudflare_workers_for_platforms_namespace`, `cloudflare_workers_for_platforms_dispatch_namespace`
+### Tokens (`tokens.go`)
 
-22. `zero_trust_split_tunnel`
-    - Old names: `cloudflare_split_tunnel`, `cloudflare_zero_trust_split_tunnel`
+| Function | Description |
+|----------|-------------|
+| `AppendWarningComment(body *hclwrite.Body, message string)` | Writes `# MIGRATION WARNING: <message>` into the body |
+| `BuildResourceReference(resourceType, resourceName string) hclwrite.Tokens` | `cloudflare_foo.bar` token sequence |
+| `TokensForSimpleValue(val interface{}) hclwrite.Tokens` | Tokens for a scalar value |
+| `TokensForEmptyArray() hclwrite.Tokens` | Tokens for `[]` |
 
-#### Testing
+### Expressions (`expressions.go`)
 
-The integration test in `integration/v4_to_v5/testdata/zero_trust_tunnel_cloudflared_virtual_network/` validates that cross-resource references using the "second" v4 name are properly updated (see Pattern 9 in that test).
+| Function | Description |
+|----------|-------------|
+| `SetAttributeFromExpressionString(body *hclwrite.Body, attrName, exprStr string) error` | Set attribute to a raw expression string |
+| `IsExpressionAttribute(attr *hclwrite.Attribute) bool` | True if attribute value is a non-literal expression |
+| `ConvertEnabledDisabledInExpr(expr string) string` | Replaces `"enabled"`/`"disabled"` with `true`/`false` in expression strings |
+| `RemoveFunctionWrapper(body *hclwrite.Body, attrName, funcName string)` | Strips a function call wrapper from an attribute |
 
-### Resource-Specific Documentation
+### Arrays (`arrays.go`)
 
-Each resource has a README.md explaining:
-- Changes from v4 to v5
-- Configuration examples
-- Special cases and limitations
+| Function | Description |
+|----------|-------------|
+| `ParseArrayAttribute(attr *hclwrite.Attribute) []ArrayElement` | Parse array attribute; returns nil for for-expressions |
+| `MergeAttributeAndBlocksToObjectArray(body, arrayAttrName, blockType, outputAttrName, primaryField string, optionalFields []string, blocksFirst bool) bool` | Merge an existing array attribute with blocks into one object array |
+| `BuildArrayFromObjects(objects []hclwrite.Tokens) hclwrite.Tokens` | Build array token sequence from object token slices |
 
-Example: `internal/resources/zone_setting/README.md`
+### State transforms (`empty_values.go`)
+
+```go
+// TransformEmptyValuesToNull transforms empty string values in Terraform state JSON
+// to null, but only for attributes not explicitly set in the HCL config.
+// Used by resources like logpush_job, zero_trust_device_posture_rule.
+func TransformEmptyValuesToNull(opts TransformEmptyValuesToNullOptions) string
+```
 
 ---
 
@@ -469,924 +478,441 @@ Example: `internal/resources/zone_setting/README.md`
 ### Test Layers
 
 ```
-┌─────────────────────────────────────────┐
-│          E2E Tests (Real API)           │  ← Full workflow with real Cloudflare resources
-│  ./scripts/run-e2e-tests.sh            │
-└─────────────────────────────────────────┘
-                  ↑
-┌─────────────────────────────────────────┐
-│      Integration Tests (Fixtures)       │  ← Complete migration workflow with test data
-│  make test-integration                  │
-└─────────────────────────────────────────┘
-                  ↑
-┌─────────────────────────────────────────┐
-│          Unit Tests (Go)                │  ← Individual component testing
-│  go test ./...                          │
-└─────────────────────────────────────────┘
+E2E Tests (real Cloudflare infrastructure)
+  ↑ requires credentials + R2 remote state
+Integration Tests (fixture files, no credentials)
+  ↑ complete pipeline with testdata
+Unit Tests (individual transformers)
+  ↑ fast, no I/O
 ```
 
-### 1. Unit Tests
-
-Test individual transformers:
+### Unit Tests
 
 ```bash
-# Run all unit tests
-go test ./...
-
-# Test specific resource
-go test ./internal/resources/dns_record -v
-
-# With coverage
-go test ./... -cover
+go test -race ./internal/...          # All unit tests
+go test ./internal/resources/dns_record/... -v  # Single resource
 ```
 
-### 2. Integration Tests
+### Integration Tests
 
-Located in `integration/v4_to_v5/testdata/`:
-
-```
-testdata/
-├── dns_record/
-│   ├── input/            # v4 configuration files
-│   │   └── dns_record.tf
-│   └── expected/         # Expected v5 output files
-│       └── dns_record.tf
-├── zone_setting/
-│   └── ...
-└── bot_management/
-    └── ...
-```
-
-Run integration tests:
+Integration tests run the full migration pipeline against fixture files in `integration/v4_to_v5/testdata/`. No Cloudflare credentials required. The test binary is built once per test run to `tf-migrate-integration-test` in the repo root.
 
 ```bash
-# All v4→v5 integration tests
 make test-integration
+# or
+go test -race ./integration/...
 
-# Specific resource
-go test -v -run TestV4ToV5Migration/DNSRecord
-
-# Single resource with environment variable
-TEST_RESOURCE=dns_record go test -v -run TestSingleResource
-
-# Keep temp directory for debugging
-KEEP_TEMP=true TEST_RESOURCE=dns_record go test -v -run TestSingleResource
+# Single resource (uses TEST_RESOURCE env var)
+TEST_RESOURCE=dns_record go test -v -run TestSingleResource ./integration/...
 ```
 
-### 3. E2E Tests
-
-**Most comprehensive testing** - Uses real Cloudflare infrastructure.
-
-#### E2E Workflow
+**Testdata structure:**
 
 ```
-1. Init      → Copy integration testdata to e2e/tf/v4/
-2. V4 Apply  → Create real resources with v4 provider
-3. Migrate   → Run tf-migrate (config only; provider upgrades state on first apply)
-4. V5 Apply  → Apply v5 configs to existing infrastructure
-5. Drift     → Verify v5 plan shows "No changes"
+integration/v4_to_v5/testdata/<resource>/
+├── input/          # v4 .tf files fed into the migration pipeline
+│   ├── main.tf
+│   └── <resource>_e2e.tf   # E2E-specific variant (preferred by init over main.tf)
+└── expected/       # Expected v5 output (compared after migration)
+    └── main.tf
 ```
 
-#### Prerequisites
+All resource names in testdata must use the `cftftest` prefix. Enforced by `make lint-testdata`.
+
+### E2E Tests
+
+E2E tests create and destroy real Cloudflare infrastructure. Use a dedicated test account — never production.
+
+**Required environment variables:**
+
+| Variable | Required for |
+|----------|-------------|
+| `CLOUDFLARE_ACCOUNT_ID` | init, run |
+| `CLOUDFLARE_ZONE_ID` | init, run |
+| `CLOUDFLARE_DOMAIN` | init, run |
+| `CLOUDFLARE_API_KEY` | backend (v4 apply) |
+| `CLOUDFLARE_EMAIL` | backend (v4 apply) |
+| `CLOUDFLARE_R2_ACCESS_KEY_ID` | backend (v4 apply), clean |
+| `CLOUDFLARE_R2_SECRET_ACCESS_KEY` | backend (v4 apply), clean |
+| `CLOUDFLARE_CROWDSTRIKE_*` | device posture rule tests only |
+| `CLOUDFLARE_BYO_IP_*` | byo_ip_prefix tests (have defaults) |
+
+**E2E workflow:**
+
+```
+1. init    → Copy input files from testdata, prefer *_e2e.tf over *.tf
+             Generate versions.tf, main.tf, terraform.tfvars
+             Write R2 backend config
+2. v4 apply → terraform init + apply against real Cloudflare (state in R2)
+3. migrate  → Build tf-migrate binary, run migration, hoist import blocks to root
+4. v5 apply → terraform apply with v5 provider against existing infrastructure
+5. drift    → terraform plan; verify "No changes" (with optional exemptions)
+```
+
+**E2E runner binary commands** (binary is `./bin/e2e`):
 
 ```bash
-export CLOUDFLARE_ACCOUNT_ID="your-account-id"
-export CLOUDFLARE_ZONE_ID="your-zone-id"
-export CLOUDFLARE_DOMAIN="your-test-domain.com"
+# Full suite
+./bin/e2e run --apply-exemptions
 
-# Authentication (choose one)
-export CLOUDFLARE_API_TOKEN="your-api-token"  # Recommended
-# OR
-export CLOUDFLARE_EMAIL="your-email@example.com"
-export CLOUDFLARE_API_KEY="your-api-key"
+# Specific resources
+./bin/e2e run --resources dns_record,zone_setting --apply-exemptions
+
+# By phase (0, 1, or 2)
+./bin/e2e run --phase 0 --apply-exemptions
+
+# Exclude resources
+./bin/e2e run --exclude byo_ip_prefix --apply-exemptions
+
+# Individual steps
+./bin/e2e init [--resources <csv>] [--phase <n>]
+./bin/e2e migrate [--resources <csv>] [--phase <n>] [--target-provider-version <ver>]
+./bin/e2e clean --modules dns_record,zone_setting
+./bin/e2e bootstrap
+
+# v5 provider upgrade testing
+./bin/e2e v5-upgrade [--from-version <ver>] [--to-version <ver>] [--resources <csv>]
+./bin/e2e v5-upgrade-clean [--from-version <ver>] [--to-version <ver>]
 ```
 
-#### Run E2E Tests
+**Phase system** — resources are grouped into 3 phases (0, 1, 2) for parallelism control. Use `--phase 0,1` to run multiple phases. Defined in `internal/e2e-runner/phases.go`.
 
-```bash
-# Build and run full suite
-./scripts/run-e2e-tests.sh --apply-exemptions
-
-# Or manually
-make build-all
-./bin/e2e-runner run --apply-exemptions
-
-# Test specific resources
-./bin/e2e-runner run --resources dns_record,zone_setting
-
-# Individual commands
-./bin/e2e-runner init
-./bin/e2e-runner migrate
-./bin/e2e-runner clean --modules module.dns_record
-```
-
-#### E2E Runner Features
-
-- ✅ **Credential sanitization** - Prevents secrets in logs
-- ✅ **Drift detection** - Validates successful migration
-- ✅ **Resource filtering** - Test specific resources
-- ✅ **Colored output** - Clear success/failure indicators
-- ✅ **88 unit tests** - E2E runner itself is well-tested
-
-#### Import Annotations
-
-Some resources cannot be created, only imported (e.g., `zero_trust_organization`).
-
-Use annotations in module files:
+**Import annotations** — for resources that must be imported rather than created:
 
 ```hcl
-# integration/v4_to_v5/testdata/zero_trust_organization/_e2e.tf
-
 # tf-migrate:import-address=${var.cloudflare_account_id}
 resource "cloudflare_access_organization" "test" {
-  account_id  = var.cloudflare_account_id
-  name        = "Test Organization"
-  auth_domain = "test.cloudflareaccess.com"
+  account_id = var.cloudflare_account_id
 }
 ```
 
-E2E runner generates import blocks:
+The e2e init step generates native Terraform `import {}` blocks in the root `main.tf` with `module.<name>.` prefix.
 
-```hcl
-# e2e/tf/v4/main.tf (auto-generated)
+Supported variable substitutions: `${var.cloudflare_account_id}`, `${var.cloudflare_zone_id}`, `${var.cloudflare_domain}`
 
-import {
-  to = module.zero_trust_organization.cloudflare_access_organization.test
-  id = var.cloudflare_account_id
-}
+**Post-migration patches** — for edge cases that can't be expressed in testdata alone, create patch files:
+
+```
+integration/v4_to_v5/testdata/<resource>/postmigrate/*.patch
 ```
 
-#### Skipping Resources from E2E Tests
-
-Some resources cannot be tested in E2E environments due to lifecycle constraints (cannot be created/destroyed) or external dependencies. To exclude a resource from E2E tests while keeping integration tests:
-
-**Add E2E-SKIP marker to the `*_e2e.tf` file:**
-
-```hcl
-# E2E-SKIP: Brief reason why E2E testing is not possible
-#
-# REASON FOR SKIP:
-# - Detailed explanation of constraints
-# - Why automated testing is not feasible
-#
-# TESTING COVERAGE:
-# ✓ Integration tests: What IS tested
-# ✓ Provider tests: What IS tested
-# ✗ E2E tests: Why NOT tested
-
-# Rest of file content...
-```
-
-**Pattern Rules:**
-
-1. **Marker location**: Must be in the first 20 lines of the `*_e2e.tf` file
-2. **Format**: `# E2E-SKIP:` (case-sensitive, must be in a comment)
-3. **Documentation**: Include detailed reasoning and alternative test coverage
-4. **Integration tests**: Continue to work normally (use separate input files)
-
-**Example: BYO IP Prefix**
-
-The `byo_ip_prefix` resource is skipped from E2E tests because:
-- Cannot be created via Terraform (requires manual account manager provisioning)
-- Cannot be destroyed (active bindings prevent deletion)
-- Requires manual intervention during migration
-
-See: `integration/v4_to_v5/testdata/byo_ip_prefix/input/byo_ip_prefix_e2e.tf`
-
-**E2E Runner Behavior:**
-
-```bash
-# When initializing E2E tests:
-./bin/e2e-runner init
-
-# Output shows skipped resources:
-Syncing resource files from testdata...
-  ✓ dns_record/dns_record.tf (from dns_record_e2e.tf)
-  ⊗ Skipped byo_ip_prefix (E2E-SKIP)
-  ✓ zone_setting/zone_setting.tf (from zone_setting_e2e.tf)
-
-  Total: 120 files synced
-  Skipped: 1 modules (E2E-SKIP)
-```
-
-**When to Use E2E-SKIP:**
-
-Use the E2E-SKIP marker when:
-- Resources cannot be created via Terraform/API
-- Resources cannot be destroyed (lifecycle constraints)
-- Resources require manual provisioning or external setup
-- E2E testing would require pre-existing infrastructure
-
-**Do NOT use E2E-SKIP for:**
-- Resources that can be imported (use import annotations instead)
-- Resources with slow operations (improve test efficiency instead)
-- Temporary test failures (fix the underlying issue)
+First line of each patch file = target `resourcetype.name`. Remaining lines are injected after the opening brace.
 
 ---
 
 ## Drift Exemptions System
 
-The drift exemptions system allows you to define acceptable differences between v4 and v5 provider behavior during E2E testing, preventing false positives from failing CI while still catching real migration bugs.
+Exemptions classify expected differences between v4 and v5 provider behavior so they don't fail the E2E drift check.
 
-### Hierarchical Configuration
+### Hierarchy
 
-Exemptions are organized in two levels:
+1. `e2e/global-drift-exemptions.yaml` — applies to all resources
+2. `e2e/drift-exemptions/<resource>.yaml` — resource-specific; can override or disable global exemptions
 
-1. **Global exemptions** (`e2e/global-drift-exemptions.yaml`) - Apply to all resources
-2. **Resource-specific exemptions** (`e2e/drift-exemptions/{resource}.yaml`) - Override global settings
+Run `make sync-exemptions` to copy these into `internal/verifydrift/exemptions/` (where they are embedded at build time for the `verify-drift` command).
 
-### File Locations
-
-```
-e2e/
-├── global-drift-exemptions.yaml    # Global exemptions (all resources)
-└── drift-exemptions/
-    ├── zone_setting.yaml           # Zone setting specific
-    ├── zone_dnssec.yaml            # Zone DNSSEC specific
-    ├── bot_management.yaml         # Bot management specific
-    └── {resource}.yaml             # Any resource can have one
-```
-
-### Global Exemptions
-
-**File**: `e2e/global-drift-exemptions.yaml`
+### Exemption schema
 
 ```yaml
 version: 1
 
 exemptions:
-  # Standard computed field exemptions
-  - name: "computed_value_refreshes"
-    description: "Ignore attributes that refresh to 'known after apply'"
-    patterns:
-      - '\(known after apply\)'
-      - '= \{\} -> null'
-    enabled: true
+  - name: "unique_identifier"
+    description: "Why this exemption is needed"
 
-settings:
-  apply_exemptions: true
-  verbose_exemptions: false
-  warn_unused_exemptions: false
-  load_resource_exemptions: true
-```
-
-### Resource-Specific Exemptions
-
-**File**: `e2e/drift-exemptions/zone_setting.yaml`
-
-```yaml
-version: 1
-
-exemptions:
-  # One-to-many transformation: v4 zone_settings_override -> multiple v5 zone_setting
-  - name: "allow_zone_setting_creation"
-    description: "Zone settings are created during v4->v5 migration"
-    allow_resource_creation: true
-    enabled: true
-
-  # Plan-specific features
-  - name: "unsupported_plan_features"
-    description: "Features not available on free/pro plans"
-    patterns:
-      - "0rtt"
-      - "tls_1_3"
-    enabled: true
-
-  # Disable global exemption for this resource
-  - name: "computed_value_refreshes"
-    enabled: false
-
-settings:
-  apply_exemptions: true
-  verbose_exemptions: false
-```
-
-### Exemption Schema
-
-#### Required Fields
-
-- `name` - Unique identifier for the exemption
-- `description` - Human-readable explanation (what and why)
-- `enabled` - Boolean to enable/disable the exemption
-
-#### Scope Filters (optional)
-
-- `resource_types` - List of resource types (e.g., `["cloudflare_zone"]`)
-- `resource_name_patterns` - Regex patterns for resource names (e.g., `["module\\.zone_setting\\..*"]`)
-- `attributes` - List of attribute names to match
-
-#### Pattern Matching
-
-**Regex Patterns:**
-```yaml
-patterns:
-  - 'status.*->.*"active"'  # Status changes to active
-  - '\(known after apply\)' # Computed fields
-  - '- email = .* -> null'  # Deletions
-```
-
-**Simplified Patterns (recommended):**
-```yaml
-# Allow entire resource to be created
-allow_resource_creation: true
-
-# Allow entire resource to be destroyed
-allow_resource_destruction: true
-
-# Allow entire resource to be replaced
-allow_resource_replacement: true
-```
-
-### Usage Examples
-
-#### Example 1: Allow Resource Creation
-
-When migrating from a single v4 resource to multiple v5 resources:
-
-```yaml
-exemptions:
-  - name: "allow_zone_setting_creation"
-    description: "v4 zone_settings_override splits into multiple v5 zone_setting"
-    allow_resource_creation: true
+    # Scope filters (all optional — omitting matches everything)
     resource_types:
       - "cloudflare_zone_setting"
-    enabled: true
-```
-
-#### Example 2: Resource-Specific Computed Fields
-
-Only exempt computed fields for test resources:
-
-```yaml
-exemptions:
-  - name: "test_policy_computed"
-    description: "Computed fields for test policies only"
     resource_name_patterns:
-      - 'module\.zero_trust_access_policy\..*\.test'
+      - 'module\.zone_setting\..*'
+    attributes:
+      - "ttl"
+
+    # Match by regex pattern in plan output lines
     patterns:
-      - 'precedence.*\(known after apply\)'
-    enabled: true
-```
+      - '\(known after apply\)'
+      - 'status.*->.*"active"'
 
-#### Example 3: Override Global Exemption
-
-Disable a global exemption for a specific resource:
-
-```yaml
-exemptions:
-  # Disable global timestamp exemption - we want to catch drift here
-  - name: "computed_value_refreshes"
-    enabled: false
-```
-
-#### Example 4: Instance-Specific Pattern
-
-```yaml
-exemptions:
-  - name: "test_resources_only"
-    description: "Only for test resources"
-    resource_name_patterns:
-      - 'module\.test_.*'
-      - 'module\.staging\..*'
-    patterns:
-      - "some-pattern"
-    enabled: true
-```
-
-### Running E2E Tests with Exemptions
-
-```bash
-# With exemptions (default in CI)
-./scripts/run-e2e-tests.sh --apply-exemptions
-
-# Without exemptions (strict mode)
-./scripts/run-e2e-tests.sh
-
-# For specific resources
-./scripts/run-e2e-tests.sh --apply-exemptions --resources zone_setting,bot_management
-```
-
-### Creating Resource-Specific Exemptions
-
-```bash
-# Create new resource-specific exemption
-cat > e2e/drift-exemptions/my_resource.yaml <<EOF
-version: 1
-exemptions:
-  - name: "my_exemption"
-    description: "Why this is needed"
+    # Or use simplified exemptions (no patterns needed)
     allow_resource_creation: true
+    allow_resource_destruction: true
+    allow_resource_replacement: true
+
     enabled: true
+
 settings:
-  apply_exemptions: true
-EOF
-
-# Test
-./scripts/run-e2e-tests.sh --apply-exemptions --resources my_resource
+  apply_exemptions: true         # Master toggle (default: false in global config)
+  verbose_exemptions: false      # Show which exemptions matched
+  warn_unused_exemptions: false  # Warn about exemptions that matched nothing
+  load_resource_exemptions: true # Load resource-specific config files
 ```
 
-### Settings Reference
+### Key behaviors
 
-#### Global Settings
+- Resource-specific exemptions are checked **before** global exemptions
+- A resource-specific exemption can disable a global one: set `enabled: false` with the same `name`
+- Pattern-only exemptions (no `resource_types`) get implicitly scoped to `cloudflare_<filename>` for resource-specific files
+- `allow_resource_creation/destruction/replacement` exemptions do NOT get implicit scoping
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `apply_exemptions` | `false` | Master toggle for exemptions |
-| `verbose_exemptions` | `false` | Show which exemptions matched |
-| `warn_unused_exemptions` | `false` | Warn about unused exemptions |
-| `load_resource_exemptions` | `true` | Load resource-specific configs |
+### verify-drift command
 
-#### For Debugging
-
-```yaml
-settings:
-  verbose_exemptions: true        # See what's being exempted
-  warn_unused_exemptions: true    # Find stale exemptions
-```
-
-### Best Practices
-
-#### 1. Be Specific
-
-```yaml
-# ❌ Too broad
-patterns:
-  - ".*"
-
-# ✅ Specific
-patterns:
-  - 'status.*->.*"active"'
-resource_types:
-  - "cloudflare_zone_dnssec"
-```
-
-#### 2. Use Simplified Patterns
-
-```yaml
-# ❌ Complex
-patterns:
-  - "will be created"
-  - "\\+ resource"
-  - "\\+ id"
-  # ... many more
-
-# ✅ Simple
-allow_resource_creation: true
-```
-
-#### 3. Document Exemptions
-
-```yaml
-# ✅ Well documented
-- name: "zone_setting_migration_drift"
-  description: "v4 zone_settings_override splits into multiple v5 zone_setting resources during migration"
-  allow_resource_creation: true
-```
-
-#### 4. Use Resource-Specific Configs
-
-Keep global config clean - put resource-specific exemptions in their own files.
-
-#### 5. Enable Warnings
-
-```yaml
-settings:
-  warn_unused_exemptions: true
-```
-
-### Troubleshooting
-
-#### Exemption Not Matching
-
-1. Enable verbose mode:
-```yaml
-settings:
-  verbose_exemptions: true
-```
-
-2. Check regex:
 ```bash
-echo "your-text" | grep -E "your-pattern"
+terraform plan > plan.txt
+tf-migrate verify-drift --file plan.txt
 ```
 
-3. Remove filters:
-```yaml
-# Comment out to match all resources
-# resource_types: ["cloudflare_zone"]
-```
+Exit code 0 = all drift is expected or no changes. Exit code 1 = unexpected drift found. Use in CI:
 
-#### Too Many False Positives
-
-Create resource-specific exemption:
 ```bash
-cat > e2e/drift-exemptions/my_resource.yaml <<EOF
-version: 1
-exemptions:
-  - name: "my_specific_exemption"
-    description: "Special case for my_resource"
-    patterns:
-      - "specific-pattern"
-    enabled: true
-settings:
-  apply_exemptions: true
-EOF
+terraform plan > plan.txt && tf-migrate verify-drift --file plan.txt || exit 1
 ```
 
-### Output Format
-
-E2E test output shows which exemptions were applied:
-
-```
-Step 4: Verifying stable state (v5 plan after apply)
-✓ No drift detected
-
-Drift Exemptions Applied:
-  Global exemptions:
-    - computed_value_refreshes: 12 matches (from global-drift-exemptions.yaml)
-
-  Resource-specific exemptions:
-    - allow_zone_setting_creation: 8 matches (from e2e/drift-exemptions/zone_setting.yaml)
-    - unsupported_plan_features: 2 matches (from e2e/drift-exemptions/zone_setting.yaml)
-```
+The `verify-drift` command uses exemptions embedded at build time from `internal/verifydrift/exemptions/`. Keep them in sync with `make sync-exemptions`.
 
 ---
 
 ## Development Guide
 
-### Setting Up Development Environment
+### Setup
 
 ```bash
-# Clone repository
-git clone <repository-url>
+git clone https://github.com/cloudflare/tf-migrate
 cd tf-migrate
-
-# Install dependencies
 go mod download
-
-# Build binaries
-make build-all
-
-# Run tests
-make test
+make build-all   # builds ./bin/tf-migrate and ./bin/e2e
 ```
 
 ### Adding a New Resource Transformer
 
-#### Step 1: Create Resource Directory
+**Step 1: Create the resource directory**
 
 ```bash
-mkdir -p internal/resources/my_resource
+mkdir -p internal/resources/<resource_name>
 ```
 
-#### Step 2: Implement Transformer
+Use the v5 resource name without the `cloudflare_` prefix (e.g., `dns_record`, `zone_setting`).
+
+**Step 2: Implement `v4_to_v5.go`**
 
 ```go
-// internal/resources/my_resource/v4_to_v5.go
-package my_resource
+package <resource_name>
 
 import (
-    "github.com/cloudflare/tf-migrate/internal/registry"
+    "github.com/cloudflare/tf-migrate/internal"
     "github.com/cloudflare/tf-migrate/internal/transform"
+    tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
+    "github.com/hashicorp/hcl/v2/hclwrite"
 )
 
-type MyResourceTransformer struct{}
+type V4ToV5Migrator struct{}
 
-func init() {
-    registry.Register(registry.ResourceEntry{
-        Version:      "v4_to_v5",
-        ResourceType: "cloudflare_my_resource",
-        Transformer:  &MyResourceTransformer{},
-    })
+func NewV4ToV5Migrator() transform.ResourceTransformer {
+    migrator := &V4ToV5Migrator{}
+    internal.RegisterMigrator("cloudflare_<v4_name>", "v4", "v5", migrator)
+    return migrator
 }
 
-func (t *MyResourceTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-    // Transform HCL configuration
-    // Use tfhcl.RenameAttribute, tfhcl.RenameBlock, etc.
-
-    return &transform.TransformResult{
-        Blocks:         []*hclwrite.Block{block},
-        RemoveOriginal: false,
-    }, nil
+func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
+    return resourceType == "cloudflare_<v4_name>"
 }
-```
 
-#### Step 3: Add Tests
+func (m *V4ToV5Migrator) GetResourceType() string { return "cloudflare_<v4_name>" }
+func (m *V4ToV5Migrator) Preprocess(content string) string { return content }
 
-```go
-// internal/resources/my_resource/v4_to_v5_test.go
-package my_resource
-
-import (
-    "testing"
-    "github.com/stretchr/testify/assert"
-    "github.com/cloudflare/tf-migrate/internal/transform"
-)
-
-func TestMyResourceTransformer_TransformConfig(t *testing.T) {
-    input := `
-resource "cloudflare_my_resource" "test" {
-  name = "example"
+func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+    body := block.Body()
+    // ... transform body ...
+    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}}, nil
 }
-`
 
-    transformer := &MyResourceTransformer{}
-    // Parse into HCL and call TransformConfig with the resource block
-    // See existing resource test files for the standard test pattern
-    _ = transformer
-    _ = input
+// If the resource is renamed:
+func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
+    return []string{"cloudflare_<v4_name>"}, "cloudflare_<v5_name>"
 }
 ```
 
-#### Step 4: Add Integration Test Data
+**Step 3: Register in `registry.go`**
+
+Add the import and a `<package>.NewV4ToV5Migrator()` call to `internal/registry/registry.go` following the existing pattern.
+
+**Step 4: Add integration testdata**
+
+```
+integration/v4_to_v5/testdata/<resource>/
+├── input/<resource>.tf        # v4 configuration
+├── input/<resource>_e2e.tf    # E2E-specific variant (if different from integration test)
+└── expected/<resource>.tf     # Expected v5 output
+```
+
+All resource names must use the `cftftest` prefix.
+
+**Step 5: Add resource README**
+
+`internal/resources/<resource>/README.md` — document what changed, before/after examples, any manual steps.
+
+**Step 6: Verify**
 
 ```bash
-mkdir -p integration/v4_to_v5/testdata/my_resource
-```
-
-Create test fixtures:
-
-```hcl
-# integration/v4_to_v5/testdata/my_resource/main.tf
-resource "cloudflare_my_resource" "test" {
-  name = "example"
-}
-```
-
-```hcl
-# integration/v4_to_v5/testdata/my_resource/expected.tf
-resource "cloudflare_my_resource" "test" {
-  name = "example"
-}
-```
-
-#### Step 5: Add Documentation
-
-```markdown
-# internal/resources/my_resource/README.md
-
-# My Resource Migration Guide (v4 → v5)
-
-## Changes
-
-| Aspect | v4 | v5 | Change |
-|--------|----|----|--------|
-| Resource name | `cloudflare_my_resource` | `cloudflare_my_resource` | No change |
-| `name` attribute | Required | Required | No change |
-
-## Examples
-
-...
-```
-
-#### Step 6: Run Tests
-
-```bash
-# Unit tests
-go test ./internal/resources/my_resource -v
-
-# Integration tests
-TEST_RESOURCE=my_resource go test -v -run TestSingleResource
-
-# E2E tests (if applicable)
-./scripts/run-e2e-tests.sh --resources my_resource --apply-exemptions
+go test ./internal/resources/<resource>/... -v
+make test-integration
+make lint-testdata
 ```
 
 ### Makefile Targets
 
 ```bash
 make build           # Build tf-migrate binary
-make build-all       # Build both tf-migrate and e2e-runner
-make test            # Run all tests
-make test-unit       # Run unit tests only
-make test-integration # Run integration tests
-make test-e2e        # Run e2e-runner unit tests
-make lint            # Run linter
-make lint-testdata   # Lint testdata naming conventions
-make clean           # Clean build artifacts
+make build-all       # Build tf-migrate + e2e binaries
+make test            # Unit + integration tests
+make test-unit       # go test -race ./internal/...
+make test-integration # go test -race ./integration/...
+make lint-testdata   # Enforce cftftest naming convention in testdata
+make sync-exemptions # Copy e2e/ exemption YAMLs into verifydrift/exemptions/
+make release-snapshot # Test GoReleaser build locally (no publish)
+make clean           # Remove bin/
 ```
 
-### Debugging Tips
-
-#### Enable Debug Logging
+### Debugging
 
 ```bash
-./bin/tf-migrate migrate --log-level debug --dry-run
-```
+# Preview changes without modifying files
+./bin/tf-migrate migrate --dry-run --source-version v4 --target-version v5
 
-#### Inspect Intermediate Results
+# Verbose output: per-file progress, rename tables, info-level diagnostics
+./bin/tf-migrate migrate -v --source-version v4 --target-version v5
 
-```bash
-# Keep temp files in integration tests
-KEEP_TEMP=true TEST_RESOURCE=my_resource go test -v -run TestSingleResource
-
-# Check generated files
-ls -la /tmp/tf-migrate-test-*
-```
-
-#### Debug E2E Tests
-
-```bash
-# Enable verbose drift exemptions
-# Edit e2e/global-drift-exemptions.yaml:
-settings:
-  verbose_exemptions: true
-
-# Run with debug output
-./bin/e2e-runner run --resources my_resource --apply-exemptions
+# Debug logging
+./bin/tf-migrate migrate --log-level debug --source-version v4 --target-version v5
 ```
 
 ---
 
 ## Common Patterns
 
-### Pattern 1: Simple Attribute Rename
+### Pattern 1: Attribute rename
 
 ```go
-func (t *MyTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-    tfhcl.RenameAttribute(block.Body(), "old_name", "new_name")
-    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}, RemoveOriginal: false}, nil
-}
+tfhcl.RenameAttribute(body, "old_name", "new_name")
 ```
 
-### Pattern 2: Resource Type Rename
+### Pattern 2: Remove deprecated attributes
 
 ```go
-func (t *MyTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-    tfhcl.RenameResourceType(block, "cloudflare_old_name", "cloudflare_new_name")
-    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}, RemoveOriginal: false}, nil
-}
+tfhcl.RemoveAttributes(body, "deprecated_field_1", "deprecated_field_2")
 ```
 
-### Pattern 3: Nested Block to Attribute
+### Pattern 3: Nested block → attribute
 
 ```go
-// v4: nested block
-// block {
-//   nested {
-//     value = "foo"
-//   }
-// }
-
-// v5: attribute
-// nested = { value = "foo" }
-
-func (t *MyTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-    // Use HCL traversal to restructure
-    // See internal/resources/zero_trust_access_policy for examples
-    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}, RemoveOriginal: false}, nil
-}
+// block { key = "value" } → attr = { key = "value" }
+tfhcl.ConvertSingleBlockToAttribute(body, "block_name", "attr_name")
 ```
 
-### Pattern 4: One-to-Many Split
+### Pattern 4: Repeated blocks → array attribute
 
 ```go
-// See internal/resources/zone_setting/v4_to_v5.go for full example
-
-func (t *ZoneSettingTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-    // 1. Parse original resource block
-    // 2. Extract settings from settings block
-    // 3. Generate N new resource blocks (one per setting)
-    // 4. Copy meta-arguments to all blocks
-    // 5. Return {Blocks: newBlocks, RemoveOriginal: true}
-}
+// Multiple include {} blocks → include = [{ ... }, { ... }]
+tfhcl.ConvertBlocksToArrayAttribute(body, "include", false)
 ```
 
-### Pattern 5: API-Based Migration
-
-API calls are made inside `TransformConfig` to resolve import IDs or resource references:
+### Pattern 5: Resource split (one-to-many)
 
 ```go
-func (t *TunnelRouteTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-    // 1. Read resource attributes from HCL block
-    network := tfhcl.ExtractStringAttribute(block.Body(), "network")
-
-    // 2. Call Cloudflare API to fetch the UUID
-    routes, err := ctx.CloudflareClient.ListTunnelRoutes(...)
-
-    // 3. Generate import block with the resolved UUID
-    for _, route := range routes {
-        if route.Network == network {
-            importBlock := tfhcl.CreateImportBlock(block, route.ID)
-            return &transform.TransformResult{Blocks: []*hclwrite.Block{block, importBlock}}, nil
-        }
-    }
-    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}}, nil
-}
-```
-
-### Pattern 6: Conditional Transformation
-
-```go
-func (t *MyTransformer) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-    // Check if attribute exists before transforming
-    if block.Body().GetAttribute("old_attr") != nil {
-        tfhcl.RenameAttribute(block.Body(), "old_attr", "new_attr")
-    }
-    return &transform.TransformResult{Blocks: []*hclwrite.Block{block}, RemoveOriginal: false}, nil
-}
-```
-
-### Pattern 7: Manual Intervention with Warning Comments
-
-When required fields cannot be automatically populated (e.g., values must come from external sources), add warning comments to guide users:
-
-```go
-// See: internal/resources/byo_ip_prefix/v4_to_v5.go
-// See: internal/resources/list_item/v4_to_v5.go
-
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
-    body := block.Body()
+    var newBlocks []*hclwrite.Block
 
-    // Remove deprecated fields
-    tfhcl.RemoveAttributes(body, "old_field_1", "old_field_2")
+    // Generate N new blocks from original
+    for _, setting := range settings {
+        newBlock := tfhcl.CreateDerivedBlock(block, "cloudflare_zone_setting", label, transform)
+        importBlock := tfhcl.CreateImportBlock("cloudflare_zone_setting", label, importID)
+        newBlocks = append(newBlocks, newBlock, importBlock)
+    }
 
-    // Add warning comment for fields requiring manual intervention
-    warningMsg := "This resource requires manual intervention to add v5 required fields 'field_a' and 'field_b'. Find values in [source]. See migration documentation for details."
-    tfhcl.AppendWarningComment(body, warningMsg)
+    // Generate removed block for original resource
+    removedBlock := tfhcl.CreateRemovedBlock(from)
+    newBlocks = append(newBlocks, removedBlock)
 
-    return &transform.TransformResult{
-        Blocks:         []*hclwrite.Block{block},
-        RemoveOriginal: false,
-    }, nil
+    return &transform.TransformResult{Blocks: newBlocks, RemoveOriginal: true}, nil
 }
 ```
 
-**Result in HCL:**
-```hcl
-resource "cloudflare_example" "test" {
-  account_id = "abc123"
-  # MIGRATION WARNING: This resource requires manual intervention to add v5 required fields 'field_a' and 'field_b'. Find values in [source]. See migration documentation for details.
-}
+### Pattern 6: Manual intervention warning
+
+When a required field can't be populated automatically:
+
+```go
+tfhcl.AppendWarningComment(body, "This resource requires manual intervention to add v5 required fields 'asn' and 'cidr'. Find values in Cloudflare Dashboard → Manage Account → IP Addresses → IP Prefixes.")
 ```
 
-**When to use:**
-- New v5 required fields don't exist in v4
-- Values must come from external sources (API, dashboard, user)
-- No reasonable default value exists
-- Field values are account/environment-specific
+This writes `# MIGRATION WARNING: ...` directly into the output `.tf` file. Document the warning in `DIAGNOSTICS.md`.
 
-**Integration test strategy:**
-- Expected output files include the warning comment
-- E2E tests simulate user adding fields from environment variables
-- Provider tests verify warning exists before manual intervention step
+### Pattern 7: Hoist attribute from nested block
 
----
+```go
+// Move "priority" from data {} block up to resource body
+tfhcl.HoistAttributeFromBlock(body, "data", "priority")
+```
 
-## Additional Resources
+### Pattern 8: Add lifecycle ignore_changes
 
-### Key Files to Understand
+```go
+// For write-only attributes that need a placeholder value
+tfhcl.AddLifecycleIgnoreChanges(body, "certificate", "private_key")
+```
 
-1. **`internal/pipeline/pipeline.go`** - Pipeline orchestration
-2. **`internal/registry/registry.go`** - Resource transformer registration
-3. **`internal/transform/interfaces.go`** - Core interfaces
-4. **`internal/e2e-runner/runner.go`** - E2E test orchestration
-5. **`internal/e2e-runner/drift.go`** - Drift detection & exemptions
-6. **`internal/resources/zone_setting/v4_to_v5.go`** - Complex one-to-many example
-7. **`internal/resources/zero_trust_tunnel_cloudflared_route/v4_to_v5.go`** - API-based migration example
+### Pattern 9: Generate moved block for renamed resource
 
-### External Documentation
+```go
+oldAddr := fmt.Sprintf("cloudflare_old_type.%s", tfhcl.GetResourceName(block))
+newAddr := fmt.Sprintf("cloudflare_new_type.%s", tfhcl.GetResourceName(block))
+movedBlock := tfhcl.CreateMovedBlock(oldAddr, newAddr)
+```
 
-- [Terraform HCL2 Specification](https://github.com/hashicorp/hcl/tree/main/hclsyntax)
-- [Cloudflare Terraform Provider v5 Docs](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs)
-- [Cloudflare API Docs](https://developers.cloudflare.com/api/)
+Return both the transformed block and the moved block:
 
-### Getting Help
+```go
+return &transform.TransformResult{
+    Blocks:         []*hclwrite.Block{block, movedBlock},
+    RemoveOriginal: false,
+}, nil
+```
 
-- Check resource-specific README.md files
-- Review integration test fixtures for examples
-- Use `--dry-run` to preview changes
-- Enable debug logging: `--log-level debug`
-- Review E2E test output for drift exemptions
+### Pattern 10: Emit a diagnostic warning
 
----
-
-## Quick Command Reference
-
-```bash
-# Build
-make build-all
-
-# Test
-go test ./...                              # All unit tests
-make test-integration                      # Integration tests
-./scripts/run-e2e-tests.sh --apply-exemptions  # E2E tests
-
-# Run migration
-./bin/tf-migrate migrate --source-version v4 --target-version v5
-./bin/tf-migrate migrate --dry-run  # Preview only
-
-# E2E runner
-./bin/e2e-runner run --apply-exemptions
-./bin/e2e-runner run --resources dns_record,zone_setting
-./bin/e2e-runner init
-./bin/e2e-runner migrate
-
-# Debug
-./bin/tf-migrate migrate --log-level debug --dry-run
-KEEP_TEMP=true TEST_RESOURCE=dns_record go test -v -run TestSingleResource
+```go
+ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+    Severity: hcl.DiagWarning,
+    Summary:  "Action required: something needs manual attention",
+    Detail:   "Detailed instructions here.",
+})
 ```
 
 ---
 
-**Last Updated**: 2026-03-20
-**Version**: Based on v4→v5 migration implementation
+## Key Files Reference
+
+| File | Purpose |
+|------|---------|
+| `internal/transform/transformer.go` | All interfaces: `ResourceTransformer`, `PhaseOneTransformer`, `ResourceRenamer`, `AttributeRenamer`, `ComputedAttributeMapper`, `MigrationProvider` |
+| `internal/migrator.go` | Central registry: `RegisterMigrator`, `GetMigrator`, `GetAllMigrators` |
+| `internal/registry/registry.go` | Calls all `NewV4ToV5Migrator()` functions — add new resources here |
+| `internal/pipeline/pipeline.go` | `BuildConfigPipeline` — assembles the 4-handler chain |
+| `internal/transform/hcl/` | All HCL manipulation helpers |
+| `cmd/tf-migrate/main.go` | CLI entry point, phased migration orchestration, global postprocessing |
+| `cmd/tf-migrate/preflight.go` | Pre-migration resource classification scan |
+| `cmd/tf-migrate/version_check.go` | Minimum provider version check (v4.52.5) |
+| `internal/verifydrift/` | `verify-drift` command implementation with embedded exemptions |
+| `internal/e2e-runner/runner.go` | E2E test orchestration |
+| `internal/e2e-runner/phases.go` | Phase→resource mapping |
+| `internal/e2e-runner/drift.go` | Drift detection and exemption logic |
+| `internal/e2e-runner/init.go` | `RunInit` — syncs testdata to e2e/tf/v4/ |
+| `internal/e2e-runner/migrate.go` | Migration step in E2E workflow |
+| `internal/resources/zone_setting/v4_to_v5.go` | Reference implementation: one-to-many split + PhaseOneTransformer |
+| `internal/resources/argo/v4_to_v5.go` | Reference implementation: resource split with CreateDerivedBlock |
+| `internal/resources/zero_trust_access_policy/v4_to_v5.go` | Reference implementation: conditional manual intervention |
+| `internal/resources/dns_record/v4_to_v5.go` | Reference implementation: rename + ComputedAttributeMapper |
+
+---
+
+**Last Updated**: 2026-04-24
+**Version**: Based on v1.0.0 GA implementation

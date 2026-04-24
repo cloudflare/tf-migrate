@@ -12,7 +12,7 @@ body:
     attributes:
       label: tf-migrate version
       description: Output of `tf-migrate version` or the commit/tag you're using.
-      placeholder: "e.g. v0.3.0 or commit abc1234"
+      placeholder: "e.g. v1.0.0 or commit abc1234"
     validations:
       required: true
 

@@ -1,29 +1,3 @@
-# E2E-SKIP: BYO IP Prefix cannot be tested in automated E2E runs
-#
-# NOTE: This marker is for documentation only. To exclude this resource
-# from E2E tests, use: --exclude byo_ip_prefix
-#
-# REASON FOR SKIP:
-# ================
-# We are waiting on the Addressing team to provide an IP for use 
-# in testing. 
-#
-# TESTING COVERAGE:
-# =================
-# ✓ Integration tests: Verify config transformation (v4 -> v5)
-#   - Location: integration/v4_to_v5/testdata/byo_ip_prefix/
-#   - Tests: Field removal, warning generation, HCL structure
-#
-# ✓ Provider migration tests: Verify migration logic
-#   - Location: cloudflare-terraform-next/internal/services/byo_ip_prefix/migration/v500/
-#   - Tests: Config transformation, warning comments, state upgrades
-#
-# ✓ Manual testing: Can be performed with pre-existing infrastructure
-#   - Requires: Existing BYO IP prefix in Cloudflare account
-#   - Process: Manual migration with real resources
-#
-# ✗ E2E tests: Requires pre-existing infrastructure (not automatable)
-
 # Terraform v4 to v5 Migration E2E Test - BYO IP Prefix
 #
 # Note: The v4 provider's Create function does not call the API to create a

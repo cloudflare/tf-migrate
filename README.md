@@ -43,6 +43,8 @@ tf-migrate migrate --source-version v4 --target-version v5 --skip-version-check
 |---------|-----------------|-----------------|------|
 | **Accounts** | `cloudflare_account` | `cloudflare_account` | resource |
 | | `cloudflare_account_member` | `cloudflare_account_member` | resource |
+| | `data.cloudflare_account_roles` | `data.cloudflare_account_roles` | data source |
+| | `data.cloudflare_accounts` | `data.cloudflare_accounts` | data source |
 | **Addressing** | `cloudflare_byo_ip_prefix` | `cloudflare_byo_ip_prefix` | resource ⚠ |
 | | `cloudflare_regional_hostname` | `cloudflare_regional_hostname` | resource |
 | | `cloudflare_regional_tiered_cache` | `cloudflare_regional_tiered_cache` | resource |
@@ -78,7 +80,7 @@ tf-migrate migrate --source-version v4 --target-version v5 --skip-version-check
 | | `cloudflare_notification_policy_webhooks` | `cloudflare_notification_policy_webhooks` | resource |
 | **Observatory** | `cloudflare_observatory_scheduled_test` | `cloudflare_observatory_scheduled_test` | resource |
 | **Origin CA** | `cloudflare_origin_ca_certificate` | `cloudflare_origin_ca_certificate` | resource |
-| **Origin Pulls** | `cloudflare_authenticated_origin_pulls` | `cloudflare_authenticated_origin_pulls` | resource |
+| **Origin Pulls** | `cloudflare_authenticated_origin_pulls` | `cloudflare_authenticated_origin_pulls_settings` (without hostname) / `cloudflare_authenticated_origin_pulls` (with hostname) | resource |
 | | `cloudflare_authenticated_origin_pulls_certificate` | `cloudflare_authenticated_origin_pulls_certificate` | resource |
 | **Page Rules** | `cloudflare_page_rule` | `cloudflare_page_rule` | resource |
 | **Pages** | `cloudflare_pages_domain` | `cloudflare_pages_domain` | resource |
@@ -93,7 +95,7 @@ tf-migrate migrate --source-version v4 --target-version v5 --skip-version-check
 | **Turnstile** | `cloudflare_turnstile_widget` | `cloudflare_turnstile_widget` | resource |
 | **URL Normalization** | `cloudflare_url_normalization_settings` | `cloudflare_url_normalization_settings` | resource |
 | **Workers** | `cloudflare_worker_script` / `cloudflare_workers_script` | `cloudflare_workers_script` | resource |
-| | `cloudflare_worker_route` / `cloudflare_workers_route` | `cloudflare_worker_route` | resource |
+| | `cloudflare_worker_route` / `cloudflare_workers_route` | `cloudflare_workers_route` | resource |
 | | `cloudflare_worker_domain` | `cloudflare_workers_custom_domain` | resource |
 | | `cloudflare_workers_kv` | `cloudflare_workers_kv` | resource |
 | | `cloudflare_workers_kv_namespace` | `cloudflare_workers_kv_namespace` | resource |
@@ -109,26 +111,24 @@ tf-migrate migrate --source-version v4 --target-version v5 --skip-version-check
 | | `cloudflare_device_managed_networks` / `cloudflare_zero_trust_device_managed_networks` | `cloudflare_zero_trust_device_managed_networks` | resource |
 | | `cloudflare_device_posture_integration` / `cloudflare_zero_trust_device_posture_integration` | `cloudflare_zero_trust_device_posture_integration` | resource |
 | | `cloudflare_device_posture_rule` / `cloudflare_zero_trust_device_posture_rule` | `cloudflare_zero_trust_device_posture_rule` | resource |
-| | `cloudflare_device_settings_policy` / `cloudflare_zero_trust_device_profiles` | `cloudflare_zero_trust_device_profiles` | resource |
+| | `cloudflare_device_settings_policy` / `cloudflare_zero_trust_device_profiles` | `cloudflare_zero_trust_device_default_profile` | resource |
 | | `cloudflare_device_dex_test` / `cloudflare_zero_trust_dex_test` | `cloudflare_zero_trust_dex_test` | resource |
 | | `cloudflare_dlp_profile` / `cloudflare_zero_trust_dlp_profile` | `cloudflare_zero_trust_dlp_custom_profile` | resource |
 | | `cloudflare_zero_trust_dlp_predefined_profile` | `cloudflare_zero_trust_dlp_predefined_profile` | resource |
 | | `cloudflare_zero_trust_gateway_certificate` | `cloudflare_zero_trust_gateway_certificate` | resource |
 | | `cloudflare_teams_rule` | `cloudflare_zero_trust_gateway_policy` | resource |
 | | `cloudflare_teams_account` / `cloudflare_zero_trust_gateway_settings` | `cloudflare_zero_trust_gateway_settings` | resource |
-| | `cloudflare_teams_list` | `cloudflare_zero_trust_list` | resource |
-| | `cloudflare_fallback_domain` / `cloudflare_zero_trust_local_fallback_domain` | `cloudflare_zero_trust_local_fallback_domain` | resource |
-| | `cloudflare_split_tunnel` / `cloudflare_zero_trust_split_tunnel` | `cloudflare_zero_trust_split_tunnel` | resource |
+| | `cloudflare_teams_list` / `cloudflare_zero_trust_list` | `cloudflare_zero_trust_list` | resource |
+| | `cloudflare_fallback_domain` / `cloudflare_zero_trust_local_fallback_domain` | `cloudflare_zero_trust_device_default_profile_local_domain_fallback` | resource |
+| | `cloudflare_split_tunnel` / `cloudflare_zero_trust_split_tunnel` | merged into `cloudflare_zero_trust_device_default_profile` | resource ⚠ |
 | | `cloudflare_tunnel` / `cloudflare_zero_trust_tunnel_cloudflared` | `cloudflare_zero_trust_tunnel_cloudflared` | resource |
 | | `cloudflare_tunnel_config` / `cloudflare_zero_trust_tunnel_cloudflared_config` | `cloudflare_zero_trust_tunnel_cloudflared_config` | resource |
 | | `cloudflare_tunnel_route` / `cloudflare_zero_trust_tunnel_route` | `cloudflare_zero_trust_tunnel_cloudflared_route` | resource |
 | | `cloudflare_tunnel_virtual_network` / `cloudflare_zero_trust_tunnel_virtual_network` | `cloudflare_zero_trust_tunnel_cloudflared_virtual_network` | resource |
 | **Zones** | `cloudflare_zone` | `cloudflare_zone` | resource |
 | | `cloudflare_zone_settings_override` | `cloudflare_zone_setting` (one per setting) | resource |
-| | `cloudflare_zone_subscription` | `cloudflare_zone_subscription` | resource |
 | | `data.cloudflare_zone` | `data.cloudflare_zone` | data source |
 | | `data.cloudflare_zones` | `data.cloudflare_zones` | data source |
-| | `data.cloudflare_accounts` | `data.cloudflare_accounts` | data source |
 
 ⚠ Resources marked with this symbol require manual steps after migration. See [Manual Migration Steps](#manual-migration-steps) below.
 
@@ -523,3 +523,19 @@ This is the most common mistake when migrating an Atlantis workspace. Always reg
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--file` | Required | Path to `terraform plan` output file |
+
+---
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, how to add a new resource transformer, testing instructions, and pull request guidelines.
+
+## Reporting Issues
+
+- **Bug reports** — [Open a bug report](https://github.com/cloudflare/tf-migrate/issues/new?template=bug_report.yml). Include the tf-migrate version, the input `.tf` configuration, and the actual vs expected output.
+- **Feature requests** — [Open a feature request](https://github.com/cloudflare/tf-migrate/issues/new?template=feature_request.yml).
+- **Security vulnerabilities** — See [SECURITY.md](SECURITY.md) for responsible disclosure instructions. Do **not** open a public issue for security vulnerabilities.
+
+## License
+
+This project is licensed under the [Apache License 2.0](LICENSE).
