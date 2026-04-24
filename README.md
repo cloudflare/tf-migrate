@@ -523,3 +523,19 @@ This is the most common mistake when migrating an Atlantis workspace. Always reg
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--file` | Required | Path to `terraform plan` output file |
+
+---
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, how to add a new resource transformer, testing instructions, and pull request guidelines.
+
+## Reporting Issues
+
+- **Bug reports** — [Open a bug report](https://github.com/cloudflare/tf-migrate/issues/new?template=bug_report.yml). Include the tf-migrate version, the input `.tf` configuration, and the actual vs expected output.
+- **Feature requests** — [Open a feature request](https://github.com/cloudflare/tf-migrate/issues/new?template=feature_request.yml).
+- **Security vulnerabilities** — See [SECURITY.md](SECURITY.md) for responsible disclosure instructions. Do **not** open a public issue for security vulnerabilities.
+
+## License
+
+This project is licensed under the [Apache License 2.0](LICENSE).
