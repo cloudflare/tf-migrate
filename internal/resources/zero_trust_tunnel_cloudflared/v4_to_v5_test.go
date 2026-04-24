@@ -4,10 +4,84 @@ import (
 	"testing"
 
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestV4ToV5Transformation(t *testing.T) {
 	migrator := NewV4ToV5Migrator()
+
+	// TestComputedAttributeMappings verifies that GetComputedAttributeMappings returns
+	// entries for BOTH v4 type names so cross-file .secret references are rewritten
+	// regardless of which name was used in the original config.
+	t.Run("ComputedAttributeMappings", func(t *testing.T) {
+		mapper, ok := migrator.(transform.ComputedAttributeMapper)
+		if !ok {
+			t.Fatal("migrator does not implement ComputedAttributeMapper")
+		}
+		mappings := mapper.GetComputedAttributeMappings()
+
+		byOldType := make(map[string]transform.ComputedAttributeMapping, len(mappings))
+		for _, m := range mappings {
+			byOldType[m.OldResourceType] = m
+		}
+
+		// Case 1: deprecated cloudflare_tunnel name (pre-existing behaviour)
+		old, ok := byOldType["cloudflare_tunnel"]
+		if !ok {
+			t.Errorf("missing mapping for OldResourceType=cloudflare_tunnel")
+		} else {
+			if old.OldAttribute != "secret" {
+				t.Errorf("cloudflare_tunnel mapping: want OldAttribute=secret, got %q", old.OldAttribute)
+			}
+			if old.NewResourceType != "cloudflare_zero_trust_tunnel_cloudflared" {
+				t.Errorf("cloudflare_tunnel mapping: want NewResourceType=cloudflare_zero_trust_tunnel_cloudflared, got %q", old.NewResourceType)
+			}
+			if old.NewAttribute != "tunnel_secret" {
+				t.Errorf("cloudflare_tunnel mapping: want NewAttribute=tunnel_secret, got %q", old.NewAttribute)
+			}
+		}
+
+		// Case 2: preferred v4 name cloudflare_zero_trust_tunnel_cloudflared (the bug fix from ticket 003)
+		preferred, ok := byOldType["cloudflare_zero_trust_tunnel_cloudflared"]
+		if !ok {
+			t.Errorf("missing mapping for OldResourceType=cloudflare_zero_trust_tunnel_cloudflared; " +
+				"cross-file .secret references on resources that already use the v5 type name will not be rewritten")
+		} else {
+			if preferred.OldAttribute != "secret" {
+				t.Errorf("cloudflare_zero_trust_tunnel_cloudflared mapping: want OldAttribute=secret, got %q", preferred.OldAttribute)
+			}
+			if preferred.NewResourceType != "cloudflare_zero_trust_tunnel_cloudflared" {
+				t.Errorf("cloudflare_zero_trust_tunnel_cloudflared mapping: want NewResourceType=cloudflare_zero_trust_tunnel_cloudflared, got %q", preferred.NewResourceType)
+			}
+			if preferred.NewAttribute != "tunnel_secret" {
+				t.Errorf("cloudflare_zero_trust_tunnel_cloudflared mapping: want NewAttribute=tunnel_secret, got %q", preferred.NewAttribute)
+			}
+		}
+	})
+
+	// TestInvalidAttributeReferences verifies that GetInvalidAttributeReferences
+	// declares tunnel_token as an invalid attribute with non-empty guidance.
+	t.Run("InvalidAttributeReferences", func(t *testing.T) {
+		detector, ok := migrator.(transform.InvalidAttributeReferenceDetector)
+		if !ok {
+			t.Fatal("migrator does not implement InvalidAttributeReferenceDetector")
+		}
+		refs := detector.GetInvalidAttributeReferences()
+
+		var found *transform.InvalidAttributeReference
+		for i := range refs {
+			if refs[i].ResourceType == "cloudflare_zero_trust_tunnel_cloudflared" && refs[i].Attribute == "tunnel_token" {
+				found = &refs[i]
+				break
+			}
+		}
+		if found == nil {
+			t.Fatalf("expected an InvalidAttributeReference for cloudflare_zero_trust_tunnel_cloudflared.tunnel_token, got %+v", refs)
+		}
+		if found.Suggestion == "" {
+			t.Error("tunnel_token InvalidAttributeReference has empty Suggestion — users need guidance")
+		}
+	})
 
 	t.Run("ConfigTransformation", func(t *testing.T) {
 		tests := []testhelpers.ConfigTestCase{

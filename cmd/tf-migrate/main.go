@@ -1064,7 +1064,9 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 
 	// Apply global postprocessing for cross-file reference updates
 	if !cfg.dryRun && len(outputPaths) > 0 {
-		if err := applyGlobalPostprocessing(log, cfg, outputPaths); err != nil {
+		postDiags, err := applyGlobalPostprocessing(log, cfg, outputPaths)
+		allDiagnostics = append(allDiagnostics, postDiags...)
+		if err != nil {
 			return nil, allDiagnostics, fmt.Errorf("failed to apply global postprocessing: %w", err)
 		}
 	}
@@ -1072,8 +1074,11 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 	return parsedConfigs, allDiagnostics, nil
 }
 
-func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []string) error {
-	// Collect resource renames, attribute renames, and computed attribute mappings from all migrators
+func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []string) (hcl.Diagnostics, error) {
+	var diags hcl.Diagnostics
+
+	// Collect resource renames, attribute renames, computed attribute mappings,
+	// and invalid attribute reference detectors from all migrators.
 	providers := getProviders(cfg.resourcesToMigrate...)
 	migrators := providers.GetAllMigrators(cfg.sourceVersion, cfg.targetVersion, cfg.resourcesToMigrate...)
 
@@ -1083,6 +1088,8 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 	var attributeRenames []transform.AttributeRename
 	// Slice to store computed attribute mappings (for when both resource type AND attribute change)
 	var computedAttrMappings []transform.ComputedAttributeMapping
+	// Slice to store invalid attribute references to warn about
+	var invalidAttrRefs []transform.InvalidAttributeReference
 
 	for _, migrator := range migrators {
 		// Check if this migrator implements ResourceRenamer interface
@@ -1134,12 +1141,25 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 				}
 			}
 		}
+
+		// Check if this migrator implements InvalidAttributeReferenceDetector interface
+		if detector, ok := migrator.(transform.InvalidAttributeReferenceDetector); ok {
+			refs := detector.GetInvalidAttributeReferences()
+			if len(refs) > 0 {
+				invalidAttrRefs = append(invalidAttrRefs, refs...)
+				for _, r := range refs {
+					log.Debug("Collected invalid attribute reference detector",
+						"resource_type", r.ResourceType,
+						"attribute", r.Attribute)
+				}
+			}
+		}
 	}
 
-	// If no renames found, skip global postprocessing
-	if len(renames) == 0 && len(attributeRenames) == 0 && len(computedAttrMappings) == 0 {
+	// If no renames or detectors found, skip global postprocessing
+	if len(renames) == 0 && len(attributeRenames) == 0 && len(computedAttrMappings) == 0 && len(invalidAttrRefs) == 0 {
 		log.Debug("No renames found, skipping global postprocessing")
-		return nil
+		return diags, nil
 	}
 
 	// Track resources that were intentionally converted to removed {} blocks.
@@ -1230,9 +1250,17 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		// Write back if modified
 		if modified {
 			if err := os.WriteFile(outputPath, []byte(contentStr), 0644); err != nil {
-				return fmt.Errorf("failed to write updated file %s: %w", outputPath, err)
+				return diags, fmt.Errorf("failed to write updated file %s: %w", outputPath, err)
 			}
 		}
+	}
+
+	// Scan all output files for invalid attribute references and emit DiagWarnings.
+	// This runs after all rewrites so that already-fixed references (e.g. secret →
+	// tunnel_secret) don't produce false positives.
+	if len(invalidAttrRefs) > 0 {
+		invalidAttrDiags := scanForInvalidAttributeReferences(log, outputPaths, invalidAttrRefs)
+		diags = append(diags, invalidAttrDiags...)
 	}
 
 	if cfg.verbose {
@@ -1269,7 +1297,49 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 			fmt.Println("✓ No cross-file references needed updating")
 		}
 	}
-	return nil
+	return diags, nil
+}
+
+// scanForInvalidAttributeReferences scans output files for cross-file references
+// to known-invalid attributes and returns a DiagWarning for each match found.
+func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, refs []transform.InvalidAttributeReference) hcl.Diagnostics {
+	var diags hcl.Diagnostics
+
+	for _, outputPath := range outputPaths {
+		content, err := os.ReadFile(outputPath)
+		if err != nil {
+			log.Warn("Failed to read file for invalid attribute scan", "file", outputPath, "error", err)
+			continue
+		}
+		contentStr := string(content)
+
+		for _, ref := range refs {
+			// Pattern: <ResourceType>.<instance_name>.<Attribute>
+			// Instance names may contain letters, digits, underscores, hyphens.
+			pattern := ref.ResourceType + `\.([a-zA-Z0-9_-]+)\.` + ref.Attribute
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				log.Warn("Failed to compile invalid attribute pattern", "pattern", pattern, "error", err)
+				continue
+			}
+
+			matches := re.FindAllString(contentStr, -1)
+			for _, match := range matches {
+				summary := fmt.Sprintf("Unknown attribute reference: %s", match)
+				detail := fmt.Sprintf("In %s\n\n  %s", filepath.Base(outputPath), ref.Suggestion)
+				log.Debug("Found invalid attribute reference",
+					"file", filepath.Base(outputPath),
+					"match", match)
+				diags = append(diags, &hcl.Diagnostic{
+					Severity: hcl.DiagWarning,
+					Summary:  summary,
+					Detail:   detail,
+				})
+			}
+		}
+	}
+
+	return diags
 }
 
 // collectRemovedRefsByType scans transformed files and returns addresses found in

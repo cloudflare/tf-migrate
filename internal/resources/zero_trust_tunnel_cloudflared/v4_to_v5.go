@@ -43,14 +43,59 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 }
 
 // GetComputedAttributeMappings implements the ComputedAttributeMapper interface
-// This enables cross-file reference updates for computed attributes that change names
+// This enables cross-file reference updates for computed attributes that change names.
+//
+// Two entries are required because this resource has two v4 type names:
+//   - cloudflare_tunnel: the deprecated v4 name — also renamed by the resource-type rename pass
+//   - cloudflare_zero_trust_tunnel_cloudflared: the preferred v4 name — NOT renamed (type stays the
+//     same), so its cross-file .secret references must be caught here explicitly.
+//
+// Without the second entry, any file that already used the preferred v4 name and references
+// <resource>.<name>.secret will keep the stale attribute name after migration.
 func (m *V4ToV5Migrator) GetComputedAttributeMappings() []transform.ComputedAttributeMapping {
 	return []transform.ComputedAttributeMapping{
 		{
+			// Resources that were using the deprecated cloudflare_tunnel name.
 			OldResourceType: "cloudflare_tunnel",
 			OldAttribute:    "secret",
 			NewResourceType: "cloudflare_zero_trust_tunnel_cloudflared",
 			NewAttribute:    "tunnel_secret",
+		},
+		{
+			// Resources already using the preferred v4 / v5 type name.
+			// Their own `secret` attribute is renamed by TransformConfig, but cross-file
+			// references such as cloudflare_zero_trust_tunnel_cloudflared.<name>.secret
+			// in non-Cloudflare resources (e.g. vault_generic_secret) are only fixed here.
+			OldResourceType: "cloudflare_zero_trust_tunnel_cloudflared",
+			OldAttribute:    "secret",
+			NewResourceType: "cloudflare_zero_trust_tunnel_cloudflared",
+			NewAttribute:    "tunnel_secret",
+		},
+	}
+}
+
+// GetInvalidAttributeReferences implements the InvalidAttributeReferenceDetector
+// interface. It declares attributes that are not valid on
+// cloudflare_zero_trust_tunnel_cloudflared in v5 but may appear in cross-file
+// references left over from user configs written against either the v4 or v5
+// provider. The postprocessor will emit a DiagWarning for each match found.
+func (m *V4ToV5Migrator) GetInvalidAttributeReferences() []transform.InvalidAttributeReference {
+	guidance := `'tunnel_token' is not a valid computed output attribute of cloudflare_zero_trust_tunnel_cloudflared.
+
+  Valid computed attributes are:
+    - tunnel_secret  (was 'secret' in v4 — tf-migrate has already renamed it;
+                      update this reference to use tunnel_secret)
+    - cname
+    - id
+
+  If you meant to reference the tunnel's secret, use:
+    cloudflare_zero_trust_tunnel_cloudflared.<name>.tunnel_secret`
+
+	return []transform.InvalidAttributeReference{
+		{
+			ResourceType: "cloudflare_zero_trust_tunnel_cloudflared",
+			Attribute:    "tunnel_token",
+			Suggestion:   guidance,
 		},
 	}
 }
