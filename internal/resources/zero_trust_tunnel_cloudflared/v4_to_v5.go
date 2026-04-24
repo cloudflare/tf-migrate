@@ -43,11 +43,30 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 }
 
 // GetComputedAttributeMappings implements the ComputedAttributeMapper interface
-// This enables cross-file reference updates for computed attributes that change names
+// This enables cross-file reference updates for computed attributes that change names.
+//
+// Two entries are required because this resource has two v4 type names:
+//   - cloudflare_tunnel: the deprecated v4 name — also renamed by the resource-type rename pass
+//   - cloudflare_zero_trust_tunnel_cloudflared: the preferred v4 name — NOT renamed (type stays the
+//     same), so its cross-file .secret references must be caught here explicitly.
+//
+// Without the second entry, any file that already used the preferred v4 name and references
+// <resource>.<name>.secret will keep the stale attribute name after migration.
 func (m *V4ToV5Migrator) GetComputedAttributeMappings() []transform.ComputedAttributeMapping {
 	return []transform.ComputedAttributeMapping{
 		{
+			// Resources that were using the deprecated cloudflare_tunnel name.
 			OldResourceType: "cloudflare_tunnel",
+			OldAttribute:    "secret",
+			NewResourceType: "cloudflare_zero_trust_tunnel_cloudflared",
+			NewAttribute:    "tunnel_secret",
+		},
+		{
+			// Resources already using the preferred v4 / v5 type name.
+			// Their own `secret` attribute is renamed by TransformConfig, but cross-file
+			// references such as cloudflare_zero_trust_tunnel_cloudflared.<name>.secret
+			// in non-Cloudflare resources (e.g. vault_generic_secret) are only fixed here.
+			OldResourceType: "cloudflare_zero_trust_tunnel_cloudflared",
 			OldAttribute:    "secret",
 			NewResourceType: "cloudflare_zero_trust_tunnel_cloudflared",
 			NewAttribute:    "tunnel_secret",
