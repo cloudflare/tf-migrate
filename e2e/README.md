@@ -152,16 +152,6 @@ import {
 
 Supported variable substitutions: `${var.cloudflare_account_id}`, `${var.cloudflare_zone_id}`, `${var.cloudflare_domain}`
 
-## Skipping Resources (E2E-SKIP)
-
-Some resources cannot be tested end-to-end (e.g., they require manual provisioning or cannot be destroyed). Mark them by adding an `E2E-SKIP` comment in the first 20 lines of their `*_e2e.tf` file:
-
-```hcl
-# E2E-SKIP: Cannot be created or destroyed via Terraform — requires manual account provisioning.
-```
-
-The runner prints a `⊗ Skipped` line for these during `init` and excludes them from all E2E steps. Integration tests continue to run normally.
-
 ## CI/CD
 
 E2E tests run automatically in GitHub Actions on push to `main` or manual workflow dispatch. See `.github/workflows/e2e-tests.yml`.
