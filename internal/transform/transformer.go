@@ -113,6 +113,27 @@ type ComputedAttributeMapper interface {
 	GetComputedAttributeMappings() []ComputedAttributeMapping
 }
 
+// InvalidAttributeReference describes a reference to an attribute that does not
+// exist (or is otherwise invalid) on the v5 resource type. When detected in
+// cross-file references during postprocessing, tf-migrate emits a DiagWarning
+// with the Suggestion text so the user knows how to fix it manually.
+type InvalidAttributeReference struct {
+	// ResourceType is the v5 resource type to scan for (e.g. "cloudflare_zero_trust_tunnel_cloudflared").
+	ResourceType string
+	// Attribute is the invalid attribute name (e.g. "tunnel_token").
+	Attribute string
+	// Suggestion is the human-readable guidance shown in the warning.
+	Suggestion string
+}
+
+// InvalidAttributeReferenceDetector is an optional interface that migrators can
+// implement to declare attributes that are invalid in the v5 schema but may
+// appear in cross-file references. The postprocessor scans all output files for
+// matching references and emits a DiagWarning for each one found.
+type InvalidAttributeReferenceDetector interface {
+	GetInvalidAttributeReferences() []InvalidAttributeReference
+}
+
 // MigrationProvider specifies the interface for a migrator provider
 // This is used to provide a way to get migrators for a given resource type
 // a migrator defines the strategy which a resource uses to migrate the resource
