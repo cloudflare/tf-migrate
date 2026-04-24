@@ -1,0 +1,91 @@
+name: Bug Report
+description: Report a problem with tf-migrate
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug report. Please fill out the sections below so we can reproduce and fix the issue.
+
+  - type: input
+    id: version
+    attributes:
+      label: tf-migrate version
+      description: Output of `tf-migrate version` or the commit/tag you're using.
+      placeholder: "e.g. v0.3.0 or commit abc1234"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: migration-path
+    attributes:
+      label: Migration path
+      options:
+        - v4 to v5
+        - v5 to v5 (bypass)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: resource-type
+    attributes:
+      label: Affected resource type(s)
+      description: The Cloudflare resource type(s) involved.
+      placeholder: "e.g. cloudflare_zone_settings_override, cloudflare_dns_record"
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of what went wrong.
+    validations:
+      required: true
+
+  - type: textarea
+    id: input-config
+    attributes:
+      label: Input configuration
+      description: The `.tf` configuration before migration (redact any secrets).
+      render: hcl
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected output
+      description: What you expected the migrated configuration to look like.
+      render: hcl
+    validations:
+      required: false
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual output
+      description: What tf-migrate actually produced (or the error message).
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands to reproduce the issue.
+      placeholder: |
+        1. tf-migrate migrate --config-dir ./my-tf --source-version v4 --target-version v5
+        2. ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might help (Terraform version, provider version, OS, logs with `--log-level debug`, etc.).
+    validations:
+      required: false

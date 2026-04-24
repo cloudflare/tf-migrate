@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Cloudflare Terraform Provider Docs
+    url: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs
+    about: Official Cloudflare Terraform provider documentation
