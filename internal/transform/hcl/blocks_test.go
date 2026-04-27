@@ -135,12 +135,12 @@ data "cloudflare_zone" "my_zone" {
 
 func TestConvertBlocksToAttribute(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      string
-		blockType  string
-		attrName   string
-		preProcess func(*hclwrite.Block)
-		contains   string
+		name        string
+		input       string
+		blockType   string
+		attrName    string
+		preProcess  func(*hclwrite.Block)
+		contains    string
 		notContains string
 	}{
 		{
@@ -155,9 +155,9 @@ resource "cloudflare_dns_record" "caa" {
     tag   = "issue"
   }
 }`,
-			blockType: "data",
-			attrName:  "data",
-			contains:  "data =",
+			blockType:   "data",
+			attrName:    "data",
+			contains:    "data =",
 			notContains: "data {",
 		},
 		{
@@ -198,12 +198,12 @@ resource "cloudflare_dns_record" "caa" {
 
 func TestHoistAttributeFromBlock(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
+		name      string
+		input     string
 		blockType string
-		attrName string
-		expected bool
-		contains string
+		attrName  string
+		expected  bool
+		contains  string
 	}{
 		{
 			name: "Hoist attribute from block",
@@ -610,12 +610,12 @@ resource "test" "example" {
 
 func TestCreateDerivedBlock(t *testing.T) {
 	tests := []struct {
-		name      string
-		input     string
-		newType   string
-		newName   string
-		transform AttributeTransform
-		contains  []string
+		name        string
+		input       string
+		newType     string
+		newName     string
+		transform   AttributeTransform
+		contains    []string
 		notContains []string
 	}{
 		{
@@ -751,10 +751,10 @@ resource "test" "example" {
 			transform: AttributeTransform{
 				Copy: []string{"zone_id"},
 				Set: map[string]interface{}{
-					"string_val":  "test",
-					"int_val":     42,
-					"float_val":   3.14,
-					"bool_val":    true,
+					"string_val": "test",
+					"int_val":    42,
+					"float_val":  3.14,
+					"bool_val":   true,
 				},
 			},
 			contains: []string{
@@ -878,17 +878,17 @@ resource "cloudflare_argo" "main" {
 
 func TestApplyAttributeRenamesInLifecycle(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		renames  map[string]string
-		contains []string
+		name        string
+		input       string
+		renames     map[string]string
+		contains    []string
 		notContains []string
 	}{
 		{
-			name:  "Rename single identifier in array",
-			input: `[smart_routing]`,
-			renames: map[string]string{"smart_routing": "value"},
-			contains: []string{"value"},
+			name:        "Rename single identifier in array",
+			input:       `[smart_routing]`,
+			renames:     map[string]string{"smart_routing": "value"},
+			contains:    []string{"value"},
 			notContains: []string{"smart_routing"},
 		},
 		{
@@ -898,20 +898,20 @@ func TestApplyAttributeRenamesInLifecycle(t *testing.T) {
 				"smart_routing":  "value",
 				"tiered_caching": "enabled",
 			},
-			contains: []string{"value", "enabled"},
+			contains:    []string{"value", "enabled"},
 			notContains: []string{"smart_routing", "tiered_caching"},
 		},
 		{
-			name:  "Only rename matching identifiers",
-			input: `[smart_routing, other_field]`,
-			renames: map[string]string{"smart_routing": "value"},
-			contains: []string{"value", "other_field"},
+			name:        "Only rename matching identifiers",
+			input:       `[smart_routing, other_field]`,
+			renames:     map[string]string{"smart_routing": "value"},
+			contains:    []string{"value", "other_field"},
 			notContains: []string{"smart_routing"},
 		},
 		{
-			name:  "Preserve non-identifier tokens",
-			input: `["string_value", 123, true]`,
-			renames: map[string]string{"string_value": "renamed"},
+			name:     "Preserve non-identifier tokens",
+			input:    `["string_value", 123, true]`,
+			renames:  map[string]string{"string_value": "renamed"},
 			contains: []string{`"string_value"`, "123", "true"},
 			// String literals are not renamed, only identifiers
 		},
@@ -1009,15 +1009,15 @@ resource "cloudflare_argo" "test" {
 			},
 			contains: []string{
 				"lifecycle",
-				"ignore_changes = [value]",  // tiered_caching filtered out (not in Copy or Rename)
+				"ignore_changes = [value]", // tiered_caching filtered out (not in Copy or Rename)
 			},
 			notContains: []string{
-				"smart_routing =",      // Check attribute assignment doesn't use old name
-				"[smart_routing",       // Check lifecycle arrays don't use old name
-				", smart_routing",      // Check lifecycle arrays don't use old name
-				"smart_routing,",       // Check lifecycle arrays don't use old name
-				"smart_routing]",       // Check lifecycle arrays don't use old name
-				"tiered_caching",       // Filtered out because not in valid attributes
+				"smart_routing =", // Check attribute assignment doesn't use old name
+				"[smart_routing",  // Check lifecycle arrays don't use old name
+				", smart_routing", // Check lifecycle arrays don't use old name
+				"smart_routing,",  // Check lifecycle arrays don't use old name
+				"smart_routing]",  // Check lifecycle arrays don't use old name
+				"tiered_caching",  // Filtered out because not in valid attributes
 			},
 		},
 		{
@@ -1069,11 +1069,11 @@ resource "cloudflare_argo" "test" {
 				"create_before_destroy = true",
 			},
 			notContains: []string{
-				"smart_routing =",      // Check attribute assignment doesn't use old name
-				"[smart_routing",       // Check lifecycle arrays don't use old name
-				", smart_routing",      // Check lifecycle arrays don't use old name
-				"smart_routing,",       // Check lifecycle arrays don't use old name
-				"smart_routing]",       // Check lifecycle arrays don't use old name
+				"smart_routing =", // Check attribute assignment doesn't use old name
+				"[smart_routing",  // Check lifecycle arrays don't use old name
+				", smart_routing", // Check lifecycle arrays don't use old name
+				"smart_routing,",  // Check lifecycle arrays don't use old name
+				"smart_routing]",  // Check lifecycle arrays don't use old name
 			},
 		},
 		{
@@ -1124,7 +1124,7 @@ resource "cloudflare_argo" "test" {
 			},
 			contains: []string{
 				"lifecycle",
-				"ignore_changes = [routing_value, caching_value]",  // other_field filtered out
+				"ignore_changes = [routing_value, caching_value]", // other_field filtered out
 			},
 			notContains: []string{
 				"smart_routing =",
@@ -1137,7 +1137,7 @@ resource "cloudflare_argo" "test" {
 				", tiered_caching",
 				"tiered_caching,",
 				"tiered_caching]",
-				"other_field",  // Filtered out because not in valid attributes
+				"other_field", // Filtered out because not in valid attributes
 			},
 		},
 	}
@@ -1469,5 +1469,167 @@ resource "original" "test" {
 				assert.NotContains(t, output, notContains, "Output should not contain: %s", notContains)
 			}
 		})
+	}
+}
+
+func TestConvertDynamicBlocksToForExpression_Single(t *testing.T) {
+	input := `
+resource "cloudflare_example" "test" {
+  account_id = "abc123"
+
+  dynamic "origins" {
+    for_each = local.origin_configs
+    content {
+      name    = origins.value.name
+      address = origins.value.address
+    }
+  }
+}
+`
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), "parse error: %v", diags)
+
+	body := file.Body().Blocks()[0].Body()
+	ConvertDynamicBlocksToForExpression(body, "origins")
+
+	output := string(file.Bytes())
+	assert.NotContains(t, output, `dynamic "origins"`, "dynamic block should be removed")
+	assert.Contains(t, output, "for value in", "should contain for expression")
+	assert.Contains(t, output, "local.origin_configs", "should reference the for_each collection")
+	// Single block should NOT use concat
+	assert.NotContains(t, output, "concat", "single dynamic block should not use concat")
+}
+
+func TestConvertDynamicBlocksToForExpression_Multiple(t *testing.T) {
+	input := `
+resource "cloudflare_example" "test" {
+  account_id = "abc123"
+
+  dynamic "domains" {
+    for_each = local.primary_entries
+    content {
+      suffix = domains.value
+    }
+  }
+
+  dynamic "domains" {
+    for_each = local.secondary_entries
+    content {
+      suffix      = domains.value
+      description = "secondary"
+    }
+  }
+
+  dynamic "domains" {
+    for_each = local.dev_entries
+    content {
+      suffix     = domains.value
+      dns_server = "1.1.1.1"
+    }
+  }
+}
+`
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), "parse error: %v", diags)
+
+	body := file.Body().Blocks()[0].Body()
+	ConvertDynamicBlocksToForExpression(body, "domains")
+
+	output := string(file.Bytes())
+
+	// All dynamic blocks should be removed
+	assert.NotContains(t, output, `dynamic "domains"`, "dynamic blocks should be removed")
+
+	// Should use concat to merge multiple for-expressions
+	assert.Contains(t, output, "concat(", "multiple dynamic blocks should be merged with concat()")
+
+	// All three for_each collections must be present
+	assert.Contains(t, output, "local.primary_entries", "should contain primary_entries")
+	assert.Contains(t, output, "local.secondary_entries", "should contain secondary_entries")
+	assert.Contains(t, output, "local.dev_entries", "should contain dev_entries")
+
+	// Each for-expression should be present
+	count := 0
+	for i := 0; i+len("for value in") <= len(output); i++ {
+		if output[i:i+len("for value in")] == "for value in" {
+			count++
+		}
+	}
+	assert.Equal(t, 3, count, "should contain exactly 3 for-expressions")
+}
+
+func TestConvertDynamicBlocksToForExpression_SkipsNonMatching(t *testing.T) {
+	input := `
+resource "cloudflare_example" "test" {
+  dynamic "origins" {
+    for_each = local.origin_configs
+    content {
+      name = origins.value.name
+    }
+  }
+
+  dynamic "headers" {
+    for_each = local.header_configs
+    content {
+      name = headers.value
+    }
+  }
+}
+`
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), "parse error: %v", diags)
+
+	body := file.Body().Blocks()[0].Body()
+	ConvertDynamicBlocksToForExpression(body, "origins")
+
+	output := string(file.Bytes())
+
+	// origins dynamic block should be converted
+	assert.NotContains(t, output, `dynamic "origins"`, "origins dynamic block should be removed")
+	assert.Contains(t, output, "local.origin_configs", "should contain origins for-expression")
+
+	// headers dynamic block should remain untouched
+	assert.Contains(t, output, `dynamic "headers"`, "headers dynamic block should be preserved")
+}
+
+func TestMergeStaticBlocksIntoAttribute(t *testing.T) {
+	input := `
+resource "cloudflare_example" "test" {
+  account_id = "abc123"
+
+  domains = [for value in local.entries : { suffix = value }]
+
+  domains {
+    suffix = "static.example.com"
+  }
+
+  domains {
+    suffix      = "other.example.com"
+    description = "other"
+  }
+}
+`
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), "parse error: %v", diags)
+
+	body := file.Body().Blocks()[0].Body()
+	existingTokens := body.GetAttribute("domains").Expr().BuildTokens(nil)
+	MergeStaticBlocksIntoAttribute(body, "domains", existingTokens)
+
+	output := string(file.Bytes())
+
+	// Should use concat to merge
+	assert.Contains(t, output, "concat(", "should merge with concat()")
+
+	// Dynamic for-expression should be preserved
+	assert.Contains(t, output, "for value in local.entries", "should preserve dynamic for-expression")
+
+	// Static values should be preserved
+	assert.Contains(t, output, "static.example.com", "should preserve static domains")
+	assert.Contains(t, output, "other.example.com", "should preserve other static domain")
+
+	// Static blocks should be removed (only resource block remains)
+	for _, block := range body.Blocks() {
+		assert.NotEqual(t, "domains", block.Type(), "static domains blocks should be removed")
 	}
 }
