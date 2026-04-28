@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
 
 // resourceClassification describes how a resource will be handled during migration.
@@ -157,6 +158,11 @@ func classifyResource(block *hclwrite.Block, file string, providers transform.Mi
 
 	// Check if this resource will be renamed
 	if newType, ok := renames[resourceType]; ok {
+		// Conditional renames: some v4 types map to one of two v5 types
+		// depending on block attributes. Override the static rename target
+		// with the per-instance target based on attribute inspection.
+		newType = resolveConditionalRename(resourceType, newType, block)
+
 		return &scannedResource{
 			File:         file,
 			ResourceType: resourceType,
@@ -174,6 +180,51 @@ func classifyResource(block *hclwrite.Block, file string, providers transform.Mi
 		ResourceName: resourceName,
 		Class:        classAutoMigrated,
 	}
+}
+
+// resolveConditionalRename overrides the static rename target for resource types
+// where the v5 target depends on per-instance block attributes.
+//
+// Currently handles:
+//   - cloudflare_zero_trust_device_profiles / cloudflare_device_settings_policy:
+//     Routes to cloudflare_zero_trust_device_custom_profile when the block has
+//     match + precedence and is not explicitly default=true.
+//   - cloudflare_zero_trust_local_fallback_domain / cloudflare_fallback_domain:
+//     Routes to cloudflare_zero_trust_device_custom_profile_local_domain_fallback
+//     when the block has a non-empty policy_id.
+func resolveConditionalRename(resourceType, staticNewType string, block *hclwrite.Block) string {
+	body := block.Body()
+
+	switch resourceType {
+	case "cloudflare_zero_trust_device_profiles", "cloudflare_device_settings_policy":
+		// Mirror the routing logic from zero_trust_device_profiles TransformConfig:
+		// custom if !default && match && precedence, else default.
+		isExplicitDefault := false
+		if attr := body.GetAttribute("default"); attr != nil {
+			val, ok := tfhcl.ExtractBoolFromAttribute(attr)
+			if ok {
+				isExplicitDefault = val
+			}
+		}
+		hasMatch := body.GetAttribute("match") != nil
+		hasPrecedence := body.GetAttribute("precedence") != nil
+
+		if !isExplicitDefault && hasMatch && hasPrecedence {
+			return "cloudflare_zero_trust_device_custom_profile"
+		}
+
+	case "cloudflare_zero_trust_local_fallback_domain", "cloudflare_fallback_domain":
+		// Mirror the routing logic from zero_trust_local_fallback_domain TransformConfig:
+		// custom if policy_id is present and non-empty, else default.
+		if attr := body.GetAttribute("policy_id"); attr != nil {
+			val := tfhcl.ExtractStringFromAttribute(attr)
+			if val != "" || tfhcl.IsExpressionAttribute(attr) {
+				return "cloudflare_zero_trust_device_custom_profile_local_domain_fallback"
+			}
+		}
+	}
+
+	return staticNewType
 }
 
 // parseMovedBlock extracts from/to information from a moved block.
