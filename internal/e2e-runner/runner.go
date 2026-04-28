@@ -39,7 +39,6 @@ type RunConfig struct {
 	Parallelism           int
 	Resources             string
 	Exclude               string // comma-separated resource names to exclude
-	Phase                 string // comma-separated phase numbers (e.g., "0,1")
 	ProviderPath          string
 	TargetProviderVersion string // explicit provider version to set in required_providers
 }
@@ -98,24 +97,6 @@ func RunE2ETests(cfg *RunConfig) error {
 	// Create tmp directory
 	if err := os.MkdirAll(tmpDir, permDir); err != nil {
 		return fmt.Errorf("failed to create tmp directory %s: %w", tmpDir, err)
-	}
-
-	// Handle --phase flag: resolve phase numbers to resource list
-	if cfg.Phase != "" {
-		if cfg.Resources != "" {
-			return fmt.Errorf("--phase and --resources are mutually exclusive; use one or the other")
-		}
-		phaseResources, err := ResolvePhases(cfg.Phase)
-		if err != nil {
-			return fmt.Errorf("failed to resolve phases: %w", err)
-		}
-		cfg.Resources = strings.Join(phaseResources, ",")
-
-		printHeader("Phase Selection")
-		printCyan("Running phase(s): %s", cfg.Phase)
-		printCyan("Resolved to %d resource(s):", len(phaseResources))
-		printCyan("  %s", cfg.Resources)
-		fmt.Println()
 	}
 
 	// Apply --exclude filter: remove excluded resources from cfg.Resources
@@ -334,8 +315,10 @@ func RunE2ETests(cfg *RunConfig) error {
 	// local state file before init, avoiding the "Module not installed" error.
 	// (Real Atlantis users use the _phase1_cleanup.tf phased approach instead.)
 	obsoleteTypes := map[string]bool{
-		"cloudflare_zone_settings_override": true,
-		"cloudflare_access_policy":          true, // Application-scoped policies with application_id cannot be migrated; removed{} blocks handle state cleanup
+		"cloudflare_zone_settings_override":  true,
+		"cloudflare_access_policy":           true, // Application-scoped policies with application_id cannot be migrated; removed{} blocks handle state cleanup
+		"cloudflare_split_tunnel":            true, // Dissolved into device profile exclude/include attributes in v5
+		"cloudflare_zero_trust_split_tunnel": true, // Newer v4 name for split_tunnel — also dissolved in v5
 	}
 	stateFilePath := filepath.Join(v5Dir, "terraform.tfstate")
 	if removed, err := removeObsoleteStateEntries(stateFilePath, obsoleteTypes); err != nil {

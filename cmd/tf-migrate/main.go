@@ -1687,6 +1687,14 @@ func printDiagnostics(diags hcl.Diagnostics, cfg config) {
 		return
 	}
 
+	// ANSI color codes for diagnostic output
+	const (
+		diagColorRed    = "\033[0;31m"
+		diagColorYellow = "\033[1;33m"
+		diagColorCyan   = "\033[0;36m"
+		diagColorReset  = "\033[0m"
+	)
+
 	fmt.Println()
 	// Print summary header
 	var parts []string
@@ -1707,7 +1715,11 @@ func printDiagnostics(diags hcl.Diagnostics, cfg config) {
 			parts = append(parts, fmt.Sprintf("%d info message(s) suppressed (use --verbose to see)", infos))
 		}
 	}
-	fmt.Printf("Migration diagnostics: %s\n", strings.Join(parts, ", "))
+	headerColor := diagColorYellow
+	if errors > 0 {
+		headerColor = diagColorRed
+	}
+	fmt.Printf("%sMigration diagnostics: %s%s\n", headerColor, strings.Join(parts, ", "), diagColorReset)
 	fmt.Println(strings.Repeat("─", 70))
 
 	// Consolidate diagnostics by summary
@@ -1718,20 +1730,23 @@ func printDiagnostics(diags hcl.Diagnostics, cfg config) {
 			fmt.Println()
 		}
 
-		// Print severity icon
-		var icon string
+		// Print severity icon with color
+		var icon, color string
 		switch cd.Severity {
 		case hcl.DiagError:
 			icon = "✗"
+			color = diagColorRed
 		case hcl.DiagWarning:
 			icon = "⚠"
+			color = diagColorYellow
 		default:
 			icon = "ℹ"
+			color = diagColorCyan
 		}
 
 		// If there are multiple resources with the same issue, consolidate them
 		if len(cd.Details) > 1 {
-			fmt.Printf("\n%s %s (%d resources)\n", icon, cd.Summary, len(cd.Details))
+			fmt.Printf("\n%s%s %s%s (%d resources)\n", color, icon, cd.Summary, diagColorReset, len(cd.Details))
 			fmt.Println()
 			// List affected resources
 			for _, detail := range cd.Details {
@@ -1758,7 +1773,7 @@ func printDiagnostics(diags hcl.Diagnostics, cfg config) {
 			}
 		} else {
 			// Single resource - show full detail
-			fmt.Printf("\n%s %s\n", icon, cd.Summary)
+			fmt.Printf("\n%s%s %s%s\n", color, icon, cd.Summary, diagColorReset)
 			if cd.Sample != "" {
 				fmt.Printf("\n%s\n", cd.Sample)
 			}

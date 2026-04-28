@@ -558,15 +558,12 @@ E2E tests create and destroy real Cloudflare infrastructure. Use a dedicated tes
 # Specific resources
 ./bin/e2e run --resources dns_record,zone_setting --apply-exemptions
 
-# By phase (0, 1, or 2)
-./bin/e2e run --phase 0 --apply-exemptions
-
 # Exclude resources
 ./bin/e2e run --exclude byo_ip_prefix --apply-exemptions
 
 # Individual steps
-./bin/e2e init [--resources <csv>] [--phase <n>]
-./bin/e2e migrate [--resources <csv>] [--phase <n>] [--target-provider-version <ver>]
+./bin/e2e init [--resources <csv>]
+./bin/e2e migrate [--resources <csv>] [--target-provider-version <ver>]
 ./bin/e2e clean --modules dns_record,zone_setting
 ./bin/e2e bootstrap
 
@@ -574,8 +571,6 @@ E2E tests create and destroy real Cloudflare infrastructure. Use a dedicated tes
 ./bin/e2e v5-upgrade [--from-version <ver>] [--to-version <ver>] [--resources <csv>]
 ./bin/e2e v5-upgrade-clean [--from-version <ver>] [--to-version <ver>]
 ```
-
-**Phase system** — resources are grouped into 3 phases (0, 1, 2) for parallelism control. Use `--phase 0,1` to run multiple phases. Defined in `internal/e2e-runner/phases.go`.
 
 **Import annotations** — for resources that must be imported rather than created:
 
@@ -903,7 +898,7 @@ ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 | `cmd/tf-migrate/version_check.go` | Minimum provider version check (v4.52.5) |
 | `internal/verifydrift/` | `verify-drift` command implementation with embedded exemptions |
 | `internal/e2e-runner/runner.go` | E2E test orchestration |
-| `internal/e2e-runner/phases.go` | Phase→resource mapping |
+
 | `internal/e2e-runner/drift.go` | Drift detection and exemption logic |
 | `internal/e2e-runner/init.go` | `RunInit` — syncs testdata to e2e/tf/v4/ |
 | `internal/e2e-runner/migrate.go` | Migration step in E2E workflow |

@@ -7,6 +7,8 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestV4ToV5Transformation(t *testing.T) {
@@ -17,7 +19,241 @@ func TestV4ToV5Transformation(t *testing.T) {
 		t.Run("DeviceProfileV4SplitTunnels", testDeviceProfileV4SplitTunnelsConfig)
 		t.Run("DeviceProfileNotFoundSplitTunnels", testDeviceProfileNotFoundSplitTunnelsConfig)
 	})
+}
 
+// TestCanHandleBothTypeNames verifies that CanHandle accepts both v4 type names.
+func TestCanHandleBothTypeNames(t *testing.T) {
+	migrator := &V4ToV5Migrator{}
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"deprecated name", "cloudflare_split_tunnel", true},
+		{"newer v4 name", "cloudflare_zero_trust_split_tunnel", true},
+		{"unrelated", "cloudflare_other_resource", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := migrator.CanHandle(tt.input); got != tt.expected {
+				t.Errorf("CanHandle(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestTransformConfigGeneratesRemovedBlock verifies that TransformConfig
+// returns RemoveOriginal: true with a removed {} block for both v4 type names.
+// Regression test for https://github.com/cloudflare/tf-migrate/issues/289.
+func TestTransformConfigGeneratesRemovedBlock(t *testing.T) {
+	tests := []struct {
+		name         string
+		resourceType string
+	}{
+		{"deprecated name", "cloudflare_split_tunnel"},
+		{"newer v4 name", "cloudflare_zero_trust_split_tunnel"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := fmt.Sprintf(`resource %q "example" {
+  account_id = "abc123"
+  mode       = "exclude"
+  tunnels {
+    address = "192.168.1.0/24"
+  }
+}`, tt.resourceType)
+
+			file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+			if diags.HasErrors() {
+				t.Fatalf("parse error: %v", diags)
+			}
+
+			migrator := &V4ToV5Migrator{}
+			block := file.Body().Blocks()[0]
+
+			ctx := &transform.Context{
+				Content:  []byte(input),
+				Filename: "test.tf",
+				FilePath: "test.tf",
+				CFGFile:  file,
+			}
+			result, err := migrator.TransformConfig(ctx, block)
+			if err != nil {
+				t.Fatalf("TransformConfig error: %v", err)
+			}
+
+			if !result.RemoveOriginal {
+				t.Error("Expected RemoveOriginal to be true")
+			}
+			if len(result.Blocks) != 1 {
+				t.Fatalf("Expected 1 block (removed), got %d", len(result.Blocks))
+			}
+
+			removedBlock := result.Blocks[0]
+			if removedBlock.Type() != "removed" {
+				t.Errorf("Expected 'removed' block, got %q", removedBlock.Type())
+			}
+
+			// Verify the removed block references the correct resource type
+			removedContent := string(removedBlock.BuildTokens(nil).Bytes())
+			expectedAddr := tt.resourceType + ".example"
+			if !strings.Contains(removedContent, expectedAddr) {
+				t.Errorf("Expected removed block to reference %q, got:\n%s", expectedAddr, removedContent)
+			}
+		})
+	}
+}
+
+// TestProcessCrossResourceHandlesZeroTrustSplitTunnel verifies that
+// ProcessCrossResourceConfigMigration handles cloudflare_zero_trust_split_tunnel
+// (not just cloudflare_split_tunnel).
+// Regression test for https://github.com/cloudflare/tf-migrate/issues/289.
+func TestProcessCrossResourceHandlesZeroTrustSplitTunnel(t *testing.T) {
+	input := `resource "cloudflare_zero_trust_device_default_profile" "default" {
+  account_id = "abc123"
+}
+
+resource "cloudflare_zero_trust_split_tunnel" "zt_exclude" {
+  account_id = "abc123"
+  mode       = "exclude"
+  tunnels {
+    address     = "10.0.0.0/8"
+    description = "Internal network"
+  }
+}`
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("parse error: %v", diags)
+	}
+
+	ProcessCrossResourceConfigMigration(file)
+	result := string(file.Bytes())
+
+	// The zero_trust_split_tunnel block should be removed
+	if strings.Contains(result, `"cloudflare_zero_trust_split_tunnel"`) {
+		t.Error("Expected cloudflare_zero_trust_split_tunnel to be removed")
+	}
+
+	// The tunnel should be merged into the default profile
+	if !strings.Contains(result, `"10.0.0.0/8"`) {
+		t.Error("Expected tunnel address to be merged into profile")
+	}
+	if !strings.Contains(result, "exclude") {
+		t.Error("Expected 'exclude' attribute on profile")
+	}
+}
+
+// TestDynamicTunnelsGenerateWarning verifies that split tunnels with dynamic "tunnels"
+// blocks are handled correctly: removed from the file, and a warning comment is added.
+// Regression test for https://github.com/cloudflare/tf-migrate/issues/289.
+func TestDynamicTunnelsGenerateWarning(t *testing.T) {
+	input := `resource "cloudflare_zero_trust_device_custom_profile" "example" {
+  account_id = "abc123"
+}
+
+resource "cloudflare_split_tunnel" "dynamic_exclude" {
+  account_id = "abc123"
+  policy_id  = cloudflare_zero_trust_device_custom_profile.example.id
+  mode       = "exclude"
+  dynamic "tunnels" {
+    for_each = local.exclude_list
+    content {
+      address     = tunnels.value
+      description = "Managed via Terraform."
+    }
+  }
+}`
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("parse error: %v", diags)
+	}
+
+	ProcessCrossResourceConfigMigration(file)
+	result := string(file.Bytes())
+
+	// The split_tunnel resource block should be removed (the string may appear
+	// inside a MIGRATION_WARNING comment preserving the block content — that's fine).
+	body := file.Body()
+	for _, block := range body.Blocks() {
+		if block.Type() == "resource" && len(block.Labels()) >= 2 {
+			if isSplitTunnelType(block.Labels()[0]) {
+				t.Error("Expected cloudflare_split_tunnel resource block to be removed from AST")
+			}
+		}
+	}
+
+	// A warning comment should be added for the dynamic tunnels
+	if !strings.Contains(result, "MIGRATION_WARNING") {
+		t.Error("Expected a MIGRATION_WARNING comment for dynamic tunnels")
+	}
+	if !strings.Contains(result, "dynamic") {
+		t.Error("Expected the warning to mention dynamic blocks")
+	}
+
+	// The profile should NOT have exclude/include set (dynamic can't be merged)
+	profileBlock := findResourceBlock(body, "cloudflare_zero_trust_device_custom_profile", "example")
+	if profileBlock == nil {
+		t.Fatal("Expected device custom profile block to still exist")
+	}
+	if profileBlock.Body().GetAttribute("exclude") != nil || profileBlock.Body().GetAttribute("include") != nil {
+		t.Error("Did not expect exclude/include on profile — dynamic tunnels can't be statically merged")
+	}
+}
+
+// TestMixedStaticAndDynamicTunnels verifies that when a file has both static
+// and dynamic split tunnel resources, static ones are merged and dynamic ones
+// get a warning comment.
+func TestMixedStaticAndDynamicTunnels(t *testing.T) {
+	input := `resource "cloudflare_zero_trust_device_default_profile" "default" {
+  account_id = "abc123"
+}
+
+resource "cloudflare_split_tunnel" "static_exclude" {
+  account_id = "abc123"
+  mode       = "exclude"
+  tunnels {
+    address     = "192.168.1.0/24"
+    description = "Static local"
+  }
+}
+
+resource "cloudflare_split_tunnel" "dynamic_exclude" {
+  account_id = "abc123"
+  mode       = "exclude"
+  dynamic "tunnels" {
+    for_each = local.exclude_list
+    content {
+      address = tunnels.value
+    }
+  }
+}`
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("parse error: %v", diags)
+	}
+
+	ProcessCrossResourceConfigMigration(file)
+	result := string(file.Bytes())
+
+	// Both split_tunnel resource blocks should be removed from the AST
+	body := file.Body()
+	for _, block := range body.Blocks() {
+		if block.Type() == "resource" && len(block.Labels()) >= 2 {
+			if isSplitTunnelType(block.Labels()[0]) {
+				t.Error("Expected all cloudflare_split_tunnel resource blocks removed from AST")
+			}
+		}
+	}
+
+	// Static tunnels merged into profile
+	if !strings.Contains(result, `"192.168.1.0/24"`) {
+		t.Error("Expected static tunnel merged into profile")
+	}
+
+	// Dynamic tunnels get a warning
+	if !strings.Contains(result, "MIGRATION_WARNING") {
+		t.Error("Expected MIGRATION_WARNING for dynamic tunnels")
+	}
 }
 
 func testDefaultDeviceProfileSplitTunnelsConfig(t *testing.T) {
