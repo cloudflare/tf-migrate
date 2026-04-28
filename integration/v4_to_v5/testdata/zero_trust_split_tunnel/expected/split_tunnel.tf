@@ -94,6 +94,20 @@ locals {
 */
 
 
+removed {
+  from = cloudflare_split_tunnel.default_exclude
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = cloudflare_split_tunnel.default_include
+  lifecycle {
+    destroy = false
+  }
+}
+
 # Custom profile with single tunnel
 resource "cloudflare_zero_trust_device_custom_profile" "single_tunnel" {
   account_id = local.account_id
@@ -109,6 +123,13 @@ resource "cloudflare_zero_trust_device_custom_profile" "single_tunnel" {
 moved {
   from = cloudflare_zero_trust_device_profiles.single_tunnel
   to   = cloudflare_zero_trust_device_custom_profile.single_tunnel
+}
+
+removed {
+  from = cloudflare_split_tunnel.single
+  lifecycle {
+    destroy = false
+  }
 }
 
 # Custom profile with multiple tunnels
@@ -134,4 +155,39 @@ resource "cloudflare_zero_trust_device_custom_profile" "multiple_tunnels" {
 moved {
   from = cloudflare_zero_trust_device_profiles.multiple_tunnels
   to   = cloudflare_zero_trust_device_custom_profile.multiple_tunnels
+}
+
+removed {
+  from = cloudflare_split_tunnel.multi_exclude
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = cloudflare_split_tunnel.multi_include
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = cloudflare_split_tunnel.unparseable_var
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = cloudflare_split_tunnel.unparseable_expression
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = cloudflare_split_tunnel.missing_profile
+  lifecycle {
+    destroy = false
+  }
 }

@@ -18,23 +18,30 @@ import (
 // diagnostic. Using a single summary + this shared body causes all occurrences to
 // consolidate into one entry that lists affected resources then prints these instructions once.
 const splitTunnelInstructions = `
-cloudflare_split_tunnel no longer exists in v5. Tunnel configuration must
-live in the 'exclude' or 'include' attribute of the device profile:
+cloudflare_split_tunnel / cloudflare_zero_trust_split_tunnel no longer exist
+in v5. Tunnel configuration must live in the 'exclude' or 'include' attribute
+of the device profile:
   - cloudflare_zero_trust_device_default_profile
   - cloudflare_zero_trust_device_custom_profile
 
 tf-migrate has:
   ✓ Generated a 'removed' block to drop the state entry without destroying
     the Cloudflare resource.
+  ✓ Removed the original resource block from the configuration.
   ✓ Merged static 'tunnels {}' blocks into the associated device profile
     (if the profile is in the same file).
 
-Action required — if your resource uses 'dynamic "tunnels"' blocks:
-  tf-migrate cannot evaluate dynamic expressions. Move the tunnel entries
-  manually into the 'exclude' or 'include' attribute of the device profile.
+Action required — if your resource used 'dynamic "tunnels"' blocks:
+  tf-migrate cannot evaluate dynamic expressions. The dynamic block content
+  has been preserved in a comment at the end of the file. Move the tunnel
+  entries manually into the 'exclude' or 'include' attribute of the device
+  profile using a for-expression.`
 
-Run 'terraform validate' to confirm. Any remaining cloudflare_zero_trust_split_tunnel
-or cloudflare_split_tunnel blocks will produce an "Invalid resource type" error.`
+// isSplitTunnelType returns true for both v4 split tunnel type names.
+func isSplitTunnelType(resourceType string) bool {
+	return resourceType == "cloudflare_split_tunnel" ||
+		resourceType == "cloudflare_zero_trust_split_tunnel"
+}
 
 // V4ToV5Migrator handles migration of cloudflare_split_tunnel resources from v4 to v5.
 type V4ToV5Migrator struct{}
@@ -52,43 +59,41 @@ func (m *V4ToV5Migrator) GetResourceType() string {
 }
 
 func (m *V4ToV5Migrator) CanHandle(resourceType string) bool {
-	return resourceType == "cloudflare_split_tunnel"
+	return isSplitTunnelType(resourceType)
 }
 
 func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
-// TransformConfig generates a removed block for Atlantis-friendly state cleanup.
+// TransformConfig generates a removed block and removes the original split tunnel resource.
 // The device profile migrator calls ProcessCrossResourceConfigMigration which merges
-// split tunnels into profiles and removes the split_tunnel blocks from config.
+// static tunnel data into profiles. Dynamic tunnels are preserved in comments.
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	resourceType := tfhcl.GetResourceType(block)
 	resourceName := tfhcl.GetResourceName(block)
 
-	// Generate removed block for Atlantis-friendly state cleanup
-	removedBlock := tfhcl.CreateRemovedBlock("cloudflare_split_tunnel." + resourceName)
+	// Generate removed block using the actual resource type from the config
+	removedBlock := tfhcl.CreateRemovedBlock(resourceType + "." + resourceName)
 
-	// Use a shared, static summary so all split tunnel removals consolidate
-	// into a single diagnostic entry in the output. The detail format is:
-	//   line 0: "cloudflare_split_tunnel.<name>  (<file>)"  — used as the bullet point
-	//   lines 1+: shared instructions — printed once from the first occurrence
 	ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 		Severity: hcl.DiagWarning,
 		Summary:  "Manual action required: cloudflare_split_tunnel removed in v5",
-		Detail: fmt.Sprintf("cloudflare_split_tunnel.%s  (%s)\n%s", resourceName, ctx.FilePath, splitTunnelInstructions),
+		Detail:   fmt.Sprintf("%s.%s  (%s)\n%s", resourceType, resourceName, ctx.FilePath, splitTunnelInstructions),
 	})
 
-	// Return removed block - ProcessCrossResourceConfigMigration handles config removal
+	// RemoveOriginal: true ensures the handler removes the original block and
+	// appends the removed {} block to the output.
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{removedBlock},
-		RemoveOriginal: false,
+		RemoveOriginal: true,
 	}, nil
 }
 
 // GetResourceRename returns the v4 resource type and empty string for v5 since
 // cloudflare_split_tunnel is removed in v5 (merged into device profile resources).
 func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
-	return []string{"cloudflare_split_tunnel"}, ""
+	return []string{"cloudflare_split_tunnel", "cloudflare_zero_trust_split_tunnel"}, ""
 }
 
 // ProcessCrossResourceConfigMigration merges split_tunnel resources into device profile resources.
@@ -133,7 +138,7 @@ func ProcessCrossResourceConfigMigration(file *hclwrite.File) {
 				} else {
 					defaultProfileBlock = block
 				}
-			} else if resourceType == "cloudflare_split_tunnel" {
+			} else if isSplitTunnelType(resourceType) {
 				parentName := extractParentProfileName(block)
 				blockBody := block.Body()
 
@@ -148,29 +153,45 @@ func ProcessCrossResourceConfigMigration(file *hclwrite.File) {
 		}
 	}
 
-	// Step 2: Merge default profile split tunnels
-	if defaultProfileBlock != nil {
-		defaultTunnels := splitTunnelsByParent[""] // Empty string = default profile
-		mergeSplitTunnelsIntoProfile(defaultTunnels, defaultProfileBlock)
-	} else if len(splitTunnelsByParent[""]) > 0 {
-		// Have split tunnels for the default profile but no default profile resource in this file.
-		// Collect them for end-of-file warnings — the blocks will be removed in Step 4.
-		orphanedDefaultTunnels = append(orphanedDefaultTunnels, splitTunnelsByParent[""]...)
+	// Separate split tunnels with dynamic blocks — these cannot be merged
+	// and will be preserved as warning comments.
+	dynamicTunnelBlocks := []*hclwrite.Block{}
+	staticSplitTunnelsByParent := make(map[string][]*hclwrite.Block)
+	for parentName, blocks := range splitTunnelsByParent {
+		for _, block := range blocks {
+			if hasDynamicTunnels(block) {
+				dynamicTunnelBlocks = append(dynamicTunnelBlocks, block)
+			} else {
+				staticSplitTunnelsByParent[parentName] = append(staticSplitTunnelsByParent[parentName], block)
+			}
+		}
 	}
 
-	// Step 3: Merge custom profile split tunnels
+	// Step 2: Merge default profile split tunnels (static only)
+	if defaultProfileBlock != nil {
+		defaultTunnels := staticSplitTunnelsByParent[""]
+		mergeSplitTunnelsIntoProfile(defaultTunnels, defaultProfileBlock)
+	} else if len(staticSplitTunnelsByParent[""]) > 0 {
+		// Have split tunnels for the default profile but no default profile resource in this file.
+		// Collect them for end-of-file warnings — the blocks will be removed in Step 4.
+		orphanedDefaultTunnels = append(orphanedDefaultTunnels, staticSplitTunnelsByParent[""]...)
+	}
+
+	// Step 3: Merge custom profile split tunnels (static only)
 	for profileName, profileBlock := range customProfiles {
-		tunnels := splitTunnelsByParent[profileName]
+		tunnels := staticSplitTunnelsByParent[profileName]
 		mergeSplitTunnelsIntoProfile(tunnels, profileBlock)
 	}
 
 	// Step 4: Remove ALL split_tunnel blocks from the file
 	// This must be done BEFORE adding warnings (which rebuilds the body)
 	// Collect all split_tunnel blocks first, then remove them
+	// Note: TransformConfig also marks these for removal via RemoveOriginal: true,
+	// so some blocks may already be removed — double removal is a safe no-op.
 	var splitTunnelBlocks []*hclwrite.Block
 	for _, block := range body.Blocks() {
 		if block.Type() == "resource" && len(block.Labels()) >= 2 {
-			if tfhcl.GetResourceType(block) == "cloudflare_split_tunnel" {
+			if isSplitTunnelType(tfhcl.GetResourceType(block)) {
 				splitTunnelBlocks = append(splitTunnelBlocks, block)
 			}
 		}
@@ -216,8 +237,23 @@ func ProcessCrossResourceConfigMigration(file *hclwrite.File) {
 		})
 	}
 
+	// Step 5c: Handle dynamic tunnel blocks — these could not be merged
+	for _, tunnelBlock := range dynamicTunnelBlocks {
+		tunnelResourceName := tfhcl.GetResourceName(tunnelBlock)
+		warningMsg := fmt.Sprintf(
+			"Split tunnel %q uses dynamic \"tunnels\" blocks that cannot be statically evaluated. "+
+				"Move the tunnel entries manually into the 'exclude' or 'include' attribute of "+
+				"the associated device profile using a for-expression.",
+			tunnelResourceName,
+		)
+		migrationWarnings = append(migrationWarnings, migrationWarning{
+			message: warningMsg,
+			block:   tunnelBlock,
+		})
+	}
+
 	// Step 6: Handle split tunnels referencing non-existent profiles
-	for profileName, tunnels := range splitTunnelsByParent {
+	for profileName, tunnels := range staticSplitTunnelsByParent {
 		if profileName == "" {
 			continue // Default profile already handled
 		}
@@ -303,7 +339,9 @@ func extractResourceNameFromReference(tokenStr, resourceType string) string {
 }
 
 // mergeSplitTunnelsIntoProfile merges multiple split_tunnel resources into a device profile.
-// This properly handles multiple split_tunnel resources by collecting all tunnels before setting attributes.
+// Static tunnels {} blocks are extracted and set as cty values on the profile's
+// include/exclude attributes. Dynamic "tunnels" blocks cannot be statically evaluated,
+// so they are flagged via hasDynamicTunnels for warning generation by the caller.
 func mergeSplitTunnelsIntoProfile(splitTunnelBlocks []*hclwrite.Block, profileBlock *hclwrite.Block) {
 	if len(splitTunnelBlocks) == 0 {
 		return
@@ -323,23 +361,18 @@ func mergeSplitTunnelsIntoProfile(splitTunnelBlocks []*hclwrite.Block, profileBl
 			mode = modeVal
 		}
 
-		// Extract tunnels from this split_tunnel resource
+		// Extract static tunnels from this split_tunnel resource
 		tunnelsBlocks := tfhcl.FindBlocksByType(splitTunnelBody, "tunnels")
 		for _, tunnelBlock := range tunnelsBlocks {
 			tunnelMap := make(map[string]cty.Value)
 			tunnelBody := tunnelBlock.Body()
 
-			// Extract address (required)
 			if addr := tfhcl.ExtractStringFromAttribute(tunnelBody.GetAttribute("address")); addr != "" {
 				tunnelMap["address"] = cty.StringVal(addr)
 			}
-
-			// Extract description (optional)
 			if desc := tfhcl.ExtractStringFromAttribute(tunnelBody.GetAttribute("description")); desc != "" {
 				tunnelMap["description"] = cty.StringVal(desc)
 			}
-
-			// Extract host (optional)
 			if host := tfhcl.ExtractStringFromAttribute(tunnelBody.GetAttribute("host")); host != "" {
 				tunnelMap["host"] = cty.StringVal(host)
 			}
@@ -351,13 +384,23 @@ func mergeSplitTunnelsIntoProfile(splitTunnelBlocks []*hclwrite.Block, profileBl
 	}
 
 	// Set the merged tunnels in deterministic order (include first, then exclude)
-	// This matches the order typically seen in device profiles
 	if tunnels, ok := tunnelsByMode["include"]; ok && len(tunnels) > 0 {
 		profileBody.SetAttributeValue("include", cty.TupleVal(tunnels))
 	}
 	if tunnels, ok := tunnelsByMode["exclude"]; ok && len(tunnels) > 0 {
 		profileBody.SetAttributeValue("exclude", cty.TupleVal(tunnels))
 	}
+}
+
+// hasDynamicTunnels returns true if the split tunnel block contains any
+// dynamic "tunnels" blocks (which cannot be statically extracted).
+func hasDynamicTunnels(splitTunnelBlock *hclwrite.Block) bool {
+	for _, block := range splitTunnelBlock.Body().Blocks() {
+		if block.Type() == "dynamic" && len(block.Labels()) > 0 && block.Labels()[0] == "tunnels" {
+			return true
+		}
+	}
+	return false
 }
 
 // addMigrationCommentAtEndOfFile adds a warning comment at the end of the file,
