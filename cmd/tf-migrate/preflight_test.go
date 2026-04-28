@@ -381,6 +381,96 @@ func TestRunPreMigrationScan_EmptyDirectory(t *testing.T) {
 	}
 }
 
+// TestPreflightScan_ConditionalRenames verifies that the pre-migration scan
+// correctly distinguishes default vs custom device profiles and fallback domains.
+// Regression test for https://github.com/cloudflare/tf-migrate/issues/290.
+func TestPreflightScan_ConditionalRenames(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	content := `
+resource "cloudflare_zero_trust_device_profiles" "default_profile" {
+  account_id = "abc123"
+  default    = true
+}
+
+resource "cloudflare_zero_trust_device_profiles" "custom_profile" {
+  account_id = "abc123"
+  name       = "Custom"
+  match      = "identity.email == \"user@example.com\""
+  precedence = 100
+  default    = false
+}
+
+resource "cloudflare_zero_trust_device_profiles" "custom_implicit" {
+  account_id = "abc123"
+  name       = "Custom Implicit"
+  match      = "identity.email == \"other@example.com\""
+  precedence = 200
+}
+
+resource "cloudflare_fallback_domain" "default_fallback" {
+  account_id = "abc123"
+  domains {
+    suffix = "example.com"
+  }
+}
+
+resource "cloudflare_fallback_domain" "custom_fallback" {
+  account_id = "abc123"
+  policy_id  = cloudflare_zero_trust_device_profiles.custom_profile.id
+  domains {
+    suffix = "example.com"
+  }
+}
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.tf"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	log := hclog.NewNullLogger()
+	cfg := config{
+		configDir:     tmpDir,
+		sourceVersion: "v4",
+		targetVersion: "v5",
+	}
+
+	report, err := runPreMigrationScan(log, cfg)
+	if err != nil {
+		t.Fatalf("runPreMigrationScan error: %v", err)
+	}
+
+	// Build a map of resource name → NewType for renamed resources
+	renames := make(map[string]string)
+	for _, r := range report.Resources {
+		if r.Class == classRenamed {
+			renames[r.ResourceName] = r.NewType
+		}
+	}
+
+	tests := []struct {
+		name     string
+		expected string
+	}{
+		{"default_profile", "cloudflare_zero_trust_device_default_profile"},
+		{"custom_profile", "cloudflare_zero_trust_device_custom_profile"},
+		{"custom_implicit", "cloudflare_zero_trust_device_custom_profile"},
+		{"default_fallback", "cloudflare_zero_trust_device_default_profile_local_domain_fallback"},
+		{"custom_fallback", "cloudflare_zero_trust_device_custom_profile_local_domain_fallback"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := renames[tt.name]
+			if !ok {
+				t.Fatalf("Resource %q not found in rename results", tt.name)
+			}
+			if got != tt.expected {
+				t.Errorf("Resource %q: got NewType=%q, want %q", tt.name, got, tt.expected)
+			}
+		})
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)
 }
