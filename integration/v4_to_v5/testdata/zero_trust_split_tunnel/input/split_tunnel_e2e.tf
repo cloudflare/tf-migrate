@@ -12,6 +12,9 @@
 #
 # Note: v5 enforces that include and exclude are mutually exclusive on a device profile,
 # so this test only uses exclude mode.
+#
+# Uses a custom profile (not default) to avoid conflicting with the
+# zero_trust_device_profiles module which manages the singleton default profile.
 
 variable "cloudflare_account_id" {
   description = "Cloudflare account ID"
@@ -28,21 +31,19 @@ variable "cloudflare_domain" {
   type        = string
 }
 
-# Default profile — split tunnels without policy_id target this
-resource "cloudflare_zero_trust_device_profiles" "cftftest_split_tunnel_default" {
+# Custom profile — split tunnels with policy_id target this
+resource "cloudflare_zero_trust_device_profiles" "cftftest_split_tunnel_profile" {
   account_id  = var.cloudflare_account_id
-  name        = "Default Profile"
-  description = "Default profile for split tunnel E2E test"
-  default     = true
-
-  allow_mode_switch = true
-  auto_connect      = 0
-  captive_portal    = 180
+  name        = "Split Tunnel E2E Profile"
+  description = "Custom profile for split tunnel E2E test"
+  match       = "identity.email == \"split-tunnel-e2e@example.com\""
+  precedence  = 500
 }
 
 # First exclude split tunnel — multiple tunnels blocks
-resource "cloudflare_split_tunnel" "cftftest_default_exclude" {
+resource "cloudflare_split_tunnel" "cftftest_custom_exclude" {
   account_id = var.cloudflare_account_id
+  policy_id  = cloudflare_zero_trust_device_profiles.cftftest_split_tunnel_profile.id
   mode       = "exclude"
 
   tunnels {
@@ -57,8 +58,9 @@ resource "cloudflare_split_tunnel" "cftftest_default_exclude" {
 }
 
 # Second exclude split tunnel — tests merging multiple split_tunnel resources
-resource "cloudflare_split_tunnel" "cftftest_default_exclude_2" {
+resource "cloudflare_split_tunnel" "cftftest_custom_exclude_2" {
   account_id = var.cloudflare_account_id
+  policy_id  = cloudflare_zero_trust_device_profiles.cftftest_split_tunnel_profile.id
   mode       = "exclude"
 
   tunnels {

@@ -30,6 +30,19 @@ exemptions:
       - 'include\s+'
     enabled: true
 
+  # The v4 provider appends a random suffix to precedence values (e.g., 500 becomes
+  # 500389). The v5 provider normalizes this back. Same pattern as the global
+  # precedence_normalization exemption, scoped to this module.
+  - name: "split_tunnel_precedence_normalization"
+    description: "The v4 provider adds a random suffix to device profile precedence values. The v5 provider normalizes them back to the original value. Resolves after terraform apply."
+    resource_types:
+      - "cloudflare_zero_trust_device_custom_profile"
+    resource_name_patterns:
+      - 'module\.zero_trust_split_tunnel\..*'
+    patterns:
+      - 'precedence\s+'
+    enabled: true
+
   # The v4 provider set tunnel_protocol = "wireguard" explicitly, but the v5
   # provider normalizes the default differently (empty string). This is a
   # provider-level normalization difference, not a split tunnel migration issue.
