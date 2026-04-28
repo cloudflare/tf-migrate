@@ -205,11 +205,16 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	//   dynamic "domains" { for_each = toset([...]) content { suffix = domains.value } }
 	// The v5 provider expects:
 	//   domains = [for value in toset([...]) : { suffix = value }]
+	//
+	// When multiple dynamic "domains" blocks exist, they are automatically merged
+	// via concat() by ConvertDynamicBlocksToForExpression.
+	dynamicDomainsCount := 0
 	for _, dynBlock := range tfhcl.FindBlocksByType(body, "dynamic") {
 		labels := dynBlock.Labels()
 		if len(labels) == 0 || labels[0] != "domains" {
 			continue
 		}
+		dynamicDomainsCount++
 		// Detect whether the for_each expression is opaque (not a literal).
 		// An opaque for_each references a variable or local that cannot be
 		// statically resolved — we still attempt conversion but warn the user.
@@ -233,10 +238,37 @@ Expected output:
 			}
 		}
 	}
+
+	if dynamicDomainsCount > 1 {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("Multiple dynamic 'domains' blocks merged via concat(): %s.%s", newResourceType, resourceName),
+			Detail: fmt.Sprintf(`%d dynamic "domains" blocks were found and merged into a single attribute using concat().
+Please verify the generated output preserves all intended domain entries and ordering.`, dynamicDomainsCount),
+		})
+	}
+
 	tfhcl.ConvertDynamicBlocksToForExpression(body, "domains")
 
-	// Convert static domains blocks to attribute array
-	tfhcl.ConvertBlocksToAttributeList(body, "domains", nil)
+	// Convert static domains blocks to attribute array.
+	// If dynamic blocks already produced a "domains" attribute, we need to merge
+	// the static blocks into it via concat() rather than overwriting.
+	staticDomainsBlocks := tfhcl.FindBlocksByType(body, "domains")
+	hasDynamicDomains := dynamicDomainsCount > 0 && body.GetAttribute("domains") != nil
+
+	if hasDynamicDomains && len(staticDomainsBlocks) > 0 {
+		// Mixed case: merge dynamic for-expression(s) and static blocks via concat().
+		existingTokens := body.GetAttribute("domains").Expr().BuildTokens(nil)
+		tfhcl.MergeStaticBlocksIntoAttribute(body, "domains", existingTokens)
+
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("Mixed static and dynamic 'domains' blocks merged via concat(): %s.%s", newResourceType, resourceName),
+			Detail:   "Both static domains blocks and dynamic domains blocks were found. They have been merged into a single attribute using concat(). Please verify the generated output.",
+		})
+	} else {
+		tfhcl.ConvertBlocksToAttributeList(body, "domains", nil)
+	}
 
 	// Generate moved block
 	from := oldType + "." + resourceName
@@ -248,4 +280,3 @@ Expected output:
 		RemoveOriginal: true,
 	}, nil
 }
-

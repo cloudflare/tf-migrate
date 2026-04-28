@@ -529,10 +529,7 @@ resource "cloudflare_zero_trust_local_fallback_domain" "example" {
 }
 
 // TestMixedStaticAndDynamicDomains verifies that when both static domains blocks
-// and a dynamic "domains" block are present, the dynamic block is converted first
-// and the static blocks are converted afterwards.  Because both set the same
-// attribute name, the static array takes precedence (last write wins) and a
-// DiagWarning is emitted so the user knows about the mixed case.
+// and a dynamic "domains" block are present, both are preserved via concat().
 func TestMixedStaticAndDynamicDomains(t *testing.T) {
 	input := `
 resource "cloudflare_zero_trust_local_fallback_domain" "example" {
@@ -582,19 +579,239 @@ resource "cloudflare_zero_trust_local_fallback_domain" "example" {
 		}
 	}
 
-	// No diagnostics expected — toset is a literal, so no opaque warning.
-	if len(ctx.Diagnostics) != 0 {
-		t.Errorf("Expected 0 diagnostics for toset case, got %d: %v", len(ctx.Diagnostics), ctx.Diagnostics)
-	}
+	output := string(file.Bytes())
 
 	// The output should not contain any dynamic block.
-	output := string(file.Bytes())
 	if strings.Contains(output, `dynamic "domains"`) {
 		t.Error("Output still contains dynamic block — expected conversion")
 	}
-	// The output should contain a 'domains' attribute.
-	if !strings.Contains(output, "domains") {
-		t.Errorf("Expected 'domains' attribute in output, got:\n%s", output)
+
+	// Both static and dynamic content should be preserved via concat.
+	if !strings.Contains(output, "concat(") {
+		t.Errorf("Expected concat() to merge static and dynamic domains, got:\n%s", output)
+	}
+	if !strings.Contains(output, "static.example.com") {
+		t.Errorf("Expected static.example.com to be preserved in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "toset") {
+		t.Errorf("Expected toset for-expression to be preserved in output, got:\n%s", output)
+	}
+
+	// Should have a mixed-merge diagnostic warning.
+	foundMixedWarning := false
+	for _, d := range ctx.Diagnostics {
+		if strings.Contains(d.Summary, "Mixed static and dynamic") {
+			foundMixedWarning = true
+			break
+		}
+	}
+	if !foundMixedWarning {
+		t.Errorf("Expected a diagnostic warning about mixed static and dynamic domains, got: %v", ctx.Diagnostics)
+	}
+}
+
+// TestMultipleDynamicDomainsBlocks verifies that when multiple dynamic "domains"
+// blocks exist in a single resource, all of them are preserved via concat().
+// This is the regression test for https://github.com/cloudflare/tf-migrate/issues/288.
+func TestMultipleDynamicDomainsBlocks(t *testing.T) {
+	input := `
+resource "cloudflare_fallback_domain" "remote_region_profile_fallback_domains" {
+  account_id = var.account_id
+  policy_id  = cloudflare_zero_trust_device_custom_profile.remote_region_profile.id
+
+  dynamic "domains" {
+    for_each = local.primary_domain_fallback_entries
+    content {
+      suffix = domains.value
+    }
+  }
+
+  dynamic "domains" {
+    for_each = local.static_domain_fallback_entries
+    content {
+      suffix      = domains.value
+      dns_server  = ["1.1.1.1"]
+      description = "Static domains resolved via regional DNS"
+    }
+  }
+
+  dynamic "domains" {
+    for_each = local.dev_domain_fallback_entries
+    content {
+      suffix      = domains.value
+      dns_server  = ["1.1.1.1"]
+      description = "Dev domains resolved via regional DNS"
+    }
+  }
+}
+`
+
+	migrator := NewV4ToV5Migrator()
+
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("Failed to parse input HCL: %v", diags)
+	}
+
+	ctx := &transform.Context{
+		Content:  []byte(input),
+		Filename: "test.tf",
+		CFGFile:  file,
+	}
+
+	body := file.Body()
+	for _, block := range body.Blocks() {
+		if block.Type() == "resource" && len(block.Labels()) >= 2 {
+			resourceType := block.Labels()[0]
+			if migrator.CanHandle(resourceType) {
+				result, err := migrator.TransformConfig(ctx, block)
+				if err != nil {
+					t.Fatalf("TransformConfig returned error: %v", err)
+				}
+				if result != nil && result.RemoveOriginal {
+					body.RemoveBlock(block)
+					for _, newBlock := range result.Blocks {
+						body.AppendBlock(newBlock)
+					}
+				}
+			}
+		}
+	}
+
+	output := string(file.Bytes())
+
+	// All dynamic blocks must be removed
+	if strings.Contains(output, `dynamic "domains"`) {
+		t.Error("Output still contains dynamic block — expected for-expression conversion")
+	}
+
+	// Must use concat() to merge all three dynamic blocks
+	if !strings.Contains(output, "concat(") {
+		t.Errorf("Expected concat() to merge multiple dynamic blocks, got:\n%s", output)
+	}
+
+	// All three for_each collections must be present — none silently dropped
+	for _, expr := range []string{
+		"local.primary_domain_fallback_entries",
+		"local.static_domain_fallback_entries",
+		"local.dev_domain_fallback_entries",
+	} {
+		if !strings.Contains(output, expr) {
+			t.Errorf("Expected %q in output (was silently dropped!), got:\n%s", expr, output)
+		}
+	}
+
+	// Verify resource was renamed to v5 custom type (has policy_id)
+	if !strings.Contains(output, "cloudflare_zero_trust_device_custom_profile_local_domain_fallback") {
+		t.Errorf("Expected v5 custom profile resource type in output, got:\n%s", output)
+	}
+
+	// Should have a diagnostic warning about multiple dynamic blocks
+	foundMultiBlockWarning := false
+	for _, d := range ctx.Diagnostics {
+		if strings.Contains(d.Summary, "Multiple dynamic") {
+			foundMultiBlockWarning = true
+			break
+		}
+	}
+	if !foundMultiBlockWarning {
+		t.Error("Expected a diagnostic warning about multiple dynamic 'domains' blocks being merged")
+	}
+}
+
+// TestMixedStaticAndDynamicDomainsMerge verifies that when both static domains
+// blocks and dynamic "domains" blocks are present, they are merged correctly
+// via concat() rather than the dynamic result being silently overwritten.
+func TestMixedStaticAndDynamicDomainsMerge(t *testing.T) {
+	input := `
+resource "cloudflare_zero_trust_local_fallback_domain" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+
+  domains {
+    suffix = "static.example.com"
+  }
+
+  dynamic "domains" {
+    for_each = local.dynamic_entries
+    content {
+      suffix = domains.value
+    }
+  }
+
+  domains {
+    suffix      = "other.example.com"
+    description = "other static"
+  }
+}
+`
+
+	migrator := NewV4ToV5Migrator()
+
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("Failed to parse input HCL: %v", diags)
+	}
+
+	ctx := &transform.Context{
+		Content:  []byte(input),
+		Filename: "test.tf",
+		CFGFile:  file,
+	}
+
+	body := file.Body()
+	for _, block := range body.Blocks() {
+		if block.Type() == "resource" && len(block.Labels()) >= 2 {
+			resourceType := block.Labels()[0]
+			if migrator.CanHandle(resourceType) {
+				result, err := migrator.TransformConfig(ctx, block)
+				if err != nil {
+					t.Fatalf("TransformConfig returned error: %v", err)
+				}
+				if result != nil && result.RemoveOriginal {
+					body.RemoveBlock(block)
+					for _, newBlock := range result.Blocks {
+						body.AppendBlock(newBlock)
+					}
+				}
+			}
+		}
+	}
+
+	output := string(file.Bytes())
+
+	// Must use concat to merge both static and dynamic
+	if !strings.Contains(output, "concat(") {
+		t.Errorf("Expected concat() to merge static and dynamic domains, got:\n%s", output)
+	}
+
+	// Dynamic for-expression must be present
+	if !strings.Contains(output, "local.dynamic_entries") {
+		t.Errorf("Expected dynamic for-expression in output, got:\n%s", output)
+	}
+
+	// Both static entries must be present
+	if !strings.Contains(output, "static.example.com") {
+		t.Errorf("Expected static.example.com in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "other.example.com") {
+		t.Errorf("Expected other.example.com in output, got:\n%s", output)
+	}
+
+	// No dynamic blocks should remain
+	if strings.Contains(output, `dynamic "domains"`) {
+		t.Error("Output still contains dynamic block")
+	}
+
+	// Should have a mixed-merge diagnostic
+	foundMixedWarning := false
+	for _, d := range ctx.Diagnostics {
+		if strings.Contains(d.Summary, "Mixed static and dynamic") {
+			foundMixedWarning = true
+			break
+		}
+	}
+	if !foundMixedWarning {
+		t.Error("Expected a diagnostic warning about mixed static and dynamic domains")
 	}
 }
 
