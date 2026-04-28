@@ -23,17 +23,6 @@ var initCmd = &cobra.Command{
 	SilenceUsage: true, // Don't show usage on error
 	RunE: func(cmd *cobra.Command, args []string) error {
 		resources, _ := cmd.Flags().GetString("resources")
-		phase, _ := cmd.Flags().GetString("phase")
-		if phase != "" {
-			if resources != "" {
-				return fmt.Errorf("--phase and --resources are mutually exclusive; use one or the other")
-			}
-			phaseResources, err := e2e.ResolvePhases(phase)
-			if err != nil {
-				return err
-			}
-			resources = strings.Join(phaseResources, ",")
-		}
 		return e2e.RunInit(resources)
 	},
 }
@@ -45,18 +34,7 @@ var migrateCmd = &cobra.Command{
 	SilenceUsage: true, // Don't show usage on error
 	RunE: func(cmd *cobra.Command, args []string) error {
 		resources, _ := cmd.Flags().GetString("resources")
-		phase, _ := cmd.Flags().GetString("phase")
 		targetProviderVersion, _ := cmd.Flags().GetString("target-provider-version")
-		if phase != "" {
-			if resources != "" {
-				return fmt.Errorf("--phase and --resources are mutually exclusive; use one or the other")
-			}
-			phaseResources, err := e2e.ResolvePhases(phase)
-			if err != nil {
-				return err
-			}
-			resources = strings.Join(phaseResources, ",")
-		}
 		return e2e.RunMigrate(resources, false, targetProviderVersion)
 	},
 }
@@ -76,7 +54,6 @@ var runCmd = &cobra.Command{
 			Parallelism:           parallelism,
 			Resources:             cmd.Flag("resources").Value.String(),
 			Exclude:               cmd.Flag("exclude").Value.String(),
-			Phase:                 cmd.Flag("phase").Value.String(),
 			ProviderPath:          cmd.Flag("provider").Value.String(),
 			TargetProviderVersion: cmd.Flag("target-provider-version").Value.String(),
 		}
@@ -192,11 +169,9 @@ Examples:
 func init() {
 	// Init command flags
 	initCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
-	initCmd.Flags().String("phase", "", "Run predefined phase(s) (comma-separated numbers, e.g., '0' or '0,1')")
 
 	// Migrate command flags
 	migrateCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
-	migrateCmd.Flags().String("phase", "", "Run predefined phase(s) (comma-separated numbers, e.g., '0' or '0,1')")
 	migrateCmd.Flags().String("target-provider-version", "", "Explicit provider version to set in required_providers (e.g. 5.19.0-beta.3); skips GitHub API lookup")
 
 	// Run command flags
@@ -204,7 +179,6 @@ func init() {
 	runCmd.Flags().Bool("apply-exemptions", false, "Apply drift exemptions from global and resource-specific configs")
 	runCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
 	runCmd.Flags().String("exclude", "", "Exclude specific resources (comma-separated)")
-	runCmd.Flags().String("phase", "", "Run predefined phase(s) (comma-separated numbers, e.g., '0' or '0,1')")
 	runCmd.Flags().String("provider", "", "Path to provider source directory (will be built automatically)")
 	runCmd.Flags().Int("parallelism", 0, "Terraform parallelism for plan/apply (0 uses Terraform default)")
 	runCmd.Flags().Bool("no-refresh-snapshot", false, "Run an additional diagnostic terraform plan with -refresh=false before the authoritative refresh plan")
