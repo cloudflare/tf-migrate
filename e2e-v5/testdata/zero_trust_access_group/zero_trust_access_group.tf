@@ -470,6 +470,41 @@ resource "cloudflare_zero_trust_access_group" "child" {
 }
 
 
+# Pattern 23: Already-renamed v4 resource (exercises UpgradeState path, not MoveState)
+resource "cloudflare_zero_trust_access_group" "cftftest_upgrade_state_boolean" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} UpgradeState Boolean Group"
+
+  include = [
+    {
+      any_valid_service_token = {}
+    },
+  ]
+}
+
+# Pattern 24: Already-renamed v4 resource with multiple selectors (UpgradeState path)
+resource "cloudflare_zero_trust_access_group" "cftftest_upgrade_state_mixed" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} UpgradeState Mixed Group"
+
+
+  include = [
+    {
+      email = {
+        email = "admin@example.com"
+      }
+    },
+    {
+      everyone = {}
+    },
+  ]
+  exclude = [
+    {
+      certificate = {}
+    },
+  ]
+}
+
 variable "from_version" {
   description = "Provider version under test, used to namespace resource names"
   type        = string
