@@ -39,6 +39,45 @@ locals {
 
 
 
+# Pattern 23: Already-renamed v4 resource (exercises UpgradeState path, not MoveState)
+# When the v4 config already uses cloudflare_zero_trust_access_group (the newer v4 name),
+# tf-migrate does NOT generate a moved {} block. During v5 apply, Terraform triggers
+# UpgradeState (not MoveState) to migrate the v4 state. This is the exact scenario
+# that fails in APIX-741 when any_valid_service_token is a boolean in state.
+resource "cloudflare_zero_trust_access_group" "cftftest_upgrade_state_boolean" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} UpgradeState Boolean Group"
+
+  include = [
+    {
+      any_valid_service_token = {}
+    },
+  ]
+}
+
+# Pattern 24: Already-renamed v4 resource with multiple selectors (UpgradeState path)
+resource "cloudflare_zero_trust_access_group" "cftftest_upgrade_state_mixed" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} UpgradeState Mixed Group"
+
+
+  include = [
+    {
+      email = {
+        email = "admin@example.com"
+      }
+    },
+    {
+      everyone = {}
+    },
+  ]
+  exclude = [
+    {
+      certificate = {}
+    },
+  ]
+}
+
 # Pattern 1: Simple email selector
 resource "cloudflare_zero_trust_access_group" "simple_email" {
   account_id = var.cloudflare_account_id
