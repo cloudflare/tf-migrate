@@ -47,6 +47,21 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	return []string{"cloudflare_zone"}, "cloudflare_zone"
 }
 
+// GetComputedAttributeMappings implements the ComputedAttributeMapper interface.
+// In v4, the zone's domain was accessed as cloudflare_zone.example.zone.
+// In v5, it's cloudflare_zone.example.name. This enables cross-file reference
+// rewriting so that any resource referencing .zone gets updated to .name.
+func (m *V4ToV5Migrator) GetComputedAttributeMappings() []transform.ComputedAttributeMapping {
+	return []transform.ComputedAttributeMapping{
+		{
+			OldResourceType: "cloudflare_zone",
+			OldAttribute:    "zone",
+			NewResourceType: "cloudflare_zone",
+			NewAttribute:    "name",
+		},
+	}
+}
+
 // TransformConfig handles configuration file transformations.
 // Transformations:
 // 1. zone → name
@@ -103,4 +118,3 @@ func (m *V4ToV5Migrator) setAccountNestedAttribute(body *hclwrite.Body, accountI
 	// Set the account attribute with the nested object
 	body.SetAttributeRaw("account", tokens)
 }
-
