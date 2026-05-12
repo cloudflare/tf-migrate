@@ -9,29 +9,29 @@ locals {
 }
 
 # Pattern: Direct .zone reference in another resource
-resource "cloudflare_dns_record" "cftftest_zone_ref" {
+resource "cloudflare_dns_record" "cftftest_zone_xref" {
   zone_id = cloudflare_zone.minimal.id
-  name    = cloudflare_zone.minimal.name
-  type    = "CNAME"
-  content = "example.com"
+  name    = "cftftest-xref.${cloudflare_zone.minimal.name}"
+  type    = "TXT"
+  content = cloudflare_zone.minimal.name
   ttl     = 1
 }
 
 moved {
-  from = cloudflare_record.cftftest_zone_ref
-  to   = cloudflare_dns_record.cftftest_zone_ref
+  from = cloudflare_record.cftftest_zone_xref
+  to   = cloudflare_dns_record.cftftest_zone_xref
 }
 
 # Pattern: .zone reference in string interpolation
-resource "cloudflare_dns_record" "cftftest_zone_interpolation" {
+resource "cloudflare_dns_record" "cftftest_zone_xref_interp" {
   zone_id = cloudflare_zone.minimal.id
-  name    = "cftftest-sub.${cloudflare_zone.minimal.name}"
-  type    = "CNAME"
-  content = "example.com"
+  name    = "cftftest-xref-interp.${cloudflare_zone.minimal.name}"
+  type    = "TXT"
+  content = "zone=${cloudflare_zone.minimal.name}"
   ttl     = 1
 }
 
 moved {
-  from = cloudflare_record.cftftest_zone_interpolation
-  to   = cloudflare_dns_record.cftftest_zone_interpolation
+  from = cloudflare_record.cftftest_zone_xref_interp
+  to   = cloudflare_dns_record.cftftest_zone_xref_interp
 }

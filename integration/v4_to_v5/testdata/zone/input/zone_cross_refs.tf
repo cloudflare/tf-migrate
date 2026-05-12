@@ -2,19 +2,19 @@
 # These should be rewritten to .name after migration
 
 # Pattern: Direct .zone reference in another resource
-resource "cloudflare_record" "cftftest_zone_ref" {
+resource "cloudflare_record" "cftftest_zone_xref" {
   zone_id = cloudflare_zone.minimal.id
-  name    = cloudflare_zone.minimal.zone
-  type    = "CNAME"
-  content = "example.com"
+  name    = "cftftest-xref.${cloudflare_zone.minimal.zone}"
+  type    = "TXT"
+  content = cloudflare_zone.minimal.zone
 }
 
 # Pattern: .zone reference in string interpolation
-resource "cloudflare_record" "cftftest_zone_interpolation" {
+resource "cloudflare_record" "cftftest_zone_xref_interp" {
   zone_id = cloudflare_zone.minimal.id
-  name    = "cftftest-sub.${cloudflare_zone.minimal.zone}"
-  type    = "CNAME"
-  content = "example.com"
+  name    = "cftftest-xref-interp.${cloudflare_zone.minimal.zone}"
+  type    = "TXT"
+  content = "zone=${cloudflare_zone.minimal.zone}"
 }
 
 # Pattern: .zone reference in a local
