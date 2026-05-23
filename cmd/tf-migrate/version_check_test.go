@@ -116,6 +116,27 @@ provider "registry.terraform.io/cloudflare/cloudflare" {
 		t.Errorf("Expected version 4.52.5, got %s", version)
 	}
 
+	// Test with OpenTofu registry lock file
+	tempDirOpenTofu := t.TempDir()
+	lockContentOpenTofu := `provider "registry.opentofu.org/cloudflare/cloudflare" {
+  version     = "4.52.7"
+  constraints = "~> 4.0"
+}
+`
+	lockFileOpenTofu := filepath.Join(tempDirOpenTofu, ".terraform.lock.hcl")
+	err = os.WriteFile(lockFileOpenTofu, []byte(lockContentOpenTofu), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write lock file: %v", err)
+	}
+
+	version, err = parseVersionFromLockFile(tempDirOpenTofu)
+	if err != nil {
+		t.Fatalf("parseVersionFromLockFile failed: %v", err)
+	}
+	if version != "4.52.7" {
+		t.Errorf("Expected version 4.52.7, got %s", version)
+	}
+
 	// Test with lock file without cloudflare provider
 	lockContentNoCF := `# This file is maintained automatically by "terraform init".
 provider "registry.terraform.io/hashicorp/aws" {
