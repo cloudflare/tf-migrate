@@ -75,7 +75,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Explicitly set to false to maintain v4 behavior when not specified
 	// Only applicable for types: self_hosted, ssh, vnc, rdp, mcp_portal
 	if appType == "self_hosted" || appType == "ssh" || appType == "vnc" || appType == "rdp" || appType == "mcp_portal" {
-		tfhcl.EnsureAttribute(body, "http_only_cookie_attribute", "false")
+		tfhcl.EnsureAttribute(body, "http_only_cookie_attribute", false)
 	}
 
 	// Strip type-gated attributes that are invalid for the application type

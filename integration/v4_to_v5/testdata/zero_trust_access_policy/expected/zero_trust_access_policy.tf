@@ -76,7 +76,7 @@ resource "cloudflare_zero_trust_access_application" "test_app" {
   name                       = "${local.name_prefix}-test-app"
   domain                     = "test.${var.cloudflare_domain}"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 
