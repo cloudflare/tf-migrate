@@ -861,15 +861,29 @@ resource "cloudflare_access_policy" "test" {
 	if ctx.Diagnostics[0].Summary != "Application-scoped access policy must be inlined" {
 		t.Errorf("Unexpected diagnostic summary: %s", ctx.Diagnostics[0].Summary)
 	}
-	if !strings.Contains(ctx.Diagnostics[0].Detail, "application_id") {
-		t.Errorf("Expected diagnostic detail to mention 'application_id', got: %s", ctx.Diagnostics[0].Detail)
-	}
 	if !strings.Contains(ctx.Diagnostics[0].Detail, "cloudflare_access_policy.test") {
 		t.Errorf("Expected diagnostic detail to mention resource name, got: %s", ctx.Diagnostics[0].Detail)
 	}
 	// Check that inline policy example is included
 	if !strings.Contains(ctx.Diagnostics[0].Detail, "Inline policy to add") {
 		t.Errorf("Expected diagnostic detail to include inline policy example, got: %s", ctx.Diagnostics[0].Detail)
+	}
+	// Check that destructive warning is included (APIX-1133)
+	if !strings.Contains(ctx.Diagnostics[0].Detail, "DESTRUCTIVE IF APPLIED WITHOUT CHANGES") {
+		t.Errorf("Expected diagnostic detail to include destructive warning, got: %s", ctx.Diagnostics[0].Detail)
+	}
+	// Check that the inline example includes actual conditions from the source policy
+	if !strings.Contains(ctx.Diagnostics[0].Detail, "everyone") {
+		t.Errorf("Expected inline example to include actual conditions from source policy, got: %s", ctx.Diagnostics[0].Detail)
+	}
+
+	// Verify the removed block contains warning comments
+	removedOutput := string(hclwrite.Format(result.Blocks[0].BuildTokens(nil).Bytes()))
+	if !strings.Contains(removedOutput, "MIGRATION WARNING") {
+		t.Errorf("Expected removed block to contain MIGRATION WARNING comment, got: %s", removedOutput)
+	}
+	if !strings.Contains(removedOutput, "MUST add a policies") {
+		t.Errorf("Expected removed block to contain policy warning, got: %s", removedOutput)
 	}
 }
 

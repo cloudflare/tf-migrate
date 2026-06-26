@@ -627,6 +627,11 @@ removed {
   lifecycle {
     destroy = false
   }
+  # MIGRATION WARNING: You MUST add a policies = [...] attribute to the parent
+  # MIGRATION WARNING: cloudflare_zero_trust_access_application resource BEFORE running terraform apply.
+  # MIGRATION WARNING: Applying without inline policies will detach all policies from the application.
+  # MIGRATION WARNING: Cloudflare then garbage-collects the orphaned app-scoped policies.
+  # MIGRATION WARNING: This is NOT recoverable without reconstructing policies from git history or backups.
 }
 
 # BUGS-2007: nested and list selector migrations
