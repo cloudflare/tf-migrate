@@ -122,6 +122,8 @@ resource "cloudflare_zero_trust_access_policy" "bugs2006_everyone" {
 
 
 
+
+
 # Basic test cases
 resource "cloudflare_zero_trust_access_policy" "example" {
   account_id       = var.cloudflare_account_id
@@ -687,4 +689,33 @@ resource "cloudflare_zero_trust_access_policy" "bugs2007_auth_context" {
 moved {
   from = cloudflare_access_policy.bugs2007_auth_context
   to   = cloudflare_zero_trust_access_policy.bugs2007_auth_context
+}
+
+# zone_id-only policy (no account_id)
+# In v4, access policies could be zone-scoped. In v5, they are account-level only.
+# tf-migrate must remove zone_id and emit a warning that account_id is required.
+resource "cloudflare_zero_trust_access_policy" "zone_scoped_only" {
+  name     = "${local.name_prefix}-zone-scoped-policy"
+  decision = "allow"
+
+  include = [{ email = { email = "user@example.com" } }]
+}
+
+moved {
+  from = cloudflare_access_policy.zone_scoped_only
+  to   = cloudflare_zero_trust_access_policy.zone_scoped_only
+}
+
+# zone_id + account_id policy (zone_id removed, account_id kept, no warning)
+resource "cloudflare_zero_trust_access_policy" "zone_and_account" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix}-zone-and-account-policy"
+  decision   = "allow"
+
+  include = [{ everyone = {} }]
+}
+
+moved {
+  from = cloudflare_access_policy.zone_and_account
+  to   = cloudflare_zero_trust_access_policy.zone_and_account
 }

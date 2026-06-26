@@ -110,7 +110,33 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	// 2. Simple field operations
 	// Remove deprecated fields that are not valid in v5
-	tfhcl.RemoveAttributes(body, "application_id", "precedence", "zone_id")
+	tfhcl.RemoveAttributes(body, "application_id", "precedence")
+
+	// Handle zone_id -> account_id conversion.
+	// In v4, access policies could be scoped to a zone via zone_id.
+	// In v5, all access policies are account-level and require account_id.
+	// If the resource has zone_id but no account_id, emit a migration warning
+	// because the user must manually supply the correct account_id value.
+	hasZoneID := body.GetAttribute("zone_id") != nil
+	hasAccountID := body.GetAttribute("account_id") != nil
+	if hasZoneID {
+		tfhcl.RemoveAttributes(body, "zone_id")
+		if !hasAccountID {
+			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+				Severity: hcl.DiagWarning,
+				Summary:  "MIGRATION WARNING: zone_id removed, account_id required",
+				Detail: fmt.Sprintf(
+					"Resource %s.%s used zone_id in v4, but v5 access policies are account-level only "+
+						"and require account_id. The zone_id attribute has been removed.\n\n"+
+						"You must add the correct account_id to this resource. For example:\n\n"+
+						"  account_id = var.cloudflare_account_id\n\n"+
+						"Without account_id, terraform validate will fail with:\n"+
+						"  Error: Required attribute \"account_id\" not specified\n\n"+
+						"See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade#cloudflare_access_policy",
+					"cloudflare_zero_trust_access_policy", resourceName),
+			})
+		}
+	}
 
 	// Convert approval_group block to approval_groups attribute array
 	// In v4: approval_group { approvals_needed = 1 }
