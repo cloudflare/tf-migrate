@@ -252,7 +252,7 @@ resource "cloudflare_zero_trust_access_application" "ref_opt1" {
   type       = "self_hosted"
 
   depends_on                 = [cloudflare_zero_trust_access_service_token.resourcename_opt1]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # Dependent resource that references option 2 via depends_on
@@ -263,7 +263,7 @@ resource "cloudflare_zero_trust_access_application" "ref_opt2" {
   type       = "self_hosted"
 
   depends_on                 = [cloudflare_zero_trust_access_service_token.resourcename_opt2]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # Legacy resource name (cloudflare_access_service_token - deprecated)

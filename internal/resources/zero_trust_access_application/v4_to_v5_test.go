@@ -41,7 +41,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       precedence = 2
     }
   ]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -70,7 +70,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       precedence = 2
     }
   ]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -107,7 +107,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       precedence = 3
     }
   ]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -134,7 +134,7 @@ func TestV4ToV5Transformation(t *testing.T) {
       precedence = 1
     }
   ]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -151,7 +151,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   name                       = "Test App"
   domain                     = "test.example.com"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -174,7 +174,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   session_duration = "24h"
 
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
   cors_headers = {
     allow_all_origins = true
   }
@@ -193,7 +193,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   name                       = "Test App"
   domain                     = "test.example.com"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -288,7 +288,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   name                       = "Test App"
   domain                     = "test.example.com"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -424,7 +424,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   domain                     = "test.example.com"
   type                       = "self_hosted"
   allowed_idps               = ["idp-1", "idp-2", "idp-3"]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -442,7 +442,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   domain                     = "test.example.com"
   type                       = "self_hosted"
   allowed_idps               = ["idp-1", "idp-2"]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -460,7 +460,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   domain                     = "test.example.com"
   type                       = "self_hosted"
   custom_pages               = ["page1", "page2"]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -478,7 +478,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   domain                     = "test.example.com"
   type                       = "self_hosted"
   self_hosted_domains        = ["page1", "page2"]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -496,7 +496,7 @@ func TestV4ToV5Transformation(t *testing.T) {
   domain                     = "test.example.com"
   type                       = "self_hosted"
   policies                   = []
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -635,7 +635,7 @@ func TestV4ToV5Transformation(t *testing.T) {
 				Expected: `resource "cloudflare_zero_trust_access_application" "rename" {
   account_id                 = "f037e56e89293a057740de681ac9abbe"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 moved {
   from = cloudflare_access_application.rename
@@ -650,7 +650,7 @@ moved {
 				Expected: `resource "cloudflare_zero_trust_access_application" "no_rename" {
   account_id                 = "f037e56e89293a057740de681ac9abbe"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -727,7 +727,7 @@ moved {
   custom_pages               = ["1234", "5678"]
   self_hosted_domains        = ["1234", "5678"]
   tags                       = ["1234", "5678"]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -740,7 +740,7 @@ moved {
 				Expected: `resource "cloudflare_zero_trust_access_application" "remove_domain_type" {
   account_id                 = "1234"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -762,7 +762,7 @@ moved {
 				Expected: `resource "cloudflare_zero_trust_access_application" "cors_headers" {
   account_id                 = "1234"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
   cors_headers = {
     allow_all_headers = true
     allow_all_methods = true
@@ -792,7 +792,7 @@ moved {
 				Expected: `resource "cloudflare_zero_trust_access_application" "single_destinations" {
   account_id                 = "1234"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
   destinations = [
     {
       cidr        = "10.5.0.0/24"
@@ -826,7 +826,7 @@ moved {
 				Expected: `resource "cloudflare_zero_trust_access_application" "multiple_destinations" {
   account_id                 = "1234"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
   destinations = [
     {
       type = "public"
@@ -888,7 +888,7 @@ moved {
 				Expected: `resource "cloudflare_zero_trust_access_application" "landing_page_design" {
   account_id                 = "1234"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
   landing_page_design = {
     button_color      = "#000000"
     button_text_color = "#000000"
@@ -1035,7 +1035,7 @@ moved {
       precedence = 2
     }
   ]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			// TODO scim_config
@@ -1158,7 +1158,7 @@ moved {
   type       = "ssh"
 
 
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
   target_criteria = [
     {
       port     = 22
@@ -1193,7 +1193,7 @@ moved {
   account_id = "1234"
   type       = "self_hosted"
 
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
   destinations = [
     {
       uri = "https://example.com"
@@ -1215,7 +1215,7 @@ moved {
   account_id = "1234"
   type       = "self_hosted"
 
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
   landing_page_design = {
     message = "Welcome to our app"
   }
@@ -1257,7 +1257,7 @@ moved {
   account_id = "1234"
   type       = "self_hosted"
 
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
   cors_headers = {
     allowed_methods = ["GET", "POST"]
     max_age         = 3600
@@ -1279,7 +1279,7 @@ moved {
   domain                     = "test.example.com"
   session_duration           = "12h"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -1299,7 +1299,7 @@ moved {
   domain     = "test.example.com"
 
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
   cors_headers = {
     allowed_methods = ["GET", "POST"]
   }
@@ -1320,7 +1320,7 @@ moved {
   domain                     = "test.example.com"
   type                       = "ssh"
   session_duration           = "8h"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -1335,7 +1335,7 @@ moved {
   name                       = "Test App"
   domain                     = "test.example.com"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -1350,7 +1350,7 @@ moved {
   name                       = "Test App"
   self_hosted_domains        = ["app1.example.com", "app2.example.com"]
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -1363,7 +1363,7 @@ moved {
   account_id                 = "1234"
   name                       = "My Application"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 		}
@@ -1397,7 +1397,7 @@ moved {
       precedence = 1
     }
   ]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 moved {
   from = cloudflare_access_application.apps
@@ -1432,7 +1432,7 @@ moved {
       precedence = 2
     }
   ]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 moved {
   from = cloudflare_access_application.apps
@@ -1481,7 +1481,7 @@ moved {
   name                       = "Test App"
   domain                     = "test.example.com"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 moved {
   from = cloudflare_access_application.app
@@ -1503,7 +1503,7 @@ moved {
   custom_deny_message        = "Access denied: contact admin@example.com\nFor help: https://help.example.com"
   domain                     = "test.example.com"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			},
 			{
@@ -1635,7 +1635,7 @@ func TestSaasAppStripping(t *testing.T) {
   account_id                 = "abc123"
   name                       = "Test App"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 		},
 		{
@@ -1655,7 +1655,7 @@ func TestSaasAppStripping(t *testing.T) {
   name                       = "SSH App"
   type                       = "ssh"
   domain                     = "ssh.example.com"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 		},
 		{
@@ -1866,7 +1866,7 @@ func TestSaasAppStripping(t *testing.T) {
     allow_headers     = ["X-Custom-Header"]
     max_age           = 86400
   }
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			Expected: `resource "cloudflare_zero_trust_access_application" "self_hosted_app" {
   account_id = "abc123"
@@ -1879,7 +1879,7 @@ func TestSaasAppStripping(t *testing.T) {
     allow_headers     = ["X-Custom-Header"]
     max_age           = 86400
   }
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 		},
 		{
@@ -1918,7 +1918,7 @@ func TestSaasAppStripping(t *testing.T) {
   landing_page_design = {
     title = "Wrong Place"
   }
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 			Expected: `resource "cloudflare_zero_trust_access_application" "self_hosted_app" {
   account_id = "abc123"
@@ -1926,7 +1926,7 @@ func TestSaasAppStripping(t *testing.T) {
   domain     = "app.example.com"
   type       = "self_hosted"
 
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }`,
 		},
 		{

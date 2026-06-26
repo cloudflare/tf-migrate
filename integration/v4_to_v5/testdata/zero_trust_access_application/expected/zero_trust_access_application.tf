@@ -47,7 +47,7 @@ resource "cloudflare_zero_trust_access_application" "minimal" {
   name                       = "${local.name_prefix} Minimal App"
   domain                     = "minimal.${local.app_domain_suffix}"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # 2. Minimal with type specification
@@ -56,7 +56,7 @@ resource "cloudflare_zero_trust_access_application" "minimal_self_hosted" {
   name                       = "${local.name_prefix} Self Hosted"
   domain                     = "self-hosted.${local.app_domain_suffix}"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # 3. Maximal self-hosted app - all common fields
@@ -186,7 +186,7 @@ resource "cloudflare_zero_trust_access_application" "ssh_basic" {
   name                       = "${local.name_prefix} SSH Basic"
   type                       = "ssh"
   domain                     = "ssh-basic.${local.app_domain_suffix}"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # 10. SSH app (multi)
@@ -195,7 +195,7 @@ resource "cloudflare_zero_trust_access_application" "ssh_multi_criteria" {
   name                       = "${local.name_prefix} SSH Multi"
   type                       = "ssh"
   domain                     = "ssh-multi.${local.app_domain_suffix}"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # ============================================================================
@@ -297,7 +297,7 @@ resource "cloudflare_zero_trust_access_application" "with_self_hosted_domains" {
   name                       = "${local.name_prefix} Self Hosted Domains"
   type                       = "self_hosted"
   self_hosted_domains        = ["legacy1.${local.app_domain_suffix}", "legacy2.${local.app_domain_suffix}"]
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # ============================================================================
@@ -311,7 +311,7 @@ resource "cloudflare_zero_trust_access_application" "with_domain_type" {
   name                       = "${local.name_prefix} Domain Type"
   domain                     = "domain-type.${local.app_domain_suffix}"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # ============================================================================
@@ -326,7 +326,7 @@ resource "cloudflare_zero_trust_access_application" "with_count" {
   name                       = "${local.name_prefix} Count ${count.index}"
   domain                     = "count-${count.index}.${local.app_domain_suffix}"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # ============================================================================
@@ -342,7 +342,7 @@ resource "cloudflare_zero_trust_access_application" "with_for_each" {
   domain                     = "${each.key}.${local.app_domain_suffix}"
   session_duration           = each.key == "prod" ? "8h" : "24h"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # ============================================================================
@@ -357,7 +357,7 @@ resource "cloudflare_zero_trust_access_application" "complex_nested" {
   session_duration = "12h"
 
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
   cors_headers = {
     allowed_methods   = ["GET", "POST"]
     allowed_origins   = ["*"]
@@ -372,7 +372,7 @@ resource "cloudflare_zero_trust_access_application" "with_var_refs" {
   name                       = "${local.name_prefix} Variable Refs"
   domain                     = "var-refs.${local.app_domain_suffix}"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # ============================================================================
@@ -385,7 +385,7 @@ resource "cloudflare_zero_trust_access_application" "empty_policies" {
   name                       = "${local.name_prefix} Empty Policies"
   domain                     = "empty-policies.${local.app_domain_suffix}"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # 26. App with only required fields and null optionals
@@ -394,7 +394,7 @@ resource "cloudflare_zero_trust_access_application" "sparse" {
   name                       = "${local.name_prefix} Sparse"
   domain                     = "sparse.${local.app_domain_suffix}"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # 27. Conditional app
@@ -405,7 +405,7 @@ resource "cloudflare_zero_trust_access_application" "conditional" {
   name                       = "${local.name_prefix} Conditional"
   domain                     = "conditional.${local.app_domain_suffix}"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # ============================================================================
@@ -419,7 +419,7 @@ resource "cloudflare_zero_trust_access_application" "special_chars" {
   domain                     = "special.${local.app_domain_suffix}"
   custom_deny_message        = "Access denied - contact support"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # ============================================================================
@@ -437,7 +437,7 @@ resource "cloudflare_zero_trust_access_application" "resourcename_opt2" {
   name                       = "${local.name_prefix} Pattern9 Option2"
   domain                     = "pattern9-opt2.${local.app_domain_suffix}"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # NOTE: cloudflare_access_policy with application_id CANNOT be migrated to v5.
@@ -452,7 +452,7 @@ resource "cloudflare_zero_trust_access_application" "self_hosted_with_saas_app" 
   name       = "${local.name_prefix} Self Hosted With SaaS App"
   type       = "self_hosted"
 
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 # Resource using v4 name option 1
@@ -461,7 +461,7 @@ resource "cloudflare_zero_trust_access_application" "resourcename_opt1" {
   name                       = "${local.name_prefix} Pattern9 Option1"
   domain                     = "pattern9-opt1.${local.app_domain_suffix}"
   type                       = "self_hosted"
-  http_only_cookie_attribute = "false"
+  http_only_cookie_attribute = false
 }
 
 moved {
