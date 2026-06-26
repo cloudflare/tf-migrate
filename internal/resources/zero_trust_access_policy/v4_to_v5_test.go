@@ -868,7 +868,7 @@ resource "cloudflare_access_policy" "test" {
 	if !strings.Contains(ctx.Diagnostics[0].Detail, "Inline policy to add") {
 		t.Errorf("Expected diagnostic detail to include inline policy example, got: %s", ctx.Diagnostics[0].Detail)
 	}
-	// Check that destructive warning is included (APIX-1133)
+	// Check that destructive warning is included
 	if !strings.Contains(ctx.Diagnostics[0].Detail, "DESTRUCTIVE IF APPLIED WITHOUT CHANGES") {
 		t.Errorf("Expected diagnostic detail to include destructive warning, got: %s", ctx.Diagnostics[0].Detail)
 	}

@@ -192,28 +192,6 @@ resource "cloudflare_access_policy" "multi_email_domain_policy" {
   }
 }
 
-# TKT-003: application-scoped policy (application_id + precedence)
-# This should migrate to a Terraform removed block in v5.
-resource "cloudflare_zero_trust_access_application" "test_app" {
-  account_id = var.cloudflare_account_id
-  name       = "${local.name_prefix}-test-app"
-  domain     = "test.${var.cloudflare_domain}"
-  type       = "self_hosted"
-}
-
-resource "cloudflare_access_policy" "app_scoped_policy" {
-  account_id       = var.cloudflare_account_id
-  application_id   = cloudflare_zero_trust_access_application.test_app.id
-  name             = "${local.name_prefix}-app-scoped"
-  decision         = "allow"
-  precedence       = 1
-  session_duration = "18h"
-
-  include {
-    everyone = true
-  }
-}
-
 # BUGS-2012: connection_rules ssh structure
 resource "cloudflare_zero_trust_access_policy" "connection-rules-v5-name-v4-body" {
   account_id       = var.cloudflare_account_id
