@@ -42,7 +42,7 @@ moved {
 }`,
 		},
 		{
-			Name: "policy with deprecated fields removed (zone_id, precedence), session_duration preserved",
+			Name: "policy with deprecated fields removed (zone_id + account_id present, precedence), session_duration preserved",
 			Input: `
 resource "cloudflare_access_policy" "test" {
   account_id       = "account-123"
@@ -148,6 +148,148 @@ moved {
 	}
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
+}
+
+func TestConfigTransformation_ZoneIDOnlyEmitsWarning(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	input := `
+resource "cloudflare_access_policy" "zone_scoped" {
+  zone_id  = var.zone_id
+  name     = "Zone Scoped Policy"
+  decision = "allow"
+
+  include {
+    everyone = true
+  }
+}`
+
+	// Parse the input HCL
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("Failed to parse input HCL: %v", diags)
+	}
+
+	ctx := &transform.Context{
+		Content:     []byte(input),
+		Filename:    "test.tf",
+		CFGFile:     file,
+		Diagnostics: hcl.Diagnostics{},
+	}
+
+	// Get the resource block
+	body := file.Body()
+	var resourceBlock *hclwrite.Block
+	for _, block := range body.Blocks() {
+		if block.Type() == "resource" {
+			resourceBlock = block
+			break
+		}
+	}
+	if resourceBlock == nil {
+		t.Fatal("Resource block not found")
+	}
+
+	// Transform
+	result, err := migrator.TransformConfig(ctx, resourceBlock)
+	if err != nil {
+		t.Fatalf("TransformConfig returned error: %v", err)
+	}
+
+	if result == nil {
+		t.Fatal("Expected non-nil result")
+	}
+
+	// Should have a warning diagnostic about zone_id -> account_id
+	if len(ctx.Diagnostics) != 1 {
+		t.Fatalf("Expected 1 diagnostic, got %d", len(ctx.Diagnostics))
+	}
+	diag := ctx.Diagnostics[0]
+	if diag.Severity != hcl.DiagWarning {
+		t.Errorf("Expected DiagWarning severity, got %v", diag.Severity)
+	}
+	if !strings.Contains(diag.Summary, "zone_id removed") {
+		t.Errorf("Expected summary to mention 'zone_id removed', got: %s", diag.Summary)
+	}
+	if !strings.Contains(diag.Summary, "account_id required") {
+		t.Errorf("Expected summary to mention 'account_id required', got: %s", diag.Summary)
+	}
+	if !strings.Contains(diag.Detail, "zone_scoped") {
+		t.Errorf("Expected detail to mention resource name 'zone_scoped', got: %s", diag.Detail)
+	}
+
+	// Verify zone_id was removed from the output
+	outputBody := resourceBlock.Body()
+	if outputBody.GetAttribute("zone_id") != nil {
+		t.Error("Expected zone_id to be removed from output")
+	}
+	// Verify account_id was NOT added (user must add it manually)
+	if outputBody.GetAttribute("account_id") != nil {
+		t.Error("Expected account_id to NOT be auto-added (user must add manually)")
+	}
+}
+
+func TestConfigTransformation_ZoneIDWithAccountIDNoWarning(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	input := `
+resource "cloudflare_access_policy" "both_ids" {
+  account_id = "account-123"
+  zone_id    = "zone-456"
+  name       = "Both IDs Policy"
+  decision   = "allow"
+
+  include {
+    everyone = true
+  }
+}`
+
+	// Parse the input HCL
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("Failed to parse input HCL: %v", diags)
+	}
+
+	ctx := &transform.Context{
+		Content:     []byte(input),
+		Filename:    "test.tf",
+		CFGFile:     file,
+		Diagnostics: hcl.Diagnostics{},
+	}
+
+	// Get the resource block
+	body := file.Body()
+	var resourceBlock *hclwrite.Block
+	for _, block := range body.Blocks() {
+		if block.Type() == "resource" {
+			resourceBlock = block
+			break
+		}
+	}
+	if resourceBlock == nil {
+		t.Fatal("Resource block not found")
+	}
+
+	// Transform
+	_, err := migrator.TransformConfig(ctx, resourceBlock)
+	if err != nil {
+		t.Fatalf("TransformConfig returned error: %v", err)
+	}
+
+	// Should have NO diagnostics when both account_id and zone_id are present
+	if len(ctx.Diagnostics) != 0 {
+		t.Errorf("Expected 0 diagnostics when account_id is present, got %d", len(ctx.Diagnostics))
+	}
+
+	// Verify zone_id was removed
+	outputBody := resourceBlock.Body()
+	if outputBody.GetAttribute("zone_id") != nil {
+		t.Error("Expected zone_id to be removed from output")
+	}
+	// Verify account_id was preserved
+	if outputBody.GetAttribute("account_id") == nil {
+		t.Error("Expected account_id to be preserved")
+	}
 }
 
 func TestConfigTransformation_Conditions(t *testing.T) {

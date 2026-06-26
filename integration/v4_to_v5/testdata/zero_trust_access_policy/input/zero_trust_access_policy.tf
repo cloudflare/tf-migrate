@@ -578,3 +578,28 @@ resource "cloudflare_access_policy" "bugs2007_auth_context" {
     }
   }
 }
+
+# zone_id-only policy (no account_id)
+# In v4, access policies could be zone-scoped. In v5, they are account-level only.
+# tf-migrate must remove zone_id and emit a warning that account_id is required.
+resource "cloudflare_access_policy" "zone_scoped_only" {
+  zone_id  = var.cloudflare_zone_id
+  name     = "${local.name_prefix}-zone-scoped-policy"
+  decision = "allow"
+
+  include {
+    email = ["user@example.com"]
+  }
+}
+
+# zone_id + account_id policy (zone_id removed, account_id kept, no warning)
+resource "cloudflare_access_policy" "zone_and_account" {
+  account_id = var.cloudflare_account_id
+  zone_id    = var.cloudflare_zone_id
+  name       = "${local.name_prefix}-zone-and-account-policy"
+  decision   = "allow"
+
+  include {
+    everyone = true
+  }
+}

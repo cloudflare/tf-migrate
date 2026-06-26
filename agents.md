@@ -753,6 +753,19 @@ make test-integration
 make lint-testdata
 ```
 
+**Step 7: Update the Terraform provider migration guides**
+
+When a migration emits a new `DiagWarning` (especially one requiring manual user
+action), the corresponding guidance must also be added to the Terraform provider's
+upgrade and migration docs:
+
+- `templates/guides/version-5-upgrade.md` — under the resource's `##` section
+- `templates/guides/version-5-migration.md` — under the relevant `####` subsection
+- Copy both templates to `docs/guides/` after editing
+
+These live in the `cloudflare/terraform-provider-cloudflare` repo. Open a
+separate PR there alongside the tf-migrate PR.
+
 ### Makefile Targets
 
 ```bash

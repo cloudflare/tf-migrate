@@ -9,7 +9,7 @@ This guide explains how `cloudflare_access_policy` resources migrate to `cloudfl
 | Resource name | `cloudflare_access_policy` | `cloudflare_zero_trust_access_policy` | Renamed |
 | `application_id` | Required | Removed | Moved to application |
 | `precedence` | Supported | Removed | Moved to application |
-| `zone_id` | Supported | Removed | Use on application |
+| `zone_id` | Supported | Removed | **Requires `account_id`** (see below) |
 | `session_duration` | Supported | Removed | Moved to application |
 | `include/exclude/require` | Blocks | Array attributes | Structure change |
 | Condition arrays | `email = ["a", "b"]` | Multiple condition objects | **EXPLOSION** |
@@ -18,6 +18,40 @@ This guide explains how `cloudflare_access_policy` resources migrate to `cloudfl
 | `approval_group` | Block | `approval_groups` array | Renamed + structure change |
 | `connection_rules` | Block | Attribute object | Syntax change |
 
+
+---
+
+## Zone-Scoped Policies Require `account_id`
+
+In v4, `cloudflare_access_policy` resources could be scoped to a zone using `zone_id`.
+In v5, **all access policies are account-level** and require `account_id` -- `zone_id` is
+not a valid attribute on `cloudflare_zero_trust_access_policy`.
+
+tf-migrate removes `zone_id` during migration. If the resource already has `account_id`,
+no action is needed. If the resource only had `zone_id` (no `account_id`), tf-migrate
+emits a **MIGRATION WARNING** and you must manually add `account_id`:
+
+```hcl
+# Before (v4 -- zone-scoped):
+resource "cloudflare_access_policy" "example" {
+  zone_id  = var.zone_id
+  name     = "My Policy"
+  decision = "allow"
+  # ...
+}
+
+# After tf-migrate (v5 -- account_id required, add manually):
+resource "cloudflare_zero_trust_access_policy" "example" {
+  account_id = var.cloudflare_account_id  # <-- YOU MUST ADD THIS
+  name       = "My Policy"
+  decision   = "allow"
+  # ...
+}
+```
+
+> **Note:** A zone ID is not the same as an account ID. tf-migrate cannot automatically
+> infer the correct account ID from a zone ID. Check your Cloudflare dashboard or use
+> `cloudflare_zone` data source to look up the owning account.
 
 ---
 
