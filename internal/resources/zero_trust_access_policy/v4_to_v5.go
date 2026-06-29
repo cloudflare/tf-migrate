@@ -305,6 +305,11 @@ func (m *V4ToV5Migrator) transformConditionAttributes(body *hclwrite.Body) {
 // transformConditionExpression transforms a condition list expression
 // Input: [{everyone = true, email = ["a", "b"]}]
 // Output: [{everyone = {}}, {email = {email = "a"}}, {email = {email = "b"}}]
+//
+// When a condition contains variable references that expand to for-expressions,
+// the result uses concat() to merge the dynamic and static parts:
+// Input: [{geo = local.blocked_countries, email = [local.svc_account]}]
+// Output: concat([for v in local.blocked_countries : {geo = {country_code = v}}], [{email = {email = local.svc_account}}])
 func (m *V4ToV5Migrator) transformConditionExpression(expr hclsyntax.Expression) hclsyntax.Expression {
 	tup, ok := expr.(*hclsyntax.TupleConsExpr)
 	if !ok {
@@ -336,11 +341,54 @@ func (m *V4ToV5Migrator) transformConditionExpression(expr hclsyntax.Expression)
 		}
 	}
 
-	// Return the modified tuple
-	return &hclsyntax.TupleConsExpr{
-		Exprs:     newExprs,
-		SrcRange:  tup.SrcRange,
-		OpenRange: tup.OpenRange,
+	// Expanded expressions that are ForExpr need concat() to merge with static elements
+	hasForExpr := false
+	for _, e := range newExprs {
+		if _, ok := e.(*hclsyntax.ForExpr); ok {
+			hasForExpr = true
+			break
+		}
+	}
+
+	if !hasForExpr {
+		// Plain tuple
+		return &hclsyntax.TupleConsExpr{
+			Exprs:     newExprs,
+			SrcRange:  tup.SrcRange,
+			OpenRange: tup.OpenRange,
+		}
+	}
+
+	// Build concat() arguments: group consecutive non-ForExpr elements into
+	// tuple literals, and keep ForExpr elements as standalone arguments
+	var concatArgs []hclsyntax.Expression
+	var staticBuf []hclsyntax.Expression
+
+	flushStatic := func() {
+		if len(staticBuf) > 0 {
+			concatArgs = append(concatArgs, &hclsyntax.TupleConsExpr{Exprs: staticBuf})
+			staticBuf = nil
+		}
+	}
+
+	for _, e := range newExprs {
+		if _, ok := e.(*hclsyntax.ForExpr); ok {
+			flushStatic()
+			concatArgs = append(concatArgs, e)
+		} else {
+			staticBuf = append(staticBuf, e)
+		}
+	}
+	flushStatic()
+
+	// If there's only one concat argument, return it directly
+	if len(concatArgs) == 1 {
+		return concatArgs[0]
+	}
+
+	return &hclsyntax.FunctionCallExpr{
+		Name: "concat",
+		Args: concatArgs,
 	}
 }
 
@@ -588,24 +636,78 @@ func (m *V4ToV5Migrator) expandArrayAttribute(key string, item hclsyntax.ObjectC
 		return result
 	}
 
-	// Handle single string value (not an array)
-	// common_name = "device" -> {common_name = {common_name = "device"}}
-	newObj := &hclsyntax.ObjectConsExpr{
+	// Wrap scalar types directly: common_name = "device" -> {common_name = {common_name = "device"}}
+	if m.isScalarExpression(item.ValueExpr) {
+		newObj := &hclsyntax.ObjectConsExpr{
+			Items: []hclsyntax.ObjectConsItem{
+				{
+					KeyExpr: m.newKeyExpr(key),
+					ValueExpr: &hclsyntax.ObjectConsExpr{
+						Items: []hclsyntax.ObjectConsItem{
+							{
+								KeyExpr:   m.newKeyExpr(innerFieldName),
+								ValueExpr: item.ValueExpr,
+							},
+						},
+					},
+				},
+			},
+		}
+		return []hclsyntax.Expression{newObj}
+	}
+
+	// The value is a non-literal (variable reference, function call, etc.)
+	// Emit a for expression: [for v in <expr> : { <key> = { <innerFieldName> = v } }]
+	forExpr := m.buildForExpansion(key, innerFieldName, item.ValueExpr)
+	return []hclsyntax.Expression{forExpr}
+}
+
+// isScalarExpression returns true if the expression is known to produce a single
+// scalar value. Variable refs and function calls are ambiguous and thus return false
+func (m *V4ToV5Migrator) isScalarExpression(expr hclsyntax.Expression) bool {
+	switch e := expr.(type) {
+	case *hclsyntax.LiteralValueExpr:
+		return true
+	case *hclsyntax.TemplateExpr:
+		// Template expressions like "prefix-${var.x}" always produce strings
+		_ = e
+		return true
+	default:
+		return false
+	}
+}
+
+// buildForExpansion creates a ForExpr that expands a list variable into condition objects:
+//   [for v in <collExpr> : { <key> = { <innerField> = v } }]
+func (m *V4ToV5Migrator) buildForExpansion(key, innerFieldName string, collExpr hclsyntax.Expression) *hclsyntax.ForExpr {
+	iterVar := "v"
+
+	// Build the body expression: { <key> = { <innerField> = v } }
+	bodyExpr := &hclsyntax.ObjectConsExpr{
 		Items: []hclsyntax.ObjectConsItem{
 			{
 				KeyExpr: m.newKeyExpr(key),
 				ValueExpr: &hclsyntax.ObjectConsExpr{
 					Items: []hclsyntax.ObjectConsItem{
 						{
-							KeyExpr:   m.newKeyExpr(innerFieldName),
-							ValueExpr: item.ValueExpr,
+							KeyExpr: m.newKeyExpr(innerFieldName),
+							ValueExpr: &hclsyntax.ScopeTraversalExpr{
+								Traversal: hcl.Traversal{
+									hcl.TraverseRoot{Name: iterVar},
+								},
+							},
 						},
 					},
 				},
 			},
 		},
 	}
-	return []hclsyntax.Expression{newObj}
+
+	return &hclsyntax.ForExpr{
+		ValVar:   iterVar,
+		CollExpr: collExpr,
+		ValExpr:  bodyExpr,
+	}
 }
 
 // expandNestedSelector expands nested selector blocks converted to list/object syntax.
@@ -1073,7 +1175,7 @@ func (m *V4ToV5Migrator) buildExprTokens(expr hclsyntax.Expression) hclwrite.Tok
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
 
 	case *hclsyntax.FunctionCallExpr:
-		// Handle function calls like toset(...), tolist(...) etc.
+		// Handle function calls like toset(...), tolist(...), concat(...) etc.
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(e.Name)})
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOParen, Bytes: []byte("(")})
 		for i, arg := range e.Args {
@@ -1083,6 +1185,22 @@ func (m *V4ToV5Migrator) buildExprTokens(expr hclsyntax.Expression) hclwrite.Tok
 			tokens = append(tokens, m.buildExprTokens(arg)...)
 		}
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCParen, Bytes: []byte(")")})
+
+	case *hclsyntax.ForExpr:
+		// Handle for expressions: [for v in expr : body]
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")})
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("for")})
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" ")})
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(e.ValVar)})
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" ")})
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("in")})
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" ")})
+		tokens = append(tokens, m.buildExprTokens(e.CollExpr)...)
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" ")})
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenColon, Bytes: []byte(":")})
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" ")})
+		tokens = append(tokens, m.buildExprTokens(e.ValExpr)...)
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
 
 	default:
 		// Fallback: try to serialize using the source range bytes from the original file
