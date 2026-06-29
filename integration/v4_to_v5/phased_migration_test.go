@@ -227,4 +227,123 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 		assert.Contains(t, string(content), `resource "cloudflare_dns_record"`)
 		assert.NotContains(t, string(content), markerPrefix)
 	})
+
+	// -------------------------------------------------------------------------
+	// Regression: inline comments with extra whitespace (#296)
+	//
+	// hclwrite.File.Bytes() normalizes whitespace around inline comments,
+	// while Block.BuildTokens preserves original spacing. If Bytes() is
+	// called after BuildTokens, the two representations diverge and the
+	// strings.Replace in runPhaseOne silently fails — the tool claims
+	// success but the file is unchanged.
+	// -------------------------------------------------------------------------
+	t.Run("Phase1_InlineComments_Issue296", func(t *testing.T) {
+		const inputWithComments = `resource "cloudflare_zone_settings_override" "widerivers_com" {
+  zone_id = "444f5d541a6bf40a524b9a78cb223c93"
+
+  settings {
+    http3            = "on"        # Enable HTTP/3
+    webp             = "on"        # Enable WebP
+    early_hints      = "on"        # Enable Early Hints
+    brotli           = "on"        # Enable Brotli compression
+    always_use_https = "on"        # Force HTTPS
+    ssl              = "strict"    # SSL mode
+    min_tls_version  = "1.2"       # Minimum TLS version
+    tls_1_3          = "zrt"       # TLS 1.3 with 0-RTT
+    security_level   = "high"      # Security level
+  }
+}
+`
+		dir := t.TempDir()
+		inputFile := filepath.Join(dir, "zone_setting.tf")
+		require.NoError(t, os.WriteFile(inputFile, []byte(inputWithComments), 0644))
+
+		migrateCmd := exec.Command(binaryPath,
+			"migrate",
+			"--config-dir", dir,
+			"--source-version", "v4",
+			"--target-version", "v5",
+			"--backup=false",
+			"--skip-version-check",
+		)
+		migrateCmd.Dir = dir
+		cmdOut, err := migrateCmd.CombinedOutput()
+		require.NoError(t, err, "tf-migrate phase 1 failed: %s", string(cmdOut))
+
+		content, err := os.ReadFile(inputFile)
+		require.NoError(t, err)
+		result := string(content)
+
+		// Resource block must be commented out with the marker prefix
+		assert.Contains(t, result, markerPrefix+`resource "cloudflare_zone_settings_override" "widerivers_com" {`,
+			"resource block should be commented out with marker prefix")
+
+		// A removed {} block must be present
+		assert.Contains(t, result, `removed {`)
+		assert.Contains(t, result, `cloudflare_zone_settings_override.widerivers_com`)
+		assert.Contains(t, result, `destroy = false`)
+
+		// No uncommented resource block visible to Terraform
+		for _, line := range strings.Split(result, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, `resource "cloudflare_zone_settings_override"`) {
+				t.Errorf("resource block must be commented out, found uncommented: %s", line)
+			}
+		}
+	})
+
+	// -------------------------------------------------------------------------
+	// Phase 1 with inline comments followed by full Phase 2
+	// Ensures the end-to-end flow works when inline comments are present.
+	// -------------------------------------------------------------------------
+	t.Run("Phase1Then2_InlineComments_FullMigration", func(t *testing.T) {
+		const inputWithComments = `resource "cloudflare_zone_settings_override" "example" {
+  zone_id = "0da42c8d2132a9ddaf714f9e7c920711"
+
+  settings {
+    always_online = "on"   # keep site online
+    ssl           = "full" # SSL mode
+  }
+}
+`
+		dir := t.TempDir()
+		inputFile := filepath.Join(dir, "zone_setting.tf")
+		require.NoError(t, os.WriteFile(inputFile, []byte(inputWithComments), 0644))
+
+		// Phase 1
+		p1 := exec.Command(binaryPath,
+			"migrate", "--config-dir", dir,
+			"--source-version", "v4", "--target-version", "v5", "--backup=false", "--skip-version-check",
+		)
+		p1.Dir = dir
+		p1Out, err := p1.CombinedOutput()
+		require.NoError(t, err, "phase 1 failed: %s", string(p1Out))
+
+		// Verify phase 1 output
+		p1Content, err := os.ReadFile(inputFile)
+		require.NoError(t, err)
+		assert.Contains(t, string(p1Content), markerPrefix,
+			"phase 1 must produce commented-out blocks")
+		assert.Contains(t, string(p1Content), `removed {`,
+			"phase 1 must produce removed {} block")
+
+		// Phase 2 — confirm with "y"
+		p2 := exec.Command(binaryPath,
+			"migrate", "--config-dir", dir,
+			"--source-version", "v4", "--target-version", "v5", "--backup=false", "--skip-version-check",
+		)
+		p2.Dir = dir
+		p2.Stdin = strings.NewReader("y\n")
+		p2Out, err := p2.CombinedOutput()
+		require.NoError(t, err, "phase 2 failed: %s", string(p2Out))
+
+		p2Content, err := os.ReadFile(inputFile)
+		require.NoError(t, err)
+		result := string(p2Content)
+
+		assert.NotContains(t, result, `resource "cloudflare_zone_settings_override"`)
+		assert.NotContains(t, result, markerPrefix, "no phase-1 markers should remain")
+		assert.Contains(t, result, `resource "cloudflare_zone_setting"`)
+		assert.Contains(t, result, `import {`)
+	})
 }

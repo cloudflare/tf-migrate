@@ -756,9 +756,17 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 			Resources:     cfg.resourcesToMigrate,
 		}
 
+		// Snapshot the normalized file bytes BEFORE calling BuildTokens on
+		// any block. hclwrite.File.Bytes() normalizes whitespace around
+		// inline comments as a side effect on the shared token list, while
+		// BuildTokens preserves original spacing. Calling Bytes() first
+		// ensures both representations use the same normalized form so the
+		// subsequent strings.Replace can find the match.
+		normalizedFile := string(parsed.Bytes())
+
 		// Collect (block text, removed block) pairs for this file.
 		type phaseOnePair struct {
-			blockText    string // raw bytes of the original resource block
+			blockText    string // normalized bytes of the original resource block
 			removedBlock *hclwrite.Block
 		}
 		var pairs []phaseOnePair
@@ -800,10 +808,7 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 			continue
 		}
 
-		// Use the parsed (normalized) file bytes as the base — both blockText
-		// from BuildTokens and the file bytes come from the same hclwrite
-		// tokenizer, so replacements match exactly.
-		newContent := string(parsed.Bytes())
+		newContent := normalizedFile
 		for _, pair := range pairs {
 			commented := commentOutBlock(pair.blockText)
 			// Build the removed {} block text
@@ -811,7 +816,17 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 			scratch.Body().AppendNewline()
 			scratch.Body().AppendBlock(pair.removedBlock)
 			removedText := string(hclwrite.Format(scratch.Bytes()))
+			before := newContent
 			newContent = strings.Replace(newContent, pair.blockText, commented+removedText, 1)
+			if newContent == before {
+				return fmt.Errorf(
+					"phase-1 replacement failed for block in %s: "+
+						"could not locate block text in normalized file content — "+
+						"this is a tf-migrate bug, please file an issue at "+
+						"https://github.com/cloudflare/tf-migrate/issues",
+					filepath.Base(file),
+				)
+			}
 		}
 
 		if cfg.backup {
