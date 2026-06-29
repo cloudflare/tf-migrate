@@ -30,6 +30,16 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
+func (m *V4ToV5Migrator) GetAttributeRenames() []transform.AttributeRename {
+	return []transform.AttributeRename{
+		{
+			ResourceType: "cloudflare_logpush_ownership_challenge",
+			OldAttribute: "ownership_challenge_filename",
+			NewAttribute: "filename",
+		},
+	}
+}
+
 // This resource does not rename, so we return the same name for both old and new
 func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	return []string{"cloudflare_logpush_ownership_challenge"}, "cloudflare_logpush_ownership_challenge"
@@ -48,4 +58,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		RemoveOriginal: false,
 	}, nil
 }
-
