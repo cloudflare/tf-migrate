@@ -187,6 +187,8 @@ resource "cloudflare_api_token" "full_example" {
 }
 
 # Test Case 8: Token with data reference and timestamps
+data "cloudflare_api_token_permission_groups_list" "all" {}
+
 resource "cloudflare_api_token" "api_token_create" {
   name = "${local.name_prefix} api_token_create"
 
