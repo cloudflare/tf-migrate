@@ -215,6 +215,10 @@ resource "cloudflare_logpush_ownership_challenge" "ignore_changes" {
   }
 }
 
+output "with_lifecycle_ownership_challenge_path" {
+  value = "cloudflare/${cloudflare_logpush_ownership_challenge.with_lifecycle.ownership_challenge_filename}"
+}
+
 # =============================================================================
 # Pattern 10: toset() conversion
 # =============================================================================
