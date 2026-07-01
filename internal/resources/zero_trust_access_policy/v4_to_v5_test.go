@@ -973,3 +973,164 @@ resource "cloudflare_zero_trust_access_policy" "test_everyone" {
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
 }
+
+// TestConfigTransformation_VariableReferences covers issue #303.
+func TestConfigTransformation_VariableReferences(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	tests := []testhelpers.ConfigTestCase{
+		{
+			Name: "exclude with variable reference for geo (issue #303)",
+			Input: `
+resource "cloudflare_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include {
+    email_domain = ["example.com"]
+  }
+
+  exclude {
+    geo = local.blocked_countries
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include = [{ email_domain = { domain = "example.com" } }]
+  exclude = [for v in local.blocked_countries : { geo = { country_code = v } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
+}`,
+		},
+		{
+			Name: "exclude with mixed variable and literal (issue #303 full scenario)",
+			Input: `
+resource "cloudflare_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include {
+    email_domain = ["example.com"]
+  }
+
+  exclude {
+    geo   = local.blocked_countries
+    email = [local.service_account]
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include = [{ email_domain = { domain = "example.com" } }]
+  exclude = concat([for v in local.blocked_countries : { geo = { country_code = v } }], [{ email = { email = local.service_account } }])
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
+}`,
+		},
+		{
+			Name: "include with variable reference for group",
+			Input: `
+resource "cloudflare_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include {
+    group = var.allowed_groups
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include = [for v in var.allowed_groups : { group = { id = v } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
+}`,
+		},
+		{
+			Name: "require with variable reference for ip",
+			Input: `
+resource "cloudflare_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include {
+    everyone = true
+  }
+
+  require {
+    ip = var.allowed_ips
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include = [{ everyone = {} }]
+  require = [for v in var.allowed_ips : { ip = { ip = v } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
+}`,
+		},
+		{
+			Name: "exclude with function call expression for geo",
+			Input: `
+resource "cloudflare_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include {
+    everyone = true
+  }
+
+  exclude {
+    geo = tolist(var.blocked_countries)
+  }
+}`,
+			Expected: `
+resource "cloudflare_zero_trust_access_policy" "test" {
+  account_id = "account-123"
+  name       = "Test Policy"
+  decision   = "allow"
+
+  include = [{ everyone = {} }]
+  exclude = [for v in tolist(var.blocked_countries) : { geo = { country_code = v } }]
+}
+
+moved {
+  from = cloudflare_access_policy.test
+  to   = cloudflare_zero_trust_access_policy.test
+}`,
+		},
+	}
+
+	testhelpers.RunConfigTransformTests(t, tests, migrator)
+}
