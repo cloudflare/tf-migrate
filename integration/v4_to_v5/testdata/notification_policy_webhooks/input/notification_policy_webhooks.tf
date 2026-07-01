@@ -16,9 +16,12 @@ variable "cloudflare_domain" {
   type        = string
 }
 
-# Use Cloudflare trace endpoint for webhook testing
-# URL: https://www.cloudflare.com/cdn-cgi/trace
-# This endpoint responds with 200 OK to all requests for webhook validation
+# Use Cloudflare-hosted httpbin as the webhook endpoint
+# URL: https://httpbin.cfdata.org/post
+# This endpoint returns 200 OK for POST requests, which is what the Cloudflare
+# Notifications API needs to succeed webhook validation on create.
+# (The previous URL, cloudflare.com/cdn-cgi/trace, only accepts GET and now
+# returns 4xx for the validator's POST, breaking fresh webhook creates.)
 
 # ========================================
 # Locals
@@ -26,7 +29,7 @@ variable "cloudflare_domain" {
 locals {
   common_account = var.cloudflare_account_id
   name_prefix                        = "cftftest"
-  webhook_base_url = "https://www.cloudflare.com/cdn-cgi/trace"
+  webhook_base_url = "https://httpbin.cfdata.org/post"
   enable_backup    = true
   enable_test      = false
 }
@@ -39,14 +42,14 @@ locals {
 resource "cloudflare_notification_policy_webhooks" "basic_webhook" {
   account_id = var.cloudflare_account_id
   name       = "basic-webhook"
-  url        = "https://www.cloudflare.com/cdn-cgi/trace"
+  url        = "https://httpbin.cfdata.org/post"
 }
 
 # Test Case 2: Full webhook with all fields
 resource "cloudflare_notification_policy_webhooks" "full_webhook" {
   account_id = var.cloudflare_account_id
   name       = "production-webhook"
-  url        = "https://www.cloudflare.com/cdn-cgi/trace"
+  url        = "https://httpbin.cfdata.org/post"
   secret     = "webhook-secret-token-12345"
 }
 

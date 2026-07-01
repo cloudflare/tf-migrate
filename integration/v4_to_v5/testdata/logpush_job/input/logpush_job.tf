@@ -25,11 +25,14 @@ resource "cloudflare_logpush_job" "minimal" {
 }
 
 # Job with logpull_options only (no output_options)
+# NOTE: audit_logs dataset fields are e.g. ActorEmail, ActionType, ResourceType.
+# ClientIP/EdgeStartTimestamp belong to the http_requests dataset and cause
+# "no valid fields for dataset audit_logs" errors from the API.
 resource "cloudflare_logpush_job" "with_logpull_options" {
   account_id       = var.cloudflare_account_id
   dataset          = "audit_logs"
   destination_conf = "https://logpush-receiver.sd.cfplat.com"
-  logpull_options  = "fields=ClientIP,EdgeStartTimestamp&timestamps=unixnano"
+  logpull_options  = "fields=ActorEmail,ActionType,When&timestamps=unixnano"
 }
 
 # Job with output_options block
@@ -41,7 +44,7 @@ resource "cloudflare_logpush_job" "with_output_options" {
   output_options {
     batch_prefix = "{"
     batch_suffix = "}"
-    field_names  = ["ClientIP", "EdgeStartTimestamp"]
+    field_names  = ["ActorEmail", "ActionType", "When"]
     output_type  = "ndjson"
   }
 }
