@@ -35,19 +35,19 @@ locals {
 resource "cloudflare_notification_policy_webhooks" "e2e_webhook_1" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-e2e-webhook-1"
-  url        = "https://www.cloudflare.com/cdn-cgi/trace"
+  url        = "https://httpbin.cfdata.org/post"
 }
 
 resource "cloudflare_notification_policy_webhooks" "e2e_webhook_2" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-e2e-webhook-2"
-  url        = "https://www.cloudflare.com/cdn-cgi/trace"
+  url        = "https://httpbin.cfdata.org/post"
 }
 
 resource "cloudflare_notification_policy_webhooks" "e2e_webhook_3" {
   account_id = var.cloudflare_account_id
   name       = "${local.name_prefix}-e2e-webhook-3"
-  url        = "https://www.cloudflare.com/cdn-cgi/trace"
+  url        = "https://httpbin.cfdata.org/post"
 }
 
 ##########################
