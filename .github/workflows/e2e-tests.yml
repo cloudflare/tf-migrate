@@ -2,6 +2,15 @@ name: E2E Tests
 concurrency:
   group: e2e-tests
 
+# Runs on pushes to main against a PINNED provider tag. This is the blocking
+# CI signal for merging: it verifies that migration is stable against the same
+# provider release users install from the registry.
+#
+# To validate against the provider's development tip (next branch), run
+# .github/workflows/e2e-tests-next.yml manually via workflow_dispatch. That
+# workflow builds and tests against `next` and is expected to catch upstream
+# regressions early — but its failures don't block tf-migrate PRs.
+
 on:
   workflow_dispatch:
   push:
@@ -9,6 +18,15 @@ on:
       - main
 
 env:
+  # Pinned target v5 provider version. Bump deliberately in its own PR when a
+  # new stable v5 release is out and you have confirmed compatibility.
+  # The pin is applied twice:
+  #   1. `ref` in the provider checkout below (builds this exact source)
+  #   2. `--target-provider-version` on the runner (writes this into the
+  #      generated v5 config's required_providers block)
+  # Keep them in sync.
+  TARGET_PROVIDER_VERSION: "5.21.1"
+
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
   CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
   CLOUDFLARE_DOMAIN: ${{ secrets.CLOUDFLARE_DOMAIN }}
@@ -34,11 +52,11 @@ jobs:
         with:
           path: tf-migrate
 
-      - name: Checkout cloudflare provider (next branch)
+      - name: Checkout cloudflare provider (pinned release)
         uses: actions/checkout@v4
         with:
           repository: cloudflare/terraform-provider-cloudflare
-          ref: next
+          ref: v${{ env.TARGET_PROVIDER_VERSION }}
           path: provider
 
       - name: Setup go
@@ -57,4 +75,4 @@ jobs:
 
       - name: Run E2E Tests (provider state upgrader)
         working-directory: ./tf-migrate
-        run: ./scripts/run-e2e-tests.sh --apply-exemptions --provider ../provider --parallelism 5 --exclude byo_ip_prefix --target-provider-version 5.21.1
+        run: ./scripts/run-e2e-tests.sh --apply-exemptions --provider ../provider --parallelism 5 --exclude byo_ip_prefix --target-provider-version ${{ env.TARGET_PROVIDER_VERSION }}

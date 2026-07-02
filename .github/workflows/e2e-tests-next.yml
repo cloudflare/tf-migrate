@@ -1,0 +1,87 @@
+name: E2E Tests (provider next branch)
+concurrency:
+  # Share the concurrency group with the stable e2e workflow — both operate on
+  # the same Cloudflare test account and R2 state, so they must not overlap.
+  group: e2e-tests
+
+# Manual-only. This workflow builds the Cloudflare provider from the tip of its
+# `next` branch and runs the same e2e suite as e2e-tests.yml. Use it to:
+#
+#   - validate an unreleased provider change against tf-migrate before it ships
+#   - reproduce upstream regressions that only surface on `next`
+#   - regression-test tf-migrate PRs against the upcoming provider release
+#
+# Failures here do NOT block main. They are advisory. When they fire, the
+# expected action is to file / fix an issue against
+# cloudflare/terraform-provider-cloudflare, then bump the stable pin in
+# e2e-tests.yml once a new release includes the fix.
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider_ref:
+        description: "Provider git ref to build (branch, tag, or commit SHA)"
+        required: false
+        default: "next"
+      target_provider_version:
+        description: "Version string written into v5 required_providers"
+        required: false
+        default: "5.21.1"
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+  CLOUDFLARE_DOMAIN: ${{ secrets.CLOUDFLARE_DOMAIN }}
+  CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+  CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+  CLOUDFLARE_R2_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+  CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+  CLOUDFLARE_CROWDSTRIKE_CLIENT_ID: ${{ secrets.CLOUDFLARE_CROWDSTRIKE_CLIENT_ID }}
+  CLOUDFLARE_CROWDSTRIKE_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_CROWDSTRIKE_CLIENT_SECRET }}
+  CLOUDFLARE_CROWDSTRIKE_API_URL: ${{ secrets.CLOUDFLARE_CROWDSTRIKE_API_URL }}
+  CLOUDFLARE_CROWDSTRIKE_CUSTOMER_ID: ${{ secrets.CLOUDFLARE_CROWDSTRIKE_CUSTOMER_ID }}
+  TF_MIG_TEST: true
+
+jobs:
+  e2e-tests-provider-next:
+    name: E2E Tests (provider next)
+    runs-on: large-runner
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout tf-migrate
+        uses: actions/checkout@v4
+        with:
+          path: tf-migrate
+
+      - name: Checkout cloudflare provider (${{ inputs.provider_ref }})
+        uses: actions/checkout@v4
+        with:
+          repository: cloudflare/terraform-provider-cloudflare
+          ref: ${{ inputs.provider_ref }}
+          path: provider
+
+      - name: Record provider ref for the log
+        working-directory: ./provider
+        run: |
+          echo "provider_ref_input=${{ inputs.provider_ref }}"
+          echo "resolved_sha=$(git rev-parse HEAD)"
+          echo "head_message=$(git log -1 --pretty=%s)"
+
+      - name: Setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ./tf-migrate/go.mod
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Build provider
+        working-directory: ./provider
+        run: go build -o terraform-provider-cloudflare .
+
+      - name: Run E2E Tests (provider state upgrader)
+        working-directory: ./tf-migrate
+        run: ./scripts/run-e2e-tests.sh --apply-exemptions --provider ../provider --parallelism 5 --exclude byo_ip_prefix --target-provider-version ${{ inputs.target_provider_version }}
