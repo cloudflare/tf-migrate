@@ -20,11 +20,16 @@ type E2EEnv struct {
 	APIKey                 string
 	R2AccessKeyID          string
 	R2SecretAccessKey      string
-	CrowdstrikeClientID    string
+	CrowdstrikeClientID     string
 	CrowdstrikeClientSecret string
-	CrowdstrikeAPIURL      string
-	CrowdstrikeCustomerID  string
-	BYOIPCidr              string
+	CrowdstrikeAPIURL       string
+	CrowdstrikeCustomerID   string
+	HyperdriveDBHost        string
+	HyperdriveDBName        string
+	HyperdriveDBPort        string
+	HyperdriveDBUser        string
+	HyperdriveDBPassword    string
+	BYOIPCidr               string
 	BYOIPASN               string
 	BYOIPLOADocumentID     string
 	BYOIPPrefixID          string
@@ -48,10 +53,15 @@ func LoadEnv(required []string) (*E2EEnv, error) {
 		APIKey:                 os.Getenv("CLOUDFLARE_API_KEY"),
 		R2AccessKeyID:          os.Getenv("CLOUDFLARE_R2_ACCESS_KEY_ID"),
 		R2SecretAccessKey:      os.Getenv("CLOUDFLARE_R2_SECRET_ACCESS_KEY"),
-		CrowdstrikeClientID:    os.Getenv("CLOUDFLARE_CROWDSTRIKE_CLIENT_ID"),
+		CrowdstrikeClientID:     os.Getenv("CLOUDFLARE_CROWDSTRIKE_CLIENT_ID"),
 		CrowdstrikeClientSecret: os.Getenv("CLOUDFLARE_CROWDSTRIKE_CLIENT_SECRET"),
-		CrowdstrikeAPIURL:      os.Getenv("CLOUDFLARE_CROWDSTRIKE_API_URL"),
-		CrowdstrikeCustomerID:  os.Getenv("CLOUDFLARE_CROWDSTRIKE_CUSTOMER_ID"),
+		CrowdstrikeAPIURL:       os.Getenv("CLOUDFLARE_CROWDSTRIKE_API_URL"),
+		CrowdstrikeCustomerID:   os.Getenv("CLOUDFLARE_CROWDSTRIKE_CUSTOMER_ID"),
+		HyperdriveDBHost:        os.Getenv("CLOUDFLARE_HYPERDRIVE_DATABASE_HOSTNAME"),
+		HyperdriveDBName:        getEnvWithDefault("CLOUDFLARE_HYPERDRIVE_DATABASE_NAME", "postgres"),
+		HyperdriveDBPort:        getEnvWithDefault("CLOUDFLARE_HYPERDRIVE_DATABASE_PORT", "5432"),
+		HyperdriveDBUser:        getEnvWithDefault("CLOUDFLARE_HYPERDRIVE_DATABASE_USER", "postgres"),
+		HyperdriveDBPassword:    getEnvWithDefault("CLOUDFLARE_HYPERDRIVE_DATABASE_PASSWORD", "password"),
 		BYOIPCidr:              getEnvWithDefault("CLOUDFLARE_BYO_IP_CIDR", "2606:54c2:2::/48"),
 		BYOIPASN:               getEnvWithDefault("CLOUDFLARE_BYO_IP_ASN", "13335"),
 		BYOIPLOADocumentID:     getEnvWithDefault("CLOUDFLARE_BYO_IP_LOA_DOCUMENT_ID", "a6061274b61449d3bb4521aee2e90c95"),
@@ -84,6 +94,16 @@ func LoadEnv(required []string) (*E2EEnv, error) {
 			value = env.CrowdstrikeAPIURL
 		case "CLOUDFLARE_CROWDSTRIKE_CUSTOMER_ID":
 			value = env.CrowdstrikeCustomerID
+		case "CLOUDFLARE_HYPERDRIVE_DATABASE_HOSTNAME":
+			value = env.HyperdriveDBHost
+		case "CLOUDFLARE_HYPERDRIVE_DATABASE_NAME":
+			value = env.HyperdriveDBName
+		case "CLOUDFLARE_HYPERDRIVE_DATABASE_PORT":
+			value = env.HyperdriveDBPort
+		case "CLOUDFLARE_HYPERDRIVE_DATABASE_USER":
+			value = env.HyperdriveDBUser
+		case "CLOUDFLARE_HYPERDRIVE_DATABASE_PASSWORD":
+			value = env.HyperdriveDBPassword
 		case "CLOUDFLARE_BYO_IP_CIDR":
 			value = env.BYOIPCidr
 		case "CLOUDFLARE_BYO_IP_ASN":
