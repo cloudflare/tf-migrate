@@ -137,6 +137,37 @@ variable "crowdstrike_customer_id" {
   description = "CrowdStrike customer ID for posture integration tests"
   type        = string
 }
+
+variable "hyperdrive_db_host" {
+  description = "Publicly resolvable hostname of a Postgres-compatible database for Hyperdrive"
+  type        = string
+  default     = ""
+}
+
+variable "hyperdrive_db_name" {
+  description = "Hyperdrive origin database name"
+  type        = string
+  default     = "postgres"
+}
+
+variable "hyperdrive_db_port" {
+  description = "Hyperdrive origin database port"
+  type        = number
+  default     = 5432
+}
+
+variable "hyperdrive_db_user" {
+  description = "Hyperdrive origin database user"
+  type        = string
+  default     = "postgres"
+}
+
+variable "hyperdrive_db_password" {
+  description = "Hyperdrive origin database password"
+  type        = string
+  default     = "password"
+  sensitive   = true
+}
 `, versionConstraint)
 }
 

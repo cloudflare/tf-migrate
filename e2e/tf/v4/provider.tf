@@ -86,3 +86,36 @@ variable "byo_ip_prefix_id" {
   type        = string
   default     = "b543f1a825f4474b88e945f164624412"
 }
+
+# Hyperdrive variables for testing
+# Set via CLOUDFLARE_HYPERDRIVE_DATABASE_* environment variables
+variable "hyperdrive_db_host" {
+  description = "Publicly resolvable hostname of a Postgres-compatible database for Hyperdrive"
+  type        = string
+  default     = ""
+}
+
+variable "hyperdrive_db_name" {
+  description = "Hyperdrive origin database name"
+  type        = string
+  default     = "postgres"
+}
+
+variable "hyperdrive_db_port" {
+  description = "Hyperdrive origin database port"
+  type        = number
+  default     = 5432
+}
+
+variable "hyperdrive_db_user" {
+  description = "Hyperdrive origin database user"
+  type        = string
+  default     = "postgres"
+}
+
+variable "hyperdrive_db_password" {
+  description = "Hyperdrive origin database password"
+  type        = string
+  default     = "password"
+  sensitive   = true
+}

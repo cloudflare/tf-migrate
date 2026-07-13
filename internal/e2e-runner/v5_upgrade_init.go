@@ -293,6 +293,21 @@ func generateMainTF(tfDir string, moduleNames []string) (string, error) {
 		if moduleVars["crowdstrike_customer_id"] {
 			sb.WriteString("\n  crowdstrike_customer_id   = var.crowdstrike_customer_id")
 		}
+		if moduleVars["hyperdrive_db_host"] {
+			sb.WriteString("\n  hyperdrive_db_host        = var.hyperdrive_db_host")
+		}
+		if moduleVars["hyperdrive_db_name"] {
+			sb.WriteString("\n  hyperdrive_db_name        = var.hyperdrive_db_name")
+		}
+		if moduleVars["hyperdrive_db_port"] {
+			sb.WriteString("\n  hyperdrive_db_port        = var.hyperdrive_db_port")
+		}
+		if moduleVars["hyperdrive_db_user"] {
+			sb.WriteString("\n  hyperdrive_db_user        = var.hyperdrive_db_user")
+		}
+		if moduleVars["hyperdrive_db_password"] {
+			sb.WriteString("\n  hyperdrive_db_password    = var.hyperdrive_db_password")
+		}
 
 		sb.WriteString("\n}\n\n")
 	}
@@ -314,12 +329,18 @@ func generateTFVars(env *E2EEnv, fromVersion string) string {
 	sb.WriteString(fmt.Sprintf("crowdstrike_client_secret = %q\n", env.CrowdstrikeClientSecret))
 	sb.WriteString(fmt.Sprintf("crowdstrike_api_url       = %q\n", env.CrowdstrikeAPIURL))
 	sb.WriteString(fmt.Sprintf("crowdstrike_customer_id   = %q\n", env.CrowdstrikeCustomerID))
+	sb.WriteString(fmt.Sprintf("hyperdrive_db_host        = %q\n", env.HyperdriveDBHost))
+	sb.WriteString(fmt.Sprintf("hyperdrive_db_name        = %q\n", env.HyperdriveDBName))
+	sb.WriteString(fmt.Sprintf("hyperdrive_db_port        = %q\n", env.HyperdriveDBPort))
+	sb.WriteString(fmt.Sprintf("hyperdrive_db_user        = %q\n", env.HyperdriveDBUser))
+	sb.WriteString(fmt.Sprintf("hyperdrive_db_password    = %q\n", env.HyperdriveDBPassword))
 
 	return sb.String()
 }
 
 func validateModuleSpecificEnv(tfDir string, moduleNames []string, env *E2EEnv) error {
 	requiresCrowdstrike := false
+	requiresHyperdrive := false
 	for _, name := range moduleNames {
 		moduleDir := filepath.Join(tfDir, name)
 		moduleVars, err := discoverModuleVariables(moduleDir)
@@ -328,8 +349,14 @@ func validateModuleSpecificEnv(tfDir string, moduleNames []string, env *E2EEnv) 
 		}
 		if moduleVars["crowdstrike_client_id"] || moduleVars["crowdstrike_client_secret"] || moduleVars["crowdstrike_api_url"] || moduleVars["crowdstrike_customer_id"] {
 			requiresCrowdstrike = true
-			break
 		}
+		if moduleVars["hyperdrive_db_host"] {
+			requiresHyperdrive = true
+		}
+	}
+
+	if requiresHyperdrive && env.HyperdriveDBHost == "" {
+		return fmt.Errorf("CLOUDFLARE_HYPERDRIVE_DATABASE_HOSTNAME environment variable is required for selected resources")
 	}
 
 	if !requiresCrowdstrike {
