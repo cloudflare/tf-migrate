@@ -25,7 +25,7 @@ env:
   #   2. `--target-provider-version` on the runner (writes this into the
   #      generated v5 config's required_providers block)
   # Keep them in sync.
-  TARGET_PROVIDER_VERSION: "5.21.1"
+  TARGET_PROVIDER_VERSION: "5.22.0"
 
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
   CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}

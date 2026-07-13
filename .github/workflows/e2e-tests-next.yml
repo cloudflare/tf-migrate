@@ -26,7 +26,7 @@ on:
       target_provider_version:
         description: "Version string written into v5 required_providers"
         required: false
-        default: "5.21.1"
+        default: "5.22.0"
 
 env:
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
