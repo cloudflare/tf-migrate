@@ -20,8 +20,9 @@ resource "cloudflare_d1_database" "test" {
 }`,
 				Expected: `
 resource "cloudflare_d1_database" "test" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
-  name       = "my-database"
+  account_id       = "f037e56e89293a057740de681ac9abbe"
+  name             = "my-database"
+  read_replication = { mode = "disabled" }
 }`,
 			},
 			{
@@ -41,8 +42,9 @@ variable "account_id" {
 }
 
 resource "cloudflare_d1_database" "test" {
-  account_id = var.account_id
-  name       = "my-database"
+  account_id       = var.account_id
+  name             = "my-database"
+  read_replication = { mode = "disabled" }
 }`,
 			},
 			{
@@ -59,13 +61,15 @@ resource "cloudflare_d1_database" "db2" {
 }`,
 				Expected: `
 resource "cloudflare_d1_database" "db1" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
-  name       = "database-one"
+  account_id       = "f037e56e89293a057740de681ac9abbe"
+  name             = "database-one"
+  read_replication = { mode = "disabled" }
 }
 
 resource "cloudflare_d1_database" "db2" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
-  name       = "database-two"
+  account_id       = "f037e56e89293a057740de681ac9abbe"
+  name             = "database-two"
+  read_replication = { mode = "disabled" }
 }`,
 			},
 			{
@@ -77,8 +81,9 @@ resource "cloudflare_d1_database" "test" {
 }`,
 				Expected: `
 resource "cloudflare_d1_database" "test" {
-  account_id = var.account_id
-  name       = "${var.environment}-database"
+  account_id       = var.account_id
+  name             = "${var.environment}-database"
+  read_replication = { mode = "disabled" }
 }`,
 			},
 			{
@@ -94,12 +99,28 @@ resource "cloudflare_d1_database" "test" {
 }`,
 				Expected: `
 resource "cloudflare_d1_database" "test" {
-  account_id = "f037e56e89293a057740de681ac9abbe"
-  name       = "lifecycle-database"
+  account_id       = "f037e56e89293a057740de681ac9abbe"
+  name             = "lifecycle-database"
+  read_replication = { mode = "disabled" }
 
   lifecycle {
     prevent_destroy = true
   }
+}`,
+			},
+			{
+				Name: "d1 database with read_replication already set",
+				Input: `
+resource "cloudflare_d1_database" "test" {
+  account_id       = "f037e56e89293a057740de681ac9abbe"
+  name             = "my-database"
+  read_replication = { mode = "auto" }
+}`,
+				Expected: `
+resource "cloudflare_d1_database" "test" {
+  account_id       = "f037e56e89293a057740de681ac9abbe"
+  name             = "my-database"
+  read_replication = { mode = "auto" }
 }`,
 			},
 		}
