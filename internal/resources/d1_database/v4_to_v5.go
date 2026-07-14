@@ -3,7 +3,9 @@ package d1_database
 import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // V4ToV5Migrator handles migration of D1 Database resources from v4 to v5.
@@ -38,8 +40,24 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 }
 
 // TransformConfig transforms the HCL configuration from v4 to v5.
-// No transformations are needed -- the config is identical between v4 and v5.
+// The only required change is adding `read_replication = { mode = "disabled" }`
+// to match the API default. The D1 API returns read_replication={mode:"disabled"}
+// on read but rejects null on update. Without this, the v5 provider's state
+// upgrader initializes read_replication as null, which causes a 400 Bad Request
+// on the next apply.
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+	body := block.Body()
+
+	// Set read_replication default if not already present.
+	if !tfhcl.HasAttribute(body, "read_replication") {
+		body.SetAttributeRaw("read_replication", hclwrite.TokensForObject([]hclwrite.ObjectAttrTokens{
+			{
+				Name:  hclwrite.TokensForIdentifier("mode"),
+				Value: hclwrite.TokensForValue(cty.StringVal("disabled")),
+			},
+		}))
+	}
+
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
