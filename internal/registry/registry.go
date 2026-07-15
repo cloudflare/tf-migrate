@@ -3,6 +3,7 @@ package registry
 import (
 	accountrolesdata "github.com/cloudflare/tf-migrate/internal/datasources/account_roles"
 	accountsdata "github.com/cloudflare/tf-migrate/internal/datasources/accounts"
+	apitokenpermgroupsdata "github.com/cloudflare/tf-migrate/internal/datasources/api_token_permission_groups"
 	lbpoolsdata "github.com/cloudflare/tf-migrate/internal/datasources/load_balancer_pools"
 	rulesetsdata "github.com/cloudflare/tf-migrate/internal/datasources/rulesets"
 	zonedata "github.com/cloudflare/tf-migrate/internal/datasources/zone"
@@ -99,6 +100,7 @@ func RegisterAllMigrations() {
 	// Datasources
 	accountrolesdata.NewV4ToV5Migrator()
 	accountsdata.NewV4ToV5Migrator()
+	apitokenpermgroupsdata.NewV4ToV5Migrator()
 	lbpoolsdata.NewV4ToV5Migrator()
 	rulesetsdata.NewV4ToV5Migrator()
 	zonedata.NewV4ToV5Migrator()
