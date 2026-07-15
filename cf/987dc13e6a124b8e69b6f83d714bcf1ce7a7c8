@@ -1,0 +1,51 @@
+integration/v4_to_v5/testdata/workers_secret/expected/workers_secret.tf
+  s_d15210e3478b88::t_46aa3ac745b713 1-174
+internal/registry/registry.go
+  s_4cd8124f154851::t_920c342a6cc648 64,167
+internal/resources/workers_script/v4_to_v5.go
+  s_cc87f5eda2585e::t_c0b5b014c9fd66 10,83-90
+internal/resources/workers_secret/v4_to_v5.go
+  s_9e1bdde0d21c3c::t_96ec4b49bfb524 1-352
+internal/resources/workers_secret/v4_to_v5_test.go
+  s_9e1bdde0d21c3c::t_83408da69b8515 1-392
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cf987dc13e6a124b8e69b6f83d714bcf1ce7a7c8",
+  "prompts": {},
+  "sessions": {
+    "s_4cd8124f154851": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_099a09b6cffeUQ9AE05Yemg34J",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sarah Sicard <ssicard@cloudflare.com>"
+    },
+    "s_9e1bdde0d21c3c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09995fa42ffeZA5HEj9sX9v8bt",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sarah Sicard <ssicard@cloudflare.com>"
+    },
+    "s_cc87f5eda2585e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09995d32dffeqJG3qWhCbIIKPQ",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sarah Sicard <ssicard@cloudflare.com>"
+    },
+    "s_d15210e3478b88": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_099ccaef4ffelQLGX5eqwB987v",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sarah Sicard <ssicard@cloudflare.com>"
+    }
+  }
+}
