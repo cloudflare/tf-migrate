@@ -61,9 +61,9 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_custom_domain"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_for_platforms_dispatch_namespace"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv"
-	"github.com/cloudflare/tf-migrate/internal/resources/workers_secret"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_kv_namespace"
 	"github.com/cloudflare/tf-migrate/internal/resources/workers_script"
+	"github.com/cloudflare/tf-migrate/internal/resources/workers_secret"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_application"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_group"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_identity_provider"
@@ -164,8 +164,8 @@ func RegisterAllMigrations() {
 	workers_kv.NewV4ToV5Migrator()
 	workers_kv_namespace.NewV4ToV5Migrator()
 	workers_script.NewV4ToV5Migrator()
-	workers_secret.NewV4ToV5Migrator()
 	workers_for_platforms_dispatch_namespace.NewV4ToV5Migrator()
+	workers_secret.NewV4ToV5Migrator()
 	zero_trust_access_application.NewV4ToV5Migrator()
 	zero_trust_access_group.NewV4ToV5Migrator()
 	zero_trust_access_identity_provider.NewV4ToV5Migrator()

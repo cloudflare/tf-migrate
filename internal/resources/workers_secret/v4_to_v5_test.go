@@ -32,6 +32,11 @@ func TestV4ToV5Transformation(t *testing.T) {
 		t.Run("SecretMatchedByLiteralScriptName", testSecretMatchedByLiteralScriptName)
 		t.Run("SingularWorkerSecretMergedIntoScript", testSingularWorkerSecretMergedIntoScript)
 		t.Run("SecretWithReferenceToSingularWorkerScript", testSecretWithReferenceToSingularWorkerScript)
+		t.Run("IdempotentMigration", testCrossResourceMigrationIsIdempotent)
+	})
+
+	t.Run("Diagnostics", func(t *testing.T) {
+		t.Run("DiagnosticContent", testDiagnosticContent)
 	})
 }
 
@@ -363,6 +368,62 @@ resource "cloudflare_workers_secret" "my_secret" {
 }`
 
 	runCrossResourceTest(t, input, expected)
+}
+
+func testCrossResourceMigrationIsIdempotent(t *testing.T) {
+	input := `resource "cloudflare_workers_script" "my_worker" {
+  account_id  = "abc123"
+  script_name = "my-worker"
+  content     = "addEventListener('fetch', event => {});"
+}
+
+resource "cloudflare_workers_secret" "my_secret" {
+  account_id  = "abc123"
+  script_name = cloudflare_workers_script.my_worker.script_name
+  name        = "MY_SECRET"
+  secret_text = "super-secret"
+}`
+
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+
+	ProcessCrossResourceConfigMigration(file)
+	result1 := strings.TrimSpace(string(hclwrite.Format(file.Bytes())))
+
+	// Run again on the output — should be identical
+	file2, diags := hclwrite.ParseConfig([]byte(result1), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+	ProcessCrossResourceConfigMigration(file2)
+	result2 := strings.TrimSpace(string(hclwrite.Format(file2.Bytes())))
+
+	assert.Equal(t, result1, result2, "Expected idempotent migration")
+}
+
+func testDiagnosticContent(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	input := `resource "cloudflare_workers_secret" "my_secret" {
+  account_id  = "abc123"
+  script_name = cloudflare_workers_script.my_worker.name
+  name        = "MY_SECRET"
+  secret_text = "super-secret"
+}`
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors())
+
+	block := file.Body().Blocks()[0]
+	ctx := &transform.Context{Filename: "test.tf", CFGFile: file}
+	_, err := migrator.(*V4ToV5Migrator).TransformConfig(ctx, block)
+	require.NoError(t, err)
+
+	require.Len(t, ctx.Diagnostics, 1)
+	diag := ctx.Diagnostics[0]
+	assert.Equal(t, hcl.DiagWarning, diag.Severity)
+	assert.Contains(t, diag.Summary, "Resource removed")
+	assert.Contains(t, diag.Summary, "cloudflare_workers_secret.my_secret")
+	assert.Contains(t, diag.Detail, "secret_text")
+	assert.Contains(t, diag.Detail, "removed")
+	assert.NotContains(t, diag.Detail, "terraform state rm")
 }
 
 // runCrossResourceTest parses input HCL, runs ProcessCrossResourceConfigMigration,

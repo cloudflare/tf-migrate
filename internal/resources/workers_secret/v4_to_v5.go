@@ -48,6 +48,8 @@ func NewV4ToV5Migrator() transform.ResourceTransformer {
 	return migrator
 }
 
+// GetResourceType returns empty string because workers_secret is removed in v5
+// (folded into workers_script bindings), so there is no v5 resource type.
 func (m *V4ToV5Migrator) GetResourceType() string {
 	return ""
 }
@@ -116,8 +118,13 @@ following binding to the parent resource manually:
 
 %s
 
-After applying, run 'terraform state rm %s' to remove the old state entry.`,
-			originalResourceType, scriptRef, bindingSnippet, from),
+A 'removed' block has been generated to clean up the state entry during the next apply.
+
+Note: In v4, secrets were managed via a separate API and could be updated
+without redeploying the Worker script. In v5, secret_text bindings are part
+of the script resource, so future secret changes will trigger a script
+redeployment.`,
+			originalResourceType, scriptRef, bindingSnippet),
 	})
 
 	return &transform.TransformResult{
@@ -240,9 +247,9 @@ func mergeSecretsIntoScript(scriptBlock *hclwrite.Block, secrets []secretBinding
 		newBindings := "[\n  " + strings.Join(bindingObjects, ", ") + "\n]"
 
 		var concatExpr string
-		if strings.HasPrefix(existingExpr, "concat(") {
+		if strings.HasPrefix(existingExpr, "concat(") && strings.HasSuffix(existingExpr, ")") {
 			// Already a concat expression - add our bindings as another argument
-			concatExpr = existingExpr[:len(existingExpr)-1] + ", " + newBindings + ")"
+			concatExpr = strings.TrimSuffix(existingExpr, ")") + ", " + newBindings + ")"
 		} else {
 			concatExpr = "concat(" + existingExpr + ", " + newBindings + ")"
 		}
