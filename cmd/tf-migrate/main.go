@@ -1208,9 +1208,13 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		// Example: cloudflare_tunnel.<name>.cname → cloudflare_zero_trust_tunnel_cloudflared.<name>.name
 		// This must happen BEFORE resource type renames so the pattern matches the old resource type
 		for _, mapping := range computedAttrMappings {
-			// Build regex pattern to match old resource type + old attribute
-			// Pattern: cloudflare_tunnel\.([a-zA-Z0-9_-]+)\.cname
-			pattern := mapping.OldResourceType + `\.([a-zA-Z0-9_-]+)\.` + mapping.OldAttribute
+			// Build regex pattern to match old resource type + old attribute.
+			// Use regexp.QuoteMeta so resource types containing "." (e.g.
+			// "data.cloudflare_zone") are treated as literals, not wildcards.
+			// The trailing \b ensures ".zone" does not match the prefix of
+			// ".zone_id" (which would produce the nonsense attribute "name_id").
+			// Pattern example: cloudflare_tunnel\.([a-zA-Z0-9_-]+)\.cname\b
+			pattern := regexp.QuoteMeta(mapping.OldResourceType) + `\.([a-zA-Z0-9_-]+)\.` + regexp.QuoteMeta(mapping.OldAttribute) + `\b`
 			replacement := mapping.NewResourceType + ".$1." + mapping.NewAttribute
 			newContent := regexReplaceSkippingMovedBlocks(contentStr, pattern, replacement)
 
@@ -1243,9 +1247,10 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		// Pattern: data.cloudflare_zones.<instance_name>.zones → data.cloudflare_zones.<instance_name>.result
 		// We need to match: <ResourceType>.<instance_name>.<OldAttribute>
 		for _, rename := range attributeRenames {
-			// Build regex pattern: data\.cloudflare_zones\.([a-zA-Z0-9_-]+)\.zones
-			// The instance name can contain letters, numbers, underscores, and hyphens
-			pattern := rename.ResourceType + `\.([a-zA-Z0-9_-]+)\.` + rename.OldAttribute
+			// Build regex pattern: data\.cloudflare_zones\.([a-zA-Z0-9_-]+)\.zones\b
+			// Use regexp.QuoteMeta so resource types with "." are treated as literals.
+			// The trailing \b prevents clipping prefixes of longer attribute names.
+			pattern := regexp.QuoteMeta(rename.ResourceType) + `\.([a-zA-Z0-9_-]+)\.` + regexp.QuoteMeta(rename.OldAttribute) + `\b`
 			replacement := rename.ResourceType + ".$1." + rename.NewAttribute
 			newContent := regexReplaceSkippingMovedBlocks(contentStr, pattern, replacement)
 
