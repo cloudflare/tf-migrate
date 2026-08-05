@@ -154,9 +154,13 @@ func loadResourceExemptions(repoRoot string, resource string) (*DriftExemptionsC
 	// Validate resource_type if specified
 	if config.Version >= 1 {
 		expectedType := "cloudflare_" + resource
-		// Check if any exemption has a different resource type restriction
+		// Check if any exemption has a different resource type restriction.
+		// Skip the warning when the exemption also has resource_name_patterns,
+		// because that means the author is intentionally targeting a different
+		// resource type (e.g. workers_secret.yaml targets cloudflare_workers_script
+		// since secrets are folded into script bindings in v5).
 		for _, e := range config.Exemptions {
-			if len(e.ResourceTypes) > 0 {
+			if len(e.ResourceTypes) > 0 && len(e.ResourceNamePatterns) == 0 {
 				found := false
 				for _, rt := range e.ResourceTypes {
 					if rt == expectedType {

@@ -319,6 +319,8 @@ func RunE2ETests(cfg *RunConfig) error {
 		"cloudflare_access_policy":           true, // Application-scoped policies with application_id cannot be migrated; removed{} blocks handle state cleanup
 		"cloudflare_split_tunnel":            true, // Dissolved into device profile exclude/include attributes in v5
 		"cloudflare_zero_trust_split_tunnel": true, // Newer v4 name for split_tunnel — also dissolved in v5
+		"cloudflare_workers_secret":          true, // Folded into workers_script bindings in v5
+		"cloudflare_worker_secret":           true, // Deprecated singular form — also folded into workers_script bindings
 	}
 	stateFilePath := filepath.Join(v5Dir, "terraform.tfstate")
 	if removed, err := removeObsoleteStateEntries(stateFilePath, obsoleteTypes); err != nil {

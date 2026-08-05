@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal"
+	"github.com/cloudflare/tf-migrate/internal/resources/workers_secret"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
@@ -78,6 +79,14 @@ Use resource tags via cloudflare_workers_script_tags if needed.`,
 
 	// Transform placement block → object attribute
 	m.transformPlacement(body)
+
+	// Process cross-resource migration - merge workers_secret resources into workers_script bindings.
+	// This runs AFTER transformBindings so that inline binding blocks are already converted to the
+	// unified bindings list. The merge will then append secret bindings via concat().
+	// This is idempotent - safe to call multiple times.
+	if ctx.CFGFile != nil {
+		workers_secret.ProcessCrossResourceConfigMigration(ctx.CFGFile)
+	}
 
 	// Generate moved block if the resource was renamed (singular → plural)
 	if wasSingular {
