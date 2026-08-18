@@ -1612,8 +1612,9 @@ func (m *V4ToV5Migrator) buildGithubOrgItems(nameExpr, teamExpr, identityProvide
 }
 
 // expandGsuite handles gsuite blocks
-// gsuite = [{email = "group@example.com", identity_provider_id = "id"}]
+// gsuite = [{email = ["group@example.com"], identity_provider_id = "id"}]
 // -> {gsuite = {email = "group@example.com", identity_provider_id = "id"}}
+// Note: in v4, gsuite.email is a list; in v5, gsuite.email is a string.
 func (m *V4ToV5Migrator) expandGsuite(item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
 	tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr)
 	if !ok {
@@ -1627,6 +1628,10 @@ func (m *V4ToV5Migrator) expandGsuite(item hclsyntax.ObjectConsItem) []hclsyntax
 		if !ok {
 			continue
 		}
+
+		// Unwrap email from list to scalar: email = [value] -> email = value
+		// In v4, gsuite.email is a list of strings; in v5, gsuite.email is a string
+		gsuiteObj = m.unwrapSingleElementList(gsuiteObj, "email")
 
 		newObj := &hclsyntax.ObjectConsExpr{
 			Items: []hclsyntax.ObjectConsItem{
@@ -1643,8 +1648,9 @@ func (m *V4ToV5Migrator) expandGsuite(item hclsyntax.ObjectConsItem) []hclsyntax
 }
 
 // expandOkta handles okta blocks
-// okta = [{name = "group", identity_provider_id = "id"}]
+// okta = [{name = ["group"], identity_provider_id = "id"}]
 // -> {okta = {name = "group", identity_provider_id = "id"}}
+// Note: in v4, okta.name is a list; in v5, okta.name is a string.
 func (m *V4ToV5Migrator) expandOkta(item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
 	tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr)
 	if !ok {
@@ -1658,6 +1664,10 @@ func (m *V4ToV5Migrator) expandOkta(item hclsyntax.ObjectConsItem) []hclsyntax.E
 		if !ok {
 			continue
 		}
+
+		// Unwrap name from list to scalar: name = [value] -> name = value
+		// In v4, okta.name is a list of strings; in v5, okta.name is a string
+		oktaObj = m.unwrapSingleElementList(oktaObj, "name")
 
 		newObj := &hclsyntax.ObjectConsExpr{
 			Items: []hclsyntax.ObjectConsItem{
@@ -1767,8 +1777,9 @@ func (m *V4ToV5Migrator) expandAuthContext(item hclsyntax.ObjectConsItem) []hcls
 }
 
 // expandAzure handles azure blocks
-// azure = [{id = "group-id", identity_provider_id = "id"}]
+// azure = [{id = ["group-id"], identity_provider_id = "id"}]
 // -> {azure_ad = {id = "group-id", identity_provider_id = "id"}}
+// Note: in v4, azure.id is a list; in v5, azure_ad.id is a string.
 func (m *V4ToV5Migrator) expandAzure(item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
 	tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr)
 	if !ok {
@@ -1782,6 +1793,10 @@ func (m *V4ToV5Migrator) expandAzure(item hclsyntax.ObjectConsItem) []hclsyntax.
 		if !ok {
 			continue
 		}
+
+		// Unwrap id from list to scalar: id = [value] -> id = value
+		// In v4, azure.id is a list of strings; in v5, azure_ad.id is a string
+		azureObj = m.unwrapSingleElementList(azureObj, "id")
 
 		// Rename azure to azure_ad for v5
 		newObj := &hclsyntax.ObjectConsExpr{
@@ -1799,6 +1814,32 @@ func (m *V4ToV5Migrator) expandAzure(item hclsyntax.ObjectConsItem) []hclsyntax.
 }
 
 // Helper functions
+
+// unwrapSingleElementList unwraps a single-element list attribute to a scalar value.
+// For example: id = [value] -> id = value
+// This is needed for azure.id, gsuite.email, okta.name which are lists in v4 but
+// strings in v5.
+func (m *V4ToV5Migrator) unwrapSingleElementList(obj *hclsyntax.ObjectConsExpr, attrName string) *hclsyntax.ObjectConsExpr {
+	var newItems []hclsyntax.ObjectConsItem
+	for _, item := range obj.Items {
+		key := m.getKeyString(item.KeyExpr)
+		if key == attrName {
+			if tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr); ok && len(tup.Exprs) == 1 {
+				// Unwrap single-element list to scalar
+				newItems = append(newItems, hclsyntax.ObjectConsItem{
+					KeyExpr:   item.KeyExpr,
+					ValueExpr: tup.Exprs[0],
+				})
+				continue
+			}
+		}
+		newItems = append(newItems, item)
+	}
+	return &hclsyntax.ObjectConsExpr{
+		Items:    newItems,
+		SrcRange: obj.SrcRange,
+	}
+}
 
 // getKeyString extracts the string value from a key expression
 func (m *V4ToV5Migrator) getKeyString(keyExpr hclsyntax.Expression) string {

@@ -297,6 +297,45 @@ resource "cloudflare_access_group" "auth_context" {
   }
 }
 
+# Pattern 25: Azure block with list id (APIX-1110)
+resource "cloudflare_access_group" "azure_list_id" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} Azure List ID Group"
+
+  include {
+    azure {
+      identity_provider_id = "idp-123"
+      id                   = ["group-id-1"]
+    }
+  }
+}
+
+# Pattern 26: GSuite block with list email
+resource "cloudflare_access_group" "gsuite_list_email" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} GSuite List Email Group"
+
+  include {
+    gsuite {
+      email                = ["group@example.com"]
+      identity_provider_id = "idp-123"
+    }
+  }
+}
+
+# Pattern 27: Okta block with list name
+resource "cloudflare_access_group" "okta_list_name" {
+  account_id = var.cloudflare_account_id
+  name       = "${local.name_prefix} Okta List Name Group"
+
+  include {
+    okta {
+      name                 = ["okta-group-1"]
+      identity_provider_id = "idp-123"
+    }
+  }
+}
+
 # Pattern 23: Already-renamed v4 resource (exercises UpgradeState path, not MoveState)
 # When the v4 config already uses cloudflare_zero_trust_access_group (the newer v4 name),
 # tf-migrate does NOT generate a moved {} block. During v5 apply, Terraform triggers

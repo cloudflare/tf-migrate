@@ -619,9 +619,226 @@ moved {
 }
 `,
 		},
-		// Note: gsuite, azure, okta, saml complex nested tests are skipped
-		// as the v4 schema uses these as array fields, not nested blocks
-		// Testing these would require actual v4 state format which has arrays
+		// ============================================================================
+		// azure, gsuite, okta block tests (list-to-scalar unwrapping)
+		// In v4, azure.id, gsuite.email, okta.name are lists.
+		// In v5, azure_ad.id, gsuite.email, okta.name are strings.
+		// The migration must unwrap single-element lists to scalars.
+		// ============================================================================
+		{
+			Name: "azure block with list id literal",
+			Input: `
+resource "cloudflare_access_group" "test" {
+  account_id = "abc123"
+  name       = "Azure Group"
+
+  include {
+    azure {
+      identity_provider_id = "idp-123"
+      id                   = ["group-id-1"]
+    }
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_access_group" "test" {
+  account_id = "abc123"
+  name       = "Azure Group"
+
+  include = [
+    {
+      azure_ad = {
+        identity_provider_id = "idp-123"
+        id                   = "group-id-1"
+      }
+    },
+  ]
+}
+moved {
+  from = cloudflare_access_group.test
+  to   = cloudflare_zero_trust_access_group.test
+}
+`,
+		},
+		{
+			Name: "azure block with list id variable reference",
+			Input: `
+resource "cloudflare_access_group" "test" {
+  for_each = var.idp.group
+
+  account_id = "abc123"
+  name       = each.key
+
+  include {
+    azure {
+      identity_provider_id = cloudflare_zero_trust_access_identity_provider.azure.id
+      id                   = [each.value]
+    }
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_access_group" "test" {
+  for_each = var.idp.group
+
+  account_id = "abc123"
+  name       = each.key
+
+  include = [
+    {
+      azure_ad = {
+        identity_provider_id = cloudflare_zero_trust_access_identity_provider.azure.id
+        id                   = each.value
+      }
+    },
+  ]
+}
+moved {
+  from = cloudflare_access_group.test
+  to   = cloudflare_zero_trust_access_group.test
+}
+`,
+		},
+		{
+			Name: "azure block with list id - already renamed resource type (exact user report APIX-1110)",
+			Input: `
+resource "cloudflare_zero_trust_access_group" "appl" {
+  for_each = var.idp.group
+
+  account_id = "abc123"
+  name       = each.key
+
+  include {
+    azure {
+      identity_provider_id = cloudflare_zero_trust_access_identity_provider.azure.id
+      id                   = [each.value]
+    }
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_access_group" "appl" {
+  for_each = var.idp.group
+
+  account_id = "abc123"
+  name       = each.key
+
+  include = [
+    {
+      azure_ad = {
+        identity_provider_id = cloudflare_zero_trust_access_identity_provider.azure.id
+        id                   = each.value
+      }
+    },
+  ]
+}
+`,
+		},
+		{
+			Name: "azure block with scalar id (already unwrapped)",
+			Input: `
+resource "cloudflare_access_group" "test" {
+  account_id = "abc123"
+  name       = "Azure Group"
+
+  include {
+    azure {
+      identity_provider_id = "idp-123"
+      id                   = "group-id-1"
+    }
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_access_group" "test" {
+  account_id = "abc123"
+  name       = "Azure Group"
+
+  include = [
+    {
+      azure_ad = {
+        identity_provider_id = "idp-123"
+        id                   = "group-id-1"
+      }
+    },
+  ]
+}
+moved {
+  from = cloudflare_access_group.test
+  to   = cloudflare_zero_trust_access_group.test
+}
+`,
+		},
+		{
+			Name: "gsuite block with list email",
+			Input: `
+resource "cloudflare_access_group" "test" {
+  account_id = "abc123"
+  name       = "GSuite Group"
+
+  include {
+    gsuite {
+      email                = ["group@example.com"]
+      identity_provider_id = "idp-123"
+    }
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_access_group" "test" {
+  account_id = "abc123"
+  name       = "GSuite Group"
+
+  include = [
+    {
+      gsuite = {
+        email                = "group@example.com"
+        identity_provider_id = "idp-123"
+      }
+    },
+  ]
+}
+moved {
+  from = cloudflare_access_group.test
+  to   = cloudflare_zero_trust_access_group.test
+}
+`,
+		},
+		{
+			Name: "okta block with list name",
+			Input: `
+resource "cloudflare_access_group" "test" {
+  account_id = "abc123"
+  name       = "Okta Group"
+
+  include {
+    okta {
+      name                 = ["okta-group-1"]
+      identity_provider_id = "idp-123"
+    }
+  }
+}
+`,
+			Expected: `
+resource "cloudflare_zero_trust_access_group" "test" {
+  account_id = "abc123"
+  name       = "Okta Group"
+
+  include = [
+    {
+      okta = {
+        name                 = "okta-group-1"
+        identity_provider_id = "idp-123"
+      }
+    },
+  ]
+}
+moved {
+  from = cloudflare_access_group.test
+  to   = cloudflare_zero_trust_access_group.test
+}
+`,
+		},
 		{
 			Name: "complex multi-selector",
 			Input: `
