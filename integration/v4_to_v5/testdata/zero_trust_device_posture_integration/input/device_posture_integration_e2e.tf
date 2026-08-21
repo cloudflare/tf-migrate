@@ -39,7 +39,7 @@ variable "crowdstrike_customer_id" {
 }
 
 locals {
-  e2e_prefix = "tf-e2e-migrate"
+  e2e_prefix = "cftftest"
 }
 
 # Test Case 1: Deprecated resource name with all fields

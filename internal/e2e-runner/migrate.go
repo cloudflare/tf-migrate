@@ -460,6 +460,20 @@ func hoistImportBlocksToRoot(generatedDir string, resourceList []string, zoneID 
 
 	var hoisted []string
 
+	// When no specific resources are targeted, discover all module subdirectories
+	// so that import blocks are hoisted for every resource in a full-suite run.
+	if len(resourceList) == 0 {
+		entries, err := os.ReadDir(generatedDir)
+		if err != nil {
+			return fmt.Errorf("failed to read generated dir to discover modules: %w", err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+				resourceList = append(resourceList, entry.Name())
+			}
+		}
+	}
+
 	for _, resource := range resourceList {
 		resource = strings.TrimSpace(resource)
 		moduleDir := filepath.Join(generatedDir, resource)
