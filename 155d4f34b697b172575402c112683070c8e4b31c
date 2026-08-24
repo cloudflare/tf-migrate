@@ -1,0 +1,19 @@
+e2e/drift-exemptions/bot_management.yaml
+  s_d146f5ce905459::t_0bc14d015b133b 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "155d4f34b697b172575402c112683070c8e4b31c",
+  "prompts": {},
+  "sessions": {
+    "s_d146f5ce905459": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fe96f8435ffessSkLA20mBfpel",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sarah Sicard <ssicard@cloudflare.com>"
+    }
+  }
+}
