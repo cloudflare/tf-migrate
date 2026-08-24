@@ -33,7 +33,7 @@ This document provides accurate, code-verified context about the tf-migrate proj
 
 ### Supported Migration Paths
 
-- **v4 → v5**: Cloudflare Provider v4 to v5 (80+ resource types, 6+ data sources)
+- **v4 → v5**: Cloudflare Provider v4 to v5 (85+ resource types, 6+ data sources)
 - **v5 → v5**: Bypass mode — generates `moved {}` blocks only (used for provider-level schema moves within v5)
 
 ### Technology Stack
