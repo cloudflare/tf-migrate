@@ -37,7 +37,7 @@ tf-migrate migrate --source-version v4 --target-version v5 --skip-version-check
 ### Supported Resources (v4 → v5)
 
 <details>
-<summary>80+ resources with complete config migration support (click to expand)</summary>
+<summary>85+ resources with complete config migration support (click to expand)</summary>
 
 | Product | v4 Resource Type | v5 Resource Type | Kind |
 |---------|-----------------|-----------------|------|
@@ -59,9 +59,11 @@ tf-migrate migrate --source-version v4 --target-version v5 --skip-version-check
 | | `cloudflare_custom_hostname_fallback_origin` | `cloudflare_custom_hostname_fallback_origin` | resource |
 | **Custom Pages** | `cloudflare_custom_pages` | `cloudflare_custom_pages` | resource |
 | **Custom SSL** | `cloudflare_custom_ssl` | `cloudflare_custom_ssl` | resource |
+| **D1** | `cloudflare_d1_database` | `cloudflare_d1_database` | resource |
 | **DNS** | `cloudflare_record` | `cloudflare_dns_record` | resource |
 | | `cloudflare_zone_dnssec` | `cloudflare_zone_dnssec` | resource |
 | **Healthchecks** | `cloudflare_healthcheck` | `cloudflare_healthcheck` | resource |
+| **Hyperdrive** | `cloudflare_hyperdrive_config` | `cloudflare_hyperdrive_config` | resource |
 | **IP Access Rules** | `cloudflare_access_rule` | `cloudflare_access_rule` | resource |
 | **Leaked Credentials** | `cloudflare_leaked_credential_check` | `cloudflare_leaked_credential_check` | resource |
 | | `cloudflare_leaked_credential_check_rule` | `cloudflare_leaked_credential_check_rule` | resource |
@@ -100,6 +102,7 @@ tf-migrate migrate --source-version v4 --target-version v5 --skip-version-check
 | | `cloudflare_workers_kv` | `cloudflare_workers_kv` | resource |
 | | `cloudflare_workers_kv_namespace` | `cloudflare_workers_kv_namespace` | resource |
 | | `cloudflare_workers_for_platforms_namespace` / `cloudflare_workers_for_platforms_dispatch_namespace` | `cloudflare_workers_for_platforms_dispatch_namespace` | resource |
+| | `cloudflare_worker_secret` / `cloudflare_workers_secret` | merged into `cloudflare_workers_script` | resource ⚠ |
 | **Zero Trust** | `cloudflare_access_application` / `cloudflare_zero_trust_access_application` | `cloudflare_zero_trust_access_application` | resource |
 | | `cloudflare_access_group` / `cloudflare_zero_trust_access_group` | `cloudflare_zero_trust_access_group` | resource ⚠ |
 | | `cloudflare_access_identity_provider` / `cloudflare_zero_trust_access_identity_provider` | `cloudflare_zero_trust_access_identity_provider` | resource |
