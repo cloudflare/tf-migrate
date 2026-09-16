@@ -7,8 +7,10 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	"github.com/cloudflare/tf-migrate/internal/transform/hcl"
+	hclv2 "github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/zclconf/go-cty/cty"
 )
 
 type V4ToV5Migrator struct{}
@@ -224,7 +226,7 @@ func convertHeadersBlocksToMap(body *hclwrite.Body) {
 // mergeQueryStringBlocks merges multiple query_string blocks into a single query_string attribute
 // v4: query_string { include = [...] } query_string { exclude = [...] }
 // v5: query_string = { include = { list = [...] }, exclude = { list = [...] } }
-// Also handles wildcard: include = ["*"] -> include = { all = true }
+// Also handles wildcard: include/exclude = ["*"] -> include/exclude = { all = true }
 func mergeQueryStringBlocks(body *hclwrite.Body) {
 	queryStringBlocks := hcl.FindBlocksByType(body, "query_string")
 	if len(queryStringBlocks) == 0 {
@@ -264,8 +266,7 @@ func mergeQueryStringBlocks(body *hclwrite.Body) {
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" = ")})
 
 		// Check if this is the wildcard case: ["*"]
-		includeStr := string(hclwrite.Format(includeTokens.Bytes()))
-		if includeStr == "[\"*\"]" || includeStr == "[\n  \"*\",\n]" || includeStr == "[\"*\",]" {
+		if isWildcardList(includeTokens) {
 			// Wildcard: convert to { all = true }
 			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrace, Bytes: []byte{'{'}})
 			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte{'\n'}})
@@ -297,13 +298,18 @@ func mergeQueryStringBlocks(body *hclwrite.Body) {
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("exclude")})
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" = ")})
 
-		// Wrap in { list = [...] }
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrace, Bytes: []byte{'{'}})
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte{'\n'}})
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("      ")}) // indent
-		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("list")})
-		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" = ")})
-		tokens = append(tokens, excludeTokens...)
+		if isWildcardList(excludeTokens) {
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("all")})
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" = ")})
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("true")})
+		} else {
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("list")})
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" = ")})
+			tokens = append(tokens, excludeTokens...)
+		}
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte{'\n'}})
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("    ")}) // indent
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrace, Bytes: []byte{'}'}})
@@ -320,6 +326,26 @@ func mergeQueryStringBlocks(body *hclwrite.Body) {
 	for _, qsBlock := range queryStringBlocks {
 		body.RemoveBlock(qsBlock)
 	}
+}
+
+func isWildcardList(tokens hclwrite.Tokens) bool {
+	expression, diagnostics := hclsyntax.ParseExpression(tokens.Bytes(), "", hclv2.InitialPos)
+	if diagnostics.HasErrors() {
+		return false
+	}
+
+	tuple, ok := expression.(*hclsyntax.TupleConsExpr)
+	if !ok || len(tuple.Exprs) != 1 {
+		return false
+	}
+
+	value, diagnostics := tuple.Value(nil)
+	if diagnostics.HasErrors() || !value.IsKnown() {
+		return false
+	}
+
+	element := value.Index(cty.NumberIntVal(0))
+	return element.RawEquals(cty.StringVal("*"))
 }
 
 // convertStringArrayToNameObjectArray converts a string array attribute to an array of objects with name field
