@@ -1,0 +1,24 @@
+# Drift Exemptions for ruleset resource
+#
+# 1. The Cloudflare API normalizes the order of query_string list elements
+#    in cache key rules after migration.
+#
+# 2. When v4 config used exclude/include = ["*"] (wildcard), the v4 provider
+#    stored it as list = ["*"] in state. The migrated v5 config correctly emits
+#    all = true, but the existing API state still reflects the old list = ["*"]
+#    representation. The first terraform apply after migration corrects this.
+
+version: 1
+
+exemptions:
+  - name: "query_string_wildcard_all"
+    description: "In v4, exclude/include = [\"*\"] was stored by the provider as list = [\"*\"] in state. The v5 migration correctly converts this to all = true, but the existing Cloudflare API state still reflects the old list representation. This causes a one-time plan diff showing '+ all = true'. The underlying cache key behaviour is identical — this drift resolves after running terraform apply."
+    resource_types:
+      - "cloudflare_ruleset"
+    patterns:
+      - '^\s+\+\s+all\s+=\s+true'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false
