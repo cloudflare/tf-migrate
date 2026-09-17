@@ -4,7 +4,37 @@ import (
 	"testing"
 
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 )
+
+func TestIsWildcardList(t *testing.T) {
+	tests := []struct {
+		name       string
+		expression string
+		expected   bool
+	}{
+		{name: "wildcard", expression: `["*"]`, expected: true},
+		{name: "commented wildcard", expression: "[\n  # all query parameters\n  \"*\",\n]", expected: true},
+		{name: "wildcard and named parameter", expression: `["*", "session"]`, expected: false},
+		{name: "dynamic tuple element", expression: `[var.query_parameter]`, expected: false},
+		{name: "typed null tuple element", expression: `[true ? null : "*"]`, expected: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			file, diagnostics := hclwrite.ParseConfig([]byte("value = "+test.expression+"\n"), "test.tf", hcl.InitialPos)
+			if diagnostics.HasErrors() {
+				t.Fatalf("failed to parse test expression: %s", diagnostics.Error())
+			}
+
+			tokens := file.Body().GetAttribute("value").Expr().BuildTokens(nil)
+			if actual := isWildcardList(tokens); actual != test.expected {
+				t.Fatalf("isWildcardList() = %t, want %t", actual, test.expected)
+			}
+		})
+	}
+}
 
 func TestV4ToV5Transformation(t *testing.T) {
 	migrator := &V4ToV5Migrator{}
@@ -457,6 +487,204 @@ func TestV4ToV5Transformation(t *testing.T) {
             query_string = {
               include = {
                 all = true
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}`,
+			},
+			{
+				Name: "Cache key query_string with exclude wildcard - convert to all = true",
+				Input: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "test-ruleset"
+  kind    = "zone"
+  phase   = "http_request_cache_settings"
+
+  rules {
+    action     = "set_cache_settings"
+    expression = "true"
+
+    action_parameters {
+      cache = true
+
+      cache_key {
+        custom_key {
+          query_string {
+            exclude = ["*"]
+          }
+        }
+      }
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "test-ruleset"
+  kind    = "zone"
+  phase   = "http_request_cache_settings"
+
+  rules = [
+    {
+      action     = "set_cache_settings"
+      expression = "true"
+      action_parameters = {
+        cache = true
+        cache_key = {
+          custom_key = {
+            query_string = {
+              exclude = {
+                all = true
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}`,
+			},
+			{
+				Name: "Cache key query_string with commented exclude wildcard - convert to all = true",
+				Input: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "test-ruleset"
+  kind    = "zone"
+  phase   = "http_request_cache_settings"
+
+  rules {
+    action     = "set_cache_settings"
+    expression = "true"
+
+    action_parameters {
+      cache_key {
+        custom_key {
+          query_string {
+            exclude = [
+              # Exclude all query parameters.
+              "*",
+            ]
+          }
+        }
+      }
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "test-ruleset"
+  kind    = "zone"
+  phase   = "http_request_cache_settings"
+
+  rules = [
+    {
+      action     = "set_cache_settings"
+      expression = "true"
+      action_parameters = {
+        cache_key = {
+          custom_key = {
+            query_string = {
+              exclude = {
+                all = true
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}`,
+			},
+			{
+				Name: "Cache key query_string with exclude wildcard and named parameter - preserve list",
+				Input: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "test-ruleset"
+  kind    = "zone"
+  phase   = "http_request_cache_settings"
+
+  rules {
+    action     = "set_cache_settings"
+    expression = "true"
+
+    action_parameters {
+      cache_key {
+        custom_key {
+          query_string {
+            exclude = ["*", "session"]
+          }
+        }
+      }
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "test-ruleset"
+  kind    = "zone"
+  phase   = "http_request_cache_settings"
+
+  rules = [
+    {
+      action     = "set_cache_settings"
+      expression = "true"
+      action_parameters = {
+        cache_key = {
+          custom_key = {
+            query_string = {
+              exclude = {
+                list = ["*", "session"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}`,
+			},
+			{
+				Name: "Cache key query_string with dynamic exclude list - preserve expression",
+				Input: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "test-ruleset"
+  kind    = "zone"
+  phase   = "http_request_cache_settings"
+
+  rules {
+    action     = "set_cache_settings"
+    expression = "true"
+
+    action_parameters {
+      cache_key {
+        custom_key {
+          query_string {
+            exclude = var.excluded_query_parameters
+          }
+        }
+      }
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_ruleset" "example" {
+  zone_id = "test123"
+  name    = "test-ruleset"
+  kind    = "zone"
+  phase   = "http_request_cache_settings"
+
+  rules = [
+    {
+      action     = "set_cache_settings"
+      expression = "true"
+      action_parameters = {
+        cache_key = {
+          custom_key = {
+            query_string = {
+              exclude = {
+                list = var.excluded_query_parameters
               }
             }
           }

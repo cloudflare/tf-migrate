@@ -329,6 +329,66 @@ resource "cloudflare_ruleset" "cache_with_reserve" {
       }
     }
   }
+
+  rules {
+    action      = "set_cache_settings"
+    expression  = "(http.request.uri.path contains \"/nocache\")"
+    description = "Bypass cache key for all query parameters (exclude wildcard)"
+    enabled     = true
+
+    action_parameters {
+      cache = true
+
+      cache_key {
+        custom_key {
+          query_string {
+            exclude = ["*"]
+          }
+        }
+      }
+    }
+  }
+
+  rules {
+    action      = "set_cache_settings"
+    expression  = "(http.request.uri.path contains \"/passthrough\")"
+    description = "Bypass cache key for all query parameters (commented exclude wildcard)"
+    enabled     = true
+
+    action_parameters {
+      cache = true
+
+      cache_key {
+        custom_key {
+          query_string {
+            exclude = [
+              # Exclude all query parameters from cache key.
+              "*",
+            ]
+          }
+        }
+      }
+    }
+  }
+
+  rules {
+    action      = "set_cache_settings"
+    expression  = "(http.request.uri.path contains \"/vary\")"
+    description = "Cache varies on all query parameters (include wildcard)"
+    enabled     = true
+
+    action_parameters {
+      cache = true
+
+      cache_key {
+        custom_key {
+          query_string {
+            include = ["*"]
+          }
+        }
+      }
+    }
+  }
 }
 
 # Test Case 16: Origin routing with SNI
