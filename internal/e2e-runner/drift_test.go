@@ -1020,3 +1020,70 @@ Plan: 0 to add, 3 to change, 0 to destroy.
 		})
 	}
 }
+
+func TestDetectResourcesFromPlan(t *testing.T) {
+	tests := []struct {
+		name       string
+		planOutput string
+		want       []string
+	}{
+		{
+			name: "module names differ from resource types",
+			planOutput: `
+Terraform will perform the following actions:
+
+  # module.dns.cloudflare_dns_record.CAA["example.com_@_issue_x"] will be updated in-place
+  ~ resource "cloudflare_dns_record" "CAA" {
+      ~ flags = "0" -> 0
+    }
+
+  # module.zone.cloudflare_ruleset.cache_settings["example.com"] will be updated in-place
+  ~ resource "cloudflare_ruleset" "cache_settings" {
+    }
+
+Plan: 0 to add, 2 to change, 0 to destroy.
+`,
+			want: []string{"dns_record", "ruleset"},
+		},
+		{
+			name: "root module and nested module resources",
+			planOutput: `
+  # cloudflare_zone.example will be updated in-place
+  # module.a.module.b[0].cloudflare_zone_setting.brotli will be created
+  # module.zone_setting.cloudflare_zone_setting.minimal will be destroyed
+`,
+			want: []string{"zone", "zone_setting"},
+		},
+		{
+			name: "instance keys containing dots and brackets",
+			planOutput: `
+  # module.m["a.cloudflare_fake.b"].cloudflare_list.items["x]y.z"] will be created
+`,
+			want: []string{"list"},
+		},
+		{
+			name: "data sources and non-cloudflare resources are ignored",
+			planOutput: `
+  # data.cloudflare_zone.lookup will be read during apply
+  # module.x.data.cloudflare_zones.all will be read during apply
+  # random_id.suffix will be created
+  # module.dns.cloudflare_dns_record.www will be created
+`,
+			want: []string{"dns_record"},
+		},
+		{
+			name:       "empty plan",
+			planOutput: "No changes. Your infrastructure matches the configuration.\n",
+			want:       []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DetectResourcesFromPlan(tt.planOutput)
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+				t.Errorf("DetectResourcesFromPlan() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
