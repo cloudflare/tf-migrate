@@ -799,13 +799,88 @@ func extractPlanSummary(planOutput string) string {
 // DetectResourcesFromPlan extracts unique Cloudflare resource type names from a terraform
 // plan output string. It parses resource header lines of the form:
 //
-//	# module.zone_setting.cloudflare_zone_setting.example will be created
+//	# module.dns.cloudflare_dns_record.example["www"] will be created
+//	# cloudflare_ruleset.cache will be updated in-place
 //
-// and returns the module names (e.g. ["dns_record", "zone_setting"]) sorted alphabetically.
-// These names map 1:1 to the per-resource exemption YAML files in e2e/drift-exemptions/.
-// This is the exported variant of extractAffectedResources for use by external packages.
+// and returns the resource types without the "cloudflare_" prefix (e.g. ["dns_record", "ruleset"])
+// sorted alphabetically. These names map 1:1 to the per-resource exemption YAML files in
+// e2e/drift-exemptions/.
+//
+// Unlike extractAffectedResources, which relies on the e2e convention that every resource lives in a
+// module named after its type, this reads the type from the resource address itself, so it works for
+// arbitrary customer module names and for root-module resources.
 func DetectResourcesFromPlan(planOutput string) []string {
-	return extractAffectedResources(planOutput)
+	scanner := bufio.NewScanner(strings.NewReader(planOutput))
+	resourcesMap := make(map[string]bool)
+
+	for scanner.Scan() {
+		matches := resourceHeaderPattern.FindStringSubmatch(scanner.Text())
+		if len(matches) < 2 {
+			continue
+		}
+		resourceType := resourceTypeFromAddress(matches[1])
+		if name, ok := strings.CutPrefix(resourceType, "cloudflare_"); ok && name != "" {
+			resourcesMap[name] = true
+		}
+	}
+
+	resources := make([]string, 0, len(resourcesMap))
+	for resource := range resourcesMap {
+		resources = append(resources, resource)
+	}
+	sort.Strings(resources)
+	return resources
+}
+
+// resourceTypeFromAddress returns the resource type of a managed resource address such as
+// module.dns.cloudflare_dns_record.caa["example.com"], skipping any module path. It returns ""
+// for data sources and addresses it cannot parse.
+func resourceTypeFromAddress(address string) string {
+	segments := splitResourceAddress(address)
+	i := 0
+	for i+1 < len(segments) && segments[i] == "module" {
+		i += 2
+	}
+	// What remains must be TYPE.NAME; data sources (data.TYPE.NAME) are not resources.
+	if len(segments)-i != 2 {
+		return ""
+	}
+	return segments[i]
+}
+
+// splitResourceAddress splits a resource address on the dots that separate its segments, dropping
+// instance keys such as [0] or ["example.com"], whose contents may themselves contain dots.
+func splitResourceAddress(address string) []string {
+	var segments []string
+	var current strings.Builder
+	depth := 0
+	inString := false
+	for i := 0; i < len(address); i++ {
+		c := address[i]
+		switch {
+		case inString:
+			if c == '\\' {
+				i++
+			} else if c == '"' {
+				inString = false
+			}
+		case c == '"' && depth > 0:
+			inString = true
+		case c == '[':
+			depth++
+		case c == ']':
+			if depth > 0 {
+				depth--
+			}
+		case depth > 0:
+		case c == '.':
+			segments = append(segments, current.String())
+			current.Reset()
+		default:
+			current.WriteByte(c)
+		}
+	}
+	return append(segments, current.String())
 }
 
 // CheckDriftWithConfig runs drift detection against a pre-loaded *DriftExemptionsConfig,
