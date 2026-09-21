@@ -46,6 +46,21 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	return []string{"data.cloudflare_zone"}, "data.cloudflare_zone"
 }
 
+// GetComputedAttributeMappings implements the ComputedAttributeMapper interface.
+// In v4, the zone data source exposed a `zone_id` computed output attribute
+// (e.g. data.cloudflare_zone.example.zone_id). In v5, the zone identifier is
+// accessed as `id`, so cross-file references must be rewritten accordingly.
+func (m *V4ToV5Migrator) GetComputedAttributeMappings() []transform.ComputedAttributeMapping {
+	return []transform.ComputedAttributeMapping{
+		{
+			OldResourceType: "data.cloudflare_zone",
+			OldAttribute:    "zone_id",
+			NewResourceType: "data.cloudflare_zone",
+			NewAttribute:    "id",
+		},
+	}
+}
+
 // TransformConfig handles configuration file transformations.
 // Scenarios:
 // 1. zone_id only → No changes
