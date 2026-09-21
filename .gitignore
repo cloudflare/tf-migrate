@@ -35,3 +35,4 @@ e2e/tf/v4/backend.configured.hcl
 *.backup
 e2e/*.tfstate.backup
 tf-migrate-integration-test
+/result
