@@ -73,7 +73,6 @@ jobs:
   matrix:
     name: "v4 -> v${{ matrix.version }}"
     runs-on: large-runner
-    if: ${{ github.event.inputs.target_version == '' || github.event.inputs.target_version == matrix.version }}
     permissions:
       contents: read
     strategy:
@@ -108,6 +107,12 @@ jobs:
           terraform_version: "1.9.8"
 
       - name: Run supportability matrix leg
+        # The matrix context is only valid in step-level (not job-level) `if:`
+        # conditions, so the target_version filter lives here rather than on
+        # the job. When a specific target_version is requested via
+        # workflow_dispatch, every non-matching leg's job still gets created
+        # (cheap checkout/setup steps run) but skips the actual test run.
+        if: ${{ github.event.inputs.target_version == '' || github.event.inputs.target_version == matrix.version }}
         run: >
           ./scripts/run-e2e-tests.sh --apply-exemptions --parallelism 1
           --version-suffix ${{ env.VERSION_SUFFIX }}
