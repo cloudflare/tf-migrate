@@ -6,10 +6,22 @@ exemptions:
   # Access policies with application_id show as "will be created" because
   # the v4 state entries are removed (they become inline policies).
   # The moved blocks handle the state migration for migratable policies.
+  #
+  # IMPORTANT: this must stay scoped to ONLY the specific application-scoped
+  # test resource(s) below. It was previously unscoped (matched ALL
+  # cloudflare_zero_trust_access_policy creations), which silently masked
+  # non-app-scoped policies being destroyed+recreated on every single
+  # migration run instead of being reused via the moved {} block, leaking
+  # dozens of orphaned reusable Access policies into the test account per
+  # run (see tf-migrate incident 2026-10-06: account hit its 500-policy
+  # hard cap from accumulated leaked test policies). Do NOT widen this
+  # back to an unscoped resource_types-only match.
   - name: "policy_state_migration"
-    description: "Access policies may show as 'will be created' during initial v5 plan because v4 state entries were removed. The moved blocks handle proper state migration."
+    description: "Access policies with application_id (app-scoped, e.g. 'app_scoped_policy' in testdata) show as 'will be created' during initial v5 plan because v4 state entries were removed and converted to inline policies. The moved blocks handle proper state migration for all other (non-app-scoped) policies, which should NEVER show as created on a re-run against existing state."
     resource_types:
       - "cloudflare_zero_trust_access_policy"
+    resource_name_patterns:
+      - "app_scoped_policy$"
     allow_resource_creation: true
     enabled: true
 

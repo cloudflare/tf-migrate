@@ -12,6 +12,8 @@ exemptions:
   # One-to-many transformation: v4 zone_settings_override -> multiple v5 zone_setting
   - name: "zone_setting_migration_drift"
     description: "In v4, all zone settings were managed by a single cloudflare_zone_settings_override resource. In v5, each setting is its own cloudflare_zone_setting resource. tf-migrate converts your config from one resource to many, but the v4 state entry is removed and the new v5 resources do not yet exist in state. Terraform will plan to create all of the new zone_setting resources. This is expected — your zone settings in Cloudflare are not changed, and after terraform apply all settings will be tracked individually in state."
+    resource_types:
+      - "cloudflare_zone_setting"
     allow_resource_creation: true
     enabled: true
 

@@ -1,0 +1,115 @@
+name: Supportability Matrix
+
+# Tests tf-migrate's v4 -> v5 config migration against every provider version
+# in the known supportability matrix (see e2e/SUPPORTABILITY_MATRIX.md). Each
+# matrix leg shares ONE persistent v4 resource base (--version-suffix pinned
+# to "5.19.0" for all legs — never change this to match matrix.version, see
+# §11 of the matrix doc for why) and installs its own target provider version
+# fresh from the public Terraform Registry (no local provider build needed,
+# unlike e2e-tests.yml).
+#
+# v5-side Terraform state is NOT persisted between runs by design — it is
+# re-derived fresh from the v4 base's real, persistent state on every
+# invocation (confirmed in e2e/SUPPORTABILITY_MATRIX.md §11). This means
+# these jobs are safe to run on ephemeral GitHub-hosted runners with no
+# special state-persistence setup, and safe to run in any order, any number
+# of times.
+#
+# Matrix legs run strictly sequentially (max-parallel: 1 + the concurrency
+# group below) because they share one account/zone, including a handful of
+# true account-level and zone-level singleton resources (zero_trust_gateway_settings,
+# zone_dnssec, zone_setting, argo/tiered_cache, etc.) that would race if two
+# legs applied concurrently.
+#
+# Per-version --exclude lists below reflect only CONFIRMED, version-specific
+# provider/migration bugs (see e2e/SUPPORTABILITY_MATRIX.md §5 for each) plus
+# byo_ip_prefix (excluded everywhere, including e2e-tests.yml, since it needs
+# a real BGP-announced IP prefix no environment here has). hyperdrive_config
+# and leaked_credential_check_rule are deliberately NOT excluded here even
+# though they're excluded in local sandbox testing — this environment has
+# real CLOUDFLARE_HYPERDRIVE_* secrets configured (see env: below) and may
+# have Leaked Credential Check enabled on its zone, so let CI attempt them
+# for real rather than assuming they need the same exclusion as local testing.
+
+concurrency:
+  group: supportability-matrix
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: "Specific version to test, e.g. 5.22.0 (blank = run all versions)"
+        required: false
+        type: string
+  schedule:
+    # Weekly, Monday 06:00 UTC. Adjust if this collides with other scheduled
+    # jobs against the same test account.
+    - cron: "0 6 * * 1"
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+  CLOUDFLARE_DOMAIN: ${{ secrets.CLOUDFLARE_DOMAIN }}
+  CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+  CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+  CLOUDFLARE_R2_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+  CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+  CLOUDFLARE_CROWDSTRIKE_CLIENT_ID: ${{ secrets.CLOUDFLARE_CROWDSTRIKE_CLIENT_ID }}
+  CLOUDFLARE_CROWDSTRIKE_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_CROWDSTRIKE_CLIENT_SECRET }}
+  CLOUDFLARE_CROWDSTRIKE_API_URL: ${{ secrets.CLOUDFLARE_CROWDSTRIKE_API_URL }}
+  CLOUDFLARE_CROWDSTRIKE_CUSTOMER_ID: ${{ secrets.CLOUDFLARE_CROWDSTRIKE_CUSTOMER_ID }}
+  CLOUDFLARE_HYPERDRIVE_DATABASE_HOSTNAME: ${{ secrets.CLOUDFLARE_HYPERDRIVE_DATABASE_HOSTNAME }}
+  CLOUDFLARE_HYPERDRIVE_DATABASE_NAME: ${{ secrets.CLOUDFLARE_HYPERDRIVE_DATABASE_NAME }}
+  CLOUDFLARE_HYPERDRIVE_DATABASE_PORT: ${{ secrets.CLOUDFLARE_HYPERDRIVE_DATABASE_PORT }}
+  CLOUDFLARE_HYPERDRIVE_DATABASE_USER: ${{ secrets.CLOUDFLARE_HYPERDRIVE_DATABASE_USER }}
+  CLOUDFLARE_HYPERDRIVE_DATABASE_PASSWORD: ${{ secrets.CLOUDFLARE_HYPERDRIVE_DATABASE_PASSWORD }}
+  TF_MIG_TEST: true
+  # Pinned v4 base lineage suffix shared by every matrix leg. DO NOT set this
+  # to matrix.version — see the header comment and matrix doc §11.
+  VERSION_SUFFIX: "5.19.0"
+
+jobs:
+  matrix:
+    name: "v4 -> v${{ matrix.version }}"
+    runs-on: large-runner
+    if: ${{ github.event.inputs.target_version == '' || github.event.inputs.target_version == matrix.version }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - version: "5.19.0"
+            exclude: "byo_ip_prefix,d1_database,ruleset,api_token,zero_trust_access_group"
+          - version: "5.19.1"
+            exclude: "byo_ip_prefix,d1_database,ruleset,api_token"
+          - version: "5.20.0"
+            exclude: "byo_ip_prefix,d1_database,ruleset,api_token,load_balancer,load_balancer_pool"
+          - version: "5.21.1"
+            exclude: "byo_ip_prefix,d1_database,ruleset,api_token,load_balancer,load_balancer_pool"
+          - version: "5.22.0"
+            exclude: "byo_ip_prefix,ruleset"
+          - version: "5.23.0"
+            exclude: "byo_ip_prefix,ruleset,zero_trust_device_profiles,zero_trust_split_tunnel,zero_trust_device_managed_networks,zero_trust_local_fallback_domain"
+    steps:
+      - name: Checkout tf-migrate
+        uses: actions/checkout@v4
+
+      - name: Setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Run supportability matrix leg
+        run: >
+          ./scripts/run-e2e-tests.sh --apply-exemptions --parallelism 1
+          --version-suffix ${{ env.VERSION_SUFFIX }}
+          --target-provider-version ${{ matrix.version }}
+          --exclude ${{ matrix.exclude }}

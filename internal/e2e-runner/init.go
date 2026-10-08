@@ -18,8 +18,12 @@ import (
 	"strings"
 )
 
-// RunInit syncs resource files from integration testdata to e2e/v4
-func RunInit(resources string) error {
+// RunInit syncs resource files from integration testdata to e2e/v4 (or, when
+// versionSuffix is non-empty, to an isolated e2e/v4-<suffix> directory so a
+// per-target-version test run can't collide with the shared, unversioned
+// directory that e2e-tests.yml CI uses). Pass "" for versionSuffix to
+// preserve the original, unversioned behavior.
+func RunInit(resources string, versionSuffix string) error {
 	// Load required environment variables
 	env, err := LoadEnv(EnvForInit)
 	if err != nil {
@@ -37,7 +41,7 @@ func RunInit(resources string) error {
 	// Get paths
 	repoRoot := getRepoRoot()
 	e2eRoot := filepath.Join(repoRoot, "e2e")
-	v4Dir := filepath.Join(e2eRoot, "tf", "v4")
+	v4Dir := versionedV4Dir(e2eRoot, versionSuffix)
 	testdataRoot := filepath.Join(repoRoot, "integration", "v4_to_v5", "testdata")
 
 	// Check if testdata directory exists
@@ -47,6 +51,10 @@ func RunInit(resources string) error {
 
 	printHeader("Syncing Test Resources")
 
+	if versionSuffix != "" {
+		printYellow("Version-isolated run: using %s (isolated from the shared e2e/tf/v4/ directory and R2 state key)", v4Dir)
+	}
+
 	if len(targetResources) > 0 {
 		printYellow("Filtering to specific resources: %s", strings.Join(targetResources, ", "))
 	}
@@ -54,6 +62,27 @@ func RunInit(resources string) error {
 	// Create v4 directory if it doesn't exist
 	if err := os.MkdirAll(v4Dir, permDir); err != nil {
 		return fmt.Errorf("failed to create v4 directory %s: %w", v4Dir, err)
+	}
+
+	// If this is an isolated, version-specific directory (not the canonical
+	// e2e/tf/v4/), bootstrap the root provider.tf and backend.hcl from the
+	// canonical directory the first time it's created. These are checked-in
+	// templates that the canonical e2e/tf/v4/ directory already has; a fresh
+	// versioned directory starts out empty and needs its own copies before
+	// the variable-appending logic below (which expects provider.tf to
+	// already exist) or `terraform init` can succeed.
+	canonicalV4Dir := filepath.Join(e2eRoot, "tf", "v4")
+	if v4Dir != canonicalV4Dir {
+		for _, f := range []string{"provider.tf", "backend.hcl"} {
+			dst := filepath.Join(v4Dir, f)
+			if _, err := os.Stat(dst); os.IsNotExist(err) {
+				src := filepath.Join(canonicalV4Dir, f)
+				if err := copyFile(src, dst); err != nil {
+					return fmt.Errorf("failed to bootstrap %s into versioned directory %s: %w", f, v4Dir, err)
+				}
+				printGreen("  ✓ Bootstrapped %s from canonical tf/v4/ template", f)
+			}
+		}
 	}
 
 	// Sync resource files from testdata
@@ -163,6 +192,24 @@ func RunInit(resources string) error {
 	fmt.Println()
 	printGreen("  Total: %d files synced", fileCount)
 	fmt.Println()
+
+	// Namespace real Cloudflare-side resource names for version-isolated
+	// runs. State isolation (versionedV4Dir/versionedStateKey) only protects
+	// local Terraform state — the Cloudflare API enforces name uniqueness
+	// independently of that, so a fresh, empty state for this leg would
+	// otherwise try to create resources under names that may already exist
+	// in the account from an earlier run. No-op when versionSuffix is empty
+	// (default "cftftest" prefix, unchanged — matches what
+	// integration/v4_to_v5/testdata/*/expected/*.tf fixtures string-compare
+	// against).
+	if namespacedPrefix := namespacedTestResourcePrefix(versionSuffix); namespacedPrefix != defaultTestResourcePrefix {
+		n, err := namespaceTestResourceNames(v4Dir, versionSuffix)
+		if err != nil {
+			return fmt.Errorf("failed to namespace test resource names: %w", err)
+		}
+		printGreen("  ✓ Namespaced real resource names: %q → %q across %d file(s) (avoids cross-run name collisions)", defaultTestResourcePrefix, namespacedPrefix, n)
+		fmt.Println()
+	}
 
 	// Configure terraform variables
 	printYellow("Configuring terraform variables...")

@@ -16,12 +16,18 @@ e2e/tf/v4/*
 !e2e/tf/v4/provider.tf
 !e2e/tf/v4/backend.hcl
 
+# Version-isolated v4 directories (e2e-runner run/init --version-suffix <ver>,
+# e.g. e2e/tf/v4-5.19.0/) — same rationale as e2e/tf/v4/ above.
+e2e/tf/v4-*/
+
 e2e-v5/tf
 # Migrated output
 e2e/migrated-v4_to_v5/
+e2e/migrated-v4_to_v5-*/
 
 # E2E test outputs
 e2e/tmp/
+e2e/tmp-*/
 e2e-v5/tmp/
 
 # E2E test state files (stored in remote backend)

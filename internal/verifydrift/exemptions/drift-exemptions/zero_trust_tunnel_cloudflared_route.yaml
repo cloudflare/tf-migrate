@@ -18,6 +18,8 @@ version: 1
 exemptions:
   - name: "tunnel_route_id_migration_drift"
     description: "The v4 provider identified tunnel routes by their CIDR range (e.g. 10.0.0.0/8) or an MD5 checksum. The v5 provider uses a UUID assigned by the Cloudflare API. After migration, the provider cannot look up the existing route using the old CIDR-based ID and removes it from state. Terraform will then plan to re-create the route. This is safe — the Cloudflare API is idempotent and will return the existing route (with its correct UUID) instead of creating a duplicate. After terraform apply, all routes will have proper UUIDs and subsequent plans will show no changes."
+    resource_types:
+      - "cloudflare_zero_trust_tunnel_cloudflared_route"
     allow_resource_creation: true
     enabled: true
 

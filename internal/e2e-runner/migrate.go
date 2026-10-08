@@ -24,11 +24,15 @@ import (
 // When yes is true, --skip-phase-check is passed to tf-migrate to auto-confirm the phase-1
 // completion prompt (used for the phase-2 call in the e2e runner).
 // targetProviderVersion is an optional explicit provider version to set in required_providers.
-func RunMigrate(resources string, yes bool, targetProviderVersion string) error {
+// versionSuffix, when non-empty, isolates both the input (v4-<suffix>) and
+// output (migrated-v4_to_v5-<suffix>) directories from the shared,
+// unversioned ones — see version_suffix.go. Pass "" to preserve the
+// original, unversioned behavior.
+func RunMigrate(resources string, yes bool, targetProviderVersion string, versionSuffix string) error {
 	repoRoot := getRepoRoot()
 	e2eRoot := filepath.Join(repoRoot, "e2e")
-	v4Dir := filepath.Join(e2eRoot, "tf", "v4")
-	generatedDir := filepath.Join(e2eRoot, "migrated-v4_to_v5")
+	v4Dir := versionedV4Dir(e2eRoot, versionSuffix)
+	generatedDir := versionedV5Dir(e2eRoot, versionSuffix)
 	binary := filepath.Join(repoRoot, "bin", "tf-migrate")
 
 	// Build the binary
