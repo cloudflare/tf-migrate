@@ -22,6 +22,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 )
 
 // File permission constants for consistent permission management
@@ -41,6 +44,21 @@ type RunConfig struct {
 	Exclude               string // comma-separated resource names to exclude
 	ProviderPath          string
 	TargetProviderVersion string // explicit provider version to set in required_providers
+	// VersionSuffix isolates this run's local directories (e2e/tf/v4-<suffix>,
+	// e2e/migrated-v4_to_v5-<suffix>) and R2 state key
+	// (v4/versions/<suffix>/terraform.tfstate) from the shared, unversioned
+	// ones used by default (unsuffixed) runs. If empty and
+	// TargetProviderVersion is set, it defaults to TargetProviderVersion —
+	// pass an explicit value only to override that default. See
+	// version_suffix.go.
+	VersionSuffix string
+	// Clean, when true, destroys this run's v4 and v5 test infrastructure on
+	// exit — success or failure — via a deferred cleanup. Mirrors the
+	// v5-upgrade track's --clean flag. Primarily for version-isolated
+	// supportability-matrix runs against a shared test account/zone with
+	// limited resources (ruleset phase slots, spectrum IPv4 quota, unique
+	// hostnames, etc.), where leftover resources from one leg break the next.
+	Clean bool
 }
 
 // testContext holds shared state for e2e test execution
@@ -87,12 +105,24 @@ func RunE2ETests(cfg *RunConfig) error {
 		return fmt.Errorf("parallelism must be >= 0, got %d", cfg.Parallelism)
 	}
 
+	// Default the version suffix from --target-provider-version when not
+	// explicitly given, so a matrix run like
+	// `run --target-provider-version 5.19.0 --resources ...` is isolated by
+	// default without needing a second flag. Pass --version-suffix explicitly
+	// to override. See version_suffix.go.
+	if cfg.VersionSuffix == "" && cfg.TargetProviderVersion != "" {
+		cfg.VersionSuffix = cfg.TargetProviderVersion
+	}
+
 	// Get paths
 	repoRoot := getRepoRoot()
 	e2eRoot := filepath.Join(repoRoot, "e2e")
-	v4Dir := filepath.Join(e2eRoot, "tf", "v4")
-	v5Dir := filepath.Join(e2eRoot, "migrated-v4_to_v5")
+	v4Dir := versionedV4Dir(e2eRoot, cfg.VersionSuffix)
+	v5Dir := versionedV5Dir(e2eRoot, cfg.VersionSuffix)
 	tmpDir := filepath.Join(e2eRoot, "tmp")
+	if sanitizeVersionSuffix(cfg.VersionSuffix) != "" {
+		tmpDir = filepath.Join(e2eRoot, "tmp-"+sanitizeVersionSuffix(cfg.VersionSuffix))
+	}
 
 	// Create tmp directory
 	if err := os.MkdirAll(tmpDir, permDir); err != nil {
@@ -163,6 +193,20 @@ func RunE2ETests(cfg *RunConfig) error {
 		return err
 	}
 
+	// tfConfigFile is set later (only if --provider is given), but the
+	// cleanup closure below reads it by reference at defer-execution time
+	// (function exit), not at defer-registration time (now) — so it's safe
+	// to declare and register the defer before tfConfigFile has its final
+	// value.
+	var tfConfigFile string
+	if cfg.Clean {
+		defer func() {
+			runCleanupOnExit(cfg, env, v4Dir, v5Dir, tfConfigFile)
+		}()
+		printYellow("Clean mode (--clean): test infrastructure will be destroyed on exit, success or failure")
+		fmt.Println()
+	}
+
 	printYellow("Running tests with:")
 	printYellow("  User:       %s", env.Email)
 	printYellow("  Account ID: %s", env.AccountID)
@@ -170,21 +214,26 @@ func RunE2ETests(cfg *RunConfig) error {
 	printYellow("  Domain:     %s", env.Domain)
 	if cfg.ProviderPath != "" {
 		printYellow("  Provider:   Local (%s)", cfg.ProviderPath)
+	} else if cfg.TargetProviderVersion != "" {
+		printYellow("  Provider:   Registry (exact version %s)", cfg.TargetProviderVersion)
 	} else {
 		printYellow("  Provider:   Registry (latest)")
+	}
+	if cfg.VersionSuffix != "" {
+		printYellow("  Isolation:  v4Dir=%s v5Dir=%s stateKey=%s", v4Dir, v5Dir, versionedStateKey(cfg.VersionSuffix))
 	}
 	fmt.Println()
 
 	printYellow("Running init script...")
-	if err := RunInit(cfg.Resources); err != nil {
+	if err := RunInit(cfg.Resources, cfg.VersionSuffix); err != nil {
 		printError("Init script failed")
 		return err
 	}
 	printSuccess("Test resources initialized")
 	fmt.Println()
 
-	// Set up local provider if specified
-	var tfConfigFile string
+	// Set up local provider if specified (tfConfigFile declared earlier,
+	// above, so the cleanup defer can capture it by reference)
 	if cfg.ProviderPath != "" {
 		printHeader("Setting up local provider")
 		printYellow("Using provider from: %s", cfg.ProviderPath)
@@ -299,7 +348,7 @@ func RunE2ETests(cfg *RunConfig) error {
 	// The e2e runner handles state cleanup itself below via terraform state rm,
 	// which is simpler and reliable. The phased migration (_phase1_cleanup.tf)
 	// is for real Atlantis users who cannot run terraform state rm.
-	if err := RunMigrate(cfg.Resources, true, cfg.TargetProviderVersion); err != nil {
+	if err := RunMigrate(cfg.Resources, true, cfg.TargetProviderVersion, cfg.VersionSuffix); err != nil {
 		printError("Migration failed")
 		return err
 	}
@@ -322,12 +371,26 @@ func RunE2ETests(cfg *RunConfig) error {
 		"cloudflare_workers_secret":          true, // Folded into workers_script bindings in v5
 		"cloudflare_worker_secret":           true, // Deprecated singular form — also folded into workers_script bindings
 	}
+	// Some instances of an "obsolete" type are actually just being RENAMED
+	// (e.g. non-application-scoped cloudflare_access_policy -> cloudflare_zero_trust_access_policy
+	// via a moved {} block), not truly removed. Blanket-deleting by type name would strip
+	// their state entry before the moved {} block ever runs, making Terraform see the new
+	// address as brand new and plan to recreate it. Scan the migrated config for moved {}
+	// blocks and protect any state entry that has one from this cleanup.
+	protectedAddrs, err := findMovedFromAddresses(v5Dir)
+	if err != nil {
+		printYellow("Warning: failed to scan for moved {} blocks: %v", err)
+		protectedAddrs = map[string]bool{}
+	}
 	stateFilePath := filepath.Join(v5Dir, "terraform.tfstate")
-	if removed, err := removeObsoleteStateEntries(stateFilePath, obsoleteTypes); err != nil {
+	if removed, skipped, err := removeObsoleteStateEntries(stateFilePath, obsoleteTypes, protectedAddrs); err != nil {
 		printYellow("Warning: failed to clean obsolete state entries: %v", err)
 	} else {
 		for _, addr := range removed {
 			printYellow("Removing obsolete state entry (no v5 schema): %s", addr)
+		}
+		for _, addr := range skipped {
+			printYellow("Keeping state entry (protected by moved {} block): %s", addr)
 		}
 	}
 
@@ -371,6 +434,22 @@ func RunE2ETests(cfg *RunConfig) error {
 		return err
 	}
 	printSuccess("Terraform init successful")
+
+	// When no local --provider was given, this run is expected to install
+	// the provider straight from the public Terraform Registry, pinned to
+	// exactly cfg.TargetProviderVersion (tf-migrate's own
+	// --target-provider-version rewrite already makes required_providers use
+	// an exact, unqualified version string). Verify that's actually what got
+	// installed rather than assuming it — don't just check out and build the
+	// provider from source, and don't silently trust a version constraint
+	// that might have resolved to something else.
+	if cfg.ProviderPath == "" && cfg.TargetProviderVersion != "" {
+		if err := verifyRegistryProviderVersion(v5Dir, cfg.TargetProviderVersion); err != nil {
+			printError("%v", err)
+			return err
+		}
+		printSuccess("Confirmed registry install: cloudflare/cloudflare v%s (no local build, no dev_overrides)", strings.TrimPrefix(cfg.TargetProviderVersion, "v"))
+	}
 
 	// Optional diagnostic snapshot before refresh
 	if cfg.NoRefreshSnapshot {
@@ -665,6 +744,99 @@ func RunE2ETests(cfg *RunConfig) error {
 	return nil
 }
 
+// runCleanupOnExit destroys whatever test infrastructure this run created,
+// in both the v5 (migrated) and v4 directories, regardless of whether the
+// run succeeded or failed. Invoked via defer when cfg.Clean is set (see
+// RunE2ETests). Cleanup failures are logged as warnings only — they never
+// override or mask the original run's result, since the caller's return
+// value was already determined before this defer runs.
+//
+// This exists for version-isolated supportability-matrix runs against a
+// shared test account/zone with resources the Cloudflare API treats as
+// account/zone-wide singletons or quota-limited (one ruleset per phase per
+// zone, a fixed spectrum IPv4 quota, unique hostnames) — leftovers from one
+// leg silently break the next leg's create step in ways no amount of
+// resource-name namespacing can fix.
+func runCleanupOnExit(cfg *RunConfig, env *E2EEnv, v4Dir, v5Dir, tfConfigFile string) {
+	printHeader("Cleanup (--clean): destroying test infrastructure")
+
+	// Destroy the v5 (migrated) side first — this is what's actually live if
+	// migration + v5 apply got far enough to create anything.
+	if _, err := os.Stat(v5Dir); err == nil {
+		v5TF := NewTerraformRunner(v5Dir)
+		if tfConfigFile != "" {
+			v5TF.TFConfigFile = tfConfigFile
+		}
+		v5TF.EnvVars["TF_VAR_account_id"] = env.AccountID
+
+		if _, err := os.Stat(filepath.Join(v5Dir, ".terraform")); err != nil {
+			if _, initErr := v5TF.Run("init", "-no-color", "-input=false"); initErr != nil {
+				printYellow("Warning: cleanup init failed for v5 dir %s: %v", v5Dir, initErr)
+			}
+		}
+		if out, destroyErr := v5TF.Run("destroy", "-auto-approve", "-no-color", "-input=false"); destroyErr != nil {
+			printYellow("Warning: cleanup destroy failed for v5 dir %s: %v", v5Dir, destroyErr)
+			printYellow(out)
+		} else {
+			printSuccess("Destroyed v5 test infrastructure in %s", v5Dir)
+		}
+	} else {
+		printYellow("Skipping v5 cleanup — %s does not exist", v5Dir)
+	}
+
+	// Destroy the v4 side too, in case anything was created and recorded in
+	// v4 remote state but never carried through migration (e.g. a resource
+	// failed partway through the v4 apply before migration ran).
+	if _, err := os.Stat(v4Dir); err == nil {
+		r2AccessKey := os.Getenv("CLOUDFLARE_R2_ACCESS_KEY_ID")
+		r2SecretKey := os.Getenv("CLOUDFLARE_R2_SECRET_ACCESS_KEY")
+		if r2AccessKey == "" || r2SecretKey == "" {
+			printYellow("Warning: skipping v4 cleanup — R2 credentials not set")
+		} else {
+			v4TF := NewTerraformRunner(v4Dir)
+			v4TF.EnvVars["AWS_ACCESS_KEY_ID"] = r2AccessKey
+			v4TF.EnvVars["AWS_SECRET_ACCESS_KEY"] = r2SecretKey
+			v4TF.EnvVars["TF_VAR_account_id"] = env.AccountID
+
+			backendConfig := filepath.Join(v4Dir, "backend.hcl")
+			backendConfigTmp := filepath.Join(v4Dir, "backend.configured.hcl")
+			backendContent, readErr := os.ReadFile(backendConfig)
+			if readErr != nil {
+				printYellow("Warning: skipping v4 cleanup — failed to read %s: %v", backendConfig, readErr)
+			} else {
+				configuredContent := strings.ReplaceAll(string(backendContent), "ACCOUNT_ID", env.AccountID)
+				if cfg.VersionSuffix != "" {
+					isolatedKey := versionedStateKey(cfg.VersionSuffix)
+					configuredContent = strings.ReplaceAll(configuredContent, `key    = "v4/terraform.tfstate"`, `key    = "`+isolatedKey+`"`)
+				}
+
+				if writeErr := os.WriteFile(backendConfigTmp, []byte(configuredContent), permFile); writeErr != nil {
+					printYellow("Warning: skipping v4 cleanup — failed to write backend config: %v", writeErr)
+				} else {
+					defer func() {
+						if err := os.Remove(backendConfigTmp); err != nil && !os.IsNotExist(err) {
+							printYellow("Warning: failed to remove temp backend config %s: %v", backendConfigTmp, err)
+						}
+					}()
+
+					if _, initErr := v4TF.Run("init", "-no-color", "-reconfigure", "-input=false", "-backend-config="+backendConfigTmp); initErr != nil {
+						printYellow("Warning: cleanup init failed for v4 dir %s: %v", v4Dir, initErr)
+					} else if out, destroyErr := v4TF.Run("destroy", "-auto-approve", "-no-color", "-input=false"); destroyErr != nil {
+						printYellow("Warning: cleanup destroy failed for v4 dir %s: %v", v4Dir, destroyErr)
+						printYellow(out)
+					} else {
+						printSuccess("Destroyed v4 test infrastructure in %s", v4Dir)
+					}
+				}
+			}
+		}
+	} else {
+		printYellow("Skipping v4 cleanup — %s does not exist", v4Dir)
+	}
+
+	printHeader("Cleanup complete")
+}
+
 // driftCheckResult holds the result of checking and displaying drift
 type driftCheckResult struct {
 	hasDrift      bool
@@ -876,31 +1048,106 @@ func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string, resou
 	return result
 }
 
+// findMovedFromAddresses scans every .tf file under v5Dir for `moved { from = ... }`
+// blocks and returns the set of full state addresses (e.g.
+// "module.zero_trust_access_policy.cloudflare_access_policy.example") that those
+// blocks reference as their source. tf-migrate writes moved {} blocks as local,
+// module-relative references (no "module.X." prefix) inside each resource's own
+// module directory, so the module prefix is reconstructed here from each file's
+// path relative to v5Dir (a file directly in v5Dir has no module prefix; a file in
+// v5Dir/<name>/... belongs to "module.<name>").
+//
+// This exists so obsolete-type state cleanup (removeObsoleteStateEntries) can avoid
+// deleting entries that are actually being renamed via a moved {} block rather than
+// truly removed — deleting them first would make the moved {} block a no-op and
+// cause Terraform to plan a spurious recreate.
+func findMovedFromAddresses(v5Dir string) (map[string]bool, error) {
+	protected := map[string]bool{}
+
+	err := filepath.Walk(v5Dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(path, ".tf") {
+			return nil
+		}
+
+		rel, err := filepath.Rel(v5Dir, path)
+		if err != nil {
+			return err
+		}
+		modulePrefix := ""
+		if dir := filepath.Dir(rel); dir != "." {
+			// Only the first path segment is used: modules are one level deep
+			// (v5Dir/<module>/<file>.tf), matching how this harness lays out output.
+			first := strings.Split(dir, string(filepath.Separator))[0]
+			modulePrefix = "module." + first
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		f, diags := hclwrite.ParseConfig(data, path, hcl.InitialPos)
+		if diags.HasErrors() || f == nil {
+			// Not fatal for this best-effort scan — just skip unparsable files.
+			return nil
+		}
+		for _, block := range f.Body().Blocks() {
+			if block.Type() != "moved" {
+				continue
+			}
+			fromAttr := block.Body().GetAttribute("from")
+			if fromAttr == nil {
+				continue
+			}
+			fromText := strings.TrimSpace(string(hclwrite.Format(fromAttr.Expr().BuildTokens(nil).Bytes())))
+			if fromText == "" {
+				continue
+			}
+			addr := fromText
+			if modulePrefix != "" {
+				addr = modulePrefix + "." + fromText
+			}
+			protected[addr] = true
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan for moved blocks: %w", err)
+	}
+	return protected, nil
+}
+
 // removeObsoleteStateEntries removes resource entries of the given types directly
 // from the local terraform.tfstate JSON file. This avoids running `terraform state rm`
-// which requires modules to be installed (terraform init). Returns the list of
-// removed resource addresses.
-func removeObsoleteStateEntries(stateFilePath string, obsoleteTypes map[string]bool) ([]string, error) {
+// which requires modules to be installed (terraform init). Entries whose address is
+// present in protectedAddrs are kept even if their type is obsolete — these are
+// instances being renamed via a moved {} block rather than truly removed (see
+// findMovedFromAddresses). Returns the list of removed addresses and the list of
+// addresses that matched an obsolete type but were kept due to protection.
+func removeObsoleteStateEntries(stateFilePath string, obsoleteTypes map[string]bool, protectedAddrs map[string]bool) ([]string, []string, error) {
 	data, err := os.ReadFile(stateFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
 
 	var state map[string]interface{}
 	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, fmt.Errorf("failed to parse state file: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse state file: %w", err)
 	}
 
 	resources, ok := state["resources"].([]interface{})
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	var kept []interface{}
 	var removed []string
+	var skipped []string
 
 	for _, r := range resources {
 		res, ok := r.(map[string]interface{})
@@ -916,6 +1163,11 @@ func removeObsoleteStateEntries(stateFilePath string, obsoleteTypes map[string]b
 			if rModule != "" {
 				addr = rModule + "." + addr
 			}
+			if protectedAddrs[addr] {
+				skipped = append(skipped, addr)
+				kept = append(kept, r)
+				continue
+			}
 			removed = append(removed, addr)
 		} else {
 			kept = append(kept, r)
@@ -923,18 +1175,18 @@ func removeObsoleteStateEntries(stateFilePath string, obsoleteTypes map[string]b
 	}
 
 	if len(removed) == 0 {
-		return nil, nil
+		return nil, skipped, nil
 	}
 
 	state["resources"] = kept
 	updated, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("failed to serialize state: %w", err)
+		return nil, nil, fmt.Errorf("failed to serialize state: %w", err)
 	}
 	if err := os.WriteFile(stateFilePath, updated, permFile); err != nil {
-		return nil, fmt.Errorf("failed to write state file: %w", err)
+		return nil, nil, fmt.Errorf("failed to write state file: %w", err)
 	}
-	return removed, nil
+	return removed, skipped, nil
 }
 
 func runV4Tests(ctx *testContext) error {
@@ -968,6 +1220,16 @@ func runV4Tests(ctx *testContext) error {
 	}
 
 	configuredContent := strings.ReplaceAll(string(backendContent), "ACCOUNT_ID", ctx.env.AccountID)
+
+	// Isolate the R2 state key when this run has a version suffix, so it
+	// can't collide with the shared v4/terraform.tfstate key used by
+	// default (unsuffixed) runs. See version_suffix.go.
+	if ctx.cfg.VersionSuffix != "" {
+		isolatedKey := versionedStateKey(ctx.cfg.VersionSuffix)
+		configuredContent = strings.ReplaceAll(configuredContent, `key    = "v4/terraform.tfstate"`, `key    = "`+isolatedKey+`"`)
+		printYellow("Using isolated R2 state key: %s", isolatedKey)
+	}
+
 	if err := os.WriteFile(backendConfigTmp, []byte(configuredContent), permFile); err != nil {
 		return fmt.Errorf("failed to write backend config to %s: %w", backendConfigTmp, err)
 	}

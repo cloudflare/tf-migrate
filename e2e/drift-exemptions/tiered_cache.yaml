@@ -10,6 +10,8 @@ version: 1
 exemptions:
   - name: "tiered_cache_argo_creation"
     description: "In v4, a cloudflare_tiered_cache resource with cache_type='generic' is replaced in v5 by two resources: cloudflare_tiered_cache (set to 'off') and a new cloudflare_argo_tiered_caching resource. The argo tiered caching resource has no equivalent in your v4 state and must be created by Terraform. This is expected — run terraform apply to create it and this change will not reappear."
+    resource_types:
+      - "cloudflare_argo_tiered_caching"
     allow_resource_creation: true
     enabled: true
 

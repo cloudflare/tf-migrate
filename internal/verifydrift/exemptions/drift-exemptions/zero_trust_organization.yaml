@@ -1,0 +1,22 @@
+# Drift Exemptions for zero_trust_organization resource
+
+version: 1
+
+exemptions:
+  # v5.23.0 bug fix: "zero_trust_organization: normalize mfa_required_for_all_apps
+  # to prevent perpetual diff" (terraform-provider-cloudflare CHANGELOG.md).
+  # The provider now normalizes a previously-null computed value to its real
+  # default (false) on read. On the first plan after upgrading to v5.23.0+,
+  # this surfaces as a one-time "+ mfa_required_for_all_apps = false" diff.
+  # It does not reappear on subsequent plans (confirmed live 2026-10-07).
+  - name: "mfa_required_for_all_apps_normalization"
+    description: "Provider v5.23.0 started normalizing mfa_required_for_all_apps (previously null/unknown) to its real computed default (false). Shows as a one-time '+ mfa_required_for_all_apps = false' diff on the first plan after upgrading to v5.23.0+; does not reappear afterward."
+    resource_types:
+      - "cloudflare_zero_trust_organization"
+    patterns:
+      - 'mfa_required_for_all_apps\s*='
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

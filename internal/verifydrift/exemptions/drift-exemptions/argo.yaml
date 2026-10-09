@@ -10,6 +10,8 @@ version: 1
 exemptions:
   - name: "argo_tiered_caching_creation"
     description: "The v4 cloudflare_argo resource has been split into two separate v5 resources: cloudflare_argo_smart_routing and cloudflare_argo_tiered_caching. The tiered caching resource does not exist in your v4 state and must be created fresh. This is expected — run terraform apply to create it and this change will not reappear."
+    resource_types:
+      - "cloudflare_argo_tiered_caching"
     allow_resource_creation: true
     enabled: true
 

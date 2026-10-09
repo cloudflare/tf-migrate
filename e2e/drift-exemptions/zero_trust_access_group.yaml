@@ -1,0 +1,36 @@
+# Drift Exemptions for zero_trust_access_group resource
+
+version: 1
+
+exemptions:
+  # v4 include/exclude/require blocks with array-valued selectors (ip, email,
+  # login_method, device_posture, email_list, ip_list, geo, country_code,
+  # etc.) explode into one v5 condition object per array element during
+  # migration (same "condition explosion" pattern documented for
+  # zero_trust_access_policy). On the FIRST live apply of this testdata
+  # (2026-10-08), the element order tf-migrate generates doesn't always match
+  # the order the real Cloudflare API returns afterward, so Terraform shows
+  # this as remove/re-add pairs for the same underlying value at a different
+  # list position (and a couple of plain in-place swaps for "id"/
+  # "country_code" when only two elements are involved). This is purely a
+  # list-ordering artifact, not a real semantic difference — the actual set
+  # of include/exclude/require conditions is identical before and after.
+  # Confirmed live: the second plan run immediately after apply shows zero
+  # drift (Step 5 of e2e-runner's standard flow), which remains the real
+  # safety net here — if this exemption ever starts masking a genuine bug,
+  # Step 5 will still catch it as unmatched drift.
+  - name: "condition_explosion_reordering"
+    description: "v4 array-valued selectors (ip, email, login_method, device_posture, email_list, ip_list, geo, country_code) explode into one v5 condition object per element. On first apply, generated element order may not match what the API returns, showing as remove/re-add pairs (or in-place swaps) for the same value at a different list position. Purely cosmetic — resolves after one apply, confirmed via a clean second plan."
+    resource_types:
+      - "cloudflare_zero_trust_access_group"
+    patterns:
+      - 'ip\s*=.*->\s*null'
+      - 'id\s*=.*->\s*null'
+      - 'id\s*=.*->.*"'
+      - 'integration_uid\s*=.*->\s*null'
+      - 'country_code\s*=.*->'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false

@@ -23,7 +23,8 @@ var initCmd = &cobra.Command{
 	SilenceUsage: true, // Don't show usage on error
 	RunE: func(cmd *cobra.Command, args []string) error {
 		resources, _ := cmd.Flags().GetString("resources")
-		return e2e.RunInit(resources)
+		versionSuffix, _ := cmd.Flags().GetString("version-suffix")
+		return e2e.RunInit(resources, versionSuffix)
 	},
 }
 
@@ -35,7 +36,8 @@ var migrateCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		resources, _ := cmd.Flags().GetString("resources")
 		targetProviderVersion, _ := cmd.Flags().GetString("target-provider-version")
-		return e2e.RunMigrate(resources, false, targetProviderVersion)
+		versionSuffix, _ := cmd.Flags().GetString("version-suffix")
+		return e2e.RunMigrate(resources, false, targetProviderVersion, versionSuffix)
 	},
 }
 
@@ -56,6 +58,8 @@ var runCmd = &cobra.Command{
 			Exclude:               cmd.Flag("exclude").Value.String(),
 			ProviderPath:          cmd.Flag("provider").Value.String(),
 			TargetProviderVersion: cmd.Flag("target-provider-version").Value.String(),
+			VersionSuffix:         cmd.Flag("version-suffix").Value.String(),
+			Clean:                 cmd.Flag("clean").Changed,
 		}
 		return e2e.RunE2ETests(cfg)
 	},
@@ -169,10 +173,12 @@ Examples:
 func init() {
 	// Init command flags
 	initCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
+	initCmd.Flags().String("version-suffix", "", "Isolate local dirs (e2e/tf/v4-<suffix>) from the shared e2e/tf/v4/ directory, e.g. for testing a specific target version without colliding with CI")
 
 	// Migrate command flags
 	migrateCmd.Flags().String("resources", "", "Target specific resources (comma-separated)")
 	migrateCmd.Flags().String("target-provider-version", "", "Explicit provider version to set in required_providers (e.g. 5.19.0-beta.3); skips GitHub API lookup")
+	migrateCmd.Flags().String("version-suffix", "", "Isolate local dirs (e2e/tf/v4-<suffix>, e2e/migrated-v4_to_v5-<suffix>) from the shared, unversioned ones")
 
 	// Run command flags
 	runCmd.Flags().Bool("skip-v4-test", false, "Skip v4 testing phase")
@@ -183,6 +189,8 @@ func init() {
 	runCmd.Flags().Int("parallelism", 0, "Terraform parallelism for plan/apply (0 uses Terraform default)")
 	runCmd.Flags().Bool("no-refresh-snapshot", false, "Run an additional diagnostic terraform plan with -refresh=false before the authoritative refresh plan")
 	runCmd.Flags().String("target-provider-version", "", "Explicit provider version to set in required_providers (e.g. 5.19.0-beta.3); skips GitHub API lookup")
+	runCmd.Flags().String("version-suffix", "", "Isolate local dirs + R2 state key from the shared, unversioned ones used by default runs. Defaults to --target-provider-version if not set — pass this only to override that default (e.g. to share one isolated slot across two versions, or to use a suffix unrelated to the provider version).")
+	runCmd.Flags().Bool("clean", false, "Destroy test infrastructure (v4 and v5 sides) on exit, success or failure. Recommended for version-isolated supportability-matrix runs against a shared test account/zone.")
 
 	// Clean command flags
 	cleanCmd.Flags().String("modules", "", "Modules to remove from state (comma-separated)")

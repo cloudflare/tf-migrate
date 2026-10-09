@@ -154,7 +154,10 @@ Supported variable substitutions: `${var.cloudflare_account_id}`, `${var.cloudfl
 
 ## CI/CD
 
-E2E tests run automatically in GitHub Actions on push to `main` or manual workflow dispatch. See `.github/workflows/e2e-tests.yml`.
+E2E tests run in GitHub Actions on a weekly schedule, or on demand via manual workflow dispatch
+(optionally targeting a single provider version). The workflow tests against every version in the
+known supportability matrix, not just one pinned version — see
+`.github/workflows/supportability-matrix.yml` and `e2e/SUPPORTABILITY_MATRIX.md`.
 
 ## Testing the E2E Runner Itself
 
