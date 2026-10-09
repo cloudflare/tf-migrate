@@ -46,14 +46,6 @@ on:
     # Weekly, Monday 06:00 UTC. Adjust if this collides with other scheduled
     # jobs against the same test account.
     - cron: "0 6 * * 1"
-  # TEMPORARY — pre-merge validation only. workflow_dispatch can't be used to
-  # manually trigger a workflow that doesn't yet exist on the default branch,
-  # so this push trigger (scoped to this PR branch only) is here solely to
-  # confirm the YAML parses and the matrix expands correctly before merge.
-  # MUST be removed before this PR merges.
-  push:
-    branches:
-      - supportability-matrix-ci
 
 env:
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
