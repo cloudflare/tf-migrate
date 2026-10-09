@@ -47,9 +47,10 @@ type RunConfig struct {
 	// VersionSuffix isolates this run's local directories (e2e/tf/v4-<suffix>,
 	// e2e/migrated-v4_to_v5-<suffix>) and R2 state key
 	// (v4/versions/<suffix>/terraform.tfstate) from the shared, unversioned
-	// ones that e2e-tests.yml CI uses. If empty and TargetProviderVersion is
-	// set, it defaults to TargetProviderVersion — pass an explicit value only
-	// to override that default. See version_suffix.go.
+	// ones used by default (unsuffixed) runs. If empty and
+	// TargetProviderVersion is set, it defaults to TargetProviderVersion —
+	// pass an explicit value only to override that default. See
+	// version_suffix.go.
 	VersionSuffix string
 	// Clean, when true, destroys this run's v4 and v5 test infrastructure on
 	// exit — success or failure — via a deferred cleanup. Mirrors the
@@ -1221,8 +1222,8 @@ func runV4Tests(ctx *testContext) error {
 	configuredContent := strings.ReplaceAll(string(backendContent), "ACCOUNT_ID", ctx.env.AccountID)
 
 	// Isolate the R2 state key when this run has a version suffix, so it
-	// can't collide with the shared v4/terraform.tfstate key the main
-	// e2e-tests.yml CI job uses. See version_suffix.go.
+	// can't collide with the shared v4/terraform.tfstate key used by
+	// default (unsuffixed) runs. See version_suffix.go.
 	if ctx.cfg.VersionSuffix != "" {
 		isolatedKey := versionedStateKey(ctx.cfg.VersionSuffix)
 		configuredContent = strings.ReplaceAll(configuredContent, `key    = "v4/terraform.tfstate"`, `key    = "`+isolatedKey+`"`)

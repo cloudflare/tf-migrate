@@ -3,8 +3,7 @@
 //
 // Without this, every invocation of `e2e-runner run` shares the same local
 // directories (e2e/tf/v4/, e2e/migrated-v4_to_v5/) and the same R2 remote
-// state key (v4/terraform.tfstate) — the same key the real e2e-tests.yml CI
-// job uses on every push to main. Running a manual/matrix test against a
+// state key (v4/terraform.tfstate). Running a manual/matrix test against a
 // specific --target-provider-version without isolation risks clobbering that
 // shared state.
 //

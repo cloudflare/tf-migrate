@@ -21,8 +21,8 @@ import (
 // RunInit syncs resource files from integration testdata to e2e/v4 (or, when
 // versionSuffix is non-empty, to an isolated e2e/v4-<suffix> directory so a
 // per-target-version test run can't collide with the shared, unversioned
-// directory that e2e-tests.yml CI uses). Pass "" for versionSuffix to
-// preserve the original, unversioned behavior.
+// directory used by default runs). Pass "" for versionSuffix to preserve the
+// original, unversioned behavior.
 func RunInit(resources string, versionSuffix string) error {
 	// Load required environment variables
 	env, err := LoadEnv(EnvForInit)

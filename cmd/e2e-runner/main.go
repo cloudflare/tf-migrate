@@ -189,7 +189,7 @@ func init() {
 	runCmd.Flags().Int("parallelism", 0, "Terraform parallelism for plan/apply (0 uses Terraform default)")
 	runCmd.Flags().Bool("no-refresh-snapshot", false, "Run an additional diagnostic terraform plan with -refresh=false before the authoritative refresh plan")
 	runCmd.Flags().String("target-provider-version", "", "Explicit provider version to set in required_providers (e.g. 5.19.0-beta.3); skips GitHub API lookup")
-	runCmd.Flags().String("version-suffix", "", "Isolate local dirs + R2 state key from the shared, unversioned ones used by e2e-tests.yml CI. Defaults to --target-provider-version if not set — pass this only to override that default (e.g. to share one isolated slot across two versions, or to use a suffix unrelated to the provider version).")
+	runCmd.Flags().String("version-suffix", "", "Isolate local dirs + R2 state key from the shared, unversioned ones used by default runs. Defaults to --target-provider-version if not set — pass this only to override that default (e.g. to share one isolated slot across two versions, or to use a suffix unrelated to the provider version).")
 	runCmd.Flags().Bool("clean", false, "Destroy test infrastructure (v4 and v5 sides) on exit, success or failure. Recommended for version-isolated supportability-matrix runs against a shared test account/zone.")
 
 	// Clean command flags
