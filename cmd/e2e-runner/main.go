@@ -60,6 +60,7 @@ var runCmd = &cobra.Command{
 			TargetProviderVersion: cmd.Flag("target-provider-version").Value.String(),
 			VersionSuffix:         cmd.Flag("version-suffix").Value.String(),
 			Clean:                 cmd.Flag("clean").Changed,
+			KeepCreated:           cmd.Flag("keep-created").Changed,
 		}
 		return e2e.RunE2ETests(cfg)
 	},
@@ -191,6 +192,7 @@ func init() {
 	runCmd.Flags().String("target-provider-version", "", "Explicit provider version to set in required_providers (e.g. 5.19.0-beta.3); skips GitHub API lookup")
 	runCmd.Flags().String("version-suffix", "", "Isolate local dirs + R2 state key from the shared, unversioned ones used by default runs. Defaults to --target-provider-version if not set — pass this only to override that default (e.g. to share one isolated slot across two versions, or to use a suffix unrelated to the provider version).")
 	runCmd.Flags().Bool("clean", false, "Destroy test infrastructure (v4 and v5 sides) on exit, success or failure. Recommended for version-isolated supportability-matrix runs against a shared test account/zone.")
+	runCmd.Flags().Bool("keep-created", false, "Skip the automatic cleanup of resources this run newly created with no prior real-world identity (no moved {} or import {} block protecting them). That cleanup runs by default on every successful run to prevent unbounded duplicate accumulation across repeated runs (see e2e/SUPPORTABILITY_MATRIX.md §10). Pass this only to deliberately inspect freshly-created resources after a local debug run.")
 
 	// Clean command flags
 	cleanCmd.Flags().String("modules", "", "Modules to remove from state (comma-separated)")

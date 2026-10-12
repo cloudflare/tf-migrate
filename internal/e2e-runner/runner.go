@@ -16,11 +16,13 @@
 package e2e
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -59,6 +61,15 @@ type RunConfig struct {
 	// limited resources (ruleset phase slots, spectrum IPv4 quota, unique
 	// hostnames, etc.), where leftover resources from one leg break the next.
 	Clean bool
+	// KeepCreated, when true, skips the automatic cleanup of resources this
+	// run newly created with no prior real-world identity (no moved {} or
+	// import {} block protecting them — see cleanupCreateOnlyResources).
+	// That cleanup runs by default on every successful run specifically to
+	// prevent the kind of unbounded duplicate accumulation documented in
+	// e2e/SUPPORTABILITY_MATRIX.md §10 (the Access Policy and Gateway
+	// Certificate quota incidents). Pass this only to deliberately inspect
+	// freshly-created resources after a local debug run.
+	KeepCreated bool
 }
 
 // testContext holds shared state for e2e test execution
@@ -741,6 +752,28 @@ func RunE2ETests(cfg *RunConfig) error {
 		return fmt.Errorf("migration produced drift")
 	}
 
+	// Step 5: Clean up create-only resources (see cleanupCreateOnlyResources).
+	// Only reached on this fully-successful path — a failed run's resources
+	// are left in place for debugging, and --keep-created opts out entirely.
+	if !cfg.KeepCreated {
+		fmt.Println()
+		printCyan("Step 5: Cleaning up create-only test resources")
+		destroyed, cleanupErr := cleanupCreateOnlyResources(v5TF, v5Dir, ctx.v5PlanOutput, tmpDir, cfg)
+		if cleanupErr != nil {
+			printYellow("Warning: cleanup did not fully succeed: %v", cleanupErr)
+			printYellow("This does not affect the test result above, which already passed.")
+			printYellow("See %s for details. If this keeps recurring for the same resource,", filepath.Join(tmpDir, "v5-cleanup-destroy.log"))
+			printYellow("it may need to be excluded from cleanup or investigated manually.")
+		} else if len(destroyed) == 0 {
+			printSuccess("No create-only resources needed cleanup")
+		} else {
+			printSuccess("Destroyed %d create-only resource(s):", len(destroyed))
+			for _, addr := range destroyed {
+				printYellow("  - %s", addr)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -1048,6 +1081,64 @@ func checkAndDisplayDrift(planOutput string, cfg *RunConfig, stage string, resou
 	return result
 }
 
+// healCorruptedLeakedCredentialCheckRuleState detects and repairs a known v4
+// provider bug: cloudflare_leaked_credential_check_rule's Read() lists all
+// detection patterns and loops looking for one matching state's id, but if
+// none match (e.g. because the real pattern was deleted outside Terraform)
+// it does not error — it silently writes a zero-value result back to state,
+// leaving id/username/password all null. Every subsequent Update() then
+// fails with "required missing detection ID", and the resource can never
+// recover on its own (confirmed directly in the v4 provider source,
+// internal/framework/service/leaked_credential_check_rule/resource.go).
+//
+// The identical anti-pattern also exists in
+// internal/framework/service/content_scanning_expression/resource.go (same
+// "doesn't offer a single get operation" comment, same no-match-found
+// handling), but that resource has no tf-migrate migrator or testdata, so
+// it's not in scope here — only leaked_credential_check_rule is actually
+// exercised by this harness today.
+//
+// This runs after v4 init, before v4 plan, looking for that corruption
+// signature (id == null) in the module's state and removing the entry so
+// the next plan/apply cleanly recreates it instead of repeatedly failing.
+// Safe to run every time: if the resource is healthy or not present in
+// state at all, this is a no-op.
+func healCorruptedLeakedCredentialCheckRuleState(v4TF *TerraformRunner) error {
+	const addr = "module.leaked_credential_check_rule.cloudflare_leaked_credential_check_rule.basic"
+
+	showOutput, err := v4TF.Run("state", "show", addr)
+	if err != nil {
+		// Not in state (not targeted this run, or never created yet) — nothing to heal.
+		return nil
+	}
+
+	if !isStateShowIDNull(showOutput) {
+		return nil
+	}
+
+	printYellow("Detected corrupted state for %s (id is null — known v4 Read() bug after out-of-band deletion). Removing so it recreates cleanly...", addr)
+	if _, err := v4TF.Run("state", "rm", addr); err != nil {
+		return fmt.Errorf("failed to remove corrupted state for %s: %w", addr, err)
+	}
+	printSuccess("Removed corrupted state entry for %s", addr)
+	return nil
+}
+
+// isStateShowIDNull reports whether `terraform state show <addr>` output has
+// a top-level `id = null` line — the exact corruption signature left by the
+// leaked_credential_check_rule v4 provider bug (a healthy resource always
+// shows `id = "<real-id>"`).
+func isStateShowIDNull(stateShowOutput string) bool {
+	scanner := bufio.NewScanner(strings.NewReader(stateShowOutput))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "id") && strings.Contains(line, "= null") {
+			return true
+		}
+	}
+	return false
+}
+
 // findMovedFromAddresses scans every .tf file under v5Dir for `moved { from = ... }`
 // blocks and returns the set of full state addresses (e.g.
 // "module.zero_trust_access_policy.cloudflare_access_policy.example") that those
@@ -1117,6 +1208,180 @@ func findMovedFromAddresses(v5Dir string) (map[string]bool, error) {
 		return nil, fmt.Errorf("failed to scan for moved blocks: %w", err)
 	}
 	return protected, nil
+}
+
+// findImportToAddresses scans every .tf file under v5Dir for `import { to = ... }`
+// blocks and returns the set of resource addresses they target.
+//
+// This exists so the create-only-resource cleanup step (see cleanupCreateOnlyResources)
+// can never destroy a resource that an import {} block says already exists for real —
+// Terraform's plan JSON reports an import-driven resource with the same "create" action
+// as a genuinely brand-new one, so action alone can't distinguish "safe to destroy test
+// fixture" from "do not touch, this is a real pre-existing resource" (e.g.
+// cloudflare_argo_tiered_caching, a DLP predefined profile, zero_trust_organization).
+//
+// tf-migrate normally hoists import {} blocks to the root main.tf, where "to" is already
+// fully module-qualified (module.<name>.<type>.<label>). This scan tolerates either form:
+// if "to" already starts with "module.", it's used as-is; otherwise the module prefix is
+// reconstructed from the file's path, the same way findMovedFromAddresses does for moved
+// blocks, so an unhoisted import block is still protected correctly.
+func findImportToAddresses(v5Dir string) (map[string]bool, error) {
+	protected := map[string]bool{}
+
+	err := filepath.Walk(v5Dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(path, ".tf") {
+			return nil
+		}
+
+		rel, err := filepath.Rel(v5Dir, path)
+		if err != nil {
+			return err
+		}
+		modulePrefix := ""
+		if dir := filepath.Dir(rel); dir != "." {
+			first := strings.Split(dir, string(filepath.Separator))[0]
+			modulePrefix = "module." + first
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		f, diags := hclwrite.ParseConfig(data, path, hcl.InitialPos)
+		if diags.HasErrors() || f == nil {
+			// Not fatal for this best-effort scan — just skip unparsable files.
+			return nil
+		}
+		for _, block := range f.Body().Blocks() {
+			if block.Type() != "import" {
+				continue
+			}
+			toAttr := block.Body().GetAttribute("to")
+			if toAttr == nil {
+				continue
+			}
+			toText := strings.TrimSpace(string(hclwrite.Format(toAttr.Expr().BuildTokens(nil).Bytes())))
+			if toText == "" {
+				continue
+			}
+			addr := toText
+			if modulePrefix != "" && !strings.HasPrefix(toText, "module.") {
+				addr = modulePrefix + "." + toText
+			}
+			protected[addr] = true
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan for import blocks: %w", err)
+	}
+	return protected, nil
+}
+
+// pureCreateLinePattern matches Terraform's human-readable plan header for a
+// genuinely new resource, e.g.:
+//
+//	  # module.queue.cloudflare_queue.minimal will be created
+//
+// Deliberately anchored to end right after "will be created" (allowing only
+// trailing whitespace) so it does NOT match any other action Terraform
+// renders differently:
+//   - "will be updated in-place"  (adopted via a moved {} block / already real)
+//   - "will be imported"          (an import {} block — a real pre-existing resource)
+//   - "will be destroyed"
+//   - "must be replaced"          (a real resource already existed and is being swapped)
+var pureCreateLinePattern = regexp.MustCompile(`^\s*#\s+(\S+)\s+will be created\s*$`)
+
+// extractPureCreateAddresses scans Terraform's human-readable plan output (the
+// same text already captured for drift detection — see checkAndDisplayDrift)
+// and returns the addresses of resources that are genuinely new, with no prior
+// real-world identity.
+//
+// This parses plan TEXT rather than `terraform show -json <planfile>`
+// deliberately: the JSON plan format always marshals the full prior state
+// (not just the -target-scoped resources), so a single unrelated resource
+// elsewhere in state with a stale/incompatible provider schema makes the
+// entire `show -json` call fail outright — even though the actual -target
+// plan/apply for the resources this run cares about succeeded cleanly. The
+// text plan output this package already relies on throughout has no such
+// problem, since it reflects only what the -target-scoped plan evaluated.
+func extractPureCreateAddresses(planOutput string) []string {
+	scanner := bufio.NewScanner(strings.NewReader(planOutput))
+	var addrs []string
+	for scanner.Scan() {
+		if matches := pureCreateLinePattern.FindStringSubmatch(scanner.Text()); len(matches) > 1 {
+			addrs = append(addrs, matches[1])
+		}
+	}
+	return addrs
+}
+
+// cleanupCreateOnlyResources identifies every resource this run's v5 apply created
+// with no prior real-world identity (a pure "create" action from planFilePath, and
+// not protected by a moved {} or import {} block) and destroys exactly those,
+// leaving the real v4 base and every adopted v5 resource completely untouched.
+//
+// This exists because v5-side Terraform state is never persisted between runs by
+// design (see e2e/SUPPORTABILITY_MATRIX.md §11) — resources with a moved {} block
+// are always safely re-adopted by their real ID regardless, but resources with no
+// v4 counterpart at all have no such anchor. Left alone, every run (local or CI,
+// on a weekly schedule) would create another copy, silently accumulating
+// duplicates until some account-level quota is exhausted — exactly the mechanism
+// behind the Access Policy and Gateway Certificate incidents documented in
+// e2e/SUPPORTABILITY_MATRIX.md §10.
+//
+// Returns the addresses it attempted to destroy. A destroy failure for one or
+// more individual resources is reported as an error for the caller to log as a
+// warning — some create-only resources genuinely cannot be destroyed via
+// Terraform (e.g. cloudflare_argo_tiered_caching, an account/zone-wide singleton
+// keyed by zone_id rather than an independently generated ID, which carries no
+// accumulation risk in the first place) — this must never retroactively fail an
+// otherwise-successful migration test, so the caller decides how to surface it.
+func cleanupCreateOnlyResources(v5TF *TerraformRunner, v5Dir string, planOutput string, tmpDir string, cfg *RunConfig) ([]string, error) {
+	candidates := extractPureCreateAddresses(planOutput)
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	movedProtected, err := findMovedFromAddresses(v5Dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan moved blocks before cleanup: %w", err)
+	}
+	importProtected, err := findImportToAddresses(v5Dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan import blocks before cleanup: %w", err)
+	}
+
+	var targets []string
+	for _, addr := range candidates {
+		if movedProtected[addr] || importProtected[addr] {
+			continue
+		}
+		targets = append(targets, addr)
+	}
+	if len(targets) == 0 {
+		return nil, nil
+	}
+
+	destroyArgs := []string{"destroy", "-auto-approve", "-no-color", "-input=false"}
+	for _, addr := range targets {
+		destroyArgs = append(destroyArgs, "-target="+addr)
+	}
+	destroyArgs = addParallelismArg(destroyArgs, cfg.Parallelism)
+
+	destroyOutput, destroyErr := v5TF.Run(destroyArgs...)
+	destroyLog := filepath.Join(tmpDir, "v5-cleanup-destroy.log")
+	if writeErr := os.WriteFile(destroyLog, []byte(destroyOutput), permFile); writeErr != nil {
+		printYellow("Warning: failed to save cleanup destroy log to %s: %v", destroyLog, writeErr)
+	}
+	if destroyErr != nil {
+		return targets, fmt.Errorf("terraform destroy failed for one or more create-only resources: %w", destroyErr)
+	}
+
+	return targets, nil
 }
 
 // removeObsoleteStateEntries removes resource entries of the given types directly
@@ -1257,6 +1522,10 @@ func runV4Tests(ctx *testContext) error {
 		return err
 	}
 	printSuccess("Terraform init successful (remote state loaded from R2)")
+
+	if err := healCorruptedLeakedCredentialCheckRuleState(v4TF); err != nil {
+		printYellow("Warning: health check for leaked_credential_check_rule state failed: %v", err)
+	}
 
 	// Run terraform plan
 	printYellow("Running terraform plan in v4/...")
