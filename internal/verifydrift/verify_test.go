@@ -92,6 +92,31 @@ func TestVerify_DetectsResources(t *testing.T) {
 	}
 }
 
+func TestVerify_DetectsResourceTypesNotModuleNames(t *testing.T) {
+	plan := `
+Terraform will perform the following actions:
+
+  # module.dns.cloudflare_dns_record.CAA["example.com_@_issue_x"] will be updated in-place
+  ~ resource "cloudflare_dns_record" "CAA" {
+      ~ flags = "0" -> 0
+    }
+
+  # cloudflare_ruleset.cache_settings["example.com"] will be updated in-place
+  ~ resource "cloudflare_ruleset" "cache_settings" {
+      ~ phase = "http_request_cache_settings" -> "http_request_cache_settings"
+    }
+
+Plan: 0 to add, 2 to change, 0 to destroy.
+`
+	result, err := Verify(plan)
+	if err != nil {
+		t.Fatalf("Verify returned error: %v", err)
+	}
+	if got := strings.Join(result.DetectedResources, ", "); got != "dns_record, ruleset" {
+		t.Errorf("expected DetectedResources \"dns_record, ruleset\", got %q", got)
+	}
+}
+
 // --- parseExemptionTag unit tests ---
 
 func TestParseExemptionTag_WithTag(t *testing.T) {
