@@ -1,0 +1,15 @@
+# Drift Exemptions for bot_management resource
+#
+# Resource-specific exemptions for cloudflare_bot_management
+
+version: 1
+
+# This file can be empty if bot_management doesn't need any special exemptions
+# beyond the global ones. It serves as an example of how resource-specific
+# exemptions can be added when needed.
+
+exemptions: []
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false
