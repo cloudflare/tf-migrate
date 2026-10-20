@@ -20,6 +20,37 @@ This guide explains how `cloudflare_teams_rule` resources migrate to `cloudflare
 
 ---
 
+## Action required: review Gateway policy precedence
+
+tf-migrate emits this warning for both `cloudflare_teams_rule` and
+`cloudflare_zero_trust_gateway_policy` when migrating from v4 to v5. It leaves
+configured `precedence` values and expressions unchanged.
+
+The v4 provider applied a name-based hash calculation, so a configured value
+such as `10116` could correspond to live API values such as `10116667` and
+`10116781` for different rules. Those live values establish a distinct order;
+dividing both by 1,000 would discard it and produce duplicate precedences.
+Manually assigned large values are not necessarily hash encodings either.
+
+Before applying:
+
+1. Inspect the live order of all relevant policies using the dashboard or API.
+2. Assign unique v5 precedences that preserve that order, including allow
+   exceptions and catch-all block policies. Lower values run first within each
+   processing phase. You can consistently retain live values or choose new
+   unique values that preserve the intended order.
+3. Do not replace values for only some policies with API values while leaving
+   others at their configured scale; this can invert policy order.
+4. Review every planned precedence change. It can reorder live policies on
+   apply and is not merely state normalization. When reordering with Terraform,
+   move one policy at a time and review each plan before applying.
+
+tf-migrate does not read live state or call the Cloudflare API, so it cannot
+determine the live tie-break order of duplicate configured values.
+
+See [Manage precedence with Terraform](https://developers.cloudflare.com/cloudflare-one/traffic-controls/order-of-enforcement/#manage-precedence-with-terraform)
+and [diagnostics](../../../DIAGNOSTICS.md).
+
 ## Migration Examples
 
 ### Example 1: Basic Rule without Settings
@@ -440,4 +471,3 @@ resource "cloudflare_zero_trust_gateway_policy" "comprehensive" {
 - Field rename at top level
 
 ---
-

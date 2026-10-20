@@ -2,6 +2,7 @@ package v4_to_v5
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/cloudflare/tf-migrate/integration"
@@ -70,5 +71,28 @@ func TestSingleResource(t *testing.T) {
 
 	runner.RunTest(t, integration.TestCase{
 		Resource: resource,
+	})
+}
+
+func TestGatewayPolicyPrecedenceReview(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration tests in short mode")
+	}
+	runner, err := integration.NewTestRunner("v4", "v5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Duplicate precedences require manual resolution, so this config-only
+	// fixture must not be discovered by the live E2E runner's testdata scan.
+	runner.TestDataPath = filepath.Join(runner.BaseDir, "fixtures")
+	runner.RunTest(t, integration.TestCase{
+		Resource: "zero_trust_gateway_policy",
+		ExpectedOutput: []string{
+			"Action required: review Gateway policy precedence",
+			"cloudflare_teams_rule.cftftest_gitlab_staging",
+			"cloudflare_zero_trust_gateway_policy.cftftest_harbor_staging",
+			"cloudflare_teams_rule.cftftest_catch_all_block",
+			"assign unique precedence values",
+		},
 	})
 }

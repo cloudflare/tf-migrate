@@ -1,10 +1,59 @@
 package zero_trust_gateway_policy
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
+	"github.com/cloudflare/tf-migrate/internal/transform"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 )
+
+func TestGatewayPolicyPrecedencePreservedWithReviewWarning(t *testing.T) {
+	for _, resourceType := range []string{"cloudflare_teams_rule", "cloudflare_zero_trust_gateway_policy"} {
+		t.Run(resourceType, func(t *testing.T) {
+			for _, precedence := range []string{"10116", "10000", "10116667", "var.precedence", "each.value.precedence", "local.base + 10"} {
+				t.Run(precedence, func(t *testing.T) {
+					input := fmt.Sprintf(`resource %q "cftftest_policy" {
+  account_id = "account"
+  name = "Specific allow"
+  action = "allow"
+  precedence = %s
+}`, resourceType, precedence)
+					file, diags := hclwrite.ParseConfig([]byte(input), "policy.tf", hcl.InitialPos)
+					if diags.HasErrors() {
+						t.Fatal(diags)
+					}
+					block := file.Body().Blocks()[0]
+					before := string(block.Body().GetAttribute("precedence").Expr().BuildTokens(nil).Bytes())
+					ctx := &transform.Context{CFGFile: file}
+					result, err := (&V4ToV5Migrator{}).TransformConfig(ctx, block)
+					if err != nil {
+						t.Fatal(err)
+					}
+					after := string(result.Blocks[0].Body().GetAttribute("precedence").Expr().BuildTokens(nil).Bytes())
+					if before != after {
+						t.Errorf("precedence expression changed: %q -> %q", before, after)
+					}
+					if len(ctx.Diagnostics) != 1 || ctx.Diagnostics[0].Severity != hcl.DiagWarning {
+						t.Fatalf("expected one review warning, got %v", ctx.Diagnostics)
+					}
+					warning := ctx.Diagnostics[0]
+					if warning.Summary != "Action required: review Gateway policy precedence" {
+						t.Errorf("unexpected warning summary: %q", warning.Summary)
+					}
+					for _, guidance := range []string{resourceType + ".cftftest_policy", "duplicate", "live order", "unique precedence", "Do not mix", "not merely state normalization"} {
+						if !strings.Contains(warning.Detail, guidance) {
+							t.Errorf("warning missing %q: %s", guidance, warning.Detail)
+						}
+					}
+				})
+			}
+		})
+	}
+}
 
 func TestV4ToV5Transformation(t *testing.T) {
 	migrator := NewV4ToV5Migrator()

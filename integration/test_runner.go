@@ -17,7 +17,8 @@ import (
 
 // TestCase represents a single integration test case
 type TestCase struct {
-	Resource string // Resource directory name in testdata
+	Resource       string   // Resource directory name in testdata
+	ExpectedOutput []string // Diagnostic snippets required in CLI output
 }
 
 // TestRunner manages integration test execution for any version migration
@@ -74,18 +75,22 @@ func (r *TestRunner) RunTest(t *testing.T, test TestCase) {
 		tempDir := t.TempDir()
 
 		// Copy input files
-		inputDir := filepath.Join(r.BaseDir, "testdata", test.Resource, "input")
+		testdataRoot := r.TestDataPath
+		if testdataRoot == "" {
+			testdataRoot = filepath.Join(r.BaseDir, "testdata")
+		}
+		inputDir := filepath.Join(testdataRoot, test.Resource, "input")
 		if err := r.copyDirectory(inputDir, tempDir); err != nil {
 			t.Fatalf("Failed to copy input files: %v", err)
 		}
 
 		// Run tf-migrate
-		if err := r.runMigration(tempDir); err != nil {
+		if err := r.runMigration(tempDir, test.ExpectedOutput); err != nil {
 			t.Fatalf("Migration failed: %v", err)
 		}
 
 		// Compare outputs
-		expectedDir := filepath.Join(r.BaseDir, "testdata", test.Resource, "expected")
+		expectedDir := filepath.Join(testdataRoot, test.Resource, "expected")
 		if err := r.compareDirectories(expectedDir, tempDir); err != nil {
 			t.Errorf("Output comparison failed: %v", err)
 		}
@@ -116,7 +121,7 @@ func (r *TestRunner) copyDirectory(src, dst string) error {
 }
 
 // runMigration executes tf-migrate on the given directory
-func (r *TestRunner) runMigration(dir string) error {
+func (r *TestRunner) runMigration(dir string, expectedOutput []string) error {
 	// Use --skip-phase-check to run the full migration directly.
 	// Integration tests validate the final v5 output, not the intermediate
 	// phase-1 state — phased migration is covered separately in phased_migration_test.go.
@@ -138,6 +143,11 @@ func (r *TestRunner) runMigration(dir string) error {
 	output, err := migrateCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("running migration: %w\nOutput: %s", err, output)
+	}
+	for _, expected := range expectedOutput {
+		if !strings.Contains(string(output), expected) {
+			return fmt.Errorf("missing expected diagnostic %q\nOutput: %s", expected, output)
+		}
 	}
 
 	return nil
