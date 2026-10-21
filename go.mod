@@ -1,6 +1,6 @@
 module github.com/cloudflare/tf-migrate
 
-go 1.25.1
+go 1.27.3
 
 require (
 	github.com/hashicorp/go-hclog v1.6.3
