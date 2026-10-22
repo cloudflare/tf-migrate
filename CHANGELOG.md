@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v1.1.1] - 2026-10-22
+
+### Changed
+
+- Built with Go 1.27.3, which distrusts a set of intermediate certificate authorities that have been revoked for CA compromise. The distrust list is compiled into the binary, so affected chains are rejected regardless of the host's system trust store.
+
+---
+
 ## [v1.0.0] - 2026-04-24
 
 First generally available release. Includes all changes from v1.0.0-beta.1 through v1.0.0-beta.12.
