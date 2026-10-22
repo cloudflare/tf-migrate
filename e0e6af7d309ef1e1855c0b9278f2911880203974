@@ -1,0 +1,19 @@
+internal/resources/workers_secret/v4_to_v5.go
+  s_d5173aca1a5d2d::t_e7605611eacc50 51-52,121-127,250,252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e0e6af7d309ef1e1855c0b9278f2911880203974",
+  "prompts": {},
+  "sessions": {
+    "s_d5173aca1a5d2d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_09827af99ffew1WhbBj4Bh26eK",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sarah Sicard <ssicard@cloudflare.com>"
+    }
+  }
+}
