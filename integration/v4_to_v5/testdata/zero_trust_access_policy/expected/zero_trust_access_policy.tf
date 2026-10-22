@@ -632,6 +632,22 @@ removed {
   # MIGRATION WARNING: Applying without inline policies will detach all policies from the application.
   # MIGRATION WARNING: Cloudflare then garbage-collects the orphaned app-scoped policies.
   # MIGRATION WARNING: This is NOT recoverable without reconstructing policies from git history or backups.
+
+  # Original v4 policy — convert to inline policies before applying:
+  # resource "cloudflare_access_policy" "app_scoped_policy" {
+  #   account_id       = var.cloudflare_account_id
+  #   application_id   = cloudflare_zero_trust_access_application.test_app.id
+  #   name             = "${local.name_prefix}-app-scoped"
+  #   decision         = "non_identity"
+  #   precedence       = 1
+  #   session_duration = "18h"
+  #
+  #   include {
+  #     service_token = [
+  #       cloudflare_access_service_token.test_token.id,
+  #     ]
+  #   }
+  # }
 }
 
 # BUGS-2007: nested and list selector migrations

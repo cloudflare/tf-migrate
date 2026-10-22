@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
+	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_policy"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
@@ -93,7 +94,7 @@ func runPreMigrationScan(log hclog.Logger, cfg config) (*preflightReport, error)
 			continue
 		}
 
-		relFile := filepath.Base(file)
+		relFile := file
 
 		for _, block := range parsed.Body().Blocks() {
 			switch block.Type() {
@@ -142,11 +143,11 @@ func classifyResource(block *hclwrite.Block, file string, providers transform.Mi
 		}
 	}
 
-	// cloudflare_access_policy resources with application_id are a special manual
+	// Both v4 Access policy names with application_id are a special manual
 	// path in v4->v5: they become removed {} blocks and must be rewritten inline
 	// on cloudflare_zero_trust_access_application.policies.
 	if cfg.sourceVersion == "v4" && cfg.targetVersion == "v5" &&
-		resourceType == "cloudflare_access_policy" && block.Body().GetAttribute("application_id") != nil {
+		zero_trust_access_policy.IsApplicationScopedPolicy(block) {
 		return &scannedResource{
 			File:         file,
 			ResourceType: resourceType,
@@ -369,6 +370,14 @@ func printPreflightReport(report *preflightReport, cfg config) {
 		case classUnsupported:
 			unsupported = append(unsupported, r)
 		}
+	}
+
+	if !cfg.quiet && len(manual) > 0 {
+		var affected []string
+		for _, r := range manual {
+			affected = append(affected, fmt.Sprintf("%s.%s  (%s)", r.ResourceType, r.ResourceName, r.File))
+		}
+		printAccessPolicyManualActions(affected)
 	}
 
 	// Print warnings ALWAYS (these are important for all users)
