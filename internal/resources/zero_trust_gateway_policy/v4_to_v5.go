@@ -1,8 +1,10 @@
 package zero_trust_gateway_policy
 
 import (
+	"fmt"
 	"time"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -50,6 +52,19 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Capture original resource type before any modifications (for moved block generation)
 	originalResourceType := tfhcl.GetResourceType(block)
 	resourceName := tfhcl.GetResourceName(block)
+
+	ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+		Severity: hcl.DiagWarning,
+		Summary:  "Action required: review Gateway policy precedence",
+		Detail: fmt.Sprintf("%s.%s\n\n"+
+			"tf-migrate preserves configured precedence values. The v4 provider applied a hash calculation, "+
+			"so live API values may differ from configuration and duplicate configured values may have a distinct live order.\n\n"+
+			"Before applying with v5, review the live order of all relevant policies and assign unique precedence values that preserve that order. "+
+			"Lower values run first within each processing phase. Do not mix API-derived values for only some policies with configured values for others. "+
+			"A planned precedence update can reorder live policies; it is not merely state normalization.\n\n"+
+			"See https://developers.cloudflare.com/cloudflare-one/traffic-controls/order-of-enforcement/#manage-precedence-with-terraform",
+			originalResourceType, resourceName),
+	})
 
 	// Rename resource type: cloudflare_teams_rule → cloudflare_zero_trust_gateway_policy
 	// Skip when already v5-named (resource was renamed in a prior migration run).
