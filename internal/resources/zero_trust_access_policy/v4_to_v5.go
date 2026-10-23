@@ -61,9 +61,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Check if this is an application-scoped policy (has application_id)
 	// These cannot be automatically migrated - they use a different API endpoint
 	// and must be converted to inline policies in cloudflare_zero_trust_access_application
-	if originalResourceType == "cloudflare_access_policy" && body.GetAttribute("application_id") != nil {
+	if IsApplicationScopedPolicy(block) {
+		address := originalResourceType + "." + resourceName
 		// Generate a removed block for Atlantis-friendly state cleanup
-		removedBlock := tfhcl.CreateRemovedBlock("cloudflare_access_policy." + resourceName)
+		removedBlock := tfhcl.CreateRemovedBlock(address)
 
 		// Add a prominent warning comment inside the removed block so it is
 		// visible in the generated HCL output even if the user ignores the
@@ -79,30 +80,32 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.AppendWarningComment(removedBlock.Body(),
 			"This is NOT recoverable without reconstructing policies from git history or backups.")
 
-		// Build an inline policy example for the user
-		inlinePolicy := m.buildInlinePolicyExample(body, resourceName)
+		// Keep the complete source in the diff for manual migration, including
+		// expressions, conditions, application_id and the original precedence.
+		// Line comments also safely preserve heredocs and block comments.
+		removedBlock.Body().AppendUnstructuredTokens(commentOriginalPolicy(block))
 
 		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 			Severity: hcl.DiagWarning,
-			Summary:  "Application-scoped access policy must be inlined",
+			Summary:  ManualMigrationSummary,
 			Detail: fmt.Sprintf(
-				"Resource cloudflare_access_policy.%s has 'application_id' and must be converted to an inline policy in v5.\n\n"+
+				"%s  (%s)\n\n"+
 					"!! DESTRUCTIVE IF APPLIED WITHOUT CHANGES !!\n"+
 					"tf-migrate removes the standalone policy resource and generates a 'removed' block, "+
 					"but does NOT add 'policies' to the parent application resource. If you run "+
 					"'terraform apply' on this output without first adding the inline 'policies' "+
-					"attribute, Terraform will write policies=null to the API. This detaches all "+
+					"attribute, Terraform will write an empty policies list to the API. This detaches all "+
 					"policies from the application and Cloudflare garbage-collects the orphaned "+
 					"app-scoped policies. Recovery requires reconstructing policies from git history.\n\n"+
-					"Inline policy to add to your cloudflare_zero_trust_access_application:\n%s\n\n"+
+					"The complete original v4 policy is preserved as comments inside its 'removed' block.\n\n"+
 					"Manual steps required:\n"+
-					"1. Add the inline policy shown above to your application's 'policies' attribute\n"+
-					"2. Update any references from cloudflare_access_policy.%s to the inline policy\n"+
+					"1. Convert the original policy to v5 inline syntax in your application's 'policies' attribute, preserving all conditions and precedence\n"+
+					"2. Update any references to the removed standalone policy\n"+
 					"3. Run terraform plan and verify no unexpected policy detachments\n"+
 					"4. Run terraform apply\n"+
 					"5. Remove the 'removed' block after successful apply\n\n"+
-					"See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-migration#application-scoped-access-policies",
-				resourceName, inlinePolicy, resourceName),
+					"See: %s",
+				address, policySourcePath(ctx), ManualMigrationGuide),
 		})
 		// Return removed block and remove original resource from config
 		return &transform.TransformResult{
@@ -678,7 +681,8 @@ func (m *V4ToV5Migrator) isScalarExpression(expr hclsyntax.Expression) bool {
 }
 
 // buildForExpansion creates a ForExpr that expands a list variable into condition objects:
-//   [for v in <collExpr> : { <key> = { <innerField> = v } }]
+//
+//	[for v in <collExpr> : { <key> = { <innerField> = v } }]
 func (m *V4ToV5Migrator) buildForExpansion(key, innerFieldName string, collExpr hclsyntax.Expression) *hclsyntax.ForExpr {
 	iterVar := "v"
 
@@ -1264,104 +1268,4 @@ func (m *V4ToV5Migrator) normalizeIPsInSource(src string) string {
 	})
 
 	return result
-}
-
-// buildInlinePolicyExample creates a string representation of the inline policy
-// that the user should add to their cloudflare_zero_trust_access_application.
-// It extracts the actual name, decision, and condition content from the source
-// policy so the user has concrete values to work with rather than placeholders.
-func (m *V4ToV5Migrator) buildInlinePolicyExample(body *hclwrite.Body, resourceName string) string {
-	// Extract key attributes from the policy
-	nameAttr := body.GetAttribute("name")
-	decisionAttr := body.GetAttribute("decision")
-
-	name := "Example Policy"
-	if nameAttr != nil {
-		name = tfhcl.ExtractStringFromAttribute(nameAttr)
-		if name == "" {
-			name = resourceName
-		}
-	}
-
-	decision := "allow"
-	if decisionAttr != nil {
-		d := tfhcl.ExtractStringFromAttribute(decisionAttr)
-		if d != "" {
-			decision = d
-		}
-	}
-
-	// Extract condition content from the source policy.
-	// Conditions may be blocks (v4 syntax) or attributes (already converted).
-	includeContent := m.extractConditionContent(body, "include")
-	excludeContent := m.extractConditionContent(body, "exclude")
-	requireContent := m.extractConditionContent(body, "require")
-
-	// Build the inline policy example
-	var sb strings.Builder
-	sb.WriteString("    {\n")
-	sb.WriteString(fmt.Sprintf("      name       = %q\n", name))
-	sb.WriteString(fmt.Sprintf("      decision   = %q\n", decision))
-	sb.WriteString("      precedence = 1\n")
-
-	if includeContent != "" {
-		sb.WriteString(fmt.Sprintf("      # NOTE: conditions below are from your v4 config and may need v5 syntax conversion.\n"))
-		sb.WriteString(fmt.Sprintf("      # See: https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-migration#application-scoped-access-policies\n"))
-		sb.WriteString(fmt.Sprintf("      include = %s\n", includeContent))
-	} else {
-		sb.WriteString("      include = [\n")
-		sb.WriteString("        # Add your include conditions here (v5 syntax)\n")
-		sb.WriteString("        # Example: { email = { email = \"user@example.com\" } }\n")
-		sb.WriteString("        # Example: { everyone = {} }\n")
-		sb.WriteString("      ]\n")
-	}
-
-	if excludeContent != "" {
-		sb.WriteString(fmt.Sprintf("      exclude = %s\n", excludeContent))
-	}
-	if requireContent != "" {
-		sb.WriteString(fmt.Sprintf("      require = %s\n", requireContent))
-	}
-
-	sb.WriteString("    }")
-
-	return sb.String()
-}
-
-// extractConditionContent extracts the raw content of a condition (include,
-// exclude, require) from the policy body. Returns the content as a string
-// suitable for embedding in the inline example, or empty string if not found.
-func (m *V4ToV5Migrator) extractConditionContent(body *hclwrite.Body, condName string) string {
-	// Check for attribute form first (already converted or attribute syntax)
-	if attr := body.GetAttribute(condName); attr != nil {
-		tokens := attr.Expr().BuildTokens(nil)
-		return strings.TrimSpace(string(hclwrite.Format(tokens.Bytes())))
-	}
-
-	// Check for block form (v4 syntax: include { ... })
-	blocks := tfhcl.FindBlocksByType(body, condName)
-	if len(blocks) == 0 {
-		return ""
-	}
-
-	// Extract the inner content of each block and wrap in array syntax.
-	// For v4 block syntax like:
-	//   include {
-	//     email = ["user@example.com"]
-	//   }
-	// We produce: [{ email = ["user@example.com"] }]
-	var items []string
-	for _, block := range blocks {
-		blockBytes := block.Body().BuildTokens(nil).Bytes()
-		content := strings.TrimSpace(string(hclwrite.Format(blockBytes)))
-		if content != "" {
-			items = append(items, fmt.Sprintf("{ %s }", content))
-		}
-	}
-
-	if len(items) == 0 {
-		return ""
-	}
-
-	return fmt.Sprintf("[%s]", strings.Join(items, ", "))
 }
