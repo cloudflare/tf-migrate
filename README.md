@@ -10,6 +10,11 @@ A CLI tool for automatically migrating Terraform configurations between differen
 
 > **Note:** tf-migrate does not modify Terraform state. State is upgraded automatically by the v5 provider on first `terraform apply` via its built-in `UpgradeState`/`MoveState` support.
 
+For organization and Gateway settings absent from v4's schema, capture the live
+API values before migration and restore them into explicit v5 HCL before applying:
+see [Preserve Zero Trust settings](docs/zero-trust-settings.md) and the
+`preserve-zero-trust-settings --snapshot` command.
+
 ### Supported Migration Paths
 
 Every target version below has been live-tested end-to-end against real Cloudflare infrastructure. **No version is 100% clean**, and critically, **your exact v4 source version changes the result** — `cloudflare_ruleset`'s state-upgrade bug is triggered by two fields (`asset_name`, `content_converter`) that newer v4 releases write to state and older v5 source schemas don't know how to parse. The table below splits by the two starting points that matter; "known issues" counts resources with a confirmed problem at that version, not a pass/fail verdict on the version as a whole.
