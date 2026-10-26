@@ -84,8 +84,9 @@ func TestAccessPolicyManualWarnings(t *testing.T) {
 					continue
 				}
 				require.Contains(t, text, "ACTION REQUIRED: Access policy migration is incomplete (2 policies)")
-				require.Contains(t, text, "cloudflare_access_policy.legacy  ("+path+")")
-				require.Contains(t, text, "cloudflare_zero_trust_access_policy.alias  ("+path+")")
+				require.Contains(t, text, "cloudflare_access_policy.legacy  (access.tf)")
+				require.Contains(t, text, "cloudflare_zero_trust_access_policy.alias  (access.tf)")
+				require.NotContains(t, text, "  ("+path+")")
 				require.Contains(t, text, "can detach and delete")
 			}
 			if !cfg.quiet && !cfg.dryRun {
@@ -126,9 +127,9 @@ func (failedVersionTransport) RoundTrip(*http.Request) (*http.Response, error) {
 }
 
 func TestAccessPolicyReminderAfterVersionFetchFailure(t *testing.T) {
-	client := http.DefaultClient
-	http.DefaultClient = &http.Client{Transport: failedVersionTransport{}}
-	defer func() { http.DefaultClient = client }()
+	transport := http.DefaultTransport
+	http.DefaultTransport = failedVersionTransport{}
+	defer func() { http.DefaultTransport = transport }()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "access.tf"), []byte(appScopedPolicyFixture), 0600))
 	output := capturePolicyOutput(t, func() {

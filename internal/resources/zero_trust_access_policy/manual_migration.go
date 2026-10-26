@@ -1,6 +1,7 @@
 package zero_trust_access_policy
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -13,7 +14,7 @@ const ManualMigrationGuide = "https://registry.terraform.io/providers/cloudflare
 
 func policySourcePath(ctx *transform.Context) string {
 	if ctx.FilePath != "" {
-		return ctx.FilePath
+		return filepath.Base(ctx.FilePath)
 	}
 	return ctx.Filename
 }

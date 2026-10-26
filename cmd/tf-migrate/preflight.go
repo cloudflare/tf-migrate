@@ -94,7 +94,7 @@ func runPreMigrationScan(log hclog.Logger, cfg config) (*preflightReport, error)
 			continue
 		}
 
-		relFile := file
+		relFile := filepath.Base(file)
 
 		for _, block := range parsed.Body().Blocks() {
 			switch block.Type() {
