@@ -103,6 +103,7 @@ func main() {
 	rootCmd.AddCommand(newMigrateCommand(log, cfg))
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(newVerifyDriftCommand())
+	rootCmd.AddCommand(newPreserveZeroTrustSettingsCommand(cfg))
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
