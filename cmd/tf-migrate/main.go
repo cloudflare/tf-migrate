@@ -346,6 +346,7 @@ func runFullMigration(log hclog.Logger, cfg config) error {
 			log.Warn("Failed to update provider version constraint", "error", err)
 		}
 	}
+	printAccessPolicyMigrationReminder(allDiagnostics, cfg)
 
 	return nil
 }
