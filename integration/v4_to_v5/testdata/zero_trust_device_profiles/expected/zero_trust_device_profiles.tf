@@ -315,7 +315,7 @@ moved {
 # Basic custom profile
 resource "cloudflare_zero_trust_device_custom_profile" "custom_employees" {
   account_id  = var.cloudflare_account_id
-  name        = "Employee Profile"
+  name        = "cftftest Employee Profile"
   description = "Custom profile for employees"
   match       = "identity.groups == \"employees\""
   precedence  = 1000
@@ -329,7 +329,7 @@ moved {
 # Custom profile with service_mode_v2
 resource "cloudflare_zero_trust_device_custom_profile" "custom_contractors" {
   account_id  = var.cloudflare_account_id
-  name        = "Contractor Profile"
+  name        = "cftftest Contractor Profile"
   description = "Custom profile for contractors"
   match       = "identity.groups == \"contractors\""
   precedence  = 1100
@@ -347,7 +347,7 @@ moved {
 # Custom profile with many optional fields
 resource "cloudflare_zero_trust_device_custom_profile" "custom_admins" {
   account_id            = var.cloudflare_account_id
-  name                  = "Admin Profile"
+  name                  = "cftftest Admin Profile"
   description           = "Custom profile for administrators"
   match                 = "identity.groups == \"admins\""
   precedence            = 950

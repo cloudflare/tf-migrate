@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2/hclparse"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/zclconf/go-cty/cty"
 )
 
 const (
@@ -78,6 +79,16 @@ func shouldCheckField(resourceType, fieldName string) bool {
 		"cloudflare_device_posture_rule":           {"name"},
 		"cloudflare_access_service_token":          {"name"},
 		"cloudflare_snippet_rules":                 {"snippet_name"},
+		// The v4 provider derives a device policy's API precedence from its
+		// name: precedence*1000 + crc32(name)%1000 (see the provider's
+		// providerToApiRulePrecedence). Two e2e lineages sharing a name
+		// therefore derive the SAME API precedence and collide with
+		// "precedence must be unique and positive for non-default policies"
+		// (error 2070). Requiring the cftftest prefix lets
+		// namespaceTestResourceNames give each lineage a distinct name, and
+		// thus a distinct precedence.
+		"cloudflare_zero_trust_device_profiles": {"name"},
+		"cloudflare_device_settings_policy":     {"name"},
 	}
 
 	fields, ok := checkFields[resourceType]
@@ -108,6 +119,36 @@ func shouldCheckLocal(localName string) bool {
 		}
 	}
 	return false
+}
+
+// isDeviceProfileResource reports whether the resource type is one of the
+// device settings policy resources, under any of its v4/v5 type names.
+func isDeviceProfileResource(resourceType string) bool {
+	switch resourceType {
+	case "cloudflare_zero_trust_device_profiles",
+		"cloudflare_device_settings_policy",
+		"cloudflare_zero_trust_device_custom_profile":
+		return true
+	}
+	return false
+}
+
+// isCustomDeviceProfile mirrors the routing logic in
+// internal/resources/zero_trust_device_profiles/v4_to_v5.go: a profile is
+// custom when it has both "match" and "precedence", unless "default = true"
+// is set explicitly. Only custom profiles carry a precedence, and precedence
+// is the field that must be unique per account.
+func isCustomDeviceProfile(block *hclsyntax.Block) bool {
+	if defaultAttr, ok := block.Body.Attributes["default"]; ok {
+		if v, diags := defaultAttr.Expr.Value(nil); !diags.HasErrors() &&
+			v.Type() == cty.Bool && v.True() {
+			return false
+		}
+	}
+
+	_, hasMatch := block.Body.Attributes["match"]
+	_, hasPrecedence := block.Body.Attributes["precedence"]
+	return hasMatch && hasPrecedence
 }
 
 // hasPrefix checks if a value contains the required prefix
@@ -196,6 +237,15 @@ func (l *Linter) lintBlock(file string, block *hclsyntax.Block) {
 			if typeVal, ok := extractStringValue(typeAttr.Expr); ok && typeVal == "predefined" {
 				return
 			}
+		}
+
+		// Device profiles: only *custom* profiles need a namespaced name.
+		// The name only matters because the v4 provider derives the API
+		// precedence from it, and precedence only exists on custom profiles.
+		// Default profiles are one-per-account (id == account_id, no
+		// precedence) and so can never collide between e2e lineages.
+		if isDeviceProfileResource(resourceType) && !isCustomDeviceProfile(block) {
+			return
 		}
 
 		// Check each attribute in the resource

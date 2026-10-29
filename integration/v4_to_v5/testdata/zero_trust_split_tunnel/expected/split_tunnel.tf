@@ -111,7 +111,7 @@ removed {
 # Custom profile with single tunnel
 resource "cloudflare_zero_trust_device_custom_profile" "single_tunnel" {
   account_id = local.account_id
-  name       = "single_tunnel_profile"
+  name       = "cftftest_single_tunnel_profile"
   match      = "identity.groups == \"developers\""
   precedence = 1000
   exclude = [{
@@ -135,7 +135,7 @@ removed {
 # Custom profile with multiple tunnels
 resource "cloudflare_zero_trust_device_custom_profile" "multiple_tunnels" {
   account_id = local.account_id
-  name       = "multiple_tunnels_profile"
+  name       = "cftftest_multiple_tunnels_profile"
   match      = "identity.groups == \"admins\""
   precedence = 1100
   include = [{

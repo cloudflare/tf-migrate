@@ -40,7 +40,7 @@ resource "cloudflare_zero_trust_local_fallback_domain" "default_multi" {
 # Custom device profile for e2e testing
 resource "cloudflare_zero_trust_device_profiles" "custom_e2e" {
   account_id  = var.cloudflare_account_id
-  name        = "E2E Custom Profile"
+  name        = "cftftest E2E Custom Profile"
   description = "Custom profile for e2e testing"
   match       = "identity.email == \"e2e@example.com\""
   precedence  = 876
