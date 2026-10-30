@@ -38,7 +38,11 @@ resource "cloudflare_zero_trust_device_settings" "example_proxy" {
   }},
   "cloudflare_zero_trust_gateway_settings.example": {"settings":{
     "host_selector":{"enabled":true}, "sandbox":{"enabled":true,"fallback_action":"block"},
-    "inspection":{"mode":"dynamic"}
+    "inspection":{"mode":"dynamic"}, "max_ttl_secs":900,
+    "antivirus":{"enabled_download_phase":true},
+    "block_page":{"name":"do not copy","mode":"customized_block_page",
+      "include_context":true,"suppress_footer":false,"target_uri":"https://example.com/blocked",
+      "read_only":true,"version":3}
   }},
   "cloudflare_zero_trust_device_settings.example_proxy": {
     "external_emergency_signal_enabled":true,
@@ -69,7 +73,19 @@ resource "cloudflare_zero_trust_device_settings" "example_proxy" {
 	require.True(t, value.GetAttr("sandbox").IsNull(), "explicit null must win")
 	require.True(t, value.GetAttr("host_selector").GetAttr("enabled").True())
 	require.False(t, value.GetAttr("tls_decrypt").GetAttr("enabled").True())
-	require.False(t, value.Type().HasAttribute("inspection"))
+	require.Equal(t, "dynamic", value.GetAttr("inspection").GetAttr("mode").AsString())
+	// block_page is absent from the migrated config, so it is created holding
+	// only the v5-only fields; v4-expressible and computed fields stay out.
+	blockPage := value.GetAttr("block_page")
+	require.Equal(t, "customized_block_page", blockPage.GetAttr("mode").AsString())
+	require.True(t, blockPage.GetAttr("include_context").True())
+	require.False(t, blockPage.GetAttr("suppress_footer").True(), "explicit false must be restored")
+	require.Equal(t, "https://example.com/blocked", blockPage.GetAttr("target_uri").AsString())
+	require.False(t, blockPage.Type().HasAttribute("name"), "v4-expressible field must not be copied")
+	require.False(t, blockPage.Type().HasAttribute("read_only"), "computed field must not be copied")
+	require.False(t, blockPage.Type().HasAttribute("version"), "computed field must not be copied")
+	// Fields outside the allowlist are never copied, even when present live.
+	require.False(t, value.Type().HasAttribute("antivirus"))
 	value, d = blocks[2].Body.Attributes["external_emergency_signal_enabled"].Expr.Value(nil)
 	require.False(t, d.HasErrors())
 	require.False(t, value.True())
@@ -81,6 +97,78 @@ resource "cloudflare_zero_trust_device_settings" "example_proxy" {
 	again, err := Restore(updated, snapshot)
 	require.NoError(t, err)
 	require.Empty(t, again)
+}
+
+// The BUGS-2159 case: v4 had a block_page block, so the migrated config already
+// carries the eight v4 fields and the v5-only ones must merge into that object
+// rather than replace it.
+func TestRestoreMergesIntoExistingBlockPage(t *testing.T) {
+	files := map[string][]byte{"main.tf": []byte(`resource "cloudflare_zero_trust_gateway_settings" "test" {
+  account_id = var.account_id
+  settings = {
+    block_page = {
+      # keep this comment
+      name    = "Cloudflare"
+      enabled = var.block_page_enabled
+      mode    = "redirect_uri"
+    }
+  }
+}`)}
+	snapshot := Snapshot{"cloudflare_zero_trust_gateway_settings.test": json.RawMessage(`{"settings":{
+    "block_page":{"name":"live name","mode":"customized_block_page",
+      "include_context":true,"suppress_footer":true,"target_uri":"https://example.com/blocked"}
+  }}`)}
+
+	updated, err := Restore(files, snapshot)
+	require.NoError(t, err)
+	require.Len(t, updated, 1)
+	text := string(updated["main.tf"])
+
+	file, diags := hclsyntax.ParseConfig(updated["main.tf"], "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	settings := file.Body.(*hclsyntax.Body).Blocks[0].Body.Attributes["settings"]
+	object, ok := settings.Expr.(*hclsyntax.ObjectConsExpr)
+	require.True(t, ok)
+	blockPage, ok := object.Items[0].ValueExpr.(*hclsyntax.ObjectConsExpr)
+	require.True(t, ok, "block_page must remain an object")
+
+	keys := map[string]bool{}
+	for _, item := range blockPage.Items {
+		value, d := item.KeyExpr.Value(nil)
+		require.False(t, d.HasErrors())
+		keys[value.AsString()] = true
+	}
+	for _, name := range []string{"name", "enabled", "mode", "include_context", "suppress_footer", "target_uri"} {
+		require.True(t, keys[name], "block_page must contain %s", name)
+	}
+
+	// Existing configuration wins and is untouched: the comment, the expression,
+	// and the explicitly configured mode all survive.
+	require.Contains(t, text, "# keep this comment")
+	require.Contains(t, text, "var.block_page_enabled")
+	require.Contains(t, text, `"redirect_uri"`)
+	require.NotContains(t, text, "customized_block_page")
+	require.NotContains(t, text, "live name")
+
+	// Restored values are now ordinary explicit HCL, so a second pass is a no-op.
+	again, err := Restore(updated, snapshot)
+	require.NoError(t, err)
+	require.Empty(t, again)
+}
+
+func TestRestoreRejectsNonObjectBlockPage(t *testing.T) {
+	for _, blockPage := range []string{"var.block_page", `"string"`} {
+		t.Run(blockPage, func(t *testing.T) {
+			config := `resource "cloudflare_zero_trust_gateway_settings" "test" { settings = { block_page = ` + blockPage + ` } }`
+			files := map[string][]byte{"main.tf": []byte(config)}
+			output, err := Restore(files, Snapshot{
+				"cloudflare_zero_trust_gateway_settings.test": json.RawMessage(`{"settings":{"block_page":{"mode":"customized_block_page"}}}`),
+			})
+			require.Error(t, err)
+			require.Nil(t, output)
+			require.Equal(t, config, string(files["main.tf"]))
+		})
+	}
 }
 
 func TestRestoreFalseEmptyAndAbsentValues(t *testing.T) {

@@ -18,7 +18,10 @@ func newPreserveZeroTrustSettingsCommand(cfg *config) *cobra.Command {
 		Short: "Copy pre-migration Zero Trust API settings into explicit v5 HCL",
 		Long: `After migrating HCL, restore settings unavailable in v4 from a JSON snapshot.
 The snapshot maps local v5 resource addresses to their pre-migration GET responses.
-Existing explicit configuration wins. Only the BUGS-2161 settings are copied.
+Existing explicit configuration wins, including explicit null, false and empty values.
+Only fields the v4 provider could not express are copied, including nested ones such
+as settings.block_page.mode; a nested field merges into its parent object when that
+object is already configured, and creates it when it is not.
 Run in each module directory before the first v5 apply; no state or API is changed.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

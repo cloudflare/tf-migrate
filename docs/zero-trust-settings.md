@@ -66,18 +66,28 @@ The copied fields are:
 | Resource | Fields |
 | --- | --- |
 | `cloudflare_zero_trust_organization` | `deny_unmatched_requests`, `deny_unmatched_requests_exempted_zone_names`, `mfa_config`, `mfa_piv_key_requirements`, `mfa_required_for_all_apps` |
-| `cloudflare_zero_trust_gateway_settings` | `settings.host_selector`, `settings.sandbox` |
+| `cloudflare_zero_trust_gateway_settings` | `settings.host_selector`, `settings.sandbox`, `settings.inspection`, `settings.max_ttl_secs`, `settings.block_page.mode`, `settings.block_page.include_context`, `settings.block_page.suppress_footer`, `settings.block_page.target_uri` |
 | `cloudflare_zero_trust_device_settings` | `external_emergency_signal_enabled`, `external_emergency_signal_url`, `external_emergency_signal_fingerprint`, `external_emergency_signal_interval` |
 
 Absent or null API values are not synthesized. Unrelated response fields such as
 timestamps, account IDs, and read-only fields are not copied.
 
+Only fields the v4 schema could not express are copied. A nested field such as
+`settings.block_page.mode` is added to `block_page` when that object is already
+configured, preserving the comments, expressions, and field values already there,
+and `block_page` is created when it is absent. In that second case it holds only
+the fields listed above: live values for fields v4 could express, such as
+`block_page.name`, are not restored, because configuration that omits them is a
+divergence that predates migration. Set those explicitly if the live values
+should be kept.
+
 For modules, run restoration within each source module directory with local
 addresses. A resource using `count` or `for_each` may represent multiple accounts:
 restore its per-instance settings explicitly rather than copying one account's
-response to every instance. Likewise, if Gateway `settings` is supplied by a
-variable, local, or other expression, add `host_selector` and `sandbox` to that
-source object. The command reports these cases without writing any files.
+response to every instance. Likewise, if Gateway `settings` or a nested object
+such as `block_page` is supplied by a variable, local, or other expression, add
+the fields listed above to that source object. The command reports these cases
+without writing any files.
 
 ## 3. Verify before applying v5
 
