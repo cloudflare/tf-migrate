@@ -148,3 +148,56 @@ func JoinQuotedLiteral(tokens hclwrite.Tokens) (string, bool) {
 	}
 	return string(sb), true
 }
+
+// LiteralNumber returns the text of a bare numeric literal expression.
+//
+// It reports false for anything else, including an expression that merely
+// begins with a number, such as "100 + var.offset". Callers use it to decide
+// whether an expression can be folded into a new literal value; everything
+// else has to be preserved rather than rewritten, because only the first
+// token of an expression is a number and reading just that token silently
+// turns "var.port" into "var" or "index(...)" into "index".
+func LiteralNumber(tokens hclwrite.Tokens) (string, bool) {
+	var lit *hclwrite.Token
+	for _, tok := range tokens {
+		switch tok.Type {
+		case hclsyntax.TokenNewline, hclsyntax.TokenComment:
+			continue
+		case hclsyntax.TokenNumberLit:
+			if lit != nil {
+				return "", false
+			}
+			lit = tok
+		default:
+			return "", false
+		}
+	}
+	if lit == nil {
+		return "", false
+	}
+	return string(lit.Bytes), true
+}
+
+// TrimLeadingSpace returns tokens ready to be embedded inside a larger
+// expression: leading newlines are dropped and the first token's preceding
+// whitespace is cleared, so the spacing that separated the expression from its
+// "=" is not re-emitted in the new position.
+//
+// The first token is copied rather than mutated, because expression tokens are
+// shared with the attribute they were read from.
+func TrimLeadingSpace(tokens hclwrite.Tokens) hclwrite.Tokens {
+	out := make(hclwrite.Tokens, 0, len(tokens))
+	for _, tok := range tokens {
+		if len(out) == 0 {
+			if tok.Type == hclsyntax.TokenNewline {
+				continue
+			}
+			first := *tok
+			first.SpacesBefore = 0
+			out = append(out, &first)
+			continue
+		}
+		out = append(out, tok)
+	}
+	return out
+}

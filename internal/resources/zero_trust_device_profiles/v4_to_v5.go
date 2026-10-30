@@ -205,29 +205,12 @@ func (m *V4ToV5Migrator) createMovedBlock(fromType, fromName, toType, toName str
 const precedenceOffset = 900
 
 // literalNumber returns the value of a bare numeric literal expression.
-//
-// It reports false for anything else, including an expression that merely
-// starts with a number. Only a lone number can be folded into a new literal;
-// everything else has to be preserved and offset at apply time.
 func literalNumber(tokens hclwrite.Tokens) (float64, bool) {
-	var lit *hclwrite.Token
-	for _, tok := range tokens {
-		switch tok.Type {
-		case hclsyntax.TokenNewline, hclsyntax.TokenComment:
-			continue
-		case hclsyntax.TokenNumberLit:
-			if lit != nil {
-				return 0, false
-			}
-			lit = tok
-		default:
-			return 0, false
-		}
-	}
-	if lit == nil {
+	lit, ok := tfhcl.LiteralNumber(tokens)
+	if !ok {
 		return 0, false
 	}
-	val, err := strconv.ParseFloat(string(lit.Bytes), 64)
+	val, err := strconv.ParseFloat(lit, 64)
 	if err != nil {
 		return 0, false
 	}
@@ -241,22 +224,7 @@ func literalNumber(tokens hclwrite.Tokens) (float64, bool) {
 // loosely than addition is re-associated. "var.x ? 1 : 2" would become
 // "900 + var.x ? 1 : 2", which parses as "(900 + var.x) ? 1 : 2".
 func offsetExpression(expr hclwrite.Tokens) hclwrite.Tokens {
-	trimmed := make(hclwrite.Tokens, 0, len(expr))
-	for _, tok := range expr {
-		if len(trimmed) == 0 {
-			if tok.Type == hclsyntax.TokenNewline {
-				continue
-			}
-			// The leading token carries the spacing that separated the expression
-			// from "=", which would otherwise be re-emitted just inside the open
-			// paren. Copy it so the original attribute's tokens stay untouched.
-			first := *tok
-			first.SpacesBefore = 0
-			trimmed = append(trimmed, &first)
-			continue
-		}
-		trimmed = append(trimmed, tok)
-	}
+	trimmed := tfhcl.TrimLeadingSpace(expr)
 
 	out := hclwrite.Tokens{
 		{Type: hclsyntax.TokenNumberLit, Bytes: []byte(strconv.Itoa(precedenceOffset))},
