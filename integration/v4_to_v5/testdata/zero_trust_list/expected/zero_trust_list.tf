@@ -162,6 +162,14 @@ resource "cloudflare_zero_trust_list" "bugs2009_mixed" {
 
 # Total: 26 base resources + 3 from for_each map + 4 from for_each set + 3 from count + 3 BUGS-2009 = 39 instances
 
+# ============================================================================
+# BUGS-2160: percent-encoded values must survive the items reshape
+# HCL splits string literals at '%' and '$' (they may begin "%{" / "${"), so
+# reading only the first TokenQuotedLit truncated the value there and silently
+# shortened a malicious-host blocklist entry.
+# ============================================================================
+
+
 # 1. Minimal resource - only required fields
 resource "cloudflare_zero_trust_list" "minimal" {
   account_id = local.common_account_id
@@ -581,3 +589,26 @@ moved {
   to   = cloudflare_zero_trust_list.complex_emails
 }
 
+# 30. URL blocklist with percent-encoded values, in both items forms
+resource "cloudflare_zero_trust_list" "bugs2160_percent_encoded" {
+  account_id  = var.cloudflare_account_id
+  name        = "${local.name_prefix} BUGS-2160 Encoded URLs"
+  type        = "URL"
+  description = "Percent-encoded URLs must round-trip verbatim"
+
+  items = [{
+    description = "Encoded slash plus a literal dollar"
+    value       = "https://described.test/a%2Fb?cost=5$x"
+    }, {
+    description = null
+    value       = "https://onedrive.live.com/download?authkey=ABC&resid=BD6077F58A73009F%21108"
+    }, {
+    description = null
+    value       = "https://example.test/path%20with%20spaces"
+  }]
+}
+
+moved {
+  from = cloudflare_teams_list.bugs2160_percent_encoded
+  to   = cloudflare_zero_trust_list.bugs2160_percent_encoded
+}

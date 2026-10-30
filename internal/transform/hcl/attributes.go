@@ -322,16 +322,30 @@ func RemoveAttributes(body *hclwrite.Body, attrNames ...string) int {
 //	typeAttr := body.GetAttribute("type")
 //	recordType := ExtractStringFromAttribute(typeAttr)
 //	// Returns "A" from: type = "A"
-//	// Returns "var.record_type" from: type = var.record_type
+//	// Returns "var" from: type = var.record_type
+//
+// Note the traversal case: only the FIRST identifier is returned, so
+// "var.record_type" yields "var" and "local.foo.bar" yields "local". That is
+// long-standing behaviour which callers may depend on; it is not the same bug
+// as the literal truncation fixed below, and is tracked separately.
 func ExtractStringFromAttribute(attr *hclwrite.Attribute) string {
 	if attr == nil {
 		return ""
 	}
 
 	tokens := attr.Expr().BuildTokens(nil)
+
+	// Plain quoted strings must be joined across literal runs: HCL splits them
+	// at '%' and '$', so taking the first TokenQuotedLit truncates values such
+	// as percent-encoded URLs (BUGS-2160).
+	if val, ok := JoinQuotedLiteral(tokens); ok {
+		return val
+	}
+
 	for _, token := range tokens {
 		if token.Type == hclsyntax.TokenQuotedLit {
-			// Remove quotes from quoted literal
+			// Quoted literal inside a non-plain expression (e.g. an
+			// interpolated template). Preserved for backwards compatibility.
 			return strings.Trim(string(token.Bytes), "\"")
 		} else if token.Type == hclsyntax.TokenIdent {
 			// Return identifier as-is
@@ -1466,9 +1480,15 @@ func ConvertServiceBindingBlocksToServicesMap(body *hclwrite.Body) bool {
 	return true
 }
 
-// extractStringValue extracts a string value from an attribute, handling both quoted and unquoted strings
+// extractStringValue extracts a string value from an attribute, handling both quoted and unquoted strings.
+//
+// Joins literal runs for plain quoted strings so values containing '%' or '$'
+// are not truncated at the first such character (BUGS-2160).
 func extractStringValue(attr *hclwrite.Attribute) string {
 	tokens := attr.Expr().BuildTokens(nil)
+	if val, ok := JoinQuotedLiteral(tokens); ok {
+		return val
+	}
 	for _, token := range tokens {
 		if token.Type == hclsyntax.TokenQuotedLit || token.Type == hclsyntax.TokenIdent {
 			return string(token.Bytes)
