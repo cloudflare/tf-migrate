@@ -129,3 +129,36 @@ resource "cloudflare_page_rule" "with_query_string_ignore" {
     }
   }
 }
+
+variable "cftftest_cache_ttl" {
+  type    = number
+  default = 1800
+}
+
+locals {
+  cftftest_status_codes = "301"
+}
+
+# Regression coverage: expression values in cache_ttl_by_status used to collapse
+# to their first identifier, rendering as "200-299" = "var" and "local" = "max".
+resource "cloudflare_page_rule" "with_cache_ttl_expressions" {
+  zone_id  = var.cloudflare_zone_id
+  target   = "cftftest.com/expr/*"
+  priority = 5
+
+  actions {
+    cache_level = "cache_everything"
+    cache_ttl_by_status {
+      codes = "200-299"
+      ttl   = var.cftftest_cache_ttl
+    }
+    cache_ttl_by_status {
+      codes = "404"
+      ttl   = 300
+    }
+    cache_ttl_by_status {
+      codes = local.cftftest_status_codes
+      ttl   = max(300, var.cftftest_cache_ttl)
+    }
+  }
+}
