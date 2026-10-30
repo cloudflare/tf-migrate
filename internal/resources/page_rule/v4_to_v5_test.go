@@ -123,6 +123,68 @@ func TestV4ToV5Transformation(t *testing.T) {
 				}`,
 			},
 			{
+				// Regression: ExtractStringFromAttribute returns only the first
+				// identifier of a traversal, so these used to collapse to the
+				// literal string "var" on both sides of the mapping.
+				Name: "cache_ttl_by_status preserves expression codes and ttl",
+				Input: `resource "cloudflare_page_rule" "example" {
+  zone_id = "abc123"
+  target  = "example.com/*"
+  actions {
+    cache_ttl_by_status {
+      codes = var.status_codes
+      ttl   = var.cache_ttl
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_page_rule" "example" {
+  zone_id = "abc123"
+  target  = "example.com/*"
+  status  = "active"
+  actions = {
+    cache_ttl_by_status = {
+      (var.status_codes) = var.cache_ttl
+    }
+  }
+}`,
+			},
+			{
+				// Literal entries still fold and sort. The expression entries used
+				// to collapse to their first identifier, so this block rendered as
+				// "200-299" = "var" alongside "local" = "max".
+				Name: "cache_ttl_by_status mixes literal and expression entries",
+				Input: `resource "cloudflare_page_rule" "example" {
+  zone_id = "abc123"
+  target  = "example.com/*"
+  actions {
+    cache_ttl_by_status {
+      codes = "200-299"
+      ttl   = var.cache_ttl
+    }
+    cache_ttl_by_status {
+      codes = "404"
+      ttl   = 300
+    }
+    cache_ttl_by_status {
+      codes = local.codes
+      ttl   = max(300, var.floor)
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_page_rule" "example" {
+  zone_id = "abc123"
+  target  = "example.com/*"
+  status  = "active"
+  actions = {
+    cache_ttl_by_status = {
+      "200-299"     = var.cache_ttl
+      "404"         = "300"
+      (local.codes) = max(300, var.floor)
+    }
+  }
+}`,
+			},
+			{
 				Name: "Removes server_side_exclude",
 				Input: `resource "cloudflare_page_rule" "example" {
   zone_id = "abc123"

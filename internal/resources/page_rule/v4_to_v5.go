@@ -156,9 +156,83 @@ These fields are no longer supported in the v5 provider:
 	}, nil
 }
 
+// quotedStringTokens renders s as a quoted HCL string literal.
+func quotedStringTokens(s string) hclwrite.Tokens {
+	return hclwrite.Tokens{
+		&hclwrite.Token{Type: hclsyntax.TokenOQuote, Bytes: []byte("\"")},
+		&hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(s)},
+		&hclwrite.Token{Type: hclsyntax.TokenCQuote, Bytes: []byte("\"")},
+	}
+}
+
+// cloneTokens makes an independent copy of tokens so they stay valid after the
+// block they came from is removed from the body.
+func cloneTokens(tokens hclwrite.Tokens) hclwrite.Tokens {
+	out := make(hclwrite.Tokens, 0, len(tokens))
+	for _, t := range tokens {
+		b := make([]byte, len(t.Bytes))
+		copy(b, t.Bytes)
+		out = append(out, &hclwrite.Token{Type: t.Type, Bytes: b, SpacesBefore: t.SpacesBefore})
+	}
+	return out
+}
+
+// literalScalar reports whether the attribute is a plain literal scalar that can
+// be folded into the map, and returns its string form. It deliberately tests for
+// a literal rather than against a list of known expression prefixes: anything it
+// cannot prove is a literal (traversal, function call, interpolation) must have
+// its tokens preserved verbatim instead of being flattened.
+func literalScalar(attr *hclwrite.Attribute) (string, bool) {
+	if attr == nil {
+		return "", false
+	}
+
+	tokens := attr.Expr().BuildTokens(nil)
+
+	// Quoted string, joined across literal runs (HCL splits them at '%' and '$').
+	if val, ok := tfhcl.JoinQuotedLiteral(tokens); ok {
+		return val, true
+	}
+
+	// Bare number, e.g. ttl = 3600. v5 represents the map value as a string.
+	var number string
+	for _, token := range tokens {
+		switch token.Type {
+		case hclsyntax.TokenNumberLit:
+			if number != "" {
+				return "", false
+			}
+			number = string(token.Bytes)
+		case hclsyntax.TokenNewline, hclsyntax.TokenComment:
+			// ignore
+		default:
+			return "", false
+		}
+	}
+	if number != "" {
+		return number, true
+	}
+
+	return "", false
+}
+
+// cacheTTLEntry is one code->ttl pair awaiting rendering into the v5 map.
+type cacheTTLEntry struct {
+	nameTokens  hclwrite.Tokens
+	valueTokens hclwrite.Tokens
+}
+
 // transformCacheTTLByStatus transforms cache_ttl_by_status blocks to map syntax
 // v4: cache_ttl_by_status { codes = "200" ttl = 3600 }
 // v5: cache_ttl_by_status = { "200" = "3600" }
+//
+// Literal codes and ttl values are folded into the map directly. Values that are
+// not literals (variables, locals, function calls) are carried over verbatim
+// instead, because collapsing them loses the reference entirely: ExtractString-
+// FromAttribute returns only the first identifier of an expression, so
+// "ttl = var.cache_ttl" used to render as the literal string "var" and
+// "ttl = max(300, var.x)" as "max". An expression key is parenthesised, which
+// Terraform requires for a computed object key.
 func (m *V4ToV5Migrator) transformCacheTTLByStatus(body *hclwrite.Body) {
 	// Find all cache_ttl_by_status blocks
 	blocks := tfhcl.FindBlocksByType(body, "cache_ttl_by_status")
@@ -166,79 +240,89 @@ func (m *V4ToV5Migrator) transformCacheTTLByStatus(body *hclwrite.Body) {
 		return
 	}
 
-	// Collect all code->ttl mappings
-	entries := make(map[string]string)
+	// Literal keys are deduplicated (last block wins, as before) and sorted for
+	// deterministic output. Expression keys cannot be compared for equality, so
+	// they are kept in source order and appended after the literal entries.
+	literalEntries := make(map[string]hclwrite.Tokens)
+	var exprEntries []cacheTTLEntry
+
 	for _, block := range blocks {
 		blockBody := block.Body()
 
-		// Extract codes and ttl from block
 		codesAttr := blockBody.GetAttribute("codes")
 		ttlAttr := blockBody.GetAttribute("ttl")
-
-		if codesAttr != nil && ttlAttr != nil {
-			codes := tfhcl.ExtractStringFromAttribute(codesAttr)
-
-			// Extract TTL - it might be a number (not quoted)
-			ttl := tfhcl.ExtractStringFromAttribute(ttlAttr)
-			if ttl == "" {
-				// Try getting the raw token value (for numbers)
-				tokens := ttlAttr.Expr().BuildTokens(nil)
-				for _, token := range tokens {
-					if token.Type == hclsyntax.TokenNumberLit {
-						ttl = string(token.Bytes)
-						break
-					}
-				}
-			}
-
-			if codes != "" && ttl != "" {
-				entries[codes] = ttl
-			}
+		if codesAttr == nil || ttlAttr == nil {
+			continue
 		}
+
+		// Resolve the value first: literal ttl becomes a quoted string, anything
+		// else is preserved as-is. Terraform converts a numeric expression to the
+		// string the v5 map expects.
+		var valueTokens hclwrite.Tokens
+		if ttl, ok := literalScalar(ttlAttr); ok {
+			if ttl == "" {
+				continue
+			}
+			valueTokens = quotedStringTokens(ttl)
+		} else {
+			valueTokens = cloneTokens(ttlAttr.Expr().BuildTokens(nil))
+		}
+
+		if codes, ok := literalScalar(codesAttr); ok {
+			if codes == "" {
+				continue
+			}
+			literalEntries[codes] = valueTokens
+			continue
+		}
+
+		// Expression key: wrap in parentheses so Terraform evaluates it rather
+		// than reading it as a literal attribute name.
+		nameTokens := hclwrite.Tokens{
+			&hclwrite.Token{Type: hclsyntax.TokenOParen, Bytes: []byte("(")},
+		}
+		nameTokens = append(nameTokens, cloneTokens(codesAttr.Expr().BuildTokens(nil))...)
+		nameTokens = append(nameTokens, &hclwrite.Token{Type: hclsyntax.TokenCParen, Bytes: []byte(")")})
+
+		exprEntries = append(exprEntries, cacheTTLEntry{
+			nameTokens:  nameTokens,
+			valueTokens: valueTokens,
+		})
 	}
 
 	// Remove all cache_ttl_by_status blocks BEFORE setting the attribute
 	// This ensures the blocks don't interfere with the new attribute
 	tfhcl.RemoveBlocksByType(body, "cache_ttl_by_status")
 
-	// If we have entries, create map attribute
-	if len(entries) > 0 {
-		// Build map tokens: cache_ttl_by_status = { "200" = "3600", "404" = "300" }
-		// Use TokensForObject to get properly formatted map
-		var attrs []hclwrite.ObjectAttrTokens
-
-		// Sort keys for deterministic output
-		var sortedKeys []string
-		for codes := range entries {
-			sortedKeys = append(sortedKeys, codes)
-		}
-		sort.Strings(sortedKeys)
-
-		for _, codes := range sortedKeys {
-			ttl := entries[codes]
-
-			// Create name tokens for the key (as a quoted string)
-			nameTokens := hclwrite.Tokens{
-				&hclwrite.Token{Type: hclsyntax.TokenOQuote, Bytes: []byte("\"")},
-				&hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(codes)},
-				&hclwrite.Token{Type: hclsyntax.TokenCQuote, Bytes: []byte("\"")},
-			}
-
-			// Create value tokens (as a quoted string)
-			valueTokens := hclwrite.Tokens{
-				&hclwrite.Token{Type: hclsyntax.TokenOQuote, Bytes: []byte("\"")},
-				&hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(ttl)},
-				&hclwrite.Token{Type: hclsyntax.TokenCQuote, Bytes: []byte("\"")},
-			}
-
-			attrs = append(attrs, hclwrite.ObjectAttrTokens{
-				Name:  nameTokens,
-				Value: valueTokens,
-			})
-		}
-
-		// Use TokensForObject to create properly formatted object
-		objTokens := hclwrite.TokensForObject(attrs)
-		body.SetAttributeRaw("cache_ttl_by_status", objTokens)
+	if len(literalEntries) == 0 && len(exprEntries) == 0 {
+		return
 	}
+
+	// Build map tokens: cache_ttl_by_status = { "200" = "3600", "404" = "300" }
+	var attrs []hclwrite.ObjectAttrTokens
+
+	// Sort literal keys for deterministic output
+	var sortedKeys []string
+	for codes := range literalEntries {
+		sortedKeys = append(sortedKeys, codes)
+	}
+	sort.Strings(sortedKeys)
+
+	for _, codes := range sortedKeys {
+		attrs = append(attrs, hclwrite.ObjectAttrTokens{
+			Name:  quotedStringTokens(codes),
+			Value: literalEntries[codes],
+		})
+	}
+
+	for _, entry := range exprEntries {
+		attrs = append(attrs, hclwrite.ObjectAttrTokens{
+			Name:  entry.nameTokens,
+			Value: entry.valueTokens,
+		})
+	}
+
+	// Use TokensForObject to create properly formatted object
+	objTokens := hclwrite.TokensForObject(attrs)
+	body.SetAttributeRaw("cache_ttl_by_status", objTokens)
 }
