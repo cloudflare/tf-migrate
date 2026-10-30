@@ -85,3 +85,66 @@ func AppendWarningComment(body *hclwrite.Body, message string) {
 	}
 	body.AppendUnstructuredTokens(comment)
 }
+
+// JoinQuotedLiteral concatenates the literal runs of a *plain* quoted string
+// and reports whether the token sequence was in fact a plain quoted string.
+//
+// This exists because HCL's scanner does not emit one TokenQuotedLit per
+// string: it breaks the literal into separate runs at every '%' and '$',
+// since those characters may begin a template sequence ("%{" / "${"). A
+// value such as
+//
+//	"https://example.com/a?resid=ABC%21108"
+//
+// scans as three TokenQuotedLit tokens — "https://example.com/a?resid=ABC",
+// "%", "21108". Code that returns the *first* TokenQuotedLit therefore
+// silently truncates the value at the first '%' or '$' (BUGS-2160). Backslash
+// escapes (\n, \", \uXXXX) are *not* split and need no special handling.
+//
+// ok is false when the sequence is anything other than a plain quoted string
+// — an interpolation ("${...}"), a template control directive ("%{ if }"), a
+// traversal, a function call, a number, a bool, and so on. Callers must then
+// preserve the raw tokens instead of stringifying, because no string can
+// faithfully represent those expressions.
+//
+// The returned string is the raw *source* bytes between the quotes, with
+// escape sequences left exactly as written. That makes it round-trip safe:
+// re-emitting it as a TokenQuotedLit reproduces the original value verbatim.
+func JoinQuotedLiteral(tokens hclwrite.Tokens) (string, bool) {
+	var (
+		sb       []byte
+		sawOpen  bool
+		sawClose bool
+	)
+
+	for _, token := range tokens {
+		switch token.Type {
+		case hclsyntax.TokenOQuote:
+			// A second opening quote means this is not a single plain string.
+			if sawOpen {
+				return "", false
+			}
+			sawOpen = true
+		case hclsyntax.TokenCQuote:
+			if !sawOpen || sawClose {
+				return "", false
+			}
+			sawClose = true
+		case hclsyntax.TokenQuotedLit:
+			// Literal runs may only appear between the quotes.
+			if !sawOpen || sawClose {
+				return "", false
+			}
+			sb = append(sb, token.Bytes...)
+		default:
+			// Interpolation, template control, traversal, call, literal of
+			// another type, … — not a plain string.
+			return "", false
+		}
+	}
+
+	if !sawOpen || !sawClose {
+		return "", false
+	}
+	return string(sb), true
+}

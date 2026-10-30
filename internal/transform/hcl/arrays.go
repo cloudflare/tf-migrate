@@ -315,16 +315,16 @@ func cleanTokens(tokens hclwrite.Tokens) hclwrite.Tokens {
 	return cleaned
 }
 
-// extractStringFieldFromBlock extracts a string field value from a block's attributes
+// extractStringFieldFromBlock extracts a string field value from a block's attributes.
+//
+// Only plain quoted strings are returned. Anything else (interpolation,
+// traversal, function call, …) reports false so the caller falls back to
+// preserving the raw tokens. Uses JoinQuotedLiteral rather than the first
+// TokenQuotedLit, because HCL splits literals at '%' and '$' — returning the
+// first run truncates values such as percent-encoded URLs (BUGS-2160).
 func extractStringFieldFromBlock(block *hclwrite.Block, fieldName string) (string, bool) {
 	if attr := block.Body().GetAttribute(fieldName); attr != nil {
-		tokens := attr.Expr().BuildTokens(nil)
-		for _, token := range tokens {
-			if token.Type == hclsyntax.TokenQuotedLit {
-				val := string(token.Bytes)
-				return strings.Trim(val, "\""), true
-			}
-		}
+		return JoinQuotedLiteral(attr.Expr().BuildTokens(nil))
 	}
 	return "", false
 }
@@ -341,15 +341,16 @@ func extractTokensFromBlock(block *hclwrite.Block, fieldName string) (hclwrite.T
 	return nil, false
 }
 
-// extractStringFieldFromArrayElement extracts a string value from an array element
+// extractStringFieldFromArrayElement extracts a string value from an array element.
+//
+// Uses JoinQuotedLiteral rather than the first TokenQuotedLit: HCL splits
+// string literals at '%' and '$', so returning the first run truncates values
+// such as percent-encoded URLs (BUGS-2160). JoinQuotedLiteral also rejects
+// non-plain strings, which covers the "%{ if }" template-control case that
+// determineElementType still classifies as "string".
 func extractStringFieldFromArrayElement(elem ArrayElement) (string, bool) {
 	if elem.Type == "string" {
-		for _, token := range elem.Tokens {
-			if token.Type == hclsyntax.TokenQuotedLit {
-				val := string(token.Bytes)
-				return strings.Trim(val, "\""), true
-			}
-		}
+		return JoinQuotedLiteral(elem.Tokens)
 	}
 	return "", false
 }
