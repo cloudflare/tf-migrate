@@ -41,7 +41,7 @@ resource "cloudflare_split_tunnel" "default_include" {
 # Custom profile with single tunnel
 resource "cloudflare_zero_trust_device_profiles" "single_tunnel" {
   account_id = local.account_id
-  name       = "single_tunnel_profile"
+  name       = "cftftest_single_tunnel_profile"
   match      = "identity.groups == \"developers\""
   precedence = 100
 }
@@ -60,7 +60,7 @@ resource "cloudflare_split_tunnel" "single" {
 # Custom profile with multiple tunnels
 resource "cloudflare_zero_trust_device_profiles" "multiple_tunnels" {
   account_id = local.account_id
-  name       = "multiple_tunnels_profile"
+  name       = "cftftest_multiple_tunnels_profile"
   match      = "identity.groups == \"admins\""
   precedence = 200
 }

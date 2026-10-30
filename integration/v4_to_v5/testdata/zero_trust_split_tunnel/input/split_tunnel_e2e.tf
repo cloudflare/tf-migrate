@@ -34,7 +34,7 @@ variable "cloudflare_domain" {
 # Custom profile — split tunnels with policy_id target this
 resource "cloudflare_zero_trust_device_profiles" "cftftest_split_tunnel_profile" {
   account_id  = var.cloudflare_account_id
-  name        = "Split Tunnel E2E Profile"
+  name        = "cftftest Split Tunnel E2E Profile"
   description = "Custom profile for split tunnel E2E test"
   match       = "identity.email == \"split-tunnel-e2e@example.com\""
   precedence  = 500
