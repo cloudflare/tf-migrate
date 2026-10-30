@@ -358,3 +358,18 @@ resource "cloudflare_zero_trust_device_posture_rule" "depends_on_new_profile" {
 }
 
 
+# Precedence derived from an expression: must keep its relative ordering rather
+# than collapsing to one shared literal.
+resource "cloudflare_zero_trust_device_profiles" "cftftest_ordered_first" {
+  account_id = var.cloudflare_account_id
+  name       = "cftftest Ordered First"
+  match      = "identity.email == \"first@example.com\""
+  precedence = index(local.cftftest_warp_profiles_order, "cftftest Ordered First")
+}
+
+resource "cloudflare_zero_trust_device_profiles" "cftftest_ordered_second" {
+  account_id = var.cloudflare_account_id
+  name       = "cftftest Ordered Second"
+  match      = "identity.email == \"second@example.com\""
+  precedence = index(local.cftftest_warp_profiles_order, "cftftest Ordered Second")
+}

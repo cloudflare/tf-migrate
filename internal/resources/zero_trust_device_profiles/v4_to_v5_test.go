@@ -293,6 +293,80 @@ moved {
 }`,
 			},
 			{
+				// An unevaluatable precedence must keep its expression. Flattening it
+				// to a literal gives every affected profile the same precedence, which
+				// collapses their relative order.
+				Name: "custom profile with index() precedence keeps the expression",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Custom Profile"
+  match      = "identity.email == \"user@example.com\""
+  precedence = index(local.warp_profiles_order, "Custom Profile")
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_custom_profile" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Custom Profile"
+  match      = "identity.email == \"user@example.com\""
+  precedence = 900 + (index(local.warp_profiles_order, "Custom Profile"))
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.example
+  to   = cloudflare_zero_trust_device_custom_profile.example
+}`,
+			},
+			{
+				// A conditional binds more loosely than addition, so the offset has to
+				// parenthesise it. Without the parens this would re-associate to
+				// "(900 + var.use_high) ? 5 : 20".
+				Name: "custom profile with conditional precedence is parenthesised",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Custom Profile"
+  match      = "identity.email == \"user@example.com\""
+  precedence = var.use_high ? 5 : 20
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_custom_profile" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Custom Profile"
+  match      = "identity.email == \"user@example.com\""
+  precedence = 900 + (var.use_high ? 5 : 20)
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.example
+  to   = cloudflare_zero_trust_device_custom_profile.example
+}`,
+			},
+			{
+				// "local" is not valid JSON, so the previous gjson-based parse fell
+				// through to its 100.0 default and emitted 1000 rather than 900.
+				Name: "custom profile with a bare traversal precedence keeps the expression",
+				Input: `
+resource "cloudflare_zero_trust_device_profiles" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Custom Profile"
+  match      = "identity.email == \"user@example.com\""
+  precedence = local.base_precedence
+}`,
+				Expected: `
+resource "cloudflare_zero_trust_device_custom_profile" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Custom Profile"
+  match      = "identity.email == \"user@example.com\""
+  precedence = 900 + (local.base_precedence)
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.example
+  to   = cloudflare_zero_trust_device_custom_profile.example
+}`,
+			},
+			{
 				Name: "custom profile with default=false",
 				Input: `
 resource "cloudflare_zero_trust_device_profiles" "example" {

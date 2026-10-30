@@ -56,6 +56,7 @@ locals {
 
 
 
+
 resource "cloudflare_zero_trust_device_default_profile" "map_example" {
   for_each = {
     "profile1" = {
@@ -385,7 +386,7 @@ resource "cloudflare_zero_trust_device_custom_profile" "custom_teams" {
   name         = "${title(each.key)} Team Profile"
   description  = "Custom profile for ${each.key} team"
   match        = each.value.match
-  precedence   = 1000
+  precedence   = 900 + (each.value.precedence)
   auto_connect = 15
 }
 
@@ -463,4 +464,30 @@ resource "cloudflare_zero_trust_device_posture_rule" "depends_on_new_profile" {
   match = [{
     platform = "windows"
   }]
+}
+
+# Precedence derived from an expression: must keep its relative ordering rather
+# than collapsing to one shared literal.
+resource "cloudflare_zero_trust_device_custom_profile" "cftftest_ordered_first" {
+  account_id = var.cloudflare_account_id
+  name       = "cftftest Ordered First"
+  match      = "identity.email == \"first@example.com\""
+  precedence = 900 + (index(local.cftftest_warp_profiles_order, "cftftest Ordered First"))
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.cftftest_ordered_first
+  to   = cloudflare_zero_trust_device_custom_profile.cftftest_ordered_first
+}
+
+resource "cloudflare_zero_trust_device_custom_profile" "cftftest_ordered_second" {
+  account_id = var.cloudflare_account_id
+  name       = "cftftest Ordered Second"
+  match      = "identity.email == \"second@example.com\""
+  precedence = 900 + (index(local.cftftest_warp_profiles_order, "cftftest Ordered Second"))
+}
+
+moved {
+  from = cloudflare_zero_trust_device_profiles.cftftest_ordered_second
+  to   = cloudflare_zero_trust_device_custom_profile.cftftest_ordered_second
 }
