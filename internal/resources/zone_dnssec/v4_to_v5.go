@@ -4,6 +4,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // V4ToV5Migrator handles the migration of cloudflare_zone_dnssec from v4 to v5.
@@ -45,10 +46,16 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 }
 
 // TransformConfig handles configuration file transformations.
-// 1. Attribute status changed from computed-only to optional in v5
-// 2. Removes modified_on attribute if present (changed from optional+computed to computed-only in v5)
+//  1. Sets status = "active" when absent. status was computed-only in v4, where
+//     the resource always enabled DNSSEC. In v5 it is optional and not computed,
+//     so leaving it out makes every plan show status = "active" -> null.
+//  2. Removes modified_on attribute if present (changed from optional+computed to computed-only in v5)
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
+
+	if body.GetAttribute("status") == nil {
+		body.SetAttributeValue("status", cty.StringVal("active"))
+	}
 
 	// Remove modified_on attribute if present (changed from optional+computed to computed-only)
 	// RemoveAttribute is safe to call even if the attribute doesn't exist
@@ -59,4 +66,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		RemoveOriginal: false,
 	}, nil
 }
-

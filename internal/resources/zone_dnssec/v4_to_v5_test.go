@@ -20,6 +20,7 @@ resource "cloudflare_zone_dnssec" "example" {
 }`,
 				Expected: `resource "cloudflare_zone_dnssec" "example" {
   zone_id = "abc123"
+  status  = "active"
 }`,
 			},
 			{
@@ -34,10 +35,12 @@ resource "cloudflare_zone_dnssec" "example2" {
 }`,
 				Expected: `resource "cloudflare_zone_dnssec" "example1" {
   zone_id = "abc123"
+  status  = "active"
 }
 
 resource "cloudflare_zone_dnssec" "example2" {
   zone_id = "def456"
+  status  = "active"
 }`,
 			},
 			{
@@ -49,6 +52,19 @@ resource "cloudflare_zone_dnssec" "example" {
 }`,
 				Expected: `resource "cloudflare_zone_dnssec" "example" {
   zone_id = "abc123"
+  status  = "active"
+}`,
+			},
+			{
+				Name: "Existing status is left unchanged",
+				Input: `
+resource "cloudflare_zone_dnssec" "example" {
+  zone_id = "abc123"
+  status  = "disabled"
+}`,
+				Expected: `resource "cloudflare_zone_dnssec" "example" {
+  zone_id = "abc123"
+  status  = "disabled"
 }`,
 			},
 		}
