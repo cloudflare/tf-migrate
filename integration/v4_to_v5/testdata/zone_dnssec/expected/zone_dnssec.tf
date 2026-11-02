@@ -19,16 +19,20 @@ variable "cloudflare_domain" {
 
 resource "cloudflare_zone_dnssec" "example_active" {
   zone_id = var.cloudflare_zone_id
+  status  = "active"
 }
 
 resource "cloudflare_zone_dnssec" "example_disabled" {
   zone_id = var.cloudflare_zone_id
+  status  = "active"
 }
 
 resource "cloudflare_zone_dnssec" "example_minimal" {
   zone_id = var.cloudflare_zone_id
+  status  = "active"
 }
 
 resource "cloudflare_zone_dnssec" "example_null_status" {
   zone_id = var.cloudflare_zone_id
+  status  = "active"
 }

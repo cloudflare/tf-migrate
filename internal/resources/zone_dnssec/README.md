@@ -32,36 +32,18 @@ resource "cloudflare_zone_dnssec" "example" {
 ```hcl
 resource "cloudflare_zone_dnssec" "example" {
   zone_id = cloudflare_zone.example.id
-  status  = "active"  # Added from state
+  status  = "active"  # Added by tf-migrate
 }
 ```
 
 **What Changed:**
-- `status` attribute added from state (was computed-only in v4)
-- If state had `status = "active"` or `"pending"`, config gets `status = "active"`
+- `status = "active"` added when the config has no `status`. In v4 the resource always enabled DNSSEC and `status` was computed-only. In v5 `status` is optional and not computed, so without it every plan shows `status = "active" -> null`.
 
 ---
 
-### Example 2: Disabled DNSSEC
+### Example 2: DNSSEC disabled outside Terraform
 
-**v4 Configuration:**
-```hcl
-resource "cloudflare_zone_dnssec" "disabled" {
-  zone_id = cloudflare_zone.site.id
-  # Status is computed-only, cannot be set
-}
-```
-
-**v5 Configuration (After Migration, if state shows disabled):**
-```hcl
-resource "cloudflare_zone_dnssec" "disabled" {
-  zone_id = cloudflare_zone.site.id
-  status  = "disabled"  # Added from state
-}
-```
-
-**What Changed:**
-- If state had `status = "disabled"` or `"pending-disabled"`, config gets `status = "disabled"`
+v4 always set DNSSEC to active on create, so tf-migrate writes `status = "active"`. If DNSSEC was later disabled outside Terraform, the first v5 plan shows `status = "disabled" -> "active"`. Set `status = "disabled"` in the config if you want to keep it off.
 
 ---
 
@@ -79,7 +61,7 @@ resource "cloudflare_zone_dnssec" "legacy" {
 ```hcl
 resource "cloudflare_zone_dnssec" "legacy" {
   zone_id = cloudflare_zone.legacy.id
-  status  = "active"  # Added from state
+  status  = "active"  # Added by tf-migrate
   # modified_on removed (now computed-only)
 }
 ```
