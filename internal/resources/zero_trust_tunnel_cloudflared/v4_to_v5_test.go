@@ -97,7 +97,6 @@ resource "cloudflare_tunnel" "minimal" {
 				Expected: `resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
   account_id    = "f037e56e89293a057740de681ac9abbe"
   name          = "minimal-tunnel"
-  config_src    = "local"
   tunnel_secret = base64encode("my-secret-that-is-at-least-32-bytes-long")
 }
 
@@ -124,7 +123,6 @@ resource "cloudflare_tunnel" "tunnel2" {
   account_id    = "f037e56e89293a057740de681ac9abbe"
   name          = "tunnel-one"
   tunnel_secret = base64encode("first-tunnel-secret-32-bytes-long")
-  config_src = "local"
 }
 
 moved {
@@ -136,7 +134,6 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "tunnel2" {
   account_id    = "f037e56e89293a057740de681ac9abbe"
   name          = "tunnel-two"
   tunnel_secret = base64encode("second-tunnel-secret-32-bytes-long")
-  config_src = "local"
 }
 
 moved {
@@ -156,7 +153,6 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "alt_minimal" {
   account_id    = "f037e56e89293a057740de681ac9abbe"
   name          = "alt-minimal-tunnel"
   tunnel_secret = base64encode("alternative-name-secret-32-bytes-long")
-  config_src    = "local"
 }`,
 			},
 			{

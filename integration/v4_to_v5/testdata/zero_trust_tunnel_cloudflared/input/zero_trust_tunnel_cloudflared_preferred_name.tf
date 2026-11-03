@@ -8,7 +8,8 @@
 #
 # After migration:
 #   - `secret` is renamed to `tunnel_secret` in each resource body
-#   - `config_src = "local"` is added where absent
+#   - `config_src` is left untouched; absent stays absent (writing it would
+#     arm RequiresReplaceIfConfigured and force tunnel replacement)
 #   - No type rename and no moved block (type is already correct)
 #   - Cross-file `.secret` references in the consumer file are also rewritten
 

@@ -110,9 +110,6 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		// Already the correct resource type in v4 — just update attributes in-place.
 		// No moved block needed since the type name doesn't change.
 		tfhcl.RenameAttribute(body, "secret", "tunnel_secret")
-		if body.GetAttribute("config_src") == nil {
-			tfhcl.SetAttributeValue(body, "config_src", "local")
-		}
 		return &transform.TransformResult{
 			Blocks:         []*hclwrite.Block{block},
 			RemoveOriginal: false,
@@ -125,12 +122,12 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Rename attribute: secret → tunnel_secret
 	tfhcl.RenameAttribute(body, "secret", "tunnel_secret")
 
-	// Add config_src = "local" if not present
-	// In v4, this field didn't exist. In v5, it's Optional with no default, but the API default is "local"
-	// We add it to config to prevent drift after migration
-	if body.GetAttribute("config_src") == nil {
-		tfhcl.SetAttributeValue(body, "config_src", "local")
-	}
+	// Deliberately do not synthesize config_src when it is absent.
+	// v5 declares config_src as Optional+Computed with Default "local", so the
+	// absent case is already handled by the provider. Writing the attribute
+	// explicitly arms RequiresReplaceIfConfigured(), which forces replacement of
+	// the tunnel (and its configuration) for any remotely-managed tunnel whose
+	// real value is "cloudflare". See BUGS-2158.
 
 	// Generate moved block using the original (pre-rename) resource type.
 	// This allows Terraform to use the provider's MoveState hook with SourceSchema to decode
