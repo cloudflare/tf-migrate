@@ -317,7 +317,7 @@ moved {
   account_id          = var.account_id
   allowed_match_count = 0
 
-  enabled_entries = compact([local.fda_drug_names, (var.fda_enabled) ? "9237e83f-fde6-4ff5-84de-0493d7c354d6" : null])
+  enabled_entries = compact([(local.fda_drug_names), (var.fda_enabled) ? "9237e83f-fde6-4ff5-84de-0493d7c354d6" : null])
   profile_id      = "583a2366-b16e-4f5c-90db-494710f4f71c"
 }
 
@@ -349,7 +349,7 @@ moved {
   account_id          = var.account_id
   allowed_match_count = 0
 
-  enabled_entries = [for e in [for key, value in var.entries : { key = key, value = value }] : e.value.id if e.value.enabled]
+  enabled_entries = [for e in [for key, value in (var.entries) : { key = key, value = value }] : (e.value.id) if (e.value.enabled)]
   profile_id      = "583a2366-b16e-4f5c-90db-494710f4f71c"
 }
 
@@ -380,12 +380,11 @@ moved {
 				Expected: `resource "cloudflare_zero_trust_dlp_predefined_profile" "health" {
   account_id          = var.account_id
   allowed_match_count = 0
-
+  profile_id          = "583a2366-b16e-4f5c-90db-494710f4f71c"
 
   lifecycle {
     ignore_changes = [enabled_entries]
   }
-  profile_id = "583a2366-b16e-4f5c-90db-494710f4f71c"
 }
 
 moved {
@@ -393,7 +392,163 @@ moved {
   to   = cloudflare_zero_trust_dlp_predefined_profile.health
 }`,
 			},
-		}
+
+			{
+				Name: "Predefined profile - literal and dynamic entries are concatenated, quoted bools are literals",
+				Input: `resource "cloudflare_dlp_profile" "mixed" {
+  id                  = "p1"
+  account_id          = var.account_id
+  name                = "Mixed"
+  type                = "predefined"
+  allowed_match_count = 0
+
+  entry {
+    id      = "literal-on"
+    name    = "On"
+    enabled = "true"
+  }
+
+  entry {
+    id      = "literal-off"
+    name    = "Off"
+    enabled = "false"
+  }
+
+  dynamic "entry" {
+    for_each = var.entries
+    content {
+      id      = entry.value
+      name    = entry.key
+      enabled = true
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_zero_trust_dlp_predefined_profile" "mixed" {
+  account_id          = var.account_id
+  allowed_match_count = 0
+  enabled_entries     = concat(["literal-on"], [for entry in [for key, value in (var.entries) : { key = key, value = value }] : (entry.value) if (true)])
+  profile_id          = "p1"
+}
+
+moved {
+  from = cloudflare_dlp_profile.mixed
+  to   = cloudflare_zero_trust_dlp_predefined_profile.mixed
+}`,
+			},
+			{
+				Name: "Predefined profile - unconvertible dynamic entry keeps the entry blocks and writes no enabled_entries",
+				Input: `resource "cloudflare_dlp_profile" "unconvertible" {
+  id                  = "p1"
+  account_id          = var.account_id
+  name                = "Unconvertible"
+  type                = "predefined"
+  allowed_match_count = 0
+
+  entry {
+    id      = "literal-on"
+    name    = "On"
+    enabled = true
+  }
+
+  dynamic "entry" {
+    for_each = var.entries
+    content {
+      name = entry.key
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_zero_trust_dlp_predefined_profile" "unconvertible" {
+  account_id          = var.account_id
+  allowed_match_count = 0
+  profile_id          = "p1"
+
+  entry {
+    id      = "literal-on"
+    name    = "On"
+    enabled = true
+  }
+
+  dynamic "entry" {
+    for_each = var.entries
+    content {
+      name = entry.key
+    }
+  }
+}
+
+moved {
+  from = cloudflare_dlp_profile.unconvertible
+  to   = cloudflare_zero_trust_dlp_predefined_profile.unconvertible
+}`,
+			},
+			{
+				Name: "Predefined profile - ignore_changes = all defers to the live profile",
+				Input: `resource "cloudflare_dlp_profile" "all" {
+  id                  = "p1"
+  account_id          = var.account_id
+  name                = "All"
+  type                = "predefined"
+  allowed_match_count = 0
+
+  entry {
+    id      = "literal-on"
+    name    = "On"
+    enabled = true
+  }
+
+  lifecycle {
+    ignore_changes = all
+  }
+}`,
+				Expected: `resource "cloudflare_zero_trust_dlp_predefined_profile" "all" {
+  account_id          = var.account_id
+  allowed_match_count = 0
+  profile_id          = "p1"
+
+  lifecycle {
+    ignore_changes = all
+  }
+}
+
+moved {
+  from = cloudflare_dlp_profile.all
+  to   = cloudflare_zero_trust_dlp_predefined_profile.all
+}`,
+			},
+			{
+				Name: "Predefined profile - ignore_changes traversal into entry widens to enabled_entries",
+				Input: `resource "cloudflare_dlp_profile" "traversal" {
+  id                  = "p1"
+  account_id          = var.account_id
+  name                = "Traversal"
+  type                = "predefined"
+  allowed_match_count = 0
+
+  entry {
+    id      = "literal-on"
+    name    = "On"
+    enabled = true
+  }
+
+  lifecycle {
+    ignore_changes = [entry[0].enabled, allowed_match_count, entry]
+  }
+}`,
+				Expected: `resource "cloudflare_zero_trust_dlp_predefined_profile" "traversal" {
+  account_id          = var.account_id
+  allowed_match_count = 0
+  profile_id          = "p1"
+
+  lifecycle {
+    ignore_changes = [enabled_entries, allowed_match_count]
+  }
+}
+
+moved {
+  from = cloudflare_dlp_profile.traversal
+  to   = cloudflare_zero_trust_dlp_predefined_profile.traversal
+}`,
+			},		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
