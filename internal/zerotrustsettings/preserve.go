@@ -41,6 +41,12 @@ var fields = map[string][]string{
 		"external_emergency_signal_enabled", "external_emergency_signal_url",
 		"external_emergency_signal_fingerprint", "external_emergency_signal_interval",
 	},
+	// confidence_threshold and ai_context_enabled are v5-only (BUGS-2157).
+	// enabled_entries is restored only where migration could not derive it from
+	// the v4 entry blocks, such as under ignore_changes (BUGS-2156).
+	"cloudflare_zero_trust_dlp_predefined_profile": {
+		"enabled_entries", "confidence_threshold", "ai_context_enabled",
+	},
 }
 
 // Restore returns only changed files, after validating the entire input. Existing
@@ -99,6 +105,11 @@ func Restore(files map[string][]byte, snapshot Snapshot) (map[string][]byte, err
 				return nil, fmt.Errorf("snapshot resource %s: expected a settings object", address)
 			}
 			values = settings
+		}
+		if resourceType == "cloudflare_zero_trust_dlp_predefined_profile" {
+			if values, err = withEnabledEntries(values); err != nil {
+				return nil, fmt.Errorf("snapshot resource %s: %w", address, err)
+			}
 		}
 		additions := newAdditions()
 		for _, name := range allowed {
@@ -180,6 +191,44 @@ func resultObject(raw json.RawMessage) (map[string]json.RawMessage, error) {
 		}
 	}
 	return object, nil
+}
+
+// withEnabledEntries derives enabled_entries from a DLP profile response, which
+// lists every entry with its enabled flag, unless the response already has it.
+func withEnabledEntries(values map[string]json.RawMessage) (map[string]json.RawMessage, error) {
+	if _, present := values["enabled_entries"]; present {
+		return values, nil
+	}
+	raw, present := values["entries"]
+	if !present || string(raw) == "null" {
+		return values, nil
+	}
+	var entries []struct {
+		ID      string `json:"id"`
+		Enabled *bool  `json:"enabled"`
+	}
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return nil, fmt.Errorf("expected entries to be a list of entry objects")
+	}
+	enabled := []string{}
+	for _, entry := range entries {
+		if entry.ID == "" || entry.Enabled == nil {
+			return nil, fmt.Errorf("expected every entry to have an id and enabled")
+		}
+		if *entry.Enabled {
+			enabled = append(enabled, entry.ID)
+		}
+	}
+	derived, err := json.Marshal(enabled)
+	if err != nil {
+		return nil, err
+	}
+	copied := make(map[string]json.RawMessage, len(values)+1)
+	for name, value := range values {
+		copied[name] = value
+	}
+	copied["enabled_entries"] = derived
+	return copied, nil
 }
 
 // additionTree holds the values to merge into an object, keyed by field name and

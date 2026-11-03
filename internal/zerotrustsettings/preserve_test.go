@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/stretchr/testify/require"
+	"github.com/zclconf/go-cty/cty"
 )
 
 func TestRestoreMigrationSettings(t *testing.T) {
@@ -227,4 +228,82 @@ func TestRestoreGatewayObjectFormattingAndExpressions(t *testing.T) {
 			}
 		})
 	}
+}
+
+// BUGS-2156 and BUGS-2157: the v4 schema had no confidence_threshold or
+// ai_context_enabled, and under ignore_changes the migrated config has no
+// enabled_entries, so all three come from the live profile.
+func TestRestoreDLPPredefinedProfile(t *testing.T) {
+	files := map[string][]byte{"main.tf": []byte(`
+resource "cloudflare_zero_trust_dlp_predefined_profile" "health" {
+  account_id = var.account_id
+  profile_id = "583a2366-b16e-4f5c-90db-494710f4f71c"
+  lifecycle {
+    ignore_changes = [enabled_entries]
+  }
+}
+resource "cloudflare_zero_trust_dlp_predefined_profile" "finance" {
+  account_id         = var.account_id
+  profile_id         = "e91a2360-da51-4fdf-9711-bcdecd462614"
+  enabled_entries    = []
+  ai_context_enabled = false
+}
+`)}
+	snapshot := Snapshot{
+		"cloudflare_zero_trust_dlp_predefined_profile.health": json.RawMessage(`{"success":true,"result":{
+      "id":"583a2366-b16e-4f5c-90db-494710f4f71c","name":"do not copy","type":"predefined",
+      "confidence_threshold":"high","ai_context_enabled":true,"ocr_enabled":true,
+      "entries":[
+        {"id":"9237e83f-fde6-4ff5-84de-0493d7c354d6","name":"FDA Active Ingredients","enabled":true},
+        {"id":"01a36c71-ddf2-4b4e-90a3-9c2d87341658","name":"FDA Drug Names","enabled":true},
+        {"id":"0b2f6b1e-7a43-4c1a-9a6e-1f0c6f3e1a11","name":"ICD-10","enabled":false}
+      ]}}`),
+		"cloudflare_zero_trust_dlp_predefined_profile.finance": json.RawMessage(`{
+      "confidence_threshold":"medium","ai_context_enabled":true,
+      "entries":[{"id":"aaaa","enabled":true}]}`),
+	}
+	updated, err := Restore(files, snapshot)
+	require.NoError(t, err)
+	file, diags := hclsyntax.ParseConfig(updated["main.tf"], "main.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	blocks := file.Body.(*hclsyntax.Body).Blocks
+
+	health := blocks[0].Body.Attributes
+	value, d := health["enabled_entries"].Expr.Value(nil)
+	require.False(t, d.HasErrors())
+	require.Equal(t, 2, value.LengthInt())
+	require.Equal(t, "9237e83f-fde6-4ff5-84de-0493d7c354d6", value.Index(cty.NumberIntVal(0)).AsString())
+	require.Equal(t, "01a36c71-ddf2-4b4e-90a3-9c2d87341658", value.Index(cty.NumberIntVal(1)).AsString())
+	value, d = health["confidence_threshold"].Expr.Value(nil)
+	require.False(t, d.HasErrors())
+	require.Equal(t, "high", value.AsString())
+	value, d = health["ai_context_enabled"].Expr.Value(nil)
+	require.False(t, d.HasErrors())
+	require.True(t, value.True())
+	require.Nil(t, health["ocr_enabled"], "v4-expressible field must not be copied")
+	require.Nil(t, health["name"])
+	require.Nil(t, health["entries"])
+
+	finance := blocks[1].Body.Attributes
+	value, d = finance["enabled_entries"].Expr.Value(nil)
+	require.False(t, d.HasErrors())
+	require.Zero(t, value.LengthInt(), "migrated enabled_entries must win")
+	value, d = finance["ai_context_enabled"].Expr.Value(nil)
+	require.False(t, d.HasErrors())
+	require.False(t, value.True(), "explicit false must win")
+	value, d = finance["confidence_threshold"].Expr.Value(nil)
+	require.False(t, d.HasErrors())
+	require.Equal(t, "medium", value.AsString())
+
+	again, err := Restore(updated, snapshot)
+	require.NoError(t, err)
+	require.Empty(t, again)
+}
+
+func TestRestoreDLPRejectsMalformedEntries(t *testing.T) {
+	files := map[string][]byte{"main.tf": []byte(`resource "cloudflare_zero_trust_dlp_predefined_profile" "p" {
+  account_id = var.account_id
+}`)}
+	_, err := Restore(files, Snapshot{"cloudflare_zero_trust_dlp_predefined_profile.p": json.RawMessage(`{"entries":[{"id":"a"}]}`)})
+	require.ErrorContains(t, err, "id and enabled")
 }
