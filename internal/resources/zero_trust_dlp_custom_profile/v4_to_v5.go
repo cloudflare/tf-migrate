@@ -84,7 +84,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		tfhcl.RenameResourceType(block, currentType, newType)
 		tfhcl.RemoveAttributes(body, "type")
 		tfhcl.RemoveAttributes(body, "name") // name is read-only (Computed) in v5 predefined profiles
-		m.transformPredefinedEntryBlocks(body, ctx.Content, resourceName)
+		m.transformPredefinedEntryBlocks(ctx, body, ctx.Content, resourceName)
 
 	default:
 		return &transform.TransformResult{
@@ -248,51 +248,85 @@ func extractProfileIDFromImportAddress(content []byte, resourceName string) stri
 	return ""
 }
 
-func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(body *hclwrite.Body, fileContent []byte, resourceName string) {
-	var enabledEntryIDs []string
-	hasEntryBlocks := false
+func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(ctx *transform.Context, body *hclwrite.Body, fileContent []byte, resourceName string) {
+	// Each element is either a literal ID (enabled = true), or an expression that
+	// yields the ID when enabled and null otherwise. Expressions are kept verbatim:
+	// reading them as literals would drop entries enabled through a variable or
+	// write a reference such as local.ids[0] as the ID "local" (BUGS-2156).
+	var elements []string
+	hasEntryBlocks, conditional := false, false
+	var dynamicSources []string
+
 	for _, block := range body.Blocks() {
-		if block.Type() == "entry" {
+		switch {
+		case block.Type() == "entry":
 			hasEntryBlocks = true
 			entryBody := block.Body()
-			enabledAttr := entryBody.GetAttribute("enabled")
-			if enabledAttr != nil {
-				enabled := tfhcl.ExtractStringFromAttribute(enabledAttr)
-				if enabled == "true" {
-					idAttr := entryBody.GetAttribute("id")
-					if idAttr != nil {
-						id := tfhcl.ExtractStringFromAttribute(idAttr)
-						if id != "" {
-							enabledEntryIDs = append(enabledEntryIDs, id)
-						}
-					}
+			idAttr, enabledAttr := entryBody.GetAttribute("id"), entryBody.GetAttribute("enabled")
+			if idAttr == nil || enabledAttr == nil {
+				continue
+			}
+			id := exprSource(idAttr)
+			if enabled, literal := tfhcl.ExtractBoolFromAttribute(enabledAttr); literal && isBoolLiteral(enabledAttr) {
+				if enabled {
+					elements = append(elements, id)
 				}
+				continue
+			}
+			elements = append(elements, fmt.Sprintf("(%s) ? %s : null", exprSource(enabledAttr), id))
+			conditional = true
+
+		case block.Type() == "dynamic" && len(block.Labels()) == 1 && block.Labels()[0] == "entry":
+			hasEntryBlocks = true
+			if source, ok := dynamicEntrySource(block); ok {
+				dynamicSources = append(dynamicSources, source)
+			} else {
+				ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+					Severity: hcl.DiagWarning,
+					Summary:  fmt.Sprintf("Dynamic entry block requires manual migration: cloudflare_zero_trust_dlp_predefined_profile.%s", resourceName),
+					Detail:   "The dynamic entry block has no for_each, content.id or content.enabled, so its enabled entries cannot be converted to enabled_entries. Set enabled_entries explicitly before applying v5, or restore it from the live profile with preserve-zero-trust-settings.",
+				})
 			}
 		}
 	}
 
 	tfhcl.RemoveBlocksByType(body, "entry")
+	for _, block := range body.Blocks() {
+		if block.Type() == "dynamic" && len(block.Labels()) == 1 && block.Labels()[0] == "entry" {
+			body.RemoveBlock(block)
+		}
+	}
+
+	// With ignore_changes on entry, v4 never reconciled the live entries to the
+	// configuration, so the configured entries may not be the enabled ones. Keep
+	// ignoring drift under the v5 name and leave enabled_entries for
+	// preserve-zero-trust-settings to restore from the live profile.
+	if renameIgnoredEntry(body) {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("enabled_entries not migrated: cloudflare_zero_trust_dlp_predefined_profile.%s ignores changes to entry", resourceName),
+			Detail:   "The v4 configuration ignored changes to entry, so it may not match the entries enabled live. Restore enabled_entries from the live profile with preserve-zero-trust-settings before applying v5; omitting it disables detection for every entry.",
+		})
+		hasEntryBlocks = false
+	}
 
 	// If there were entry blocks in v4 config, always add enabled_entries
 	// (even if empty) to prevent drift between state and config
 	if hasEntryBlocks {
-		if len(enabledEntryIDs) > 0 {
-			var stringTokens []hclwrite.Tokens
-			for _, id := range enabledEntryIDs {
-				tokens := hclwrite.Tokens{
-					{Type: hclsyntax.TokenOQuote, Bytes: []byte{'"'}},
-					{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(id)},
-					{Type: hclsyntax.TokenCQuote, Bytes: []byte{'"'}},
-				}
-				stringTokens = append(stringTokens, tokens)
-			}
-			arrayTokens := hclwrite.TokensForTuple(stringTokens)
-			body.SetAttributeRaw("enabled_entries", arrayTokens)
-		} else {
-			// No enabled entries - set to empty array to match state
-			emptyArrayTokens := hclwrite.TokensForTuple(nil)
-			body.SetAttributeRaw("enabled_entries", emptyArrayTokens)
+		list := "[" + strings.Join(elements, ", ") + "]"
+		if conditional {
+			list = "compact(" + list + ")"
 		}
+		parts := []string{}
+		if len(elements) > 0 || len(dynamicSources) == 0 {
+			parts = append(parts, list)
+		}
+		parts = append(parts, dynamicSources...)
+		expr := parts[0]
+		if len(parts) > 1 {
+			expr = "concat(" + strings.Join(parts, ", ") + ")"
+		}
+		body.SetAttributeRaw("enabled_entries", exprTokens(expr))
 	}
 
 	// Resolve profile_id: prefer the resource-level id attribute (v4 state import
@@ -305,4 +339,82 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(body *hclwrite.Body, fil
 	} else if profileID := extractProfileIDFromImportAddress(fileContent, resourceName); profileID != "" {
 		body.SetAttributeValue("profile_id", cty.StringVal(profileID))
 	}
+}
+
+func exprSource(attr *hclwrite.Attribute) string {
+	return strings.TrimSpace(string(attr.Expr().BuildTokens(nil).Bytes()))
+}
+
+func isBoolLiteral(attr *hclwrite.Attribute) bool {
+	source := exprSource(attr)
+	return source == "true" || source == "false"
+}
+
+// exprTokens parses generated expression source into tokens so the formatter
+// lays it out like hand-written configuration.
+func exprTokens(source string) hclwrite.Tokens {
+	file, diags := hclwrite.ParseConfig([]byte("x = "+source+"\n"), "", hcl.InitialPos)
+	if diags.HasErrors() {
+		return hclwrite.TokensForIdentifier(source)
+	}
+	return file.Body().GetAttribute("x").Expr().BuildTokens(nil)
+}
+
+// dynamicEntrySource converts a dynamic entry block into a for expression that
+// yields the IDs of its enabled entries. The iterator object is rebuilt with key
+// and value, so content expressions such as entry.value.id stay valid unchanged.
+func dynamicEntrySource(block *hclwrite.Block) (string, bool) {
+	forEach := block.Body().GetAttribute("for_each")
+	iterator := "entry"
+	if attr := block.Body().GetAttribute("iterator"); attr != nil {
+		iterator = exprSource(attr)
+	}
+	var content *hclwrite.Block
+	for _, child := range block.Body().Blocks() {
+		if child.Type() == "content" {
+			content = child
+		}
+	}
+	if forEach == nil || content == nil {
+		return "", false
+	}
+	id, enabled := content.Body().GetAttribute("id"), content.Body().GetAttribute("enabled")
+	if id == nil || enabled == nil {
+		return "", false
+	}
+	return fmt.Sprintf("[for %s in [for key, value in %s : { key = key, value = value }] : %s if %s]",
+		iterator, exprSource(forEach), exprSource(id), exprSource(enabled)), true
+}
+
+// renameIgnoredEntry renames entry to enabled_entries in lifecycle.ignore_changes,
+// since v5 has no entry attribute, and reports whether entry changes were ignored.
+func renameIgnoredEntry(body *hclwrite.Body) bool {
+	for _, lifecycle := range body.Blocks() {
+		if lifecycle.Type() != "lifecycle" {
+			continue
+		}
+		attr := lifecycle.Body().GetAttribute("ignore_changes")
+		if attr == nil {
+			continue
+		}
+		tokens := attr.Expr().BuildTokens(nil)
+		ignored := false
+		for _, token := range tokens {
+			if token.Type != hclsyntax.TokenIdent {
+				continue
+			}
+			switch string(token.Bytes) {
+			case "entry":
+				token.Bytes = []byte("enabled_entries")
+				ignored = true
+			case "all":
+				ignored = true
+			}
+		}
+		if ignored {
+			lifecycle.Body().SetAttributeRaw("ignore_changes", tokens)
+			return true
+		}
+	}
+	return false
 }

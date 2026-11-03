@@ -286,6 +286,113 @@ moved {
   to   = cloudflare_zero_trust_dlp_predefined_profile.creds
 }`,
 			},
+			{
+				Name: "Predefined profile - expression id and enabled are kept (BUGS-2156)",
+				Input: `resource "cloudflare_dlp_profile" "health" {
+  id                  = "583a2366-b16e-4f5c-90db-494710f4f71c"
+  account_id          = var.account_id
+  name                = "Health Information"
+  type                = "predefined"
+  allowed_match_count = 0
+
+  entry {
+    id      = local.fda_drug_names
+    name    = "FDA Drug Names"
+    enabled = true
+  }
+
+  entry {
+    id      = "9237e83f-fde6-4ff5-84de-0493d7c354d6"
+    name    = "FDA Active Ingredients"
+    enabled = var.fda_enabled
+  }
+
+  entry {
+    id      = "5a38ac66-a939-4f66-ae12-50d67e7dcc92"
+    name    = "ICD-10"
+    enabled = false
+  }
+}`,
+				Expected: `resource "cloudflare_zero_trust_dlp_predefined_profile" "health" {
+  account_id          = var.account_id
+  allowed_match_count = 0
+
+  enabled_entries = compact([local.fda_drug_names, (var.fda_enabled) ? "9237e83f-fde6-4ff5-84de-0493d7c354d6" : null])
+  profile_id      = "583a2366-b16e-4f5c-90db-494710f4f71c"
+}
+
+moved {
+  from = cloudflare_dlp_profile.health
+  to   = cloudflare_zero_trust_dlp_predefined_profile.health
+}`,
+			},
+			{
+				Name: "Predefined profile - dynamic entry blocks become a for expression (BUGS-2156)",
+				Input: `resource "cloudflare_zero_trust_dlp_profile" "health" {
+  id                  = "583a2366-b16e-4f5c-90db-494710f4f71c"
+  account_id          = var.account_id
+  name                = "Health Information"
+  type                = "predefined"
+  allowed_match_count = 0
+
+  dynamic "entry" {
+    for_each = var.entries
+    iterator = e
+    content {
+      id      = e.value.id
+      name    = e.key
+      enabled = e.value.enabled
+    }
+  }
+}`,
+				Expected: `resource "cloudflare_zero_trust_dlp_predefined_profile" "health" {
+  account_id          = var.account_id
+  allowed_match_count = 0
+
+  enabled_entries = [for e in [for key, value in var.entries : { key = key, value = value }] : e.value.id if e.value.enabled]
+  profile_id      = "583a2366-b16e-4f5c-90db-494710f4f71c"
+}
+
+moved {
+  from = cloudflare_zero_trust_dlp_profile.health
+  to   = cloudflare_zero_trust_dlp_predefined_profile.health
+}`,
+			},
+			{
+				Name: "Predefined profile - ignore_changes on entry defers to the live profile (BUGS-2156)",
+				Input: `resource "cloudflare_dlp_profile" "health" {
+  id                  = "583a2366-b16e-4f5c-90db-494710f4f71c"
+  account_id          = var.account_id
+  name                = "Health Information"
+  type                = "predefined"
+  allowed_match_count = 0
+
+  entry {
+    id      = "9237e83f-fde6-4ff5-84de-0493d7c354d6"
+    name    = "FDA Active Ingredients"
+    enabled = false
+  }
+
+  lifecycle {
+    ignore_changes = [entry]
+  }
+}`,
+				Expected: `resource "cloudflare_zero_trust_dlp_predefined_profile" "health" {
+  account_id          = var.account_id
+  allowed_match_count = 0
+
+
+  lifecycle {
+    ignore_changes = [enabled_entries]
+  }
+  profile_id = "583a2366-b16e-4f5c-90db-494710f4f71c"
+}
+
+moved {
+  from = cloudflare_dlp_profile.health
+  to   = cloudflare_zero_trust_dlp_predefined_profile.health
+}`,
+			},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)

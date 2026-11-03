@@ -29,6 +29,12 @@ curl --fail-with-body --silent --show-error \
   --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
   "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/devices/settings" \
   > device.json
+
+# One response per predefined DLP profile, by its profile_id.
+curl --fail-with-body --silent --show-error \
+  --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+  "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/dlp/profiles/${PROFILE_ID}" \
+  > dlp-health.json
 ```
 
 Combine responses into a JSON object keyed by the **local v5 resource addresses**
@@ -68,6 +74,13 @@ The copied fields are:
 | `cloudflare_zero_trust_organization` | `deny_unmatched_requests`, `deny_unmatched_requests_exempted_zone_names`, `mfa_config`, `mfa_piv_key_requirements`, `mfa_required_for_all_apps` |
 | `cloudflare_zero_trust_gateway_settings` | `settings.host_selector`, `settings.sandbox`, `settings.inspection`, `settings.max_ttl_secs`, `settings.block_page.mode`, `settings.block_page.include_context`, `settings.block_page.suppress_footer`, `settings.block_page.target_uri` |
 | `cloudflare_zero_trust_device_settings` | `external_emergency_signal_enabled`, `external_emergency_signal_url`, `external_emergency_signal_fingerprint`, `external_emergency_signal_interval` |
+| `cloudflare_zero_trust_dlp_predefined_profile` | `confidence_threshold`, `ai_context_enabled`, `enabled_entries` |
+
+For a predefined DLP profile, `enabled_entries` is the IDs of the response's
+`entries` whose `enabled` is true. The migration already writes `enabled_entries`
+from the v4 `entry` blocks, so the snapshot fills it only when that was not
+possible: the v4 resource ignored changes to `entry`, so its blocks may not match
+the live profile. Omitting `enabled_entries` disables every entry.
 
 Absent or null API values are not synthesized. Unrelated response fields such as
 timestamps, account IDs, and read-only fields are not copied.
