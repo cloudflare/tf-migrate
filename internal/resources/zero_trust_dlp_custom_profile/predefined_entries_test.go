@@ -159,3 +159,20 @@ func TestPredefinedEnabledEntriesEvaluate(t *testing.T) {
 	require.Equal(t, "on,cond,map-a,set-x", strings.Join(eval(true), ","))
 	require.Equal(t, "on,map-a,set-x", strings.Join(eval(false), ","))
 }
+
+func TestAlreadyMigratedPredefinedProfileIsUnchanged(t *testing.T) {
+	src := `resource "cloudflare_zero_trust_dlp_predefined_profile" "v5" {
+  account_id      = "a1"
+  profile_id      = "p1"
+  enabled_entries = ["x"]
+}
+`
+	file, diags := hclwrite.ParseConfig([]byte(src), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), diags.Error())
+	ctx := &transform.Context{Content: []byte(src), Filename: "test.tf", CFGFile: file}
+	result, err := (&V4ToV5Migrator{}).TransformConfig(ctx, file.Body().Blocks()[0])
+	require.NoError(t, err)
+	require.Len(t, result.Blocks, 1, "no moved block")
+	require.Equal(t, src, string(hclwrite.Format(result.Blocks[0].BuildTokens(nil).Bytes())))
+	require.Empty(t, ctx.Diagnostics)
+}

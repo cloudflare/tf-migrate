@@ -57,13 +57,18 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	body := block.Body()
 	resourceName := tfhcl.GetResourceName(block)
 
+	currentType := block.Labels()[0]
+
+	// An already-migrated v5 predefined profile has no type; it must not be
+	// renamed to a custom profile when the migrator runs again.
 	typeAttr := body.GetAttribute("type")
 	profileType := "custom"
+	if currentType == "cloudflare_zero_trust_dlp_predefined_profile" {
+		profileType = "predefined"
+	}
 	if typeAttr != nil {
 		profileType = tfhcl.ExtractStringFromAttribute(typeAttr)
 	}
-
-	currentType := block.Labels()[0]
 	needsMovedBlock := currentType != "cloudflare_zero_trust_dlp_custom_profile" &&
 		currentType != "cloudflare_zero_trust_dlp_predefined_profile"
 
