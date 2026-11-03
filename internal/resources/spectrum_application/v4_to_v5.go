@@ -1,6 +1,7 @@
 package spectrum_application
 
 import (
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
 
@@ -78,19 +79,17 @@ func (m *V4ToV5Migrator) convertOriginPortRange(body *hclwrite.Body) {
 			endAttr := blockBody.GetAttribute("end")
 
 			if startAttr != nil && endAttr != nil {
-				// Get the raw token values
 				startTokens := startAttr.Expr().BuildTokens(nil)
 				endTokens := endAttr.Expr().BuildTokens(nil)
 
 				if len(startTokens) >= 1 && len(endTokens) >= 1 {
-					startValue := string(startTokens[0].Bytes)
-					endValue := string(endTokens[0].Bytes)
-
-					// Create the range string: "start-end"
-					rangeValue := startValue + "-" + endValue
-
-					// Set origin_port attribute with quoted string
-					body.SetAttributeValue("origin_port", cty.StringVal(rangeValue))
+					// Build the "start-end" range. Either side may be an
+					// expression rather than a literal port number, so each is
+					// interpolated unless it is a bare number. Reading just the
+					// first token here used to turn "var.port_start" into "var",
+					// producing a well-formed but meaningless "var-var" that
+					// terraform validate accepts.
+					body.SetAttributeRaw("origin_port", portRangeTokens(startTokens, endTokens))
 				}
 			}
 
@@ -101,3 +100,53 @@ func (m *V4ToV5Migrator) convertOriginPortRange(body *hclwrite.Body) {
 	}
 }
 
+// portRangeTokens renders the v5 origin_port value for a v4 origin_port_range
+// block as the string "start-end".
+//
+// v5 expresses the range as a single string, so a side that is not a literal
+// port number has to be interpolated to survive. The literal text around the
+// interpolations is emitted as one token per run, matching how HCL parses the
+// equivalent hand-written string.
+func portRangeTokens(startTokens, endTokens hclwrite.Tokens) hclwrite.Tokens {
+	startLit, startIsLit := tfhcl.LiteralNumber(startTokens)
+	endLit, endIsLit := tfhcl.LiteralNumber(endTokens)
+
+	// Both sides literal: a plain quoted string, identical to what the
+	// pre-existing literal path produced.
+	if startIsLit && endIsLit {
+		return hclwrite.TokensForValue(cty.StringVal(startLit + "-" + endLit))
+	}
+
+	tokens := hclwrite.Tokens{{Type: hclsyntax.TokenOQuote, Bytes: []byte{'"'}}}
+	if startIsLit {
+		// The separator joins the leading literal run: "1000-${...}".
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(startLit + "-")})
+	} else {
+		tokens = append(tokens, interpolation(startTokens)...)
+	}
+
+	if endIsLit {
+		// Mirrored: the separator joins the trailing literal run, "${...}-2000".
+		if !startIsLit {
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte("-" + endLit)})
+		} else {
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(endLit)})
+		}
+	} else {
+		if startIsLit {
+			tokens = append(tokens, interpolation(endTokens)...)
+		} else {
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenQuotedLit, Bytes: []byte("-")})
+			tokens = append(tokens, interpolation(endTokens)...)
+		}
+	}
+
+	return append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCQuote, Bytes: []byte{'"'}})
+}
+
+// interpolation wraps an expression as "${expr}" for embedding in a template.
+func interpolation(tokens hclwrite.Tokens) hclwrite.Tokens {
+	out := hclwrite.Tokens{{Type: hclsyntax.TokenTemplateInterp, Bytes: []byte("${")}}
+	out = append(out, tfhcl.TrimLeadingSpace(tokens)...)
+	return append(out, &hclwrite.Token{Type: hclsyntax.TokenTemplateSeqEnd, Bytes: []byte{'}'}})
+}

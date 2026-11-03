@@ -2,8 +2,10 @@ package zero_trust_device_profiles
 
 import (
 	"fmt"
+	"strconv"
+
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/tidwall/gjson"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_split_tunnel"
@@ -109,18 +111,21 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		// Set to a high value (999 + original value) to avoid conflicts with existing policies
 		// The API will accept this new value and update the resource
 		if precedenceAttr != nil {
-			// Extract original precedence value
-			originalPrecedence := 100.0 // default
-			if tokens := precedenceAttr.Expr().BuildTokens(nil); len(tokens) > 0 {
-				precedenceStr := string(tokens[0].Bytes)
-				// Try to parse as float
-				if val := gjson.Parse(precedenceStr); val.Exists() {
-					originalPrecedence = val.Float()
-				}
+			exprTokens := precedenceAttr.Expr().BuildTokens(nil)
+			if originalPrecedence, ok := literalNumber(exprTokens); ok {
+				// Set to a high value to avoid conflicts
+				newPrecedence := 900 + originalPrecedence
+				tfhcl.SetAttribute(body, "precedence", newPrecedence)
+			} else {
+				// precedence is an expression (index(...), each.value.precedence, a
+				// variable, ...). It cannot be evaluated here, so offset it at apply
+				// time instead of replacing it: the expression keeps each profile's
+				// distinct relative order, and the offset keeps the same band a
+				// literal would land in. The band also guarantees a positive value,
+				// which matters because index() is zero-based and the API rejects a
+				// precedence of 0.
+				body.SetAttributeRaw("precedence", offsetExpression(exprTokens))
 			}
-			// Set to a high value to avoid conflicts
-			newPrecedence := 900 + originalPrecedence
-			tfhcl.SetAttribute(body, "precedence", newPrecedence)
 		}
 
 		tfhcl.RemoveAttributes(body, "default", "enabled")
@@ -193,4 +198,39 @@ func (m *V4ToV5Migrator) createMovedBlock(fromType, fromName, toType, toName str
 	from := fmt.Sprintf("%s.%s", fromType, fromName)
 	to := fmt.Sprintf("%s.%s", toType, toName)
 	return tfhcl.CreateMovedBlock(from, to)
+}
+
+// precedenceOffset is the band custom profiles are moved into so that migrated
+// precedences cannot collide with profiles the account already has.
+const precedenceOffset = 900
+
+// literalNumber returns the value of a bare numeric literal expression.
+func literalNumber(tokens hclwrite.Tokens) (float64, bool) {
+	lit, ok := tfhcl.LiteralNumber(tokens)
+	if !ok {
+		return 0, false
+	}
+	val, err := strconv.ParseFloat(lit, 64)
+	if err != nil {
+		return 0, false
+	}
+	return val, true
+}
+
+// offsetExpression rewrites an unevaluatable precedence expression as
+// "900 + (<expression>)", preserving the original tokens verbatim.
+//
+// The parentheses are required: without them an expression that binds more
+// loosely than addition is re-associated. "var.x ? 1 : 2" would become
+// "900 + var.x ? 1 : 2", which parses as "(900 + var.x) ? 1 : 2".
+func offsetExpression(expr hclwrite.Tokens) hclwrite.Tokens {
+	trimmed := tfhcl.TrimLeadingSpace(expr)
+
+	out := hclwrite.Tokens{
+		{Type: hclsyntax.TokenNumberLit, Bytes: []byte(strconv.Itoa(precedenceOffset))},
+		{Type: hclsyntax.TokenPlus, Bytes: []byte("+")},
+		{Type: hclsyntax.TokenOParen, Bytes: []byte("(")},
+	}
+	out = append(out, trimmed...)
+	return append(out, &hclwrite.Token{Type: hclsyntax.TokenCParen, Bytes: []byte(")")})
 }

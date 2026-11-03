@@ -18,6 +18,63 @@ func TestV4ToV5Transformation(t *testing.T) {
 func testConfigTransformations(t *testing.T, migrator transform.ResourceTransformer) {
 	tests := []testhelpers.ConfigTestCase{
 		{
+			Name: "origin_port_range with literal bounds",
+			Input: `resource "cloudflare_spectrum_application" "example" {
+  zone_id       = "example.com"
+  protocol      = "tcp/22"
+  origin_direct = ["tcp://203.0.113.1:22"]
+  origin_port_range {
+    start = 1000
+    end   = 2000
+  }
+}`,
+			Expected: `resource "cloudflare_spectrum_application" "example" {
+  zone_id       = "example.com"
+  protocol      = "tcp/22"
+  origin_direct = ["tcp://203.0.113.1:22"]
+  origin_port    = "1000-2000"
+}`,
+		},
+		{
+			// Reading only the first token collapsed each side to its leading
+			// identifier, producing "var-var": well formed, accepted by
+			// terraform validate, and meaningless.
+			Name: "origin_port_range with expression bounds is interpolated",
+			Input: `resource "cloudflare_spectrum_application" "example" {
+  zone_id       = "example.com"
+  protocol      = "tcp/22"
+  origin_direct = ["tcp://203.0.113.1:22"]
+  origin_port_range {
+    start = var.port_start
+    end   = var.port_end
+  }
+}`,
+			Expected: `resource "cloudflare_spectrum_application" "example" {
+  zone_id       = "example.com"
+  protocol      = "tcp/22"
+  origin_direct = ["tcp://203.0.113.1:22"]
+  origin_port    = "${var.port_start}-${var.port_end}"
+}`,
+		},
+		{
+			Name: "origin_port_range with one literal and one expression",
+			Input: `resource "cloudflare_spectrum_application" "example" {
+  zone_id       = "example.com"
+  protocol      = "tcp/22"
+  origin_direct = ["tcp://203.0.113.1:22"]
+  origin_port_range {
+    start = 1000
+    end   = local.port_base + 5
+  }
+}`,
+			Expected: `resource "cloudflare_spectrum_application" "example" {
+  zone_id       = "example.com"
+  protocol      = "tcp/22"
+  origin_direct = ["tcp://203.0.113.1:22"]
+  origin_port    = "1000-${local.port_base + 5}"
+}`,
+		},
+		{
 			Name: "Basic resource with dns block",
 			Input: `resource "cloudflare_spectrum_application" "example" {
   zone_id  = "example.com"
