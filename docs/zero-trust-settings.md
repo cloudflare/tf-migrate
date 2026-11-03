@@ -34,19 +34,22 @@ curl --fail-with-body --silent --show-error \
 curl --fail-with-body --silent --show-error \
   --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
   "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/dlp/profiles/${PROFILE_ID}" \
-  > dlp-health.json
+  > "dlp-${PROFILE_ID}.json"
 ```
 
 Combine responses into a JSON object keyed by the **local v5 resource addresses**
 that the HCL migration will produce. For example, if the old organization and
-Gateway resources are both named `example`, and Gateway contains a `proxy` block:
+Gateway resources are both named `example`, Gateway contains a `proxy` block, and
+a predefined DLP profile is named `health`:
 
 ```bash
 jq -n --slurpfile organization organization.json \
-  --slurpfile gateway gateway.json --slurpfile device device.json '{
+  --slurpfile gateway gateway.json --slurpfile device device.json \
+  --slurpfile dlp "dlp-${PROFILE_ID}.json" '{
     "cloudflare_zero_trust_organization.example": $organization[0],
     "cloudflare_zero_trust_gateway_settings.example": $gateway[0],
-    "cloudflare_zero_trust_device_settings.example_device_settings": $device[0]
+    "cloudflare_zero_trust_device_settings.example_device_settings": $device[0],
+    "cloudflare_zero_trust_dlp_predefined_profile.health": $dlp[0]
   }' > zero-trust-settings.json
 ```
 
@@ -77,10 +80,17 @@ The copied fields are:
 | `cloudflare_zero_trust_dlp_predefined_profile` | `confidence_threshold`, `ai_context_enabled`, `enabled_entries` |
 
 For a predefined DLP profile, `enabled_entries` is the IDs of the response's
-`entries` whose `enabled` is true. The migration already writes `enabled_entries`
-from the v4 `entry` blocks, so the snapshot fills it only when that was not
-possible: the v4 resource ignored changes to `entry`, so its blocks may not match
-the live profile. Omitting `enabled_entries` disables every entry.
+`entries` whose `enabled` is true. The migration writes `enabled_entries` from the
+v4 `entry` blocks when it can, and existing configuration wins, so the snapshot
+fills `enabled_entries` whenever the migrated config has none. The migration
+leaves it out when the v4 resource ignored changes to `entry` (or `all`), since
+the blocks may not match the live profile, and when a `dynamic "entry"` block
+cannot be converted; it warns in both cases. If `enabled_entries` is still
+absent when you apply v5, check the plan: it can disable the profile's entries.
+
+Restoration refuses resources that use `count` or `for_each` and writes nothing
+(see below). For such profiles, set `enabled_entries`, `confidence_threshold` and
+`ai_context_enabled` per instance by hand.
 
 Absent or null API values are not synthesized. Unrelated response fields such as
 timestamps, account IDs, and read-only fields are not copied.
