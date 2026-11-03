@@ -21,6 +21,28 @@ This guide explains how `cloudflare_tunnel_config` / `cloudflare_zero_trust_tunn
 
 ---
 
+## Removing `warp_routing` does not disable WARP routing
+
+tf-migrate drops the `warp_routing` block, and this is safe. It is a frequent source of
+concern during review, so the reasoning is recorded here.
+
+`warp-routing` is marked `deprecated` and `readOnly` in the Cloudflare tunnel configuration
+API, and has been ignored by `cloudflared` since 2023.9.0. It is no longer a setting you
+control on the configuration — it *reports* whether the tunnel has a route assigned to it.
+The v5 schema has no `warp_routing` field at all, so a migrated config that kept the block
+would not validate.
+
+Verified against the API: sending a configuration `PUT` with no `warp-routing` key — exactly
+the request the v5 provider makes — returns success with `warp-routing` still enabled, and
+does not increment the configuration version. The v4 provider always sent the field, and the
+API discarded it.
+
+To actually stop WARP routing for a tunnel, remove its routes
+(`cloudflare_zero_trust_tunnel_cloudflared_route`). There is nothing to set on the
+configuration.
+
+---
+
 ## Migration Examples
 
 ### Example 1: Basic Tunnel Config with Ingress

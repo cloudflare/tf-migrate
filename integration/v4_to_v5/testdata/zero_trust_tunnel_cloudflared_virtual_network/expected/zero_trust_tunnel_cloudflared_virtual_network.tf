@@ -138,7 +138,6 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "for_route_test" {
   account_id    = local.account_id
   name          = "${local.prefix}-route-test-tunnel"
   tunnel_secret = base64encode("test-secret-that-is-at-least-32-bytes-long")
-  config_src    = "local"
 }
 
 moved {

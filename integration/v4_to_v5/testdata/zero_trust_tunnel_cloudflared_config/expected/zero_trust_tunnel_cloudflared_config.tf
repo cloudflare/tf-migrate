@@ -70,6 +70,8 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "resourcename_opt2" {
 
 
 
+
+
 # Tunnel for minimal config test
 resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
   account_id    = var.cloudflare_account_id
@@ -264,4 +266,38 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_route" "ref_opt2" {
 moved {
   from = cloudflare_tunnel_route.ref_opt2
   to   = cloudflare_zero_trust_tunnel_cloudflared_route.ref_opt2
+}
+
+# BUGS-2158 regression: remotely-managed tunnel that OMITS config_src.
+# Every other tunnel fixture sets config_src explicitly, which hid the bug
+# where tf-migrate synthesized config_src = "local" for a tunnel whose real
+# value is "cloudflare", arming RequiresReplaceIfConfigured and forcing
+# replacement of both the tunnel and its configuration.
+resource "cloudflare_zero_trust_tunnel_cloudflared" "cftftest_implicit_config_src" {
+  account_id    = var.cloudflare_account_id
+  name          = "${local.name_prefix}-implicit-config-src"
+  tunnel_secret = base64encode("implicit-config-src-secret-32-bytes-ok")
+}
+
+moved {
+  from = cloudflare_tunnel.cftftest_implicit_config_src
+  to   = cloudflare_zero_trust_tunnel_cloudflared.cftftest_implicit_config_src
+}
+
+resource "cloudflare_zero_trust_tunnel_cloudflared_config" "cftftest_implicit_config_src" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.cftftest_implicit_config_src.id
+
+  config = {
+    ingress = [
+      {
+        service = "http_status:404"
+      }
+    ]
+  }
+}
+
+moved {
+  from = cloudflare_tunnel_config.cftftest_implicit_config_src
+  to   = cloudflare_zero_trust_tunnel_cloudflared_config.cftftest_implicit_config_src
 }
