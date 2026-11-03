@@ -548,7 +548,8 @@ moved {
   from = cloudflare_dlp_profile.traversal
   to   = cloudflare_zero_trust_dlp_predefined_profile.traversal
 }`,
-			},		}
+			},
+		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
 	})
