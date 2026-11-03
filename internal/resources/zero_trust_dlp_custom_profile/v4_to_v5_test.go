@@ -453,7 +453,8 @@ moved {
   dynamic "entry" {
     for_each = var.entries
     content {
-      name = entry.key
+      name    = entry.key
+      enabled = true
     }
   }
 }`,
@@ -471,7 +472,8 @@ moved {
   dynamic "entry" {
     for_each = var.entries
     content {
-      name = entry.key
+      name    = entry.key
+      enabled = true
     }
   }
 }

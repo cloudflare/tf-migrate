@@ -269,7 +269,7 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(ctx *transform.Context, 
 	// write a reference such as local.ids[0] as the ID "local" (BUGS-2156).
 	var elements, dynamicSources []string
 	var converted, unconverted []*hclwrite.Block
-	hasEntryBlocks, conditional := false, false
+	hasEntryBlocks, conditional, staticUnconverted := false, false, false
 
 	for _, block := range body.Blocks() {
 		switch {
@@ -277,15 +277,18 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(ctx *transform.Context, 
 			hasEntryBlocks = true
 			entryBody := block.Body()
 			idAttr, enabledAttr := entryBody.GetAttribute("id"), entryBody.GetAttribute("enabled")
-			if idAttr == nil || enabledAttr == nil {
+			if isDisabled(enabledAttr) {
+				continue
+			}
+			if idAttr == nil {
+				// An entry that may be enabled but has no ID cannot be listed.
+				staticUnconverted = true
 				continue
 			}
 			id := parenthesize(exprSource(idAttr))
-			switch enabled := exprSource(enabledAttr); enabled {
-			case "true", `"true"`:
+			if enabled := exprSource(enabledAttr); isTrue(enabled) {
 				elements = append(elements, id)
-			case "false", `"false"`:
-			default:
+			} else {
 				elements = append(elements, fmt.Sprintf("(%s) ? %s : null", enabled, id))
 				conditional = true
 			}
@@ -293,7 +296,9 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(ctx *transform.Context, 
 		case isDynamicEntry(block):
 			hasEntryBlocks = true
 			if source, ok := dynamicEntrySource(block); ok {
-				dynamicSources = append(dynamicSources, source)
+				if source != "" {
+					dynamicSources = append(dynamicSources, source)
+				}
 				converted = append(converted, block)
 			} else {
 				unconverted = append(unconverted, block)
@@ -312,10 +317,10 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(ctx *transform.Context, 
 	// it is absent. So enabled_entries is written only when it is derived fully.
 	write := hasEntryBlocks
 	switch {
-	case len(unconverted) > 0:
+	case len(unconverted) > 0 || staticUnconverted:
 		write = false
-		warn("Dynamic entry block requires manual migration",
-			"A dynamic entry block has no for_each, content, content.id or content.enabled, so its enabled entries cannot be converted. "+
+		warn("Entry blocks require manual migration",
+			"An entry block that may be enabled has no id, or a dynamic entry block has no for_each, content or content.id, so its enabled entries cannot be converted. "+
 				"The entry blocks are left in place and enabled_entries is not written; v5 rejects entry blocks, so plan fails until this is fixed. "+
 				"Replace the entry blocks with enabled_entries, or remove them and restore enabled_entries from the live profile with preserve-zero-trust-settings.")
 	case ignore.entry || (ignore.all && hasEntryBlocks):
@@ -346,6 +351,7 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(ctx *transform.Context, 
 			expr = "concat(" + strings.Join(parts, ", ") + ")"
 		}
 		tokens, err := exprTokens(expr)
+		// Defensive: the parts are parsed HCL expressions, so this should not fail.
 		if err != nil {
 			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 				Severity: hcl.DiagError,
@@ -361,7 +367,7 @@ func (m *V4ToV5Migrator) transformPredefinedEntryBlocks(ctx *transform.Context, 
 	// Keep every entry block when enabled_entries could not be derived, so
 	// nothing is lost silently. Under ignore_changes the blocks are dropped:
 	// enabled_entries comes from the live profile instead.
-	if write || (len(unconverted) == 0 && (ignore.entry || ignore.all)) || !hasEntryBlocks {
+	if write || (len(unconverted) == 0 && !staticUnconverted && (ignore.entry || ignore.all)) || !hasEntryBlocks {
 		tfhcl.RemoveBlocksByType(body, "entry")
 		for _, block := range converted {
 			body.RemoveBlock(block)
@@ -394,6 +400,20 @@ func parenthesize(source string) string {
 }
 
 var quotedLiteralRe = regexp.MustCompile(`^"(?:[^"\\$%]|\\.)*"$`)
+
+// isDisabled reports whether an entry's enabled attribute is absent or a false
+// literal. v4 defaults entry.enabled to false.
+func isDisabled(attr *hclwrite.Attribute) bool {
+	if attr == nil {
+		return true
+	}
+	source := exprSource(attr)
+	return source == "false" || source == `"false"`
+}
+
+func isTrue(source string) bool {
+	return source == "true" || source == `"true"`
+}
 
 func isDynamicEntry(block *hclwrite.Block) bool {
 	return block.Type() == "dynamic" && len(block.Labels()) == 1 && block.Labels()[0] == "entry"
@@ -428,7 +448,11 @@ func dynamicEntrySource(block *hclwrite.Block) (string, bool) {
 		return "", false
 	}
 	id, enabled := content.Body().GetAttribute("id"), content.Body().GetAttribute("enabled")
-	if id == nil || enabled == nil {
+	// enabled defaults to false in v4, so such entries contribute nothing.
+	if isDisabled(enabled) {
+		return "", true
+	}
+	if id == nil {
 		return "", false
 	}
 	return fmt.Sprintf("[for %s in [for key, value in %s : { key = key, value = value }] : %s if %s]",
@@ -443,7 +467,8 @@ type ignoredEntry struct {
 
 // rewriteIgnoredEntry maps entry to enabled_entries in lifecycle.ignore_changes,
 // since v5 has no entry attribute. A traversal such as entry[0].enabled has no
-// v5 equivalent, so it widens to enabled_entries.
+// v5 equivalent, so it widens to enabled_entries. The list is regenerated, so
+// comments inside ignore_changes are dropped when it is rewritten.
 func rewriteIgnoredEntry(body *hclwrite.Body) ignoredEntry {
 	var result ignoredEntry
 	for _, lifecycle := range body.Blocks() {
@@ -467,13 +492,17 @@ func rewriteIgnoredEntry(body *hclwrite.Body) ignoredEntry {
 		if !ok {
 			continue
 		}
-		items := make([]string, 0, len(tuple.Exprs))
 		hasNew, changed := false, false
+		for _, item := range tuple.Exprs {
+			if traversal, ok := item.(*hclsyntax.ScopeTraversalExpr); ok && traversal.Traversal.RootName() == "enabled_entries" && len(traversal.Traversal) == 1 {
+				hasNew = true
+			}
+		}
+		items := make([]string, 0, len(tuple.Exprs))
 		for _, item := range tuple.Exprs {
 			text := string(item.Range().SliceBytes(source))
 			traversal, ok := item.(*hclsyntax.ScopeTraversalExpr)
 			if !ok || traversal.Traversal.RootName() != "entry" {
-				hasNew = hasNew || (ok && traversal.Traversal.RootName() == "enabled_entries" && len(traversal.Traversal) == 1)
 				items = append(items, text)
 				continue
 			}

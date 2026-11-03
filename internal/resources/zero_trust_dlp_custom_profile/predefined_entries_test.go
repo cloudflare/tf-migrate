@@ -73,7 +73,7 @@ func TestPredefinedEntryWarnings(t *testing.T) {
   }
 `, "")
 	require.Len(t, warnings, 1)
-	require.Contains(t, warnings[0], "Dynamic entry block requires manual migration")
+	require.Contains(t, warnings[0], "Entry blocks require manual migration")
 	require.Contains(t, warnings[0], "left in place")
 	require.Nil(t, block.Body().GetAttribute("enabled_entries"))
 	require.Len(t, block.Body().Blocks(), 2, "entry and dynamic entry blocks must be kept")
@@ -175,4 +175,51 @@ func TestAlreadyMigratedPredefinedProfileIsUnchanged(t *testing.T) {
 	require.Len(t, result.Blocks, 1, "no moved block")
 	require.Equal(t, src, string(hclwrite.Format(result.Blocks[0].BuildTokens(nil).Bytes())))
 	require.Empty(t, ctx.Diagnostics)
+}
+
+// An entry that may be enabled but has no id cannot be listed, so the blocks
+// stay and enabled_entries is not written. Without enabled (v4 default false),
+// or with enabled = false, a missing id loses nothing.
+func TestPredefinedEntryWithoutID(t *testing.T) {
+	for _, enabled := range []string{"true", "var.on"} {
+		block, warnings := transformPredefined(t, literalEntry+`
+  entry {
+    name    = "No ID"
+    enabled = `+enabled+`
+  }
+`, "")
+		require.Len(t, warnings, 1, enabled)
+		require.Contains(t, warnings[0], "Entry blocks require manual migration")
+		require.Nil(t, block.Body().GetAttribute("enabled_entries"))
+		require.Len(t, block.Body().Blocks(), 2)
+	}
+	for _, entry := range []string{"name = \"No ID\"", "name = \"No ID\"\n enabled = false"} {
+		block, warnings := transformPredefined(t, literalEntry+"\n  entry {\n "+entry+"\n  }\n", "")
+		require.Empty(t, warnings)
+		require.Equal(t, `["on"]`, strings.TrimSpace(string(block.Body().GetAttribute("enabled_entries").Expr().BuildTokens(nil).Bytes())))
+	}
+}
+
+// Dynamic content without enabled is disabled, as for static entries.
+func TestPredefinedDynamicEntryWithoutEnabled(t *testing.T) {
+	block, warnings := transformPredefined(t, literalEntry+`
+  dynamic "entry" {
+    for_each = var.entries
+    content {
+      id   = entry.value
+      name = entry.key
+    }
+  }
+`, "")
+	require.Empty(t, warnings)
+	require.Empty(t, block.Body().Blocks())
+	require.Equal(t, `["on"]`, strings.TrimSpace(string(block.Body().GetAttribute("enabled_entries").Expr().BuildTokens(nil).Bytes())))
+}
+
+func TestPredefinedIgnoreChangesKeepsOneEnabledEntries(t *testing.T) {
+	for _, list := range []string{"[entry, enabled_entries]", "[enabled_entries, entry]"} {
+		block, _ := transformPredefined(t, literalEntry, "lifecycle {\n ignore_changes = "+list+"\n}")
+		attr := block.Body().Blocks()[0].Body().GetAttribute("ignore_changes")
+		require.Equal(t, "[enabled_entries]", strings.TrimSpace(string(attr.Expr().BuildTokens(nil).Bytes())), list)
+	}
 }
