@@ -481,27 +481,28 @@ func (m *V4ToV5Migrator) copyMetaArguments(newBlock *hclwrite.Block, meta *metaA
 		body.SetAttributeRaw("provider", tokens)
 	}
 
-	// Copy lifecycle block with special handling for zone_setting
-	// Since v4 had settings[0].xxx and v5 just has 'value',
-	// we need to drop the lifecycle block entirely to avoid invalid references
-	// Users can re-add lifecycle blocks manually if needed after migration
+	// Copy the lifecycle block, dropping only ignore_changes.
+	//
+	// v4 ignore_changes entries point at settings[0].xxx paths that do not
+	// exist in v5, where each setting becomes its own resource with a single
+	// value attribute, so those entries cannot be carried over. Everything else
+	// in the block still applies: discarding the whole block would silently
+	// remove prevent_destroy and create_before_destroy along with it.
 	if meta.lifecycle != nil {
-		// Check if lifecycle has ignore_changes with settings references
-		ignoreChanges := meta.lifecycle.Body().GetAttribute("ignore_changes")
-		if ignoreChanges != nil {
-			// For zone_setting, ignore_changes referencing settings[0].xxx paths
-			// cannot be automatically migrated because the v5 structure is completely different
-			// We skip copying the lifecycle block to avoid terraform errors
-			// Users will need to manually add lifecycle blocks if still needed
-		} else {
-			// No ignore_changes or it's safe to copy - copy other lifecycle attributes
+		var names []string
+		for name := range meta.lifecycle.Body().Attributes() {
+			if name != "ignore_changes" {
+				names = append(names, name)
+			}
+		}
+		// Sorted so the generated output is deterministic.
+		sort.Strings(names)
+
+		if len(names) > 0 {
 			lifecycleBlock := body.AppendNewBlock("lifecycle", nil)
-			// Copy all attributes except ignore_changes
-			for name, attr := range meta.lifecycle.Body().Attributes() {
-				if name != "ignore_changes" {
-					tokens := attr.Expr().BuildTokens(nil)
-					lifecycleBlock.Body().SetAttributeRaw(name, tokens)
-				}
+			for _, name := range names {
+				attr := meta.lifecycle.Body().GetAttribute(name)
+				lifecycleBlock.Body().SetAttributeRaw(name, attr.Expr().BuildTokens(nil))
 			}
 		}
 	}
