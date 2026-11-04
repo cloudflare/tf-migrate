@@ -26,7 +26,12 @@ resource "cloudflare_tiered_cache" "example" {
 resource "cloudflare_argo_tiered_caching" "example" {
   zone_id = "test-zone-id"
   value   = "on"
-} `,
+}
+import {
+  to = cloudflare_argo_tiered_caching.example
+  id = "<zone_id>"
+}
+ `,
 		},
 		{
 			Name: "tiered_cache with cache_type=generic",
@@ -43,7 +48,12 @@ resource "cloudflare_tiered_cache" "example" {
 resource "cloudflare_argo_tiered_caching" "example" {
   zone_id = "test-zone-id"
   value   = "on"
-} `,
+}
+import {
+  to = cloudflare_argo_tiered_caching.example
+  id = "<zone_id>"
+}
+ `,
 		},
 		{
 			Name: "tiered_cache with cache_type=off",
@@ -60,7 +70,12 @@ resource "cloudflare_tiered_cache" "example" {
 resource "cloudflare_argo_tiered_caching" "example" {
   zone_id = "test-zone-id"
   value   = "off"
-}`,
+}
+import {
+  to = cloudflare_argo_tiered_caching.example
+  id = "<zone_id>"
+}
+`,
 		},
 		{
 			Name: "multiple tiered_cache resources with mixed types",
@@ -86,6 +101,11 @@ resource "cloudflare_argo_tiered_caching" "off" {
   zone_id = "zone1"
   value   = "off"
 }
+import {
+  to = cloudflare_argo_tiered_caching.off
+  id = "<zone_id>"
+}
+
 resource "cloudflare_tiered_cache" "smart" {
   zone_id = "zone2"
   value   = "on"
@@ -94,6 +114,11 @@ resource "cloudflare_argo_tiered_caching" "smart" {
   zone_id = "zone2"
   value   = "on"
 }
+import {
+  to = cloudflare_argo_tiered_caching.smart
+  id = "<zone_id>"
+}
+
 resource "cloudflare_tiered_cache" "generic" {
   zone_id = "zone3"
   value   = "off"
@@ -102,6 +127,11 @@ resource "cloudflare_argo_tiered_caching" "generic" {
   zone_id = "zone3"
   value   = "on"
 }
+import {
+  to = cloudflare_argo_tiered_caching.generic
+  id = "<zone_id>"
+}
+
 `,
 		},
 		{
@@ -129,7 +159,12 @@ resource "cloudflare_argo_tiered_caching" "example" {
   lifecycle {
     create_before_destroy = true
   }
-}`,
+}
+import {
+  to = cloudflare_argo_tiered_caching.example
+  id = "<zone_id>"
+}
+`,
 		},
 	}
 

@@ -1,6 +1,10 @@
 package tiered_cache
 
 import (
+	"fmt"
+
+	"github.com/hashicorp/hcl/v2"
+
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
@@ -92,6 +96,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			},
 		)
 		blocks = append(blocks, argoBlock)
+		blocks = append(blocks, m.argoImportBlock(ctx, body, resourceName))
 	} else if value == "off" {
 		// cache_type="off" → value="off" for both resources
 		// Create tiered_cache resource with value="off"
@@ -119,6 +124,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			},
 		)
 		blocks = append(blocks, argoBlock)
+		blocks = append(blocks, m.argoImportBlock(ctx, body, resourceName))
 	} else if value == "generic" {
 		// cache_type="generic" → tiered_cache value="off", argo_tiered_caching value="on"
 		// Create tiered_cache resource with value="off"
@@ -146,8 +152,33 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			},
 		)
 		blocks = append(blocks, argoBlock)
+		blocks = append(blocks, m.argoImportBlock(ctx, body, resourceName))
 	} else {
-		// For variables or other expressions, just rename the attribute and copy as-is
+		// cache_type is an expression, so its value cannot be resolved without
+		// state and the resource cannot be split. Only cloudflare_tiered_cache
+		// is produced; the matching cloudflare_argo_tiered_caching is not.
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary: fmt.Sprintf(
+				"Action required: tiered cache not split for cloudflare_tiered_cache.%s", resourceName),
+			Detail: fmt.Sprintf(
+				"In v5 cloudflare_tiered_cache covers only smart tiered caching; generic "+
+					"tiered caching moves to cloudflare_argo_tiered_caching, so a v4 "+
+					"resource normally becomes two.\n\n"+
+					"Here cache_type is an expression rather than a literal, so its value "+
+					"cannot be resolved and the split cannot be made automatically. Only "+
+					"cloudflare_tiered_cache.%s has been written.\n\n"+
+					"If the expression can evaluate to \"generic\" or \"smart\", add the "+
+					"second resource and an import block for it by hand:\n\n"+
+					"  resource \"cloudflare_argo_tiered_caching\" \"%s\" {\n"+
+					"    zone_id = <zone_id>\n"+
+					"    value   = \"on\"\n"+
+					"  }\n\n"+
+					"Without it, generic tiered caching stays at whatever the API currently "+
+					"has and is no longer tracked by Terraform.",
+				resourceName, resourceName),
+		})
+
 		tieredCacheBlock := tfhcl.CreateDerivedBlock(
 			block,
 			"cloudflare_tiered_cache",
@@ -164,4 +195,36 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		Blocks:         blocks,
 		RemoveOriginal: true,
 	}, nil
+}
+
+// argoImportBlock builds the import block for the cloudflare_argo_tiered_caching
+// resource derived from a v4 cloudflare_tiered_cache.
+//
+// The derived resource is new to the configuration but already exists at the
+// API, so without an import block the first apply would try to create it.
+func (m *V4ToV5Migrator) argoImportBlock(ctx *transform.Context, body *hclwrite.Body, resourceName string) *hclwrite.Block {
+	// Resolve zone_id when it is a literal so the user has nothing to fill in.
+	zoneID := "<zone_id>"
+	if zoneAttr := body.GetAttribute("zone_id"); zoneAttr != nil {
+		if extracted := tfhcl.ExtractStringFromAttribute(zoneAttr); len(extracted) == 32 {
+			zoneID = extracted
+		}
+	}
+
+	if zoneID == "<zone_id>" {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary: fmt.Sprintf(
+				"Action required: complete the import block for cloudflare_argo_tiered_caching.%s",
+				resourceName),
+			Detail: fmt.Sprintf(
+				"zone_id is an expression, so it could not be resolved into the generated "+
+					"import block for cloudflare_argo_tiered_caching.%s.\n\n"+
+					"Replace the <zone_id> placeholder with the zone ID before running "+
+					"terraform apply, or the apply will fail.",
+				resourceName),
+		})
+	}
+
+	return tfhcl.CreateImportBlock("cloudflare_argo_tiered_caching", resourceName, zoneID)
 }

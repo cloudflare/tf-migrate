@@ -99,6 +99,7 @@ func (m *V4ToV5Migrator) restructureIntegrationFields(ctx *transform.Context, bo
 	}
 	var found []pending
 	unconvertible := map[string]string{}
+	skippedByType := map[string]int{}
 
 	for _, integration := range integrations {
 		staticBlocks := tfhcl.FindBlocksByType(body, integration.blockType)
@@ -121,7 +122,11 @@ func (m *V4ToV5Migrator) restructureIntegrationFields(ctx *transform.Context, bo
 			body.RemoveBlock(dynBlock)
 
 		case len(staticBlocks) > 0:
-			found = append(found, pending{integration.key, m.buildIntegrationArray(staticBlocks)})
+			arrayTokens, skipped := m.buildIntegrationArray(staticBlocks)
+			if skipped > 0 {
+				skippedByType[integration.blockType] = skipped
+			}
+			found = append(found, pending{integration.key, arrayTokens})
 		}
 	}
 
@@ -145,6 +150,31 @@ func (m *V4ToV5Migrator) restructureIntegrationFields(ctx *transform.Context, bo
 			})
 		}
 		body.SetAttributeRaw("mechanisms", hclwrite.TokensForObject(mechanismsTokens))
+	}
+
+	// A destination that cannot be represented is dropped, which silences the
+	// alert for it, so it must be reported.
+	for _, integration := range integrations {
+		skipped, ok := skippedByType[integration.blockType]
+		if !ok {
+			continue
+		}
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary: fmt.Sprintf(
+				"Notification destination(s) dropped from cloudflare_notification_policy.%s",
+				resourceName),
+			Detail: fmt.Sprintf(
+				"%d %s block(s) had no id attribute and have been dropped from "+
+					"mechanisms.\n\n"+
+					"v5 identifies a destination only by id, so these could not be "+
+					"migrated. The policy will no longer notify them until the missing "+
+					"id(s) are added to mechanisms by hand.\n\n"+
+					"Note that the v4 name attribute is also dropped for destinations "+
+					"that did migrate, because v5 accepts only id. That is cosmetic and "+
+					"needs no action.",
+				skipped, integration.blockType),
+		})
 	}
 
 	// A dynamic block left in place has no v5 equivalent, so it must be reported.
@@ -172,8 +202,9 @@ func (m *V4ToV5Migrator) restructureIntegrationFields(ctx *transform.Context, bo
 }
 
 // buildIntegrationArray converts integration blocks to an array of objects with only id field
-func (m *V4ToV5Migrator) buildIntegrationArray(blocks []*hclwrite.Block) hclwrite.Tokens {
+func (m *V4ToV5Migrator) buildIntegrationArray(blocks []*hclwrite.Block) (hclwrite.Tokens, int) {
 	var arrayElements []hclwrite.Tokens
+	skipped := 0
 
 	for _, block := range blocks {
 		blockBody := block.Body()
@@ -181,6 +212,9 @@ func (m *V4ToV5Migrator) buildIntegrationArray(blocks []*hclwrite.Block) hclwrit
 		// Extract id attribute
 		idAttr := blockBody.GetAttribute("id")
 		if idAttr == nil {
+			// v5 mechanisms identify a destination only by id, so a block
+			// without one cannot be represented and is dropped.
+			skipped++
 			continue
 		}
 
@@ -196,5 +230,5 @@ func (m *V4ToV5Migrator) buildIntegrationArray(blocks []*hclwrite.Block) hclwrit
 	}
 
 	// Build array tokens using TokensForTuple (which creates arrays in HCL)
-	return hclwrite.TokensForTuple(arrayElements)
+	return hclwrite.TokensForTuple(arrayElements), skipped
 }

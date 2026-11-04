@@ -3,10 +3,12 @@ package zone_setting
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
@@ -82,6 +84,10 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// These need to be copied to all generated resources
 	metaArgs := m.extractMetaArguments(block)
 
+	// Settings with no v5 equivalent, collected so they can be reported.
+	var droppedSettings []string
+	var generatedNames []string
+
 	// State cleanup is handled automatically by the phased migration flow.
 	// The stateAddr is still used for the MIGRATION NOTES comment below.
 	stateAddr := "cloudflare_zone_settings_override." + baseName
@@ -121,6 +127,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		attr := attrs[attrName]
 		// Skip deprecated settings
 		if isDeprecatedSetting(attrName) {
+			droppedSettings = append(droppedSettings, attrName)
 			continue
 		}
 
@@ -138,6 +145,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		// Generate import block: id = "${zone_id}/{setting_id}"
 		// Import blocks are only valid in the root module, so the e2e runner
 		// hoists them from module subdirectories to root main.tf automatically.
+		generatedNames = append(generatedNames, resourceName)
+
 		// Skip import blocks for count-based resources: count is not supported
 		// on import blocks, and the resource may not exist when count = 0.
 		// for_each is supported (Terraform 1.7+) and is copied to the import block.
@@ -155,6 +164,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 		// Skip deprecated settings
 		if isDeprecatedSetting(settingID) {
+			droppedSettings = append(droppedSettings, settingID)
 			continue
 		}
 
@@ -190,6 +200,44 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}
 	removedBlock.Body().AppendUnstructuredTokens(notes)
 	newBlocks = append(newBlocks, removedBlock)
+
+	if len(droppedSettings) > 0 {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary: fmt.Sprintf(
+				"Setting(s) dropped from cloudflare_zone_settings_override.%s", baseName),
+			Detail: fmt.Sprintf(
+				"The following setting(s) have no equivalent in v5 and have been "+
+					"dropped:\n\n  %s\n\n"+
+					"They are no longer managed by Terraform. Their current state at the "+
+					"API is left untouched; check it matches what you intend.",
+				strings.Join(droppedSettings, "\n  ")),
+		})
+	}
+
+	// Terraform import blocks do not support count, so the generated resources
+	// cannot be imported automatically and would otherwise be created anew.
+	if metaArgs != nil && metaArgs.count != nil && len(generatedNames) > 0 {
+		var cmds []string
+		for _, name := range generatedNames {
+			cmds = append(cmds, fmt.Sprintf(
+				"  terraform import 'cloudflare_zone_setting.%s[0]' <zone_id>/<setting_id>", name))
+		}
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary: fmt.Sprintf(
+				"Action required: import blocks not generated for cloudflare_zone_settings_override.%s",
+				baseName),
+			Detail: fmt.Sprintf(
+				"This resource uses count, and Terraform import blocks do not support "+
+					"count, so no import blocks were generated for the %d resource(s) "+
+					"derived from it.\n\n"+
+					"These settings already exist at the API. Without an import, the next "+
+					"apply will try to create them. Import them by hand first:\n\n%s\n\n"+
+					"Adjust the index to match each instance when count is greater than 1.",
+				len(generatedNames), strings.Join(cmds, "\n")),
+		})
+	}
 
 	return &transform.TransformResult{
 		Blocks:         newBlocks,
