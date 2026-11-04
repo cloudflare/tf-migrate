@@ -1,6 +1,7 @@
 package ruleset
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -56,6 +57,7 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
+	resourceName := hcl.GetResourceName(block)
 
 	// Handle dynamic "rules" blocks - convert to for expression
 	// v4: dynamic "rules" { for_each = var.rules content { ... } }
@@ -76,6 +78,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		actionParamsBlocks := hcl.FindBlocksByType(ruleBody, "action_parameters")
 		for _, actionParamsBlock := range actionParamsBlocks {
 			actionParamsBody := actionParamsBlock.Body()
+			convertDynamicHeadersToMap(ctx, actionParamsBody, resourceName)
 			convertHeadersBlocksToMap(actionParamsBody)
 
 			// Handle query_string blocks within cache_key.custom_key
@@ -679,4 +682,125 @@ func buildNestedBlockTokens(block *hclwrite.Block, indent string, iteratorName s
 	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte{'\n'}})
 
 	return tokens
+}
+
+// convertDynamicHeadersToMap rewrites a dynamic "headers" block inside
+// action_parameters into the v5 map form.
+//
+// action_parameters is an object attribute in v5, and a block cannot appear
+// inside an object value, so the dynamic block cannot simply be left alone. In
+// v5 headers is keyed by header name, so the v4 name attribute becomes the map
+// key and the remaining attributes form the value:
+//
+//	dynamic "headers" {
+//	  for_each = var.response_headers
+//	  content {
+//	    name      = headers.key
+//	    operation = "set"
+//	    value     = headers.value
+//	  }
+//	}
+//
+// becomes:
+//
+//	headers = { for k, v in var.response_headers : k => {
+//	  operation = "set"
+//	  value     = v
+//	} }
+func convertDynamicHeadersToMap(ctx *transform.Context, body *hclwrite.Body, resourceName string) {
+	const keyVar, valVar = "k", "v"
+
+	dynBlock := hcl.FindDynamicBlockFor(body, "headers")
+	if dynBlock == nil {
+		return
+	}
+
+	warn := func(reason string) {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hclv2.Diagnostic{
+			Severity: hclv2.DiagWarning,
+			Summary: fmt.Sprintf(
+				"Dynamic headers block not migrated on cloudflare_ruleset.%s", resourceName),
+			Detail: fmt.Sprintf(
+				"The dynamic \"headers\" block could not be converted automatically "+
+					"because %s.\n\n"+
+					"v5 expects action_parameters.headers to be a map keyed by header "+
+					"name, and a block cannot appear inside an object value, so this "+
+					"must be rewritten by hand, for example:\n\n"+
+					"  headers = { for k, v in <for_each> : k => {\n"+
+					"    operation = \"set\"\n"+
+					"    value     = v\n"+
+					"  } }",
+				reason),
+		})
+	}
+
+	if len(hcl.FindBlocksByType(body, "headers")) > 0 {
+		warn("it is mixed with static headers block(s)")
+		return
+	}
+
+	dynBody := dynBlock.Body()
+	forEach := dynBody.GetAttribute("for_each")
+	if forEach == nil {
+		warn("the dynamic block has no for_each")
+		return
+	}
+	contentBlock := hcl.FindBlockByType(dynBody, "content")
+	if contentBlock == nil {
+		warn("the dynamic block has no content block")
+		return
+	}
+	if len(contentBlock.Body().Blocks()) > 0 {
+		warn("the content block contains nested blocks")
+		return
+	}
+
+	iterator := "headers"
+	if it := dynBody.GetAttribute("iterator"); it != nil {
+		iterator = strings.Trim(strings.TrimSpace(string(it.Expr().BuildTokens(nil).Bytes())), `"`)
+	}
+
+	// The v4 name attribute supplies the v5 map key.
+	nameAttr := contentBlock.Body().GetAttribute("name")
+	if nameAttr == nil {
+		warn("the content block has no name attribute to use as the map key")
+		return
+	}
+	keyTokens := hcl.RewriteDynamicIteratorRefs(
+		nameAttr.Expr().BuildTokens(nil), iterator, keyVar, valVar)
+
+	ident := func(str string) *hclwrite.Token {
+		return &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(str)}
+	}
+	newline := func() *hclwrite.Token {
+		return &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte{'\n'}}
+	}
+
+	tokens := hclwrite.Tokens{
+		{Type: hclsyntax.TokenOBrace, Bytes: []byte{'{'}},
+		ident(" for " + keyVar + ", " + valVar + " in "),
+	}
+	tokens = append(tokens, forEach.Expr().BuildTokens(nil)...)
+	tokens = append(tokens, ident(" : "))
+	tokens = append(tokens, keyTokens...)
+	tokens = append(tokens, ident(" => "),
+		&hclwrite.Token{Type: hclsyntax.TokenOBrace, Bytes: []byte{'{'}}, newline())
+
+	for _, attrInfo := range hcl.AttributesOrdered(contentBlock.Body()) {
+		if attrInfo.Name == "name" {
+			continue // became the map key
+		}
+		tokens = append(tokens, ident(attrInfo.Name), ident(" = "))
+		tokens = append(tokens, hcl.RewriteDynamicIteratorRefs(
+			attrInfo.Attribute.Expr().BuildTokens(nil), iterator, keyVar, valVar)...)
+		tokens = append(tokens, newline())
+	}
+
+	tokens = append(tokens,
+		&hclwrite.Token{Type: hclsyntax.TokenCBrace, Bytes: []byte{'}'}},
+		ident(" "),
+		&hclwrite.Token{Type: hclsyntax.TokenCBrace, Bytes: []byte{'}'}})
+
+	body.SetAttributeRaw("headers", tokens)
+	body.RemoveBlock(dynBlock)
 }
