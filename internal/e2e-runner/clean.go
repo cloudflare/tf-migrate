@@ -13,8 +13,15 @@ import (
 	"path/filepath"
 )
 
-// RunClean removes specified modules from remote Terraform state in R2
-func RunClean(modules []string) error {
+// RunClean removes specified modules from remote Terraform state in R2.
+//
+// versionSuffix selects which v4 base to operate on. An empty suffix targets
+// the shared, unsuffixed base (e2e/tf/v4). A non-empty suffix targets the
+// version-isolated base created by `run --version-suffix <v>`
+// (e2e/tf/v4-<suffix>, R2 key v4/versions/<suffix>/terraform.tfstate) — which
+// is what the supportability matrix uses. Passing the wrong one silently
+// cleans a different lineage, so the resolved directory is printed.
+func RunClean(modules []string, versionSuffix string) error {
 	if len(modules) == 0 {
 		return fmt.Errorf("no modules specified\nUsage: e2e clean --modules <module1,module2,...>")
 	}
@@ -30,13 +37,14 @@ func RunClean(modules []string) error {
 	// Get paths
 	repoRoot := getRepoRoot()
 	e2eRoot := filepath.Join(repoRoot, "e2e")
-	v4Dir := filepath.Join(e2eRoot, "tf", "v4")
+	v4Dir := versionedV4Dir(e2eRoot, versionSuffix)
 
 	// Check if v4 directory exists
 	if _, err := os.Stat(v4Dir); os.IsNotExist(err) {
 		return fmt.Errorf("v4 directory not found at %s", v4Dir)
 	}
 
+	printYellow("Working directory: %s (state key %s)", v4Dir, versionedStateKey(versionSuffix))
 	printYellow("Modules to clean:")
 	for _, module := range modules {
 		printYellow("  - %s", module)

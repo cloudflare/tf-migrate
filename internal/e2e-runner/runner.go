@@ -1124,6 +1124,245 @@ func healCorruptedLeakedCredentialCheckRuleState(v4TF *TerraformRunner) error {
 	return nil
 }
 
+// vanishedZoneErrorRe matches the v4 provider's refresh failure for a
+// cloudflare_zone whose zone no longer exists in the account, e.g.
+//
+//	Error: error finding Zone "3176fd9bc2858ecabf3caafa4d7a6734": Invalid zone identifier (1001)
+//
+// v4's cloudflare_zone Read() returns this as a hard error instead of
+// treating the zone as gone and dropping it from state, so a single
+// out-of-band deletion makes `terraform plan` fail permanently.
+var vanishedZoneErrorRe = regexp.MustCompile(`^Error:\s+error finding Zone\s+"([^"]*)":`)
+
+// planErrorWithAddrRe captures the resource address Terraform attributes an
+// error to, e.g.
+//
+//	  with module.zone.cloudflare_zone.set_zones["cftftest5190-delta.example.com"],
+var planErrorWithAddrRe = regexp.MustCompile(`^\s+with\s+(\S.*),$`)
+
+// cloudflareZoneAddrRe matches only addresses whose resource type is
+// cloudflare_zone, with or without a module prefix. Non-zone resources that
+// happen to report a missing zone are deliberately left alone — removing
+// them from state could orphan live infrastructure.
+var cloudflareZoneAddrRe = regexp.MustCompile(`^(module\.[^.]+\.)?cloudflare_zone\.`)
+
+// vanishedZone is one cloudflare_zone state entry whose zone no longer
+// exists, as reported by a failed refresh.
+type vanishedZone struct {
+	Address string // state address, e.g. module.zone.cloudflare_zone.minimal
+	ZoneID  string // the dead zone id named in the diagnostic
+}
+
+// parseVanishedZones extracts the cloudflare_zone state entries that failed
+// to refresh because their zone no longer exists, along with the dead zone
+// id from each diagnostic.
+//
+// It pairs each "error finding Zone" diagnostic with the `with <address>,`
+// line Terraform prints inside the same block. Results are deduplicated by
+// address and returned in the order encountered. Requires -no-color plan
+// output (which is what runV4Terraform uses).
+func parseVanishedZones(planOutput string) []vanishedZone {
+	var zones []vanishedZone
+	seen := map[string]bool{}
+
+	armed := false
+	armedZoneID := ""
+	scanner := bufio.NewScanner(strings.NewReader(planOutput))
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if m := vanishedZoneErrorRe.FindStringSubmatch(line); m != nil {
+			armed = true
+			armedZoneID = m[1]
+			continue
+		}
+
+		// A new diagnostic block starts before we found an address — the
+		// previous error wasn't attributed to a resource, so drop it.
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "Error:") || strings.HasPrefix(trimmed, "Warning:") {
+			armed = false
+			continue
+		}
+
+		if !armed {
+			continue
+		}
+
+		match := planErrorWithAddrRe.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		armed = false
+
+		addr := strings.TrimSpace(match[1])
+		if !cloudflareZoneAddrRe.MatchString(addr) || seen[addr] {
+			continue
+		}
+		seen[addr] = true
+		zones = append(zones, vanishedZone{Address: addr, ZoneID: armedZoneID})
+	}
+
+	return zones
+}
+
+// findResourcesInZones returns the state addresses of every resource
+// instance whose zone_id attribute is one of zoneIDs, excluding addresses in
+// skip. stateJSON is raw `terraform state pull` output.
+//
+// This is what catches the second-order fallout of a deleted zone: resources
+// that lived *inside* it. They are equally gone, but Terraform never reports
+// them in the same plan — it skips refreshing a resource whose dependency
+// already errored, so they only surface after the zone entries are removed,
+// and with a different (and much less specific) diagnostic. Observed as
+// "Error: Authentication error (10000)" on the two cloudflare_record
+// cross-ref fixtures in module.zone.
+//
+// Matching on zone_id rather than on that error string is deliberate: a
+// genuine credentials failure produces the identical message, and keying the
+// removal off it would let a bad-token run strip live resources from state.
+func findResourcesInZones(stateJSON string, zoneIDs map[string]bool, skip map[string]bool) ([]string, error) {
+	if len(zoneIDs) == 0 {
+		return nil, nil
+	}
+
+	var state struct {
+		Resources []struct {
+			Module    string `json:"module"`
+			Mode      string `json:"mode"`
+			Type      string `json:"type"`
+			Name      string `json:"name"`
+			Instances []struct {
+				IndexKey   any            `json:"index_key"`
+				Attributes map[string]any `json:"attributes"`
+			} `json:"instances"`
+		} `json:"resources"`
+	}
+	if err := json.Unmarshal([]byte(stateJSON), &state); err != nil {
+		return nil, fmt.Errorf("failed to parse pulled state: %w", err)
+	}
+
+	var addresses []string
+	seen := map[string]bool{}
+	for _, r := range state.Resources {
+		// Data sources aren't in state in a removable sense, and a
+		// cloudflare_zone entry is handled by the caller already.
+		if r.Mode != "managed" || r.Type == "cloudflare_zone" {
+			continue
+		}
+		for _, inst := range r.Instances {
+			zoneID, _ := inst.Attributes["zone_id"].(string)
+			if zoneID == "" || !zoneIDs[zoneID] {
+				continue
+			}
+
+			addr := r.Type + "." + r.Name
+			if r.Module != "" {
+				addr = r.Module + "." + addr
+			}
+			switch k := inst.IndexKey.(type) {
+			case string:
+				addr = fmt.Sprintf("%s[%q]", addr, k)
+			case float64:
+				addr = fmt.Sprintf("%s[%d]", addr, int(k))
+			}
+
+			if skip[addr] || seen[addr] {
+				continue
+			}
+			seen[addr] = true
+			addresses = append(addresses, addr)
+		}
+	}
+
+	return addresses, nil
+}
+
+// healVanishedZoneState removes cloudflare_zone entries from state whose
+// zones no longer exist in the Cloudflare account, as reported by a failed
+// `terraform plan`. It returns the number of entries removed.
+//
+// This exists because the supportability matrix shares ONE persistent v4
+// resource base across every leg (see .github/workflows/supportability-matrix.yml),
+// so zones going missing out of band bricks every leg at v4 refresh until
+// the stale entries are cleared by hand. Removing them lets the very next
+// plan recreate the zones, which is what a fresh base would have done.
+//
+// Observed 2026-11-03: 21 of 23 free-plan zones in the base began returning
+// 400 "Invalid zone identifier" on GET by id while the two paid-plan zones
+// in the same module kept working. Root cause unknown. Note that the zones
+// were not actually destroyed — recreating them returned byte-identical zone
+// ids and their pre-existing DNS records were still present, which a real
+// delete+recreate cannot do. So this heal can leave child records orphaned:
+// removed from state but still live server-side, making the next apply fail
+// with "expected DNS record to not already be present but already exists".
+// That case still needs a human (delete or import the orphans).
+//
+// Deliberately narrow: the only entries removed are cloudflare_zone
+// addresses named by an "error finding Zone" diagnostic, plus resources
+// whose zone_id attribute points at one of those same dead zones. Any other
+// plan failure is left to fail loudly.
+func healVanishedZoneState(v4TF *TerraformRunner, planOutput string) (int, error) {
+	zones := parseVanishedZones(planOutput)
+	if len(zones) == 0 {
+		return 0, nil
+	}
+
+	addresses := make([]string, 0, len(zones))
+	isZoneAddr := map[string]bool{}
+	zoneIDs := map[string]bool{}
+	for _, z := range zones {
+		addresses = append(addresses, z.Address)
+		isZoneAddr[z.Address] = true
+		if z.ZoneID != "" {
+			zoneIDs[z.ZoneID] = true
+		}
+	}
+
+	// Sweep up anything that lived inside those zones. Best-effort: if the
+	// state can't be read or parsed, still remove the zones themselves —
+	// that's the fix for the reported failure, and any leftover dependents
+	// surface on the retry plan rather than being silently discarded.
+	stateJSON, err := v4TF.Run("state", "pull")
+	if err != nil {
+		printYellow("Warning: could not pull state to check for resources inside the deleted zones: %v", err)
+	} else {
+		dependents, err := findResourcesInZones(stateJSON, zoneIDs, isZoneAddr)
+		if err != nil {
+			printYellow("Warning: could not scan state for resources inside the deleted zones: %v", err)
+		} else {
+			addresses = append(addresses, dependents...)
+		}
+	}
+
+	printYellow("Detected %d state entr%s belonging to %d Cloudflare zone(s) that no longer exist (v4 Read() hard-errors instead of dropping them). Removing so they recreate cleanly...",
+		len(addresses), pluralizeEntry(len(addresses)), len(zoneIDs))
+	for _, addr := range addresses {
+		suffix := ""
+		if !isZoneAddr[addr] {
+			suffix = "  (lived inside a deleted zone)"
+		}
+		printYellow("  - %s%s", addr, suffix)
+	}
+
+	for _, addr := range addresses {
+		if err := v4TF.StateRm(addr); err != nil {
+			return 0, fmt.Errorf("failed to remove stale zone state entry %s: %w", addr, err)
+		}
+	}
+
+	printSuccess("Removed %d stale state entr%s", len(addresses), pluralizeEntry(len(addresses)))
+	return len(addresses), nil
+}
+
+func pluralizeEntry(n int) string {
+	if n == 1 {
+		return "y"
+	}
+	return "ies"
+}
+
 // isStateShowIDNull reports whether `terraform state show <addr>` output has
 // a top-level `id = null` line — the exact corruption signature left by the
 // leaked_credential_check_rule v4 provider bug (a healthy resource always
@@ -1532,6 +1771,24 @@ func runV4Tests(ctx *testContext) error {
 	planArgs := append([]string{"plan", "-no-color", "-out=" + filepath.Join(ctx.tmpDir, "v4.tfplan"), "-input=false"}, ctx.targetArgs...)
 	planArgs = addParallelismArg(planArgs, ctx.cfg.Parallelism)
 	planOutput, err := v4TF.Run(planArgs...)
+	if err != nil {
+		// A plan that failed only because zones were deleted out of band is
+		// recoverable: drop the stale entries and plan once more, which will
+		// schedule them for recreation. Any other failure falls straight
+		// through to the error path below.
+		removed, healErr := healVanishedZoneState(v4TF, planOutput)
+		if healErr != nil {
+			printError("Terraform plan failed for v4 and stale zone state could not be cleaned up")
+			fmt.Println()
+			printRed("Error output:")
+			fmt.Println(planOutput)
+			return healErr
+		}
+		if removed > 0 {
+			printYellow("Re-running terraform plan in v4/ after stale zone cleanup...")
+			planOutput, err = v4TF.Run(planArgs...)
+		}
+	}
 	if err != nil {
 		printError("Terraform plan failed for v4")
 		fmt.Println()
