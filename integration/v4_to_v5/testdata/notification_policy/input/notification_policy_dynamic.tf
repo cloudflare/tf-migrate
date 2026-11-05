@@ -6,7 +6,7 @@ variable "alert_emails" {
 # A dynamic integration block alongside a static one of a different type.
 resource "cloudflare_notification_policy" "dynamic_email" {
   account_id  = "f037e56e89293a057740de681ac9abbe"
-  name        = "Origin errors by code"
+  name        = "cftftest-origin-errors-by-code"
   description = "5xx rate from origin exceeds threshold"
   enabled     = true
   alert_type  = "http_alert_origin_error"
