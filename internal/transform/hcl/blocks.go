@@ -1404,3 +1404,32 @@ func BuildDynamicForListTokens(dynBlock *hclwrite.Block, blockType string) (hclw
 
 	return tokens, true, ""
 }
+
+// ConvertBlocksToAttributeKeepFirst converts repeated blocks into a single
+// object attribute, keeping the first block and discarding the rest. It
+// returns how many blocks were discarded.
+//
+// Use this where the v4 schema accepted a list but the provider only ever read
+// index 0, so later blocks were already inert. ConvertBlocksToAttribute
+// assigns each block to the same attribute in turn and therefore keeps the
+// last, which would promote a block the provider ignored into the live
+// configuration.
+func ConvertBlocksToAttributeKeepFirst(body *hclwrite.Body, blockType, attrName string, preProcess func(*hclwrite.Block)) int {
+	blocks := FindBlocksByType(body, blockType)
+	if len(blocks) == 0 {
+		return 0
+	}
+
+	first := blocks[0]
+	if preProcess != nil {
+		preProcess(first)
+	}
+	objTokens := BuildObjectFromBlock(first)
+
+	for _, block := range blocks {
+		body.RemoveBlock(block)
+	}
+	body.SetAttributeRaw(attrName, objTokens)
+
+	return len(blocks) - 1
+}
