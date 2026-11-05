@@ -15,6 +15,32 @@ name: Supportability Matrix
 # special state-persistence setup, and safe to run in any order, any number
 # of times.
 #
+# Because that v4 base is persistent and shared, anything that deletes its
+# resources outside Terraform leaves stale state that fails `terraform plan`
+# at refresh and blocks EVERY leg before migration even starts. Observed
+# 2026-11-03 (run 41699862833): 21 of 23 free-plan cloudflare_zone resources
+# started returning 400 "Invalid zone identifier" on GET by id (the two
+# paid-plan zones in the same module kept working), and v4's cloudflare_zone
+# Read() hard-errors on that instead of dropping the entry, so all six legs
+# died identically. The runner now self-heals that case
+# (healVanishedZoneState in internal/e2e-runner/runner.go) by removing the
+# named entries and re-planning so the zones get recreated.
+#
+# Note what recreating them actually does: all 21 came back with BYTE-IDENTICAL
+# zone ids, which a real delete+recreate cannot do, and their pre-existing DNS
+# records were still there. So these zones are not deleted, they are in some
+# state where lookup-by-id 400s and re-POSTing the name restores them whole.
+# The practical consequence is that heal-by-state-rm can orphan child records:
+# the config tries to create a record that still exists server-side and the
+# apply fails with "expected DNS record to not already be present but already
+# exists" (run 41792528077). Delete the orphan records via the API, or import
+# them, then re-dispatch. Root cause of the 400s is still unknown.
+#
+# For anything the heal doesn't cover, clean the stale entries by hand and
+# re-dispatch:
+#
+#   ./bin/e2e clean --modules <module> --version-suffix 5.19.0
+#
 # Matrix legs run strictly sequentially (max-parallel: 1 + the concurrency
 # group below) because they share one account/zone, including a handful of
 # true account-level and zone-level singleton resources (zero_trust_gateway_settings,

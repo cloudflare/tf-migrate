@@ -11,7 +11,7 @@ func TestRunClean_ValidationEmptyModules(t *testing.T) {
 	// Test that RunClean validates input
 	modules := []string{}
 
-	err := RunClean(modules)
+	err := RunClean(modules, "")
 	if err == nil {
 		t.Error("Expected error for empty modules list")
 	}

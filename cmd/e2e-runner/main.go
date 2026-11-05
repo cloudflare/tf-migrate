@@ -93,7 +93,8 @@ var cleanCmd = &cobra.Command{
 				return fmt.Errorf("empty module name in list")
 			}
 		}
-		return e2e.RunClean(modules)
+		versionSuffix, _ := cmd.Flags().GetString("version-suffix")
+		return e2e.RunClean(modules, versionSuffix)
 	},
 }
 
@@ -196,6 +197,7 @@ func init() {
 
 	// Clean command flags
 	cleanCmd.Flags().String("modules", "", "Modules to remove from state (comma-separated)")
+	cleanCmd.Flags().String("version-suffix", "", "Target the version-isolated v4 base created by 'run --version-suffix <v>' (e.g. 5.19.0). Omit for the shared, unsuffixed base.")
 
 	// V5 Upgrade command flags
 	v5UpgradeCmd.Flags().String("from-version", e2e.DefaultFromVersion, "Source provider version (e.g., 5.18.0)")
