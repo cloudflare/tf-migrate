@@ -25,7 +25,15 @@ import (
 
 // Package-level compiled regex patterns for drift detection (performance optimization)
 var (
-	resourceHeaderPattern      = regexp.MustCompile(`^\s*#\s+(\S+)\s+will be`)
+	// Matches a plan resource header and captures the resource address, e.g.
+	//   # module.dns.cloudflare_dns_record.www will be created
+	//   # cloudflare_zone.this must be replaced
+	// "must be" is included because a forced replacement is a resource change
+	// like any other. The capture is non-greedy rather than \S+ so that an
+	// instance key containing spaces — ["my zone"] — does not truncate the
+	// address and cause the whole line to be missed. A key that literally
+	// contains " will be " would still truncate; that is not worth guarding.
+	resourceHeaderPattern      = regexp.MustCompile(`^\s*#\s+(.+?)\s+(?:will|must) be`)
 	updateLinePattern          = regexp.MustCompile(`^\s+~\s+\w+\s+=`)
 	arrowPattern               = regexp.MustCompile(`->`)
 	additionPattern            = regexp.MustCompile(`^\s+\+\s+\w+\s+=`)
