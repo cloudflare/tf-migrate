@@ -1076,6 +1076,44 @@ Plan: 0 to add, 2 to change, 0 to destroy.
 			planOutput: "No changes. Your infrastructure matches the configuration.\n",
 			want:       []string{},
 		},
+		{
+			// A forced replacement is the most consequential thing a
+			// post-migration plan can contain, so it must be detected.
+			name: "forced replacement",
+			planOutput: `
+  # cloudflare_zone.this must be replaced
+-/+ resource "cloudflare_zone" "this" {
+    }
+
+  # module.dns.cloudflare_dns_record.www will be created
+`,
+			want: []string{"dns_record", "zone"},
+		},
+		{
+			// An instance key containing spaces must not truncate the
+			// captured address and drop the resource entirely.
+			name: "instance keys containing spaces",
+			planOutput: `
+  # module.m["my zone"].cloudflare_ruleset.r will be created
+  # cloudflare_dns_record.r["my record"] will be created
+`,
+			want: []string{"dns_record", "ruleset"},
+		},
+		{
+			name: "instance key containing an escaped quote",
+			planOutput: `
+  # cloudflare_list.x["a\"b"] will be created
+`,
+			want: []string{"list"},
+		},
+		{
+			// "has moved to" is not a change to the resource itself.
+			name: "moved blocks are ignored",
+			planOutput: `
+  # cloudflare_zone.a has moved to cloudflare_zone.b
+`,
+			want: []string{},
+		},
 	}
 
 	for _, tt := range tests {
