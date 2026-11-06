@@ -1,9 +1,16 @@
 package zero_trust_access_identity_provider
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestConfigTransformations(t *testing.T) {
@@ -227,4 +234,71 @@ moved {
 	}
 
 	testhelpers.RunConfigTransformTests(t, tests, migrator)
+}
+
+// v4 accepted repeated config blocks but the provider read config.0 only, so
+// later blocks never reached the API. Keeping the last would activate settings
+// that were previously inert and change how the IdP authenticates.
+func TestMultipleConfigBlocksKeepsFirst(t *testing.T) {
+	migrator := NewV4ToV5Migrator()
+
+	input := `resource "cloudflare_access_identity_provider" "example" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Okta"
+  type       = "okta"
+
+  config {
+    client_id     = "live-client"
+    client_secret = "live-secret"
+  }
+
+  config {
+    client_id     = "inert-client"
+    client_secret = "inert-secret"
+  }
+}`
+
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), "parse error: %v", diags)
+
+	ctx := &transform.Context{
+		Content:       []byte(input),
+		Filename:      "test.tf",
+		Diagnostics:   make(hcl.Diagnostics, 0),
+		Metadata:      make(map[string]interface{}),
+		SourceVersion: "v4",
+		TargetVersion: "v5",
+	}
+
+	var block *hclwrite.Block
+	for _, b := range file.Body().Blocks() {
+		if b.Type() == "resource" {
+			block = b
+			break
+		}
+	}
+	require.NotNil(t, block)
+
+	result, err := migrator.TransformConfig(ctx, block)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	var out string
+	for _, b := range result.Blocks {
+		out += string(hclwrite.Format(b.BuildTokens(nil).Bytes()))
+	}
+
+	assert.Contains(t, out, "live-client",
+		"the first config block is the one v4 used and must be kept, got:\n%s", out)
+	assert.NotContains(t, out, "inert-client",
+		"the second config block was never sent to the API in v4 and must not be "+
+			"promoted into the v5 config, got:\n%s", out)
+
+	var warned bool
+	for _, d := range ctx.Diagnostics {
+		if d.Severity == hcl.DiagWarning && strings.Contains(d.Summary, "config block(s) dropped") {
+			warned = true
+		}
+	}
+	assert.True(t, warned, "dropping a config block must be reported, got: %v", ctx.Diagnostics)
 }

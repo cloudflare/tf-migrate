@@ -49,7 +49,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	tfhcl.ConvertBlocksToAttribute(body, "filters", "filters", func(block *hclwrite.Block) {})
 
 	// Restructure integration fields into mechanisms
-	m.restructureIntegrationFields(body)
+	m.restructureIntegrationFields(ctx, body, tfhcl.GetResourceName(block))
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
@@ -84,58 +84,127 @@ func (m *V4ToV5Migrator) validateAlertTypes(ctx *transform.Context, body *hclwri
 }
 
 // restructureIntegrationFields converts v4 integration fields to v5 mechanisms structure
-func (m *V4ToV5Migrator) restructureIntegrationFields(body *hclwrite.Body) {
-	// Collect all integration blocks
-	emailBlocks := tfhcl.FindBlocksByType(body, "email_integration")
-	webhooksBlocks := tfhcl.FindBlocksByType(body, "webhooks_integration")
-	pagerdutyBlocks := tfhcl.FindBlocksByType(body, "pagerduty_integration")
+func (m *V4ToV5Migrator) restructureIntegrationFields(ctx *transform.Context, body *hclwrite.Body, resourceName string) {
+	// v4 integration block type -> v5 mechanisms key, in a fixed order so the
+	// generated object is deterministic.
+	integrations := []struct{ blockType, key string }{
+		{"email_integration", "email"},
+		{"webhooks_integration", "webhooks"},
+		{"pagerduty_integration", "pagerduty"},
+	}
 
-	if len(emailBlocks) == 0 && len(webhooksBlocks) == 0 && len(pagerdutyBlocks) == 0 {
+	type pending struct {
+		key    string
+		tokens hclwrite.Tokens
+	}
+	var found []pending
+	unconvertible := map[string]string{}
+	skippedByType := map[string]int{}
+
+	for _, integration := range integrations {
+		staticBlocks := tfhcl.FindBlocksByType(body, integration.blockType)
+		dynBlock := tfhcl.FindDynamicBlockFor(body, integration.blockType)
+
+		switch {
+		case dynBlock != nil && len(staticBlocks) > 0:
+			// Splicing a for expression into a literal list would need
+			// concat(); refuse rather than emit something subtly wrong.
+			unconvertible[integration.blockType] = "it is mixed with static " +
+				integration.blockType + " block(s)"
+
+		case dynBlock != nil:
+			tokens, ok, reason := tfhcl.BuildDynamicForListTokens(dynBlock, integration.blockType)
+			if !ok {
+				unconvertible[integration.blockType] = reason
+				continue
+			}
+			found = append(found, pending{integration.key, tokens})
+			body.RemoveBlock(dynBlock)
+
+		case len(staticBlocks) > 0:
+			arrayTokens, skipped := m.buildIntegrationArray(staticBlocks)
+			if skipped > 0 {
+				skippedByType[integration.blockType] = skipped
+			}
+			found = append(found, pending{integration.key, arrayTokens})
+		}
+	}
+
+	if len(found) == 0 && len(unconvertible) == 0 {
 		return
 	}
 
-	// Build mechanisms structure
-	mechanismsTokens := []hclwrite.ObjectAttrTokens{}
+	// Remove old integration blocks before writing the attribute.
+	for _, integration := range integrations {
+		tfhcl.RemoveBlocksByType(body, integration.blockType)
+	}
 
-	// Add email integrations
-	if len(emailBlocks) > 0 {
-		emailArray := m.buildIntegrationArray(emailBlocks)
-		mechanismsTokens = append(mechanismsTokens, hclwrite.ObjectAttrTokens{
-			Name:  hclwrite.TokensForIdentifier("email"),
-			Value: emailArray,
+	// An empty object would positively declare "no destinations", so only write
+	// mechanisms when something actually converted.
+	if len(found) > 0 {
+		mechanismsTokens := make([]hclwrite.ObjectAttrTokens, 0, len(found))
+		for _, p := range found {
+			mechanismsTokens = append(mechanismsTokens, hclwrite.ObjectAttrTokens{
+				Name:  hclwrite.TokensForIdentifier(p.key),
+				Value: p.tokens,
+			})
+		}
+		body.SetAttributeRaw("mechanisms", hclwrite.TokensForObject(mechanismsTokens))
+	}
+
+	// A destination that cannot be represented is dropped, which silences the
+	// alert for it, so it must be reported.
+	for _, integration := range integrations {
+		skipped, ok := skippedByType[integration.blockType]
+		if !ok {
+			continue
+		}
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary: fmt.Sprintf(
+				"Notification destination(s) dropped from cloudflare_notification_policy.%s",
+				resourceName),
+			Detail: fmt.Sprintf(
+				"%d %s block(s) had no id attribute and have been dropped from "+
+					"mechanisms.\n\n"+
+					"v5 identifies a destination only by id, so these could not be "+
+					"migrated. The policy will no longer notify them until the missing "+
+					"id(s) are added to mechanisms by hand.\n\n"+
+					"Note that the v4 name attribute is also dropped for destinations "+
+					"that did migrate, because v5 accepts only id. That is cosmetic and "+
+					"needs no action.",
+				skipped, integration.blockType),
 		})
 	}
 
-	// Add webhooks integrations
-	if len(webhooksBlocks) > 0 {
-		webhooksArray := m.buildIntegrationArray(webhooksBlocks)
-		mechanismsTokens = append(mechanismsTokens, hclwrite.ObjectAttrTokens{
-			Name:  hclwrite.TokensForIdentifier("webhooks"),
-			Value: webhooksArray,
+	// A dynamic block left in place has no v5 equivalent, so it must be reported.
+	for _, integration := range integrations {
+		reason, ok := unconvertible[integration.blockType]
+		if !ok {
+			continue
+		}
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary: fmt.Sprintf(
+				"Dynamic %s block not migrated on cloudflare_notification_policy.%s",
+				integration.blockType, resourceName),
+			Detail: fmt.Sprintf(
+				"The dynamic %q block could not be converted automatically because %s.\n\n"+
+					"It has been left in place, but v5 has no %s block: the policy will "+
+					"not deliver to these destinations until it is moved into mechanisms "+
+					"by hand, for example:\n\n"+
+					"  mechanisms = {\n"+
+					"    %s = [for k, v in <for_each> : { id = v }]\n"+
+					"  }",
+				integration.blockType, reason, integration.blockType, integration.key),
 		})
 	}
-
-	// Add pagerduty integrations
-	if len(pagerdutyBlocks) > 0 {
-		pagerdutyArray := m.buildIntegrationArray(pagerdutyBlocks)
-		mechanismsTokens = append(mechanismsTokens, hclwrite.ObjectAttrTokens{
-			Name:  hclwrite.TokensForIdentifier("pagerduty"),
-			Value: pagerdutyArray,
-		})
-	}
-
-	// Remove old integration blocks first
-	tfhcl.RemoveBlocksByType(body, "email_integration")
-	tfhcl.RemoveBlocksByType(body, "webhooks_integration")
-	tfhcl.RemoveBlocksByType(body, "pagerduty_integration")
-
-	// Create mechanisms attribute after removal
-	body.SetAttributeRaw("mechanisms", hclwrite.TokensForObject(mechanismsTokens))
 }
 
 // buildIntegrationArray converts integration blocks to an array of objects with only id field
-func (m *V4ToV5Migrator) buildIntegrationArray(blocks []*hclwrite.Block) hclwrite.Tokens {
+func (m *V4ToV5Migrator) buildIntegrationArray(blocks []*hclwrite.Block) (hclwrite.Tokens, int) {
 	var arrayElements []hclwrite.Tokens
+	skipped := 0
 
 	for _, block := range blocks {
 		blockBody := block.Body()
@@ -143,6 +212,9 @@ func (m *V4ToV5Migrator) buildIntegrationArray(blocks []*hclwrite.Block) hclwrit
 		// Extract id attribute
 		idAttr := blockBody.GetAttribute("id")
 		if idAttr == nil {
+			// v5 mechanisms identify a destination only by id, so a block
+			// without one cannot be represented and is dropped.
+			skipped++
 			continue
 		}
 
@@ -158,6 +230,5 @@ func (m *V4ToV5Migrator) buildIntegrationArray(blocks []*hclwrite.Block) hclwrit
 	}
 
 	// Build array tokens using TokensForTuple (which creates arrays in HCL)
-	return hclwrite.TokensForTuple(arrayElements)
+	return hclwrite.TokensForTuple(arrayElements), skipped
 }
-

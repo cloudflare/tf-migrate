@@ -33,6 +33,11 @@ resource "cloudflare_argo_tiered_caching" "smart" {
   value   = "on"
 }
 
+import {
+  to = cloudflare_argo_tiered_caching.smart
+  id = "<zone_id>"
+}
+
 resource "cloudflare_tiered_cache" "off" {
   zone_id = var.cloudflare_zone_id
   value   = "off"
@@ -43,6 +48,11 @@ resource "cloudflare_argo_tiered_caching" "off" {
   value   = "off"
 }
 
+import {
+  to = cloudflare_argo_tiered_caching.off
+  id = "<zone_id>"
+}
+
 resource "cloudflare_tiered_cache" "generic" {
   zone_id = var.cloudflare_zone_id
   value   = "off"
@@ -51,6 +61,11 @@ resource "cloudflare_tiered_cache" "generic" {
 resource "cloudflare_argo_tiered_caching" "generic" {
   zone_id = var.cloudflare_zone_id
   value   = "on"
+}
+
+import {
+  to = cloudflare_argo_tiered_caching.generic
+  id = "<zone_id>"
 }
 
 resource "cloudflare_tiered_cache" "variable" {
@@ -72,4 +87,9 @@ resource "cloudflare_argo_tiered_caching" "lifecycle" {
   lifecycle {
     create_before_destroy = true
   }
+}
+
+import {
+  to = cloudflare_argo_tiered_caching.lifecycle
+  id = "<zone_id>"
 }

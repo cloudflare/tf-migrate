@@ -1130,7 +1130,9 @@ func ConvertBlocksToArrayAttribute(body *hclwrite.Body, blockType string, emptyI
 	blocks := FindBlocksByType(body, blockType)
 
 	if len(blocks) == 0 {
-		if emptyIfNone {
+		// An empty array positively declares "none of these", which would
+		// discard whatever a dynamic block generates for the same type.
+		if emptyIfNone && !HasDynamicBlockFor(body, blockType) {
 			body.SetAttributeRaw(blockType, TokensForEmptyArray())
 		}
 		return
@@ -1248,4 +1250,186 @@ func AddLifecycleIgnoreChanges(body *hclwrite.Body, attrNames ...string) {
 		tupleElems = append(tupleElems, hclwrite.TokensForIdentifier(name))
 	}
 	lifecycleBody.SetAttributeRaw("ignore_changes", hclwrite.TokensForTuple(tupleElems))
+}
+
+// FindDynamicBlockFor returns the dynamic block that generates blocks of the
+// given type, or nil. A dynamic block has type "dynamic" with the generated
+// block type as its first label, so FindBlocksByType never matches it.
+func FindDynamicBlockFor(body *hclwrite.Body, blockType string) *hclwrite.Block {
+	for _, block := range body.Blocks() {
+		if block.Type() != "dynamic" {
+			continue
+		}
+		if labels := block.Labels(); len(labels) > 0 && labels[0] == blockType {
+			return block
+		}
+	}
+	return nil
+}
+
+// HasDynamicBlockFor reports whether a dynamic block generates blocks of the
+// given type.
+func HasDynamicBlockFor(body *hclwrite.Body, blockType string) bool {
+	return FindDynamicBlockFor(body, blockType) != nil
+}
+
+// RewriteDynamicIteratorRefs rebinds <iterator>.key and <iterator>.value to the
+// variables introduced by a for expression, leaving any further traversal
+// intact so that <iterator>.value.name becomes v.name.
+//
+// References to other identifiers are untouched.
+func RewriteDynamicIteratorRefs(tokens hclwrite.Tokens, iterator, keyVar, valVar string) hclwrite.Tokens {
+	out := make(hclwrite.Tokens, 0, len(tokens))
+
+	for i := 0; i < len(tokens); i++ {
+		tok := tokens[i]
+
+		// Match the three-token sequence: IDENT(iterator) DOT IDENT(key|value).
+		isIterator := tok.Type == hclsyntax.TokenIdent && string(tok.Bytes) == iterator
+		if !isIterator || i+2 >= len(tokens) ||
+			tokens[i+1].Type != hclsyntax.TokenDot ||
+			tokens[i+2].Type != hclsyntax.TokenIdent {
+			out = append(out, tok)
+			continue
+		}
+
+		var replacement string
+		switch string(tokens[i+2].Bytes) {
+		case "key":
+			replacement = keyVar
+		case "value":
+			replacement = valVar
+		default:
+			out = append(out, tok)
+			continue
+		}
+
+		out = append(out, &hclwrite.Token{
+			Type:         hclsyntax.TokenIdent,
+			Bytes:        []byte(replacement),
+			SpacesBefore: tok.SpacesBefore,
+		})
+		i += 2 // consume the dot and the key/value identifier
+	}
+
+	return out
+}
+
+// ConvertDynamicBlockToForList rewrites a dynamic block that generates repeated
+// blocks into the v5 list-attribute form:
+//
+//	dynamic "managed_request_headers" {
+//	  for_each = var.headers
+//	  content {
+//	    id      = managed_request_headers.key
+//	    enabled = managed_request_headers.value
+//	  }
+//	}
+//
+// becomes:
+//
+//	managed_request_headers = [for k, v in var.headers : {
+//	  id      = k
+//	  enabled = v
+//	}]
+//
+// The dynamic block is removed and the attribute set on the given body.
+// Returns false, with a reason, when the block cannot be converted safely.
+func ConvertDynamicBlockToForList(body *hclwrite.Body, dynBlock *hclwrite.Block, attrName string) (bool, string) {
+	tokens, ok, reason := BuildDynamicForListTokens(dynBlock, attrName)
+	if !ok {
+		return false, reason
+	}
+	body.SetAttributeRaw(attrName, tokens)
+	body.RemoveBlock(dynBlock)
+	return true, ""
+}
+
+// BuildDynamicForListTokens produces the for-expression tokens for a dynamic
+// block without modifying the enclosing body, so callers can splice the result
+// into a larger structure such as a nested object attribute.
+//
+// blockType is the generated block type, used to resolve the default iterator
+// name. Returns false, with a reason, when the block cannot be converted safely.
+func BuildDynamicForListTokens(dynBlock *hclwrite.Block, blockType string) (hclwrite.Tokens, bool, string) {
+	const keyVar, valVar = "k", "v"
+
+	dynBody := dynBlock.Body()
+
+	forEach := dynBody.GetAttribute("for_each")
+	if forEach == nil {
+		return nil, false, "the dynamic block has no for_each"
+	}
+
+	contentBlock := FindBlockByType(dynBody, "content")
+	if contentBlock == nil {
+		return nil, false, "the dynamic block has no content block"
+	}
+	if len(contentBlock.Body().Blocks()) > 0 {
+		return nil, false, "the content block contains nested blocks"
+	}
+
+	// A custom iterator renames the loop variable; otherwise it is the label.
+	iterator := blockType
+	if it := dynBody.GetAttribute("iterator"); it != nil {
+		iterator = strings.Trim(strings.TrimSpace(string(it.Expr().BuildTokens(nil).Bytes())), `"`)
+	}
+
+	ident := func(s string) *hclwrite.Token {
+		return &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(s)}
+	}
+	newline := func() *hclwrite.Token {
+		return &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte{'\n'}}
+	}
+
+	tokens := hclwrite.Tokens{
+		{Type: hclsyntax.TokenOBrack, Bytes: []byte{'['}},
+		ident("for " + keyVar + ", " + valVar + " in "),
+	}
+	// for_each is evaluated in the enclosing scope, so it needs no rewriting.
+	tokens = append(tokens, forEach.Expr().BuildTokens(nil)...)
+	tokens = append(tokens, ident(" : "),
+		&hclwrite.Token{Type: hclsyntax.TokenOBrace, Bytes: []byte{'{'}}, newline())
+
+	for _, attrInfo := range AttributesOrdered(contentBlock.Body()) {
+		tokens = append(tokens, ident(attrInfo.Name), ident(" = "))
+		tokens = append(tokens,
+			RewriteDynamicIteratorRefs(attrInfo.Attribute.Expr().BuildTokens(nil), iterator, keyVar, valVar)...)
+		tokens = append(tokens, newline())
+	}
+
+	tokens = append(tokens,
+		&hclwrite.Token{Type: hclsyntax.TokenCBrace, Bytes: []byte{'}'}},
+		&hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte{']'}})
+
+	return tokens, true, ""
+}
+
+// ConvertBlocksToAttributeKeepFirst converts repeated blocks into a single
+// object attribute, keeping the first block and discarding the rest. It
+// returns how many blocks were discarded.
+//
+// Use this where the v4 schema accepted a list but the provider only ever read
+// index 0, so later blocks were already inert. ConvertBlocksToAttribute
+// assigns each block to the same attribute in turn and therefore keeps the
+// last, which would promote a block the provider ignored into the live
+// configuration.
+func ConvertBlocksToAttributeKeepFirst(body *hclwrite.Body, blockType, attrName string, preProcess func(*hclwrite.Block)) int {
+	blocks := FindBlocksByType(body, blockType)
+	if len(blocks) == 0 {
+		return 0
+	}
+
+	first := blocks[0]
+	if preProcess != nil {
+		preProcess(first)
+	}
+	objTokens := BuildObjectFromBlock(first)
+
+	for _, block := range blocks {
+		body.RemoveBlock(block)
+	}
+	body.SetAttributeRaw(attrName, objTokens)
+
+	return len(blocks) - 1
 }

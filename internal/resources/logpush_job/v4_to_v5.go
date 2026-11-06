@@ -1,6 +1,10 @@
 package logpush_job
 
 import (
+	"github.com/hashicorp/hcl/v2"
+
+	"fmt"
+
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -60,6 +64,22 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		if kindValue == "instant-logs" {
 			// Remove the attribute entirely since instant-logs is not valid in v5
 			body.RemoveAttribute("kind")
+
+			// Removing kind turns an instant-logs job into an ordinary logpush
+			// job, which is a different thing: it needs a destination and will
+			// be created rather than adopted.
+			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+				Severity: hcl.DiagWarning,
+				Summary: fmt.Sprintf(
+					"kind = \"instant-logs\" removed from cloudflare_logpush_job.%s",
+					tfhcl.GetResourceName(block)),
+				Detail: "v5 has no instant-logs job kind, so the kind attribute has been " +
+					"removed.\n\n" +
+					"What remains is an ordinary logpush job, not an instant-logs " +
+					"session, so review this resource before applying: it needs a valid " +
+					"destination_conf, and the original instant-logs job is not managed " +
+					"by it.",
+			})
 		}
 	}
 
@@ -97,4 +117,3 @@ func (m *V4ToV5Migrator) ensureV4SchemaDefaults(body *hclwrite.Body) {
 		}
 	}
 }
-

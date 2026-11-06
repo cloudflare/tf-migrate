@@ -1,6 +1,10 @@
 package zone
 
 import (
+	"github.com/hashicorp/hcl/v2"
+
+	"fmt"
+
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
@@ -87,7 +91,27 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		body.RemoveAttribute("account_id")
 	}
 
-	// 3-4. Remove obsolete attributes
+	// 3-4. Remove obsolete attributes.
+	//
+	// plan is computed and deprecated in v5, so removing it is correct, but the
+	// zone's plan is no longer expressed in this resource at all. Silently
+	// dropping it would leave the user believing Terraform still manages it.
+	if body.GetAttribute("plan") != nil {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary: fmt.Sprintf(
+				"plan removed from cloudflare_zone.%s", tfhcl.GetResourceName(block)),
+			Detail: "The plan attribute is computed and deprecated on cloudflare_zone in " +
+				"v5, so it has been removed.\n\n" +
+				"The zone's plan is no longer managed by this resource. If Terraform " +
+				"should continue to manage it, use cloudflare_zone_subscription:\n\n" +
+				"  resource \"cloudflare_zone_subscription\" \"example\" {\n" +
+				"    zone_id   = cloudflare_zone.example.id\n" +
+				"    rate_plan = { id = \"<plan>\" }\n" +
+				"  }\n\n" +
+				"Without it the plan stays as it is at the API and drifts untracked.",
+		})
+	}
 	tfhcl.RemoveAttributes(body, "jump_start", "plan")
 
 	return &transform.TransformResult{

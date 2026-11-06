@@ -715,3 +715,62 @@ func TestTransformPhaseOne(t *testing.T) {
 		})
 	}
 }
+
+// v4 ignore_changes paths cannot survive the split into one resource per
+// setting, but the rest of the lifecycle block still applies. Dropping the
+// whole block would quietly remove prevent_destroy, turning a protected
+// resource into a destroyable one with no warning.
+func TestLifecyclePreservedAlongsideIgnoreChanges(t *testing.T) {
+	migrator := &V4ToV5Migrator{}
+
+	input := `resource "cloudflare_zone_settings_override" "example" {
+  zone_id = "0da42c8d2132a9ddaf714f9e7c920711"
+
+  settings {
+    always_use_https = "on"
+  }
+
+  lifecycle {
+    prevent_destroy       = true
+    create_before_destroy = true
+    ignore_changes        = [settings[0].always_use_https]
+  }
+}`
+
+	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+	require.False(t, diags.HasErrors(), "parse error: %v", diags)
+
+	ctx := &transform.Context{
+		Content:       []byte(input),
+		Filename:      "test.tf",
+		Diagnostics:   make(hcl.Diagnostics, 0),
+		Metadata:      make(map[string]interface{}),
+		SourceVersion: "v4",
+		TargetVersion: "v5",
+	}
+
+	var block *hclwrite.Block
+	for _, b := range file.Body().Blocks() {
+		if b.Type() == "resource" {
+			block = b
+			break
+		}
+	}
+	require.NotNil(t, block)
+
+	result, err := migrator.TransformConfig(ctx, block)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	var out string
+	for _, b := range result.Blocks {
+		out += string(hclwrite.Format(b.BuildTokens(nil).Bytes()))
+	}
+
+	assert.Contains(t, out, "prevent_destroy",
+		"prevent_destroy must survive the migration, got:\n%s", out)
+	assert.Contains(t, out, "create_before_destroy",
+		"create_before_destroy must survive the migration, got:\n%s", out)
+	assert.NotContains(t, out, "ignore_changes",
+		"v4 settings[0] paths do not exist in v5 and must be dropped, got:\n%s", out)
+}

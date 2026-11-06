@@ -29,3 +29,8 @@ resource "cloudflare_argo_tiered_caching" "generic_with_lifecycle" {
     create_before_destroy = true
   }
 }
+
+import {
+  to = cloudflare_argo_tiered_caching.generic_with_lifecycle
+  id = "<zone_id>"
+}
