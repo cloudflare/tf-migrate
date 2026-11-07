@@ -352,7 +352,64 @@ resource "cloudflare_ruleset" "dynamic" {
 
 **What Changed:**
 - `dynamic "rules"` block → `for` expression
-- `rules.value.field` → `rules.field` reference
+- `rules.value.field` → `rules.field` reference, and `rules.key` → a `rules_key` loop variable
+- The content of a dynamic rule gets every rewrite a static rule gets: `headers` maps, merged `query_string`, `{ all = true }` wildcards, and log field objects
+- Static `rules` blocks mixed with `dynamic "rules"` blocks become one `concat(...)` that keeps every rule in source order
+
+---
+
+### Example 6: Dynamic Blocks Inside a Rule
+
+A dynamic block nested in a rule, such as `dynamic "ratelimit"`, becomes an attribute too, because a block cannot appear inside an object value in v5. Block types that are lists in v5 (`rules`, `categories`, `status_code_ttl`, `algorithms`) become a `for` expression. Every other type allowed at most one block in v4 and is a single object in v5, so the `for` expression is wrapped in `one()`, which also returns `null` when the dynamic block would have generated nothing.
+
+**v4 Configuration:**
+```hcl
+resource "cloudflare_ruleset" "ratelimit" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Rate limits"
+  kind       = "custom"
+  phase      = "http_ratelimit"
+
+  dynamic "rules" {
+    for_each = local.ratelimit_rules
+    content {
+      action     = rules.value.action
+      expression = rules.value.expression
+
+      dynamic "ratelimit" {
+        for_each = [rules.value.ratelimit]
+        content {
+          characteristics     = ratelimit.value.characteristics
+          period              = ratelimit.value.period
+          requests_per_period = ratelimit.value.requests_per_period
+        }
+      }
+    }
+  }
+}
+```
+
+**v5 Configuration (After Migration):**
+```hcl
+resource "cloudflare_ruleset" "ratelimit" {
+  account_id = "f037e56e89293a057740de681ac9abbe"
+  name       = "Rate limits"
+  kind       = "custom"
+  phase      = "http_ratelimit"
+
+  rules = [for rules in local.ratelimit_rules : {
+    action     = rules.action
+    expression = rules.expression
+    ratelimit = one([for ratelimit in [rules.ratelimit] : {
+      characteristics     = ratelimit.characteristics
+      period              = ratelimit.period
+      requests_per_period = ratelimit.requests_per_period
+    }])
+  }]
+}
+```
+
+A dynamic block that has no `for_each` or `content`, sets `labels`, or sits in a rule alongside static blocks of the same type is left as written with a warning (see [DIAGNOSTICS.md](../../../DIAGNOSTICS.md#warning-dynamic-block-not-migrated-on-cloudflare_ruleset)).
 
 ---
 
