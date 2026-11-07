@@ -55,79 +55,88 @@ func (m *V4ToV5Migrator) GetResourceRename() ([]string, string) {
 	return []string{"cloudflare_ruleset"}, "cloudflare_ruleset"
 }
 
+// alwaysArrayFields lists the nested block types that become list attributes in
+// v5 even when only one block is present. These correspond to
+// ListNestedAttribute fields in the v5 schema. Every other nested block type
+// becomes a single object.
+var alwaysArrayFields = map[string]bool{
+	"rules":           true, // Can refer to both top-level rules OR action_parameters.overrides.rules
+	"categories":      true, // action_parameters.overrides.categories is always an array
+	"status_code_ttl": true, // action_parameters.edge_ttl.status_code_ttl is always an array
+	"algorithms":      true, // action_parameters.algorithms is always an array
+}
+
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
 	body := block.Body()
 	resourceName := hcl.GetResourceName(block)
 
-	// Handle dynamic "rules" blocks - convert to for expression
-	// v4: dynamic "rules" { for_each = var.rules content { ... } }
-	// v5: rules = [for rule in var.rules : { ... }]
-	dynamicBlocks := hcl.FindBlocksByType(body, "dynamic")
-	for _, dynBlock := range dynamicBlocks {
-		labels := dynBlock.Labels()
-		if len(labels) > 0 && labels[0] == "rules" {
-			convertDynamicRulesToForExpression(body, dynBlock)
-		}
+	// Static rules blocks and the content of dynamic "rules" blocks get the
+	// same treatment, so a rule migrates identically however it was written.
+	for _, ruleBlock := range hcl.FindBlocksByType(body, "rules") {
+		transformRuleBody(ctx, ruleBlock.Body(), resourceName)
 	}
 
-	// First, handle special case for headers blocks within action_parameters
-	// In v5, headers is a MapNestedAttribute where the "name" field becomes the map key
-	rulesBlocks := hcl.FindBlocksByType(body, "rules")
-	for _, ruleBlock := range rulesBlocks {
-		ruleBody := ruleBlock.Body()
-		actionParamsBlocks := hcl.FindBlocksByType(ruleBody, "action_parameters")
-		for _, actionParamsBlock := range actionParamsBlocks {
-			actionParamsBody := actionParamsBlock.Body()
-			convertDynamicHeadersToMap(ctx, actionParamsBody, resourceName)
-			convertHeadersBlocksToMap(actionParamsBody)
-
-			// Handle query_string blocks within cache_key.custom_key
-			// Multiple query_string blocks need to be merged into a single query_string attribute
-			cacheKeyBlocks := hcl.FindBlocksByType(actionParamsBody, "cache_key")
-			for _, cacheKeyBlock := range cacheKeyBlocks {
-				cacheKeyBody := cacheKeyBlock.Body()
-				customKeyBlocks := hcl.FindBlocksByType(cacheKeyBody, "custom_key")
-				for _, customKeyBlock := range customKeyBlocks {
-					customKeyBody := customKeyBlock.Body()
-					mergeQueryStringBlocks(customKeyBody)
-				}
-			}
-
-			// Transform log custom fields: cookie_fields, request_fields, response_fields
-			// v4: ["field1", "field2"] -> v5: [{name = "field1"}, {name = "field2"}]
-			convertStringArrayToNameObjectArray(actionParamsBody, "cookie_fields")
-			convertStringArrayToNameObjectArray(actionParamsBody, "request_fields")
-			convertStringArrayToNameObjectArray(actionParamsBody, "response_fields")
-
-			// Transform action_parameters.rules map values from comma-separated strings to lists
-			// v4: rules = { ruleset_id = "rule1,rule2,rule3" }
-			// v5: rules = { ruleset_id = ["rule1", "rule2", "rule3"] }
-			convertRulesMapValuesToLists(actionParamsBody)
-		}
+	if hcl.HasDynamicBlockFor(body, "rules") {
+		// v4: dynamic "rules" { for_each = var.rules content { ... } }
+		// v5: rules = [for rule in var.rules : { ... }]
+		convertRulesWithDynamicBlocks(ctx, body, resourceName)
+	} else {
+		// Convert all nested blocks to attributes recursively.
+		// This will handle:
+		// 1. Top-level rules blocks -> rules = [...]
+		// 2. Nested action_parameters blocks inside each rule -> action_parameters = {...}
+		// 3. Nested ratelimit, exposed_credential_check blocks
+		// 4. Deeply nested blocks like overrides.rules and overrides.categories
+		// Note: headers is NOT in alwaysArrayFields because it's already been converted to a map above
+		hcl.ConvertBlockToAttributeWithNestedAndArrays(body, "rules", alwaysArrayFields)
 	}
-
-	// Define which nested block types should always be converted to arrays (even with 1 element)
-	// These correspond to ListNestedAttribute fields in the v5 schema
-	alwaysArrayFields := map[string]bool{
-		"rules":           true, // Can refer to both top-level rules OR action_parameters.overrides.rules
-		"categories":      true, // action_parameters.overrides.categories is always an array
-		"status_code_ttl": true, // action_parameters.edge_ttl.status_code_ttl is always an array
-		"algorithms":      true, // action_parameters.algorithms is always an array
-	}
-
-	// Convert all nested blocks to attributes recursively.
-	// This will handle:
-	// 1. Top-level rules blocks -> rules = [...]
-	// 2. Nested action_parameters blocks inside each rule -> action_parameters = {...}
-	// 3. Nested ratelimit, exposed_credential_check blocks
-	// 4. Deeply nested blocks like overrides.rules and overrides.categories
-	// Note: headers is NOT in alwaysArrayFields because it's already been converted to a map above
-	hcl.ConvertBlockToAttributeWithNestedAndArrays(body, "rules", alwaysArrayFields)
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
+}
+
+// transformRuleBody applies the v5 rewrites that a single rule needs before it
+// is turned into an object, whether it came from a static rules block or from
+// the content of a dynamic "rules" block.
+func transformRuleBody(ctx *transform.Context, ruleBody *hclwrite.Body, resourceName string) {
+	// First, handle special case for headers blocks within action_parameters
+	// In v5, headers is a MapNestedAttribute where the "name" field becomes the map key
+	actionParamsBlocks := hcl.FindBlocksByType(ruleBody, "action_parameters")
+	for _, actionParamsBlock := range actionParamsBlocks {
+		actionParamsBody := actionParamsBlock.Body()
+		convertDynamicHeadersToMap(ctx, actionParamsBody, resourceName)
+		convertHeadersBlocksToMap(actionParamsBody)
+
+		// Handle query_string blocks within cache_key.custom_key
+		// Multiple query_string blocks need to be merged into a single query_string attribute
+		cacheKeyBlocks := hcl.FindBlocksByType(actionParamsBody, "cache_key")
+		for _, cacheKeyBlock := range cacheKeyBlocks {
+			cacheKeyBody := cacheKeyBlock.Body()
+			customKeyBlocks := hcl.FindBlocksByType(cacheKeyBody, "custom_key")
+			for _, customKeyBlock := range customKeyBlocks {
+				customKeyBody := customKeyBlock.Body()
+				mergeQueryStringBlocks(customKeyBody)
+			}
+		}
+
+		// Transform log custom fields: cookie_fields, request_fields, response_fields
+		// v4: ["field1", "field2"] -> v5: [{name = "field1"}, {name = "field2"}]
+		convertStringArrayToNameObjectArray(actionParamsBody, "cookie_fields")
+		convertStringArrayToNameObjectArray(actionParamsBody, "request_fields")
+		convertStringArrayToNameObjectArray(actionParamsBody, "response_fields")
+
+		// Transform action_parameters.rules map values from comma-separated strings to lists
+		// v4: rules = { ruleset_id = "rule1,rule2,rule3" }
+		// v5: rules = { ruleset_id = ["rule1", "rule2", "rule3"] }
+		convertRulesMapValuesToLists(actionParamsBody)
+	}
+
+	// Blocks inside a rule, such as ratelimit or action_parameters, become
+	// object attributes in v5, and a dynamic block cannot appear inside an
+	// object value.
+	convertNestedDynamicBlocks(ctx, ruleBody, resourceName)
 }
 
 // convertHeadersBlocksToMap converts headers blocks to map syntax
@@ -533,155 +542,243 @@ func convertRulesMapValuesToLists(body *hclwrite.Body) {
 	body.SetAttributeRaw("rules", newTokens)
 }
 
-// convertDynamicRulesToForExpression converts dynamic "rules" blocks to rules = [for ...] syntax
-// v4: dynamic "rules" { for_each = var.rules content { ... } }
-// v5: rules = [for rule in var.rules : { ... }]
-func convertDynamicRulesToForExpression(body *hclwrite.Body, dynamicBlock *hclwrite.Block) {
-	dynBody := dynamicBlock.Body()
+// convertRulesWithDynamicBlocks sets the v5 rules attribute when at least one
+// rule comes from a dynamic block.
+//
+// Terraform expands a dynamic block in place among its static siblings, so the
+// rules keep their source order: each dynamic block becomes a for expression,
+// each run of static blocks becomes a list, and more than one part is joined
+// with concat(). Rule order matters in a ruleset, and so does keeping every
+// rule: setting the attribute once per block would keep only the last.
+//
+//	rules { ... }
+//	dynamic "rules" { for_each = var.rules content { ... } }
+//
+// becomes:
+//
+//	rules = concat(
+//	  [{ ... }],
+//	  [for rules in var.rules : { ... }],
+//	)
+func convertRulesWithDynamicBlocks(ctx *transform.Context, body *hclwrite.Body, resourceName string) {
+	var parts []hclwrite.Tokens
+	var static []hclwrite.Tokens
+	var converted []*hclwrite.Block
 
-	// Extract for_each expression
-	forEachAttr := dynBody.GetAttribute("for_each")
-	if forEachAttr == nil {
-		return
-	}
-	forEachExpr := forEachAttr.Expr().BuildTokens(nil)
-
-	// Get iterator name from block label (defaults to the block type name, which is "rules")
-	iteratorName := "rules"
-	if iteratorAttr := dynBody.GetAttribute("iterator"); iteratorAttr != nil {
-		// If iterator is specified, use that name
-		iteratorTokens := iteratorAttr.Expr().BuildTokens(nil)
-		iteratorName = strings.TrimSpace(string(iteratorTokens.Bytes()))
-	}
-
-	// Find the content block
-	contentBlocks := hcl.FindBlocksByType(dynBody, "content")
-	if len(contentBlocks) == 0 {
-		return
-	}
-	contentBlock := contentBlocks[0]
-	contentBody := contentBlock.Body()
-
-	// Build the for expression: [for <iterator> in <for_each> : { ... }]
-	tokens := hclwrite.Tokens{
-		{Type: hclsyntax.TokenOBrack, Bytes: []byte{'['}},
-		{Type: hclsyntax.TokenIdent, Bytes: []byte("for ")},
-		{Type: hclsyntax.TokenIdent, Bytes: []byte(iteratorName)},
-		{Type: hclsyntax.TokenIdent, Bytes: []byte(" in ")},
-	}
-	tokens = append(tokens, forEachExpr...)
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" : ")})
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrace, Bytes: []byte{'{'}})
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte{'\n'}})
-
-	// Add all attributes from the content block
-	// Need to transform references from iterator.value.field to iterator.field
-	attrs := contentBody.Attributes()
-	var attrNames []string
-	for attrName := range attrs {
-		attrNames = append(attrNames, attrName)
-	}
-	sort.Strings(attrNames)
-
-	for _, attrName := range attrNames {
-		attr := attrs[attrName]
-		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("    ")}) // indent
-		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(attrName)})
-		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" = ")})
-
-		// Transform the expression to remove .value
-		// e.g., rules.value.expression -> rules.expression
-		exprTokens := attr.Expr().BuildTokens(nil)
-		transformedTokens := transformIteratorValueReferences(exprTokens, iteratorName)
-		tokens = append(tokens, transformedTokens...)
-
-		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte{'\n'}})
+	flushStatic := func() {
+		if len(static) > 0 {
+			parts = append(parts, hcl.BuildArrayFromObjects(static))
+			static = nil
+		}
 	}
 
-	// Handle nested blocks in content (like action_parameters)
-	for _, nestedBlock := range contentBody.Blocks() {
-		tokens = append(tokens, buildNestedBlockTokens(nestedBlock, "    ", iteratorName)...)
+	for _, block := range body.Blocks() {
+		switch {
+		case block.Type() == "rules":
+			static = append(static, hcl.BuildObjectFromBodyWithArrays(block.Body(), alwaysArrayFields))
+			converted = append(converted, block)
+		case block.Type() == "dynamic" && len(block.Labels()) > 0 && block.Labels()[0] == "rules":
+			tokens, ok, reason := buildDynamicBlockForExpr(ctx, block, "rules", resourceName)
+			if !ok {
+				warnDynamicBlockNotMigrated(ctx, resourceName, "rules", reason)
+				// Converting the rest would drop this rule from the list, so
+				// leave every rule as written for the user to finish by hand.
+				return
+			}
+			flushStatic()
+			parts = append(parts, tokens)
+			converted = append(converted, block)
+		}
 	}
+	flushStatic()
 
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("  ")}) // indent
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrace, Bytes: []byte{'}'}})
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte{']'}})
-
-	// Set the rules attribute with the for expression
-	body.SetAttributeRaw("rules", tokens)
-
-	// Remove the dynamic block
-	body.RemoveBlock(dynamicBlock)
+	if len(parts) == 1 {
+		body.SetAttributeRaw("rules", relex(parts[0]))
+	} else {
+		body.SetAttributeRaw("rules", relex(hcl.BuildConcatExpression(parts)))
+	}
+	for _, block := range converted {
+		body.RemoveBlock(block)
+	}
 }
 
-// transformIteratorValueReferences transforms iterator.value.field to iterator.field
-func transformIteratorValueReferences(tokens hclwrite.Tokens, iteratorName string) hclwrite.Tokens {
-	result := hclwrite.Tokens{}
-	i := 0
-	for i < len(tokens) {
-		token := tokens[i]
-
-		// Look for pattern: <iteratorName> . value . <field>
-		if i+4 < len(tokens) &&
-			string(token.Bytes) == iteratorName &&
-			tokens[i+1].Type == hclsyntax.TokenDot &&
-			string(tokens[i+2].Bytes) == "value" &&
-			tokens[i+3].Type == hclsyntax.TokenDot {
-			// Skip the ".value." part (keep iterator and first dot, skip "value" and second dot)
-			result = append(result, token)       // iterator name
-			result = append(result, tokens[i+1]) // first dot
-			// Skip tokens[i+2] (value) and tokens[i+3] (second dot)
-			i += 4
+// convertNestedDynamicBlocks rewrites every dynamic block nested in body, at
+// any depth, as an attribute holding a for expression. A block type listed in
+// alwaysArrayFields becomes a list; any other becomes a single object, and is
+// wrapped in one() because v4 allowed at most one such block:
+//
+//	dynamic "ratelimit" {
+//	  for_each = [rules.value.ratelimit]
+//	  content {
+//	    period = ratelimit.value.period
+//	  }
+//	}
+//
+// becomes:
+//
+//	ratelimit = one([for ratelimit in [rules.value.ratelimit] : {
+//	  period = ratelimit.period
+//	}])
+//
+// one() returns null for an empty list, which matches a dynamic block that
+// generated no block. dynamic "headers" is left to convertDynamicHeadersToMap.
+func convertNestedDynamicBlocks(ctx *transform.Context, body *hclwrite.Body, resourceName string) {
+	for _, block := range body.Blocks() {
+		if block.Type() != "dynamic" {
+			convertNestedDynamicBlocks(ctx, block.Body(), resourceName)
 			continue
 		}
 
-		result = append(result, token)
-		i++
+		labels := block.Labels()
+		if len(labels) == 0 || labels[0] == "headers" {
+			continue
+		}
+		blockType := labels[0]
+
+		if len(hcl.FindBlocksByType(body, blockType)) > 0 {
+			warnDynamicBlockNotMigrated(ctx, resourceName, blockType, "it is mixed with static "+blockType+" block(s)")
+			continue
+		}
+
+		tokens, ok, reason := buildDynamicBlockForExpr(ctx, block, blockType, resourceName)
+		if !ok {
+			warnDynamicBlockNotMigrated(ctx, resourceName, blockType, reason)
+			continue
+		}
+		if !alwaysArrayFields[blockType] {
+			tokens = append(hclwrite.Tokens{
+				{Type: hclsyntax.TokenIdent, Bytes: []byte("one")},
+				{Type: hclsyntax.TokenOParen, Bytes: []byte("(")},
+			}, append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCParen, Bytes: []byte(")")})...)
+		}
+		body.SetAttributeRaw(blockType, relex(tokens))
+		body.RemoveBlock(block)
 	}
-	return result
 }
 
-// buildNestedBlockTokens recursively builds tokens for nested blocks
-func buildNestedBlockTokens(block *hclwrite.Block, indent string, iteratorName string) hclwrite.Tokens {
-	tokens := hclwrite.Tokens{}
-
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(indent)})
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(block.Type())})
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" = ")})
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrace, Bytes: []byte{'{'}})
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte{'\n'}})
-
-	blockBody := block.Body()
-	attrs := blockBody.Attributes()
-	var attrNames []string
-	for attrName := range attrs {
-		attrNames = append(attrNames, attrName)
+// relex re-reads hand-built expression tokens through the HCL lexer, so a
+// token that holds several lexical tokens, such as a quoted map key built as
+// one identifier, comes back split the way a parsed file would hold it. The
+// tokens are returned unchanged if they do not parse.
+func relex(tokens hclwrite.Tokens) hclwrite.Tokens {
+	file, diags := hclwrite.ParseConfig(append([]byte("x = "), tokens.Bytes()...), "", hclv2.InitialPos)
+	if diags.HasErrors() {
+		return tokens
 	}
-	sort.Strings(attrNames)
+	attr := file.Body().GetAttribute("x")
+	if attr == nil {
+		return tokens
+	}
+	return attr.Expr().BuildTokens(nil)
+}
 
-	for _, attrName := range attrNames {
-		attr := attrs[attrName]
-		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(indent + "  ")})
-		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(attrName)})
-		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" = ")})
+// buildDynamicBlockForExpr returns the list for expression that replaces a
+// dynamic block: [for <iterator> in <for_each> : { <content> }].
+//
+// The loop variable takes the iterator's name, so <iterator>.value.x becomes
+// <iterator>.x and a nested dynamic block shadows an outer one exactly as it
+// did in v4. <iterator>.key, when used, becomes a <iterator>_key variable.
+// The content gets the same rewrites as a static block, including any dynamic
+// blocks nested inside it.
+func buildDynamicBlockForExpr(ctx *transform.Context, dynBlock *hclwrite.Block, blockType, resourceName string) (hclwrite.Tokens, bool, string) {
+	dynBody := dynBlock.Body()
 
-		exprTokens := attr.Expr().BuildTokens(nil)
-		transformedTokens := transformIteratorValueReferences(exprTokens, iteratorName)
-		tokens = append(tokens, transformedTokens...)
-
-		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte{'\n'}})
+	forEach := dynBody.GetAttribute("for_each")
+	if forEach == nil {
+		return nil, false, "the dynamic block has no for_each"
+	}
+	contentBlock := hcl.FindBlockByType(dynBody, "content")
+	if contentBlock == nil {
+		return nil, false, "the dynamic block has no content block"
+	}
+	if dynBody.GetAttribute("labels") != nil {
+		return nil, false, "it sets labels, which nested blocks in a ruleset do not take"
 	}
 
-	// Handle nested blocks recursively
-	for _, nestedBlock := range blockBody.Blocks() {
-		tokens = append(tokens, buildNestedBlockTokens(nestedBlock, indent+"  ", iteratorName)...)
+	iterator := blockType
+	if it := dynBody.GetAttribute("iterator"); it != nil {
+		iterator = strings.Trim(strings.TrimSpace(string(it.Expr().BuildTokens(nil).Bytes())), `"`)
 	}
 
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(indent)})
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrace, Bytes: []byte{'}'}})
-	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte{'\n'}})
+	contentBody := contentBlock.Body()
+	if blockType == "rules" {
+		transformRuleBody(ctx, contentBody, resourceName)
+	} else {
+		convertNestedDynamicBlocks(ctx, contentBody, resourceName)
+	}
 
-	return tokens
+	keyVar := iterator + "_key"
+	usesKey := rewriteIteratorRefsInBody(contentBody, iterator, keyVar, iterator)
+
+	tokens := hclwrite.Tokens{
+		{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte("for")},
+	}
+	if usesKey {
+		tokens = append(tokens,
+			&hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(keyVar), SpacesBefore: 1},
+			&hclwrite.Token{Type: hclsyntax.TokenComma, Bytes: []byte(",")})
+	}
+	tokens = append(tokens,
+		&hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(iterator), SpacesBefore: 1},
+		&hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte("in"), SpacesBefore: 1},
+		&hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" ")})
+	// for_each is evaluated in the enclosing scope, so an outer dynamic
+	// block's references in it are rewritten along with the outer content.
+	tokens = append(tokens, forEach.Expr().BuildTokens(nil)...)
+	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(" : ")})
+	tokens = append(tokens, hcl.BuildObjectFromBodyWithArrays(contentBody, alwaysArrayFields)...)
+	tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
+
+	return tokens, true, ""
+}
+
+// rewriteIteratorRefsInBody rewrites <iterator>.key and <iterator>.value in
+// every attribute of body and its nested blocks, and reports whether any
+// <iterator>.key reference was found.
+func rewriteIteratorRefsInBody(body *hclwrite.Body, iterator, keyVar, valVar string) bool {
+	usesKey := false
+	for name, attr := range body.Attributes() {
+		tokens := attr.Expr().BuildTokens(nil)
+		if referencesIteratorKey(tokens, iterator) {
+			usesKey = true
+		}
+		body.SetAttributeRaw(name, hcl.RewriteDynamicIteratorRefs(tokens, iterator, keyVar, valVar))
+	}
+	for _, block := range body.Blocks() {
+		if rewriteIteratorRefsInBody(block.Body(), iterator, keyVar, valVar) {
+			usesKey = true
+		}
+	}
+	return usesKey
+}
+
+// referencesIteratorKey reports whether tokens contain <iterator>.key, matching
+// the references hcl.RewriteDynamicIteratorRefs rewrites.
+func referencesIteratorKey(tokens hclwrite.Tokens, iterator string) bool {
+	for i := 0; i+2 < len(tokens); i++ {
+		if tokens[i].Type == hclsyntax.TokenIdent && string(tokens[i].Bytes) == iterator &&
+			(i == 0 || tokens[i-1].Type != hclsyntax.TokenDot) &&
+			tokens[i+1].Type == hclsyntax.TokenDot &&
+			tokens[i+2].Type == hclsyntax.TokenIdent && string(tokens[i+2].Bytes) == "key" {
+			return true
+		}
+	}
+	return false
+}
+
+func warnDynamicBlockNotMigrated(ctx *transform.Context, resourceName, blockType, reason string) {
+	ctx.Diagnostics = append(ctx.Diagnostics, &hclv2.Diagnostic{
+		Severity: hclv2.DiagWarning,
+		Summary: fmt.Sprintf(
+			"Dynamic %s block not migrated on cloudflare_ruleset.%s", blockType, resourceName),
+		Detail: fmt.Sprintf(
+			"The dynamic %q block could not be converted automatically because %s.\n\n"+
+				"%s is an attribute in v5, and a block cannot appear inside an object value, "+
+				"so this must be rewritten by hand as a for expression, for example:\n\n"+
+				"  %s = [for %s in <for_each> : { ... }]",
+			blockType, reason, blockType, blockType, blockType),
+	})
 }
 
 // convertDynamicHeadersToMap rewrites a dynamic "headers" block inside

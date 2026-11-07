@@ -580,6 +580,13 @@ func ConvertBlockToAttributeWithNestedAndArrays(body *hclwrite.Body, blockName s
 	}
 }
 
+// BuildObjectFromBodyWithArrays builds object tokens from a block body the way
+// ConvertBlockToAttributeWithNestedAndArrays does, so callers can splice the
+// object into a larger expression such as a for expression.
+func BuildObjectFromBodyWithArrays(body *hclwrite.Body, alwaysArrayFields map[string]bool) hclwrite.Tokens {
+	return buildObjectFromBlockRecursiveWithArrays(body, 0, alwaysArrayFields)
+}
+
 // buildObjectFromBlockRecursive builds object tokens from a block body,
 // recursively converting nested blocks to either objects or arrays
 func buildObjectFromBlockRecursive(body *hclwrite.Body, indentLevel int) hclwrite.Tokens {
@@ -1030,6 +1037,11 @@ func buildForExprFromDynamicBlock(dynamicBlock *hclwrite.Block, targetBlockType 
 	return tokens
 }
 
+// BuildConcatExpression wraps multiple list expressions in a concat(...) call.
+func BuildConcatExpression(exprs []hclwrite.Tokens) hclwrite.Tokens {
+	return buildConcatExpression(exprs)
+}
+
 // buildConcatExpression wraps multiple token sequences in a concat(...) call.
 // Each element is placed on its own line for readability.
 //
@@ -1285,7 +1297,10 @@ func RewriteDynamicIteratorRefs(tokens hclwrite.Tokens, iterator, keyVar, valVar
 		tok := tokens[i]
 
 		// Match the three-token sequence: IDENT(iterator) DOT IDENT(key|value).
-		isIterator := tok.Type == hclsyntax.TokenIdent && string(tok.Bytes) == iterator
+		// An identifier after a dot is an attribute of something else, as in
+		// var.headers.value, not the iterator.
+		isIterator := tok.Type == hclsyntax.TokenIdent && string(tok.Bytes) == iterator &&
+			(i == 0 || tokens[i-1].Type != hclsyntax.TokenDot)
 		if !isIterator || i+2 >= len(tokens) ||
 			tokens[i+1].Type != hclsyntax.TokenDot ||
 			tokens[i+2].Type != hclsyntax.TokenIdent {
