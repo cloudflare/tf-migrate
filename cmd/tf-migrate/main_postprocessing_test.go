@@ -199,3 +199,56 @@ func TestScanForInvalidAttributeReferences(t *testing.T) {
 		}
 	})
 }
+
+// TestComputedAttrMappingBoundary runs the cross-file rewrite over references
+// to the zone resource and the zone data source. The resource's .zone → .name
+// mapping used to match the prefix of the data source's .zone_id, producing
+// the nonexistent attribute .name_id.
+func TestComputedAttrMappingBoundary(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "main.tf")
+	input := `resource "cloudflare_zone" "minimal" {
+  name = "example.org"
+}
+
+locals {
+  domain             = cloudflare_zone.minimal.zone
+  zone_name          = data.cloudflare_zone.this.name
+  security_header_id = "${data.cloudflare_zone.this.zone_id}/security_header"
+}
+
+output "zone_id" {
+  value = data.cloudflare_zone.this.zone_id
+}
+`
+	want := `resource "cloudflare_zone" "minimal" {
+  name = "example.org"
+}
+
+locals {
+  domain             = cloudflare_zone.minimal.name
+  zone_name          = data.cloudflare_zone.this.name
+  security_header_id = "${data.cloudflare_zone.this.id}/security_header"
+}
+
+output "zone_id" {
+  value = data.cloudflare_zone.this.id
+}
+`
+	if err := os.WriteFile(path, []byte(input), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config{configDir: dir, sourceVersion: "v4", targetVersion: "v5"}
+	if _, err := applyGlobalPostprocessing(newTestLogger(), cfg, []string{path}); err != nil {
+		t.Fatalf("applyGlobalPostprocessing failed: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
