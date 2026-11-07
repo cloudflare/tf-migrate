@@ -146,6 +146,42 @@ provider "registry.terraform.io/hashicorp/aws" {
 	}
 }
 
+func TestParseVersionFromLockFileProviderAddresses(t *testing.T) {
+	tests := []struct {
+		name     string
+		label    string
+		expected string
+	}{
+		{"terraform registry", "registry.terraform.io/cloudflare/cloudflare", "4.52.7"},
+		{"opentofu registry", "registry.opentofu.org/cloudflare/cloudflare", "4.52.7"},
+		{"no hostname", "cloudflare/cloudflare", "4.52.7"},
+		{"other provider on opentofu registry", "registry.opentofu.org/hashicorp/aws", ""},
+		{"fork under another namespace", "registry.terraform.io/example/cloudflare", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			lockContent := `provider "` + tt.label + `" {
+  version     = "4.52.7"
+  constraints = "~> 4.0"
+}
+`
+			if err := os.WriteFile(filepath.Join(tempDir, ".terraform.lock.hcl"), []byte(lockContent), 0644); err != nil {
+				t.Fatalf("Failed to write lock file: %v", err)
+			}
+
+			version, err := parseVersionFromLockFile(tempDir)
+			if err != nil {
+				t.Fatalf("parseVersionFromLockFile failed: %v", err)
+			}
+			if version != tt.expected {
+				t.Errorf("parseVersionFromLockFile() = %q, want %q", version, tt.expected)
+			}
+		})
+	}
+}
+
 func TestParseVersionFromRequiredProviders(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -272,6 +308,43 @@ func TestCheckMinimumProviderVersion(t *testing.T) {
 	err = checkMinimumProviderVersion(cfg5)
 	if err == nil {
 		t.Error("Expected error for old version, got nil")
+	}
+
+	// OpenTofu lock files record registry.opentofu.org (#299, #307)
+	tempDir6 := t.TempDir()
+	lockContentTofu := `provider "registry.opentofu.org/cloudflare/cloudflare" {
+  version     = "4.52.7"
+  constraints = "~> 4.0"
+}
+`
+	os.WriteFile(filepath.Join(tempDir6, ".terraform.lock.hcl"), []byte(lockContentTofu), 0644)
+	cfg6 := config{
+		sourceVersion:    "v4",
+		targetVersion:    "v5",
+		skipVersionCheck: false,
+		configDir:        tempDir6,
+	}
+	err = checkMinimumProviderVersion(cfg6)
+	if err != nil {
+		t.Errorf("Expected no error for OpenTofu lock file with sufficient version, got %v", err)
+	}
+
+	// The minimum still applies to OpenTofu lock files
+	tempDir7 := t.TempDir()
+	lockContentTofuOld := `provider "registry.opentofu.org/cloudflare/cloudflare" {
+  version = "4.49.0"
+}
+`
+	os.WriteFile(filepath.Join(tempDir7, ".terraform.lock.hcl"), []byte(lockContentTofuOld), 0644)
+	cfg7 := config{
+		sourceVersion:    "v4",
+		targetVersion:    "v5",
+		skipVersionCheck: false,
+		configDir:        tempDir7,
+	}
+	err = checkMinimumProviderVersion(cfg7)
+	if err == nil {
+		t.Error("Expected error for old OpenTofu provider version, got nil")
 	}
 }
 

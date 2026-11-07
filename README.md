@@ -63,7 +63,7 @@ The [Resource Support by Provider Version](#resource-support-by-provider-version
 For v4 to v5 migrations, you must be running **Cloudflare Provider v4.52.5 or higher** before running tf-migrate. This version introduced critical state migration capabilities required for a successful upgrade.
 
 The tool checks for this in the following order:
-1. **`.terraform.lock.hcl`** — The installed provider version (most reliable)
+1. **`.terraform.lock.hcl`** — The installed provider version (most reliable). Lock files written by Terraform (`registry.terraform.io`) and OpenTofu (`registry.opentofu.org`) are both recognized.
 2. **`required_providers` block** — The version constraint in your `.tf` files (fallback)
 
 If neither is found, or if the version is below 4.52.5, the migration will be blocked with instructions on how to upgrade.
