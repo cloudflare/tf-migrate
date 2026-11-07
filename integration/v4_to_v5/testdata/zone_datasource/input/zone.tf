@@ -81,3 +81,15 @@ data "cloudflare_zone" "from_local" {
   name       = coalesce(local.zone_domain, data.cloudflare_zone.by_id.name)
   account_id = coalesce(local.cf_account_id, var.cloudflare_account_id)
 }
+
+# Scenario 8: cross-file zone_id output reference (tests that .zone_id → .id)
+# The zone data source's v4 zone_id output must become .id in v5.
+# Regression: a naive .zone → .name rewrite would turn .zone_id into .name_id.
+import {
+  to = cloudflare_zone_setting.cftftest_security_header
+  id = "${data.cloudflare_zone.by_id.zone_id}/security_header"
+}
+
+output "cftftest_zone_identifier" {
+  value = data.cloudflare_zone.by_id.zone_id
+}

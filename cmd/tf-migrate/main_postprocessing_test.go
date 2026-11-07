@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/go-hclog"
@@ -196,6 +197,73 @@ func TestScanForInvalidAttributeReferences(t *testing.T) {
 		diags := scanForInvalidAttributeReferences(newTestLogger(), []string{file}, refs)
 		if len(diags) != 0 {
 			t.Fatalf("expected no diagnostics for different resource type, got %d", len(diags))
+		}
+	})
+}
+
+// TestComputedAttrMappingBoundary verifies that the computed-attribute rewrite
+// regex uses a word boundary so that ".zone" does not corrupt ".zone_id".
+//
+// Regression: without \b, the zone resource rule
+//   cloudflare_zone\.([a-zA-Z0-9_-]+)\.zone → cloudflare_zone.$1.name
+// would match ".zone_id", yielding ".name_id" which is not a valid attribute.
+//
+// Also validates that the data.cloudflare_zone zone_id→id rule fires correctly.
+func TestComputedAttrMappingBoundary(t *testing.T) {
+	// Simulate the exact patterns built by applyGlobalPostprocessing after
+	// the regexp.QuoteMeta + \b fix.
+
+	// Rule 1: cloudflare_zone resource — .zone → .name
+	resourcePattern := regexp.QuoteMeta("cloudflare_zone") + `\.([a-zA-Z0-9_-]+)\.` + regexp.QuoteMeta("zone") + `\b`
+	resourceReplacement := "cloudflare_zone.$1.name"
+
+	// Rule 2: data.cloudflare_zone datasource — .zone_id → .id
+	datasourcePattern := regexp.QuoteMeta("data.cloudflare_zone") + `\.([a-zA-Z0-9_-]+)\.` + regexp.QuoteMeta("zone_id") + `\b`
+	datasourceReplacement := "data.cloudflare_zone.$1.id"
+
+	t.Run("resource .zone → .name (positive case)", func(t *testing.T) {
+		input := `locals { domain = cloudflare_zone.minimal.zone }`
+		got := regexReplaceSkippingMovedBlocks(input, resourcePattern, resourceReplacement)
+		want := `locals { domain = cloudflare_zone.minimal.name }`
+		if got != want {
+			t.Errorf("resource rule\ngot:  %s\nwant: %s", got, want)
+		}
+	})
+
+	t.Run("resource rule does NOT mangle data source .zone_id", func(t *testing.T) {
+		input := `id = "${data.cloudflare_zone.this.zone_id}/security_header"`
+		got := regexReplaceSkippingMovedBlocks(input, resourcePattern, resourceReplacement)
+		// Must not produce "name_id"; value should be unchanged by the resource rule.
+		if got != input {
+			t.Errorf("resource rule must not touch data.cloudflare_zone.*.zone_id\ngot:  %s\nwant: %s", got, input)
+		}
+	})
+
+	t.Run("datasource .zone_id → .id", func(t *testing.T) {
+		input := `id = "${data.cloudflare_zone.this.zone_id}/security_header"`
+		got := regexReplaceSkippingMovedBlocks(input, datasourcePattern, datasourceReplacement)
+		want := `id = "${data.cloudflare_zone.this.id}/security_header"`
+		if got != want {
+			t.Errorf("datasource rule\ngot:  %s\nwant: %s", got, want)
+		}
+	})
+
+	t.Run("datasource .zone_id → .id in plain assignment", func(t *testing.T) {
+		input := `output "zone_id" { value = data.cloudflare_zone.by_id.zone_id }`
+		got := regexReplaceSkippingMovedBlocks(input, datasourcePattern, datasourceReplacement)
+		want := `output "zone_id" { value = data.cloudflare_zone.by_id.id }`
+		if got != want {
+			t.Errorf("datasource rule (plain assignment)\ngot:  %s\nwant: %s", got, want)
+		}
+	})
+
+	t.Run("datasource .name is preserved (valid v5 output)", func(t *testing.T) {
+		input := `locals { zone_name = data.cloudflare_zone.this.name }`
+		// Apply both rules; neither should touch .name.
+		got := regexReplaceSkippingMovedBlocks(input, resourcePattern, resourceReplacement)
+		got = regexReplaceSkippingMovedBlocks(got, datasourcePattern, datasourceReplacement)
+		if got != input {
+			t.Errorf("data source .name must not be rewritten\ngot:  %s\nwant: %s", got, input)
 		}
 	})
 }
