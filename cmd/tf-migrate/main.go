@@ -1335,8 +1335,17 @@ func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, r
 			log.Warn("Failed to parse file for invalid attribute scan", "file", outputPath, "error", parseDiags.Error())
 			continue
 		}
+		if parsed == nil {
+			log.Warn("No parsed file for invalid attribute scan", "file", outputPath)
+			continue
+		}
+		body, ok := parsed.Body.(*hclsyntax.Body)
+		if !ok || body == nil {
+			log.Warn("Invalid parsed body for invalid attribute scan", "file", outputPath)
+			continue
+		}
 		seen := make(map[string]bool)
-		hclsyntax.VisitAll(parsed.Body.(*hclsyntax.Body), func(node hclsyntax.Node) hcl.Diagnostics {
+		hclsyntax.VisitAll(body, func(node hclsyntax.Node) hcl.Diagnostics {
 			expr, ok := node.(hclsyntax.Expression)
 			if !ok {
 				return nil
