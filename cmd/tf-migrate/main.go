@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/spf13/cobra"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
 	"github.com/cloudflare/tf-migrate/internal/registry"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 	"github.com/cloudflare/tf-migrate/internal/verifydrift"
 )
 
@@ -1328,20 +1330,47 @@ func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, r
 			log.Warn("Failed to read file for invalid attribute scan", "file", outputPath, "error", err)
 			continue
 		}
-		contentStr := string(content)
-
-		for _, ref := range refs {
-			// Pattern: <ResourceType>.<instance_name>.<Attribute>
-			// Instance names may contain letters, digits, underscores, hyphens.
-			pattern := ref.ResourceType + `\.([a-zA-Z0-9_-]+)\.` + ref.Attribute
-			re, err := regexp.Compile(pattern)
-			if err != nil {
-				log.Warn("Failed to compile invalid attribute pattern", "pattern", pattern, "error", err)
-				continue
+		parsed, parseDiags := hclsyntax.ParseConfig(content, filepath.Base(outputPath), hcl.InitialPos)
+		if parseDiags.HasErrors() {
+			log.Warn("Failed to parse file for invalid attribute scan", "file", outputPath, "error", parseDiags.Error())
+			continue
+		}
+		seen := make(map[string]bool)
+		hclsyntax.VisitAll(parsed.Body.(*hclsyntax.Body), func(node hclsyntax.Node) hcl.Diagnostics {
+			expr, ok := node.(hclsyntax.Expression)
+			if !ok {
+				return nil
 			}
-
-			matches := re.FindAllString(contentStr, -1)
-			for _, match := range matches {
+			path, ok := tfhcl.TraversalPath(expr, content)
+			if !ok {
+				return nil
+			}
+			for _, ref := range refs {
+				types := strings.Split(ref.ResourceType, ".")
+				if len(path) < len(types)+2 {
+					continue
+				}
+				matches := true
+				for i, name := range types {
+					matches = matches && path[i].Name == name
+				}
+				if !matches || path[len(types)].Name == "" {
+					continue
+				}
+				attribute := len(types) + 1
+				if path[attribute].Index != "" {
+					attribute++
+				}
+				if attribute >= len(path) || path[attribute].Name != ref.Attribute {
+					continue
+				}
+				r := hcl.Range{Filename: filepath.Base(outputPath), Start: expr.Range().Start, End: path[attribute].Range.End}
+				key := fmt.Sprintf("%d:%d", r.Start.Byte, r.End.Byte)
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				match := string(r.SliceBytes(content))
 				summary := fmt.Sprintf("Unknown attribute reference: %s", match)
 				detail := fmt.Sprintf("In %s\n\n  %s", filepath.Base(outputPath), ref.Suggestion)
 				log.Debug("Found invalid attribute reference",
@@ -1351,9 +1380,11 @@ func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, r
 					Severity: hcl.DiagWarning,
 					Summary:  summary,
 					Detail:   detail,
+					Subject:  &r,
 				})
 			}
-		}
+			return nil
+		})
 	}
 
 	return diags

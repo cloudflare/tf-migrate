@@ -114,6 +114,9 @@ func TestAPITokenPermissionGroups(t *testing.T) {
 			"Unknown attribute reference: data.cloudflare_api_token_permission_groups_list.all.zone",
 			"Unknown attribute reference: data.cloudflare_api_token_permission_groups_list.all.account",
 			"In locals.tf", "In outputs.tf",
+			`Unknown attribute reference: data.cloudflare_api_token_permission_groups_list.by_key["zone"].zone`,
+			"Unknown attribute reference: data.cloudflare_api_token_permission_groups_list.by_count[0].zone",
+			"In indexed.tf",
 		},
 	})
 }

@@ -207,48 +207,25 @@ func permissionGroupObject(expr hclsyntax.Expression, src []byte) (string, bool,
 	return "{ id = (" + string(expr.Range().SliceBytes(src)) + ") }", false, true
 }
 
-// Match only data.<old type>.<label>.<known category>[<key>]. HCL represents
-// constant indices as traversal steps and dynamic indices as IndexExpr nodes.
+// Match data.<old type>.<label>[optional instance].<category>[<key>].
+// Preserve count/for_each instance selectors while changing the output shape.
 func permissionGroupLookup(expr hclsyntax.Expression, src []byte) (string, bool) {
-	var traversal hcl.Traversal
-	var key string
-	switch expr := expr.(type) {
-	case *hclsyntax.ScopeTraversalExpr:
-		if len(expr.Traversal) != 5 {
-			return "", false
-		}
-		index, ok := expr.Traversal[4].(hcl.TraverseIndex)
-		if !ok || index.Key.Type() != cty.String {
-			return "", false
-		}
-		traversal = expr.Traversal[:4]
-		key = string(hclwrite.TokensForValue(index.Key).Bytes())
-	case *hclsyntax.IndexExpr:
-		var diags hcl.Diagnostics
-		traversal, diags = hcl.AbsTraversalForExpr(expr.Collection)
-		if diags.HasErrors() {
-			return "", false
-		}
-		key = string(expr.Key.Range().SliceBytes(src))
-	default:
+	path, ok := tfhcl.TraversalPath(expr, src)
+	if !ok || (len(path) != 5 && len(path) != 6) || path[0].Name != "data" || path[1].Name != "cloudflare_api_token_permission_groups" || path[2].Name == "" {
 		return "", false
 	}
-	if len(traversal) != 4 || traversal.RootName() != "data" {
-		return "", false
-	}
-	var names []string
-	for _, step := range traversal[1:] {
-		attr, ok := step.(hcl.TraverseAttr)
-		if !ok {
+	instance := path[2].Name
+	category := 3
+	if len(path) == 6 {
+		if path[3].Index == "" {
 			return "", false
 		}
-		names = append(names, attr.Name)
+		instance += "[" + path[3].Index + "]"
+		category++
 	}
-	if names[0] != "cloudflare_api_token_permission_groups" {
-		return "", false
-	}
-	scope, ok := permissionGroupScopes[names[2]]
-	if !ok {
+	scope, ok := permissionGroupScopes[path[category].Name]
+	key := path[category+1].Index
+	if !ok || key == "" {
 		return "", false
 	}
 	// The key may itself refer to a for variable named pg. Choose a lookup
@@ -261,7 +238,7 @@ func permissionGroupLookup(expr hclsyntax.Expression, src []byte) (string, bool)
 	if scope != "" {
 		filter += fmt.Sprintf(" && contains(%s.scopes, %q)", iterator, scope)
 	}
-	return fmt.Sprintf("one([for %s in data.cloudflare_api_token_permission_groups_list.%s.result : %s.id if %s])", iterator, names[1], iterator, filter), true
+	return fmt.Sprintf("one([for %s in data.cloudflare_api_token_permission_groups_list.%s.result : %s.id if %s])", iterator, instance, iterator, filter), true
 }
 
 // transformResources wraps the resources map with jsonencode()

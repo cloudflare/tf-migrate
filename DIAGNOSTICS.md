@@ -21,6 +21,9 @@ file and ensure every `id` evaluates to a permission group ID.
 The renamed v5 datasource exposes `result`, not the v4 `permissions`, `zone`,
 `account`, `user`, or `r2` maps. Remaining references in locals, outputs, or other
 expressions require manual updates. Each warning names the reference and file.
+Indexed instances (`all[0]`, `all["key"]`, or `all[each.key]`) are included in
+this scan. Supported indexed lookups inside token policies are migrated
+automatically; the warning applies to references left elsewhere.
 Look up IDs by name in `result`, adding the original map's scope filter. The
 v4 `id` checksum has no direct replacement either.
 

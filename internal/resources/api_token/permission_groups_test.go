@@ -47,8 +47,14 @@ func TestPermissionGroupsEvaluation(t *testing.T) {
 			"data": cty.ObjectVal(map[string]cty.Value{
 				"cloudflare_api_token_permission_groups_list": cty.ObjectVal(map[string]cty.Value{
 					"all": cty.ObjectVal(map[string]cty.Value{"result": cty.ListVal(groups)}),
+					"by_key": cty.ObjectVal(map[string]cty.Value{
+						"zone": cty.ObjectVal(map[string]cty.Value{"result": cty.ListVal(groups)}),
+					}),
+					"by_count": cty.TupleVal([]cty.Value{cty.ObjectVal(map[string]cty.Value{"result": cty.ListVal(groups)})}),
 				}),
 			}),
+			"each":  cty.ObjectVal(map[string]cty.Value{"key": cty.StringVal("zone")}),
+			"count": cty.ObjectVal(map[string]cty.Value{"index": cty.NumberIntVal(0)}),
 			"local": cty.ObjectVal(map[string]cty.Value{
 				"names": cty.ListVal([]cty.Value{cty.StringVal("Shared Name"), cty.StringVal("skip")}),
 				"ids":   cty.ListVal([]cty.Value{cty.StringVal("a"), cty.StringVal("b")}),
@@ -87,6 +93,13 @@ func TestPermissionGroupsEvaluation(t *testing.T) {
 		{"generic expression mixed with lookup", `[local.id, data.cloudflare_api_token_permission_groups.all.zone["Shared Name"]]`, []string{"local-id", "zone-id"}, true},
 		{"comprehension and filter", `[for p in local.names : data.cloudflare_api_token_permission_groups.all.zone[p] if p != "skip"]`, []string{"zone-id"}, false},
 		{"key and value iterators", `[for i, pg in local.names : data.cloudflare_api_token_permission_groups.all.zone[pg] if i == 0]`, []string{"zone-id"}, false},
+		{"for_each instance", `[data.cloudflare_api_token_permission_groups.by_key[each.key].zone["Shared Name"]]`, []string{"zone-id"}, false},
+		{"constant string instance", `[data.cloudflare_api_token_permission_groups.by_key["zone"].account["Shared Name"]]`, []string{"account-id"}, false},
+		{"count instance", `[data.cloudflare_api_token_permission_groups.by_count[count.index].user["Shared Name"]]`, []string{"user-id"}, false},
+		{"constant numeric instance", `[data.cloudflare_api_token_permission_groups.by_count[0].r2["Shared Name"]]`, []string{"r2-id"}, false},
+		{"dynamic instance and key", `[data.cloudflare_api_token_permission_groups.by_key[each.key].zone[local.names[0]]]`, []string{"zone-id"}, false},
+		{"indexed comprehension and iterator collision", `[for i, pg in local.names : data.cloudflare_api_token_permission_groups.by_key[each.key].zone[pg] if i == 0]`, []string{"zone-id"}, false},
+		{"indexed deprecated map", `[data.cloudflare_api_token_permission_groups.by_key[each.key].permissions["Unique $ % \" Name"]]`, []string{"unique-id"}, false},
 		{"generic comprehension", `[for p in local.ids : p]`, []string{"a", "b"}, true},
 		{"collection reference", `local.ids`, []string{"a", "b"}, true},
 		{"literal sorting", `["z", "a"]`, []string{"a", "z"}, false},

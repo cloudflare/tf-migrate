@@ -64,6 +64,21 @@ Mixed lists retain every element. List comprehensions are converted to yield
 objects, including dynamic lookup keys, key/value iterators, and filters.
 Literal-only lists retain their sorted ordering.
 
+Datasource instances created with `count` or `for_each` are supported. Numeric,
+string, and dynamic instance selectors are retained, including when the
+permission-name key is also dynamic. For example:
+
+```hcl
+# v4
+data.cloudflare_api_token_permission_groups.all[each.key].zone["DNS Read"]
+
+# v5 ID lookup
+one([
+  for pg in data.cloudflare_api_token_permission_groups_list.all[each.key].result : pg.id
+  if pg.name == "DNS Read" && contains(pg.scopes, "com.cloudflare.api.account.zone")
+])
+```
+
 **Manual review:** unsupported expressions are preserved with a warning.
 Collection expressions are wrapped in a comprehension over their IDs; an
 unsupported object comprehension is left intact. Verify that each resulting
@@ -71,6 +86,8 @@ unsupported object comprehension is left intact. Verify that each resulting
 their datasource type renamed, but the old map attributes (`permissions`,
 `zone`, `account`, `user`, `r2`) require manual replacement using the lookup
 above. Cross-file warnings identify the remaining reference and filename.
+This also applies to indexed references such as `all[0].zone` or
+`all[each.key].zone` in locals and outputs.
 The old datasource `id` checksum also has no direct v5 equivalent.
 
 ### Example 1: Basic Single Policy Token
