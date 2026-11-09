@@ -18,6 +18,61 @@ This guide explains how `cloudflare_api_token` resources migrate from v4 to v5.
 
 ## Migration Examples
 
+### Permission-group data source references
+
+tf-migrate renames `cloudflare_api_token_permission_groups` to
+`cloudflare_api_token_permission_groups_list`. The v4 datasource returned maps
+of names to IDs; v5 exposes objects in `result`.
+
+For example, this v4 policy value:
+
+```hcl
+permission_groups = [
+  "literal-id",
+  data.cloudflare_api_token_permission_groups.all.zone["DNS Write"],
+]
+```
+
+becomes:
+
+```hcl
+permission_groups = [
+  { id = "literal-id" },
+  {
+    id = one([
+      for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id
+      if pg.name == "DNS Write" && contains(pg.scopes, "com.cloudflare.api.account.zone")
+    ])
+  },
+]
+```
+
+The scope filters preserve the v4 maps:
+
+| v4 map | v5 scope |
+|--------|----------|
+| `zone` | `com.cloudflare.api.account.zone` |
+| `account` | `com.cloudflare.api.account` |
+| `user` | `com.cloudflare.api.user` |
+| `r2` | `com.cloudflare.edge.r2.bucket` |
+
+Deprecated `permissions` lookups match only by name. `one()` rejects multiple
+matches; no matches return `null`, so verify the requested name and scope if
+Terraform reports a missing permission ID.
+
+Mixed lists retain every element. List comprehensions are converted to yield
+objects, including dynamic lookup keys, key/value iterators, and filters.
+Literal-only lists retain their sorted ordering.
+
+**Manual review:** unsupported expressions are preserved with a warning.
+Collection expressions are wrapped in a comprehension over their IDs; an
+unsupported object comprehension is left intact. Verify that each resulting
+`id` is an actual ID. References in locals, outputs, and other locations have
+their datasource type renamed, but the old map attributes (`permissions`,
+`zone`, `account`, `user`, `r2`) require manual replacement using the lookup
+above. Cross-file warnings identify the remaining reference and filename.
+The old datasource `id` checksum also has no direct v5 equivalent.
+
 ### Example 1: Basic Single Policy Token
 
 **v4 Configuration:**
@@ -216,4 +271,3 @@ resource "cloudflare_api_token" "dynamic" {
 - Variable references remain functional
 
 ---
-

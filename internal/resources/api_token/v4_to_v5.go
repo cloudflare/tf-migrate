@@ -3,6 +3,7 @@ package api_token
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -93,266 +94,174 @@ func (m *V4ToV5Migrator) transformPolicyBlocks(ctx *transform.Context, body *hcl
 	tfhcl.RemoveBlocksByType(body, "policy")
 }
 
-// transformPermissionGroups converts permission_groups from v4 format to v5 format.
-//
-// v4 accepts:
-//   - A list of bare string IDs:   ["id1", "id2"]
-//   - A list of objects:           [{ id = "id1" }, { id = "id2" }]
-//   - A list of data-source refs:  [data.cloudflare_api_token_permission_groups.all.permissions["Name"]]
-//
-// v5 requires a list of objects:  [{ id = "id1" }, { id = "id2" }]
-//
-// For string / object elements the IDs are sorted alphabetically to match
-// the v5 provider's canonical ordering.
-//
-// Expression elements that reference cloudflare_api_token_permission_groups are
-// transformed to for-expressions that look up the ID by name from the v5
-// replacement data source (cloudflare_api_token_permission_groups_list).
+var permissionGroupScopes = map[string]string{
+	"permissions": "",
+	"zone":        "com.cloudflare.api.account.zone",
+	"account":     "com.cloudflare.api.account",
+	"user":        "com.cloudflare.api.user",
+	"r2":          "com.cloudflare.edge.r2.bucket",
+}
+
+// Parse the whole expression before inspecting elements: quoted map keys are
+// not IDs, and finding one literal must never discard the remaining elements.
 func (m *V4ToV5Migrator) transformPermissionGroups(ctx *transform.Context, body *hclwrite.Body) {
-	permGroupsAttr := body.GetAttribute("permission_groups")
-	if permGroupsAttr == nil {
+	attr := body.GetAttribute("permission_groups")
+	if attr == nil {
 		return
 	}
-
-	exprTokens := permGroupsAttr.Expr().BuildTokens(nil)
-
-	// Scan for string IDs using bracket-depth tracking.
-	// Only TokenQuotedLit tokens at bracketDepth == 1 are direct string values;
-	// tokens at deeper depths (e.g. ["key"] index access on a data source) are
-	// NOT collected — this is the fix for the bug where "DNS Read" (the map key
-	// in data.source.permissions["DNS Read"]) was incorrectly extracted as an ID.
-	var permIDs []string
-	bracketDepth := 0
-	for _, tok := range exprTokens {
-		switch tok.Type {
-		case hclsyntax.TokenOBrack:
-			bracketDepth++
-		case hclsyntax.TokenCBrack:
-			bracketDepth--
-		case hclsyntax.TokenQuotedLit:
-			if bracketDepth == 1 {
-				permIDs = append(permIDs, string(tok.Bytes))
-			}
-		}
-	}
-
-	if len(permIDs) > 0 {
-		// All elements are string literals or already-objects with string IDs.
-		// Sort alphabetically to match the v5 provider's canonical ordering.
-		sort.Strings(permIDs)
-
-		var permObjects []hclwrite.Tokens
-		for _, id := range permIDs {
-			objAttrs := []hclwrite.ObjectAttrTokens{
-				{
-					Name:  hclwrite.TokensForIdentifier("id"),
-					Value: hclwrite.TokensForValue(cty.StringVal(id)),
-				},
-			}
-			permObjects = append(permObjects, hclwrite.TokensForObject(objAttrs))
-		}
-
-		body.RemoveAttribute("permission_groups")
-		body.SetAttributeRaw("permission_groups", hclwrite.TokensForTuple(permObjects))
+	src := attr.Expr().BuildTokens(nil).Bytes()
+	expr, diags := hclsyntax.ParseExpression(src, ctx.Filename, hcl.InitialPos)
+	if diags.HasErrors() {
+		ctx.Diagnostics = append(ctx.Diagnostics, diags...)
 		return
 	}
-
-	// No string IDs found at depth 1.  The list likely contains expression
-	// references such as data-source lookups.  Split the list into individual
-	// elements and try to transform data source references into for-expressions.
-	elements := splitPermGroupExprElements(exprTokens)
-	if len(elements) == 0 {
-		return
-	}
-
-	// Try to parse each element as a cloudflare_api_token_permission_groups
-	// data source reference and convert it to a for-expression against the
-	// v5 replacement data source.
-	var forExprParts []string
-	allParsed := true
-	for _, elem := range elements {
-		ref := parsePermGroupDataSourceRef(elem)
-		if ref == nil {
-			allParsed = false
-			break
-		}
-		// Build: { id = [for pg in data.cloudflare_api_token_permission_groups_list.<label>.result : pg.id if pg.name == "<name>"][0] }
-		forExpr := fmt.Sprintf(
-			`{ id = [for pg in data.cloudflare_api_token_permission_groups_list.%s.result : pg.id if pg.name == %q][0] }`,
-			ref.label, ref.permName,
-		)
-		forExprParts = append(forExprParts, forExpr)
-	}
-
-	if allParsed && len(forExprParts) > 0 {
-		// Build the full permission_groups value as an expression string and
-		// parse it through hclwrite so the tokens are well-formed.
-		exprStr := "["
-		for i, part := range forExprParts {
-			if i > 0 {
-				exprStr += ", "
-			}
-			exprStr += part
-		}
-		exprStr += "]"
-
-		if err := tfhcl.SetAttributeFromExpressionString(body, "permission_groups", exprStr); err == nil {
+	var result string
+	needsReview := false
+	switch expr := expr.(type) {
+	case *hclsyntax.TupleConsExpr:
+		if len(expr.Exprs) == 0 {
 			return
 		}
-		// Fall through to the generic wrapping if parsing fails
-	}
-
-	// Fallback: wrap each element as { id = <expr> } and emit a warning.
-	ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
-		Severity: hcl.DiagWarning,
-		Summary:  "Manual action required: permission_groups contains unrecognized expressions",
-		Detail: "Some permission_groups values could not be automatically migrated. " +
-			"Replace the expression references with actual permission group ID values. " +
-			"Use the cloudflare_api_token_permission_groups_list data source to look up IDs by name.",
-	})
-
-	var permObjects []hclwrite.Tokens
-	for _, elem := range elements {
-		permObjects = append(permObjects, buildPermGroupIDObject(elem))
-	}
-
-	body.RemoveAttribute("permission_groups")
-	body.SetAttributeRaw("permission_groups", hclwrite.TokensForTuple(permObjects))
-}
-
-// permGroupRef holds the parsed components of a cloudflare_api_token_permission_groups
-// data source reference expression.
-type permGroupRef struct {
-	label    string // e.g. "all"
-	permName string // e.g. "DNS Read"
-}
-
-// parsePermGroupDataSourceRef attempts to parse an expression token stream as a
-// reference to data.cloudflare_api_token_permission_groups.<label>.<category>["<name>"].
-// Returns nil if the tokens don't match this pattern.
-func parsePermGroupDataSourceRef(tokens hclwrite.Tokens) *permGroupRef {
-	// Collect the identifiers and the quoted string from the expression.
-	// Expected token pattern (ignoring whitespace):
-	//   data . cloudflare_api_token_permission_groups . <label> . <category> [ " <name> " ]
-	//
-	// We need: ident("data"), dot, ident("cloudflare_api_token_permission_groups"),
-	//          dot, ident(<label>), dot, ident(<category>), [, ", <name>, ", ]
-	var idents []string
-	var quotedLit string
-	foundBracket := false
-
-	for _, tok := range tokens {
-		switch tok.Type {
-		case hclsyntax.TokenIdent:
-			if !foundBracket {
-				idents = append(idents, string(tok.Bytes))
-			}
-		case hclsyntax.TokenDot:
-			// skip dots
-		case hclsyntax.TokenOBrack:
-			foundBracket = true
-		case hclsyntax.TokenQuotedLit:
-			if foundBracket {
-				quotedLit = string(tok.Bytes)
-			}
-		case hclsyntax.TokenNewline:
-			// skip
-		case hclsyntax.TokenOQuote, hclsyntax.TokenCQuote, hclsyntax.TokenCBrack:
-			// skip quote/bracket delimiters
+		parts := make([]string, 0, len(expr.Exprs))
+		allLiteral := true
+		for _, element := range expr.Exprs {
+			part, literal, review := permissionGroupObject(element, src)
+			parts = append(parts, part)
+			allLiteral = allLiteral && literal
+			needsReview = needsReview || review
 		}
-	}
-
-	// Validate the pattern: data, cloudflare_api_token_permission_groups, <label>, <category>
-	if len(idents) != 4 || idents[0] != "data" || idents[1] != "cloudflare_api_token_permission_groups" {
-		return nil
-	}
-	if quotedLit == "" {
-		return nil
-	}
-
-	return &permGroupRef{
-		label:    idents[2],
-		permName: quotedLit,
-	}
-}
-
-// splitPermGroupExprElements splits an HCL list expression token stream into
-// individual element token groups.  Depth is tracked across '[', '{', and '('
-// so that nested structures (index access, objects, function calls) are not
-// mistakenly treated as element boundaries.  Returns nil when no outer '[' is found.
-func splitPermGroupExprElements(exprTokens hclwrite.Tokens) []hclwrite.Tokens {
-	outerStart := -1
-	for i, tok := range exprTokens {
-		if tok.Type == hclsyntax.TokenOBrack {
-			outerStart = i
+		if allLiteral {
+			sort.Strings(parts)
+			// Keep the established multiline formatting and attribute position
+			// for literal-only configurations.
+			var objects []hclwrite.Tokens
+			for _, part := range parts {
+				parsed, _ := hclsyntax.ParseExpression([]byte(part), "", hcl.InitialPos)
+				value, _ := parsed.Value(nil)
+				objects = append(objects, hclwrite.TokensForObject([]hclwrite.ObjectAttrTokens{{
+					Name: hclwrite.TokensForIdentifier("id"), Value: hclwrite.TokensForValue(value.GetAttr("id")),
+				}}))
+			}
+			body.RemoveAttribute("permission_groups")
+			body.SetAttributeRaw("permission_groups", hclwrite.TokensForTuple(objects))
+			return
+		}
+		result = "[" + strings.Join(parts, ", ") + "]"
+	case *hclsyntax.ForExpr:
+		if expr.KeyExpr != nil {
+			// An object comprehension is not a list of permission IDs. Preserve
+			// it for manual resolution rather than inventing a collection shape.
+			result = string(src)
+			needsReview = true
 			break
 		}
+		part, _, review := permissionGroupObject(expr.ValExpr, src)
+		r := expr.ValExpr.Range()
+		result = string(src[:r.Start.Byte]) + part + string(src[r.End.Byte:])
+		needsReview = review
+	default:
+		// A variable or function may supply the entire v4 collection. Keep
+		// the collection expression intact and wrap its IDs at evaluation time.
+		result = fmt.Sprintf("[for permission_group_id in (%s) : { id = permission_group_id }]", src)
+		needsReview = true
 	}
-	if outerStart == -1 {
-		return nil
+	if err := tfhcl.SetAttributeFromExpressionString(body, "permission_groups", result); err != nil {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  "Failed to migrate permission_groups",
+			Detail:   err.Error(),
+		})
+		return
 	}
+	if needsReview {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  "Manual action required: permission_groups contains unrecognized expressions",
+			Detail:   fmt.Sprintf("In %s: permission_groups expressions were preserved. Verify that each id evaluates to a permission group ID. Replace remaining cloudflare_api_token_permission_groups map lookups with name and scope lookups against cloudflare_api_token_permission_groups_list.result.", ctx.Filename),
+		})
+	}
+}
 
-	var elements []hclwrite.Tokens
-	depth := 0
-	elemStart := outerStart + 1
-
-	for i := outerStart; i < len(exprTokens); i++ {
-		tok := exprTokens[i]
-		switch tok.Type {
-		case hclsyntax.TokenOBrack, hclsyntax.TokenOBrace, hclsyntax.TokenOParen:
-			depth++
-		case hclsyntax.TokenCBrack:
-			depth--
-			if depth == 0 {
-				// End of the outer list.
-				elem := trimPermGroupElement(exprTokens[elemStart:i])
-				if len(elem) > 0 {
-					elements = append(elements, elem)
-				}
-				return elements
-			}
-		case hclsyntax.TokenCBrace, hclsyntax.TokenCParen:
-			depth--
-		case hclsyntax.TokenComma:
-			if depth == 1 {
-				elem := trimPermGroupElement(exprTokens[elemStart:i])
-				if len(elem) > 0 {
-					elements = append(elements, elem)
-				}
-				elemStart = i + 1
+// Returns the object expression, whether it is a literal ID, and whether it
+// needs manual review. Already-object values must not be wrapped a second time.
+func permissionGroupObject(expr hclsyntax.Expression, src []byte) (string, bool, bool) {
+	if parens, ok := expr.(*hclsyntax.ParenthesesExpr); ok {
+		return permissionGroupObject(parens.Expression, src)
+	}
+	if object, ok := expr.(*hclsyntax.ObjectConsExpr); ok {
+		value, diags := object.Value(nil)
+		if !diags.HasErrors() && value.IsWhollyKnown() && value.Type().IsObjectType() && value.Type().HasAttribute("id") && len(value.Type().AttributeTypes()) == 1 {
+			id := value.GetAttr("id")
+			if !id.IsNull() && id.Type() == cty.String {
+				return "{ id = " + string(hclwrite.TokensForValue(id).Bytes()) + " }", true, false
 			}
 		}
+		return string(expr.Range().SliceBytes(src)), false, true
 	}
-	return elements
+	if value, diags := expr.Value(nil); !diags.HasErrors() && value.IsKnown() && !value.IsNull() && value.Type() == cty.String {
+		return "{ id = " + string(hclwrite.TokensForValue(value).Bytes()) + " }", true, false
+	}
+	if lookup, ok := permissionGroupLookup(expr, src); ok {
+		return "{ id = " + lookup + " }", false, false
+	}
+	return "{ id = (" + string(expr.Range().SliceBytes(src)) + ") }", false, true
 }
 
-// trimPermGroupElement strips leading and trailing newline tokens from a token slice.
-func trimPermGroupElement(tokens hclwrite.Tokens) hclwrite.Tokens {
-	start := 0
-	for start < len(tokens) && tokens[start].Type == hclsyntax.TokenNewline {
-		start++
+// Match only data.<old type>.<label>.<known category>[<key>]. HCL represents
+// constant indices as traversal steps and dynamic indices as IndexExpr nodes.
+func permissionGroupLookup(expr hclsyntax.Expression, src []byte) (string, bool) {
+	var traversal hcl.Traversal
+	var key string
+	switch expr := expr.(type) {
+	case *hclsyntax.ScopeTraversalExpr:
+		if len(expr.Traversal) != 5 {
+			return "", false
+		}
+		index, ok := expr.Traversal[4].(hcl.TraverseIndex)
+		if !ok || index.Key.Type() != cty.String {
+			return "", false
+		}
+		traversal = expr.Traversal[:4]
+		key = string(hclwrite.TokensForValue(index.Key).Bytes())
+	case *hclsyntax.IndexExpr:
+		var diags hcl.Diagnostics
+		traversal, diags = hcl.AbsTraversalForExpr(expr.Collection)
+		if diags.HasErrors() {
+			return "", false
+		}
+		key = string(expr.Key.Range().SliceBytes(src))
+	default:
+		return "", false
 	}
-	end := len(tokens)
-	for end > start && tokens[end-1].Type == hclsyntax.TokenNewline {
-		end--
+	if len(traversal) != 4 || traversal.RootName() != "data" {
+		return "", false
 	}
-	return tokens[start:end]
-}
-
-// buildPermGroupIDObject wraps expression tokens as { id = <tokens> }.
-func buildPermGroupIDObject(valueTokens hclwrite.Tokens) hclwrite.Tokens {
-	tokens := hclwrite.Tokens{
-		{Type: hclsyntax.TokenOBrace, Bytes: []byte("{")},
-		{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")},
-		{Type: hclsyntax.TokenIdent, Bytes: []byte("  id")},
-		{Type: hclsyntax.TokenEqual, Bytes: []byte(" = ")},
+	var names []string
+	for _, step := range traversal[1:] {
+		attr, ok := step.(hcl.TraverseAttr)
+		if !ok {
+			return "", false
+		}
+		names = append(names, attr.Name)
 	}
-	tokens = append(tokens, valueTokens...)
-	tokens = append(tokens,
-		&hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")},
-		&hclwrite.Token{Type: hclsyntax.TokenCBrace, Bytes: []byte("}")},
-	)
-	return tokens
+	if names[0] != "cloudflare_api_token_permission_groups" {
+		return "", false
+	}
+	scope, ok := permissionGroupScopes[names[2]]
+	if !ok {
+		return "", false
+	}
+	// The key may itself refer to a for variable named pg. Choose a lookup
+	// iterator that cannot shadow any variable used by the key expression.
+	iterator := "pg"
+	for strings.Contains(key, iterator) {
+		iterator += "_"
+	}
+	filter := fmt.Sprintf("%s.name == (%s)", iterator, key)
+	if scope != "" {
+		filter += fmt.Sprintf(" && contains(%s.scopes, %q)", iterator, scope)
+	}
+	return fmt.Sprintf("one([for %s in data.cloudflare_api_token_permission_groups_list.%s.result : %s.id if %s])", iterator, names[1], iterator, filter), true
 }
 
 // transformResources wraps the resources map with jsonencode()

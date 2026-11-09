@@ -1,5 +1,36 @@
 # Migration diagnostics
 
+## Manual action required: permission_groups contains unrecognized expressions
+
+**Severity:** Warning
+
+**Resource:** `cloudflare_api_token`
+
+tf-migrate preserves expressions it cannot recognize as literal permission IDs
+or supported permission-group datasource lookups. List elements are wrapped as
+`{ id = <expression> }`, and collection expressions are mapped to ID objects.
+Unsupported object comprehensions are preserved unchanged. Review the named
+file and ensure every `id` evaluates to a permission group ID.
+
+## Unknown attribute reference: data.cloudflare_api_token_permission_groups_list
+
+**Severity:** Warning
+
+**Data source:** `cloudflare_api_token_permission_groups`
+
+The renamed v5 datasource exposes `result`, not the v4 `permissions`, `zone`,
+`account`, `user`, or `r2` maps. Remaining references in locals, outputs, or other
+expressions require manual updates. Each warning names the reference and file.
+Look up IDs by name in `result`, adding the original map's scope filter. The
+v4 `id` checksum has no direct replacement either.
+
+Use `one([...])` to reject ambiguous matches; it returns `null` when no entry
+matches. Deprecated `.permissions[...]` lookups lack a scope, so overlapping
+names may require choosing a scope explicitly.
+
+See the [API token migration guide](internal/resources/api_token/README.md#permission-group-data-source-references)
+for the scope table, examples, and supported expression forms.
+
 ## Action required: review Gateway policy precedence
 
 **Severity:** Warning

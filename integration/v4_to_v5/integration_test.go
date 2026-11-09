@@ -96,3 +96,24 @@ func TestGatewayPolicyPrecedenceReview(t *testing.T) {
 		},
 	})
 }
+
+func TestAPITokenPermissionGroups(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration tests in short mode")
+	}
+	runner, err := integration.NewTestRunner("v4", "v5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// References requiring manual action belong in config-only fixtures, not
+	// in the testdata used to provision live E2E resources.
+	runner.TestDataPath = filepath.Join(runner.BaseDir, "fixtures")
+	runner.RunTest(t, integration.TestCase{
+		Resource: "api_token",
+		ExpectedOutput: []string{
+			"Unknown attribute reference: data.cloudflare_api_token_permission_groups_list.all.zone",
+			"Unknown attribute reference: data.cloudflare_api_token_permission_groups_list.all.account",
+			"In locals.tf", "In outputs.tf",
+		},
+	})
+}

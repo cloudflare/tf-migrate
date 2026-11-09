@@ -489,12 +489,12 @@ resource "cloudflare_api_token" "full_example" {
   }
 }`,
 			},
-		{
-			// Data source reference in permission_groups: the expression is parsed
-			// and converted to a for-expression that looks up the ID by name from
-			// the v5 replacement data source.
-			Name: "api token with data source reference in permission_groups",
-			Input: `
+			{
+				// Data source reference in permission_groups: the expression is parsed
+				// and converted to a for-expression that looks up the ID by name from
+				// the v5 replacement data source.
+				Name: "api token with data source reference in permission_groups",
+				Input: `
 resource "cloudflare_api_token" "api_token_create" {
   name = "api_token_create"
 
@@ -517,7 +517,7 @@ resource "cloudflare_api_token" "api_token_create" {
     }
   }
 }`,
-			Expected: `
+				Expected: `
 resource "cloudflare_api_token" "api_token_create" {
   name = "api_token_create"
 
@@ -526,7 +526,7 @@ resource "cloudflare_api_token" "api_token_create" {
   expires_on = "2020-01-01T00:00:00Z"
 
   policies = [{
-    permission_groups = [{ id = [for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == "API Tokens Write"][0] }]
+    permission_groups = [{ id = one([for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == ("API Tokens Write") && contains(pg.scopes, "com.cloudflare.api.user")]) }]
     resources = jsonencode({
       "com.cloudflare.api.user.${var.user_id}" = "*"
     })
@@ -539,13 +539,13 @@ resource "cloudflare_api_token" "api_token_create" {
     }
   }
 }`,
-		},
-		{
-			// Exact scenario from APIX-973: multiple .permissions["Name"] data-source
-			// references in permission_groups are converted to for-expressions that
-			// look up the ID by name from the v5 replacement data source.
-			Name: "api token with multiple data source permission group references (APIX-973)",
-			Input: `
+			},
+			{
+				// Exact scenario from APIX-973: multiple .permissions["Name"] data-source
+				// references in permission_groups are converted to for-expressions that
+				// look up the ID by name from the v5 replacement data source.
+				Name: "api token with multiple data source permission group references (APIX-973)",
+				Input: `
 data "cloudflare_api_token_permission_groups" "all" {}
 
 resource "cloudflare_api_token" "example_api_token" {
@@ -562,25 +562,25 @@ resource "cloudflare_api_token" "example_api_token" {
     }
   }
 }`,
-			// The data source block is NOT renamed here because the api_token
-			// migrator only handles cloudflare_api_token resources; the data source
-			// block is renamed by the api_token_permission_groups datasource migrator
-			// (tested separately).
-			Expected: `
+				// The data source block is NOT renamed here because the api_token
+				// migrator only handles cloudflare_api_token resources; the data source
+				// block is renamed by the api_token_permission_groups datasource migrator
+				// (tested separately).
+				Expected: `
 data "cloudflare_api_token_permission_groups" "all" {}
 
 resource "cloudflare_api_token" "example_api_token" {
   name = "example_api_token"
 
   policies = [{
-    permission_groups = [{ id = [for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == "Zone Read"][0] }, { id = [for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == "DNS Read"][0] }, { id = [for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == "DNS Write"][0] }]
+    permission_groups = [{ id = one([for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == ("Zone Read")]) }, { id = one([for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == ("DNS Read")]) }, { id = one([for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == ("DNS Write")]) }]
     resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
     })
     effect = "allow"
   }]
 }`,
-		},
+			},
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
