@@ -6,6 +6,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v1.2.0] - 2026-11-10
+
+### Added
+
+- `preserve-zero-trust-settings` command: copies Zero Trust settings that exist only in the API, not in v4 config or state, from a saved API snapshot into the migrated v5 config. Covers organization MFA/PIV and deny-unmatched, Gateway host selection, sandbox and emergency signals, Gateway `block_page` `mode` / `include_context` / `suppress_footer`, and DLP predefined profile `confidence_threshold` / `ai_context_enabled`. Existing HCL always wins; the command does not call the Cloudflare API or touch state ([#336](https://github.com/cloudflare/tf-migrate/pull/336), [#340](https://github.com/cloudflare/tf-migrate/pull/340), [#344](https://github.com/cloudflare/tf-migrate/pull/344))
+
+### Fixed
+
+- **ruleset**: `dynamic` blocks at any depth in a rule, including `action_parameters`, `ratelimit`, `cache_key`, `query_string`, `categories` and `headers`, are converted to `for` expressions with the same rewrites as static blocks. Static and dynamic blocks of one type are all kept, in source order ([#349](https://github.com/cloudflare/tf-migrate/pull/349), [#351](https://github.com/cloudflare/tf-migrate/pull/351))
+- `dynamic` blocks in other resources were left as v4 syntax or written out as an invalid `dynamic = {}` attribute; they are now converted or reported with a warning ([#346](https://github.com/cloudflare/tf-migrate/pull/346))
+- **zone_setting**: `prevent_destroy` and `create_before_destroy` are kept when `lifecycle` also has `ignore_changes` ([#346](https://github.com/cloudflare/tf-migrate/pull/346))
+- **zero_trust_access_identity_provider**: with several `config` blocks, the first (the one v4 actually used) is kept instead of the last ([#346](https://github.com/cloudflare/tf-migrate/pull/346))
+- **ip_ranges** data source: references to `ipv4_cidr_blocks` / `ipv6_cidr_blocks` are rewritten to `ipv4_cidrs` / `ipv6_cidrs` ([#346](https://github.com/cloudflare/tf-migrate/pull/346))
+- Values that were dropped silently now produce a warning: `zone.plan`, the `universal_ssl` zone setting, `logpush_job` `kind = "instant-logs"`, notification integrations without an `id`, zone settings under `count`, and `tiered_cache` with an expression `cache_type` ([#346](https://github.com/cloudflare/tf-migrate/pull/346))
+- **zone** data source: `.zone_id` references were rewritten to the nonexistent `.name_id`; they now become `.id`. Configs already migrated with v1.1.0 or v1.1.1 should replace `.name_id` with `.id` ([#350](https://github.com/cloudflare/tf-migrate/pull/350))
+- **zero_trust_tunnel_cloudflared**: no longer writes `config_src = "local"` when it wasn't set in v4. It forced a replacement of tunnels managed with `cloudflare_tunnel_config` ([#343](https://github.com/cloudflare/tf-migrate/pull/343))
+- **zero_trust_dlp_predefined_profile**: `enabled_entries` is kept for expression, conditional and `dynamic "entry"` forms ([#344](https://github.com/cloudflare/tf-migrate/pull/344))
+- **zero_trust_device_profiles**, **spectrum_application**: expressions are no longer flattened to a literal taken from their first token. Device profiles with expression `precedence` had all collapsed to one value ([#341](https://github.com/cloudflare/tf-migrate/pull/341))
+- **zone_dnssec**: writes `status = "active"` when v4 had none, so migrated configs don't plan `status -> null` ([#342](https://github.com/cloudflare/tf-migrate/pull/342))
+- **page_rule**: expressions in `cache_ttl_by_status` `codes` / `ttl` are preserved ([#339](https://github.com/cloudflare/tf-migrate/pull/339))
+- String values are no longer cut off at `%` or `$`, for example percent-encoded URLs in `zero_trust_list` items ([#338](https://github.com/cloudflare/tf-migrate/pull/338))
+- **api_token**: `cloudflare_api_token_permission_groups` references are migrated to `cloudflare_api_token_permission_groups_list` instead of being replaced with map keys, and the data source is no longer deleted ([#314](https://github.com/cloudflare/tf-migrate/pull/314))
+- **zero_trust_access_policy**: both v4 names (`cloudflare_access_policy`, `cloudflare_zero_trust_access_policy`) with `application_id` follow the manual migration path. Preflight and the final summary list each affected policy under ACTION REQUIRED ([#335](https://github.com/cloudflare/tf-migrate/pull/335))
+- **zero_trust_gateway_policy**: warns to review policy precedence before the first v5 apply ([#333](https://github.com/cloudflare/tf-migrate/pull/333))
+- Provider version check recognizes OpenTofu lock files (`registry.opentofu.org/cloudflare/cloudflare`) ([#348](https://github.com/cloudflare/tf-migrate/pull/348))
+- `verify-drift` reports resource types instead of module names, detects resources in the root module and nested modules, and detects `must be replaced` changes and addresses with quoted keys ([#328](https://github.com/cloudflare/tf-migrate/pull/328), [#347](https://github.com/cloudflare/tf-migrate/pull/347))
+
+---
+
 ## [v1.1.1] - 2026-10-22
 
 ### Changed
