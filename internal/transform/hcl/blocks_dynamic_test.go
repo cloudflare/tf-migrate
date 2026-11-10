@@ -45,6 +45,7 @@ func TestRewriteDynamicIteratorRefs(t *testing.T) {
 		{"value becomes value var", "headers.value", "v"},
 		{"further traversal preserved", "headers.value.name", "v.name"},
 		{"unrelated reference untouched", "var.headers", "var.headers"},
+		{"attribute named like the iterator untouched", "var.headers.value", "var.headers.value"},
 		{"different iterator untouched", "rules.key", "rules.key"},
 		{"non key/value attribute untouched", "headers.other", "headers.other"},
 		{"inside interpolation", `"${headers.key}-suffix"`, `"${k}-suffix"`},

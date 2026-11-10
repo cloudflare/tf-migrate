@@ -308,9 +308,9 @@ func TestV4ToV5Transformation(t *testing.T) {
 
   rules = [for rules in local.rule_configs : {
     action      = rules.action
+    expression  = rules.expression
     description = rules.description
     enabled     = true
-    expression  = rules.expression
   }]
 }`,
 			},
@@ -343,8 +343,8 @@ func TestV4ToV5Transformation(t *testing.T) {
 
   rules = [for rules in var.rules : {
     action      = rules.action
-    description = rules.description
     expression  = rules.expression
+    description = rules.description
     action_parameters = {
       id = rules.id
     }
@@ -377,8 +377,8 @@ func TestV4ToV5Transformation(t *testing.T) {
 
   rules = [for rule in var.firewall_rules : {
     action      = rule.action
-    description = rule.desc
     expression  = rule.expression
+    description = rule.desc
   }]
 }`,
 			},
