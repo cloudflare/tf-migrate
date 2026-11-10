@@ -353,7 +353,7 @@ resource "cloudflare_ruleset" "dynamic" {
 **What Changed:**
 - `dynamic "rules"` block → `for` expression
 - `rules.value.field` → `rules.field` reference, and `rules.key` → a `rules_key` loop variable
-- The content of a dynamic rule gets every rewrite a static rule gets: `headers` maps, merged `query_string`, `{ all = true }` wildcards, and log field objects
+- The content of any dynamic block gets every rewrite a static block of the same type gets, so a dynamic rule, `dynamic "action_parameters"`, `dynamic "cache_key"` or `dynamic "query_string"` still gets `headers` maps, merged `query_string`, `{ all = true }` wildcards, and log field objects
 - Static `rules` blocks mixed with `dynamic "rules"` blocks become one `concat(...)` that keeps every rule in source order
 
 ---
@@ -409,7 +409,13 @@ resource "cloudflare_ruleset" "ratelimit" {
 }
 ```
 
-A dynamic block that has no `for_each` or `content`, sets `labels`, or sits in a rule alongside static blocks of the same type is left as written with a warning (see [DIAGNOSTICS.md](../../../DIAGNOSTICS.md#warning-dynamic-block-not-migrated-on-cloudflare_ruleset)).
+When a block type has more than one block, static or dynamic, every block is kept:
+
+- A list type joins them in source order with `concat(...)`, as for `rules`: two `dynamic "categories"` blocks become `categories = concat([for ...], [for ...])`.
+- A single-object type wraps the `concat(...)` in `one()`, so an either/or pair such as `dynamic "ratelimit" { for_each = var.strict ? [1] : [] ... }` and `dynamic "ratelimit" { for_each = var.strict ? [] : [1] ... }` becomes `ratelimit = one(concat([for ...], [for ...]))`. As in v4, it fails if both generate a block.
+- `headers` joins the map built from static blocks and each dynamic block's map with `merge(...)`.
+
+A dynamic block that has no `for_each` or `content`, sets `labels`, or sits where tf-migrate does not convert dynamic blocks is left as written with a warning (see [DIAGNOSTICS.md](../../../DIAGNOSTICS.md#warning-dynamic-block-not-migrated-on-cloudflare_ruleset)).
 
 ---
 
