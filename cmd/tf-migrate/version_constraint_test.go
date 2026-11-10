@@ -39,6 +39,27 @@ func TestUpdateProviderVersionConstraint(t *testing.T) {
 			shouldUpdate: true,
 		},
 		{
+			name: "replace version constraint with opentofu source address",
+			input: `terraform {
+  required_providers {
+    cloudflare = {
+      source  = "registry.opentofu.org/cloudflare/cloudflare"
+      version = "~> 4.0"
+    }
+  }
+}`,
+			targetVersion: "5.19.0",
+			expected: `terraform {
+  required_providers {
+    cloudflare = {
+      source  = "registry.opentofu.org/cloudflare/cloudflare"
+      version = "5.19.0"
+    }
+  }
+}`,
+			shouldUpdate: true,
+		},
+		{
 			name: "replace complex version constraint",
 			input: `terraform {
   required_providers {

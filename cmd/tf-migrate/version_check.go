@@ -90,12 +90,7 @@ func parseVersionFromLockFile(configDir string) (string, error) {
 			continue
 		}
 
-		// Check for registry.terraform.io/cloudflare/cloudflare
-		// or just cloudflare/cloudflare (older formats)
-		providerLabel := labels[0]
-		if providerLabel == "registry.terraform.io/cloudflare/cloudflare" ||
-			providerLabel == "cloudflare/cloudflare" {
-
+		if isCloudflareProviderAddress(labels[0]) {
 			versionAttr := block.Body().GetAttribute("version")
 			if versionAttr == nil {
 				continue
@@ -109,6 +104,19 @@ func parseVersionFromLockFile(configDir string) (string, error) {
 	}
 
 	return "", nil
+}
+
+// cloudflareProviderAddresses are the lock file labels for the Cloudflare
+// provider: Terraform records registry.terraform.io, OpenTofu records
+// registry.opentofu.org, and older lock files omit the hostname.
+var cloudflareProviderAddresses = map[string]bool{
+	"registry.terraform.io/cloudflare/cloudflare": true,
+	"registry.opentofu.org/cloudflare/cloudflare": true,
+	"cloudflare/cloudflare":                       true,
+}
+
+func isCloudflareProviderAddress(label string) bool {
+	return cloudflareProviderAddresses[strings.ToLower(label)]
 }
 
 // parseVersionFromRequiredProviders scans all .tf files for the required_providers
