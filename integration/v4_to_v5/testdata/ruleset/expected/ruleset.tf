@@ -428,3 +428,146 @@ resource "cloudflare_ruleset" "origin_with_sni" {
 
 # Note: DDoS L7 ruleset test removed - Cloudflare only allows one ddos_l7 ruleset per account
 # and it cannot be deleted once created. Testing DDoS rulesets requires manual setup.
+
+# Integration-only cases below: ruleset_e2e.tf holds the cases above for the
+# e2e run, so these are migrated and compared here but never applied.
+
+# Test Case 17: dynamic action_parameters with static and dynamic headers
+resource "cloudflare_ruleset" "cftftest_dynamic_action_parameters" {
+  zone_id = var.cloudflare_zone_id
+  name    = "${local.name_prefix}-dynamic-action-parameters"
+  kind    = "zone"
+  phase   = "http_response_headers_transform"
+
+  rules = [for rules in local.cftftest_header_rules : {
+    action     = "rewrite"
+    expression = rules.expression
+    action_parameters = one([for action_parameters in rules.extra_headers != null ? [rules.extra_headers] : [] : {
+      headers = merge(
+        {
+          "X-Powered-By" = {
+            operation = "remove"
+          }
+        },
+        { for k, v in action_parameters : k => {
+          operation = "set"
+          value     = v
+        } },
+      )
+    }])
+  }]
+}
+
+# Test Case 18: static and dynamic categories, either/or dynamic ratelimit
+resource "cloudflare_ruleset" "cftftest_dynamic_same_type" {
+  zone_id = var.cloudflare_zone_id
+  name    = "${local.name_prefix}-dynamic-same-type"
+  kind    = "zone"
+  phase   = "http_request_firewall_managed"
+
+  rules = [
+    {
+      action     = "execute"
+      expression = "true"
+      action_parameters = {
+        id = "efb7b8c949ac4650a09736fc376e9aee"
+        overrides = {
+          categories = concat(
+            [{
+              category = "drupal"
+              action   = "log"
+            }],
+            [for categories in ["wordpress"] : {
+              category = categories
+              action   = "block"
+            }],
+            [for categories in ["joomla"] : {
+              category = categories
+              action   = "log"
+            }],
+          )
+        }
+      }
+    }
+  ]
+}
+
+resource "cloudflare_ruleset" "cftftest_dynamic_ratelimit_either_or" {
+  zone_id = var.cloudflare_zone_id
+  name    = "${local.name_prefix}-dynamic-ratelimit"
+  kind    = "zone"
+  phase   = "http_ratelimit"
+
+  rules = [
+    {
+      action     = "block"
+      expression = "true"
+      ratelimit = one(concat(
+        [for ratelimit in local.cftftest_strict_ratelimit ? [1] : [] : {
+          characteristics     = ["ip.src", "cf.colo.id"]
+          period              = 10
+          requests_per_period = 10
+          mitigation_timeout  = 10
+        }],
+        [for ratelimit in local.cftftest_strict_ratelimit ? [] : [1] : {
+          characteristics     = ["ip.src", "cf.colo.id"]
+          period              = 60
+          requests_per_period = 100
+          mitigation_timeout  = 60
+        }],
+      ))
+    }
+  ]
+}
+
+# Test Case 19: dynamic cache_key and dynamic query_string with wildcards
+resource "cloudflare_ruleset" "cftftest_dynamic_cache_key" {
+  zone_id = var.cloudflare_zone_id
+  name    = "${local.name_prefix}-dynamic-cache-key"
+  kind    = "zone"
+  phase   = "http_request_cache_settings"
+
+
+  rules = [
+    {
+      action     = "set_cache_settings"
+      expression = "(http.host eq \"a.${var.cloudflare_domain}\")"
+      action_parameters = {
+        cache = true
+        cache_key = one([for cache_key in [1] : {
+          custom_key = {
+            query_string = {
+              exclude = {
+                all = true
+              }
+            }
+          }
+        }])
+      }
+    },
+    {
+      action     = "set_cache_settings"
+      expression = "(http.host eq \"b.${var.cloudflare_domain}\")"
+      action_parameters = {
+        cache = true
+        cache_key = {
+          custom_key = {
+            query_string = one([for query_string in [1] : {
+              include = { all = true }
+            }])
+          }
+        }
+      }
+    }
+  ]
+}
+
+locals {
+  cftftest_header_rules = [
+    {
+      expression    = "true"
+      extra_headers = { "X-Frame-Options" = "DENY" }
+    },
+  ]
+  cftftest_strict_ratelimit = true
+}
