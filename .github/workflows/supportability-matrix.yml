@@ -118,6 +118,8 @@ jobs:
             exclude: "byo_ip_prefix,ruleset"
           - version: "5.23.0"
             exclude: "byo_ip_prefix,ruleset,zero_trust_device_profiles,zero_trust_split_tunnel,zero_trust_device_managed_networks,zero_trust_local_fallback_domain"
+          - version: "5.29.0"
+            exclude: "byo_ip_prefix"
     steps:
       - name: Checkout tf-migrate
         uses: actions/checkout@v4
