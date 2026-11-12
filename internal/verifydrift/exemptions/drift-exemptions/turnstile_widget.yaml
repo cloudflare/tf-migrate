@@ -1,0 +1,23 @@
+# Drift Exemptions for turnstile_widget resource
+#
+# Newer v5 providers (seen at 5.29.0, not at 5.23.0) carry `page` and
+# `per_page` on cloudflare_turnstile_widget with schema defaults (1 and 25).
+# State upgraded from v4 has neither, so the first v5 plan adds them.
+#
+# Stabilizes after first apply.
+
+version: 1
+
+exemptions:
+  - name: "turnstile_widget_pagination_defaults"
+    description: "page/per_page schema defaults added to state on the first v5 plan after upgrade from v4. Resolves after terraform apply."
+    resource_types:
+      - "cloudflare_turnstile_widget"
+    patterns:
+      - '\+\s+page\s+=\s+1$'
+      - '\+\s+per_page\s+=\s+25$'
+    enabled: true
+
+settings:
+  apply_exemptions: true
+  verbose_exemptions: false
