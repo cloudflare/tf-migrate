@@ -17,24 +17,26 @@ see [Preserve Zero Trust settings](docs/zero-trust-settings.md) and the
 
 ### Supported Migration Paths
 
-Every target version below has been live-tested end-to-end against real Cloudflare infrastructure. **No version is 100% clean**, and critically, **your exact v4 source version changes the result** — `cloudflare_ruleset`'s state-upgrade bug is triggered by two fields (`asset_name`, `content_converter`) that newer v4 releases write to state and older v5 source schemas don't know how to parse. The table below splits by the two starting points that matter; "known issues" counts resources with a confirmed problem at that version, not a pass/fail verdict on the version as a whole.
+Every target version below has been live-tested end-to-end against real Cloudflare infrastructure. **v5.29.0 is the first version with no known issues**; every earlier version has at least one. Critically, **your exact v4 source version changes the result** — `cloudflare_ruleset`'s state-upgrade bug is triggered by two fields (`asset_name`, `content_converter`) that newer v4 releases write to state and older v5 source schemas don't know how to parse. The table below splits by the two starting points that matter; "known issues" counts resources with a confirmed problem at that version, not a pass/fail verdict on the version as a whole.
 
 | Source Version | Target Version | Known issues | Recommendation |
 |----------------|-----------------|:---:|---|
 | v4.52.5 – v4.52.7 | v5.19.1 | 2 resources | |
 | v4.52.5 – v4.52.7 | v5.20.0 | 4 resources | |
 | v4.52.5 – v4.52.7 | v5.21.1 | 4 resources | |
-| v4.52.5 – v4.52.7 | v5.22.0 | **1 resource** | ✓ **Recommended** — fewest known issues of any validated version |
+| v4.52.5 – v4.52.7 | v5.22.0 | 1 resource | Fewest known issues before v5.29.0 |
 | v4.52.5 – v4.52.7 | v5.23.0 | 4 resources | |
-| v4.52.5 – v4.52.7 | v5.24.0+ | — | Not yet validated by this project's test suite |
+| v4.52.5 – v4.52.7 | v5.24.0 – v5.28.1 | — | Not yet validated by this project's test suite |
+| v4.52.5 – v4.52.7 | v5.29.0 | **0 resources** | ✓ **Recommended** — no known issues |
 | v4.52.8 – v4.52.9 (current latest) | v5.19.1 | 3 resources | |
 | v4.52.8 – v4.52.9 (current latest) | v5.20.0 | 5 resources | |
 | v4.52.8 – v4.52.9 (current latest) | v5.21.1 | 5 resources | |
-| v4.52.8 – v4.52.9 (current latest) | v5.22.0 | **2 resources** | ✓ **Recommended** — fewest known issues of any validated version |
+| v4.52.8 – v4.52.9 (current latest) | v5.22.0 | 2 resources | Fewest known issues before v5.29.0 |
 | v4.52.8 – v4.52.9 (current latest) | v5.23.0 | 5 resources | |
-| v4.52.8 – v4.52.9 (current latest) | v5.24.0+ | — | Not yet validated by this project's test suite |
+| v4.52.8 – v4.52.9 (current latest) | v5.24.0 – v5.28.1 | — | Not yet validated by this project's test suite |
+| v4.52.8 – v4.52.9 (current latest) | v5.29.0 | **0 resources** | ✓ **Recommended** — no known issues |
 
-**Why two starting points?** `cloudflare_ruleset` migrates cleanly from v4.52.5–v4.52.7 on every target version above (confirmed by live-testing v4.52.5 → v5.19.1 directly), because those v4 releases never write the two problem fields to state in the first place. v4.52.8+ does write them, and the v5 source schema wasn't patched to accept either field until v5.22.0 (and even then, only for `asset_name` — see footnote 5 under [Resource Support by Provider Version](#resource-support-by-provider-version) for the exact mechanism).
+**Why two starting points?** `cloudflare_ruleset` migrates cleanly from v4.52.5–v4.52.7 on every target version above (confirmed by live-testing v4.52.5 → v5.19.1 directly), because those v4 releases never write the two problem fields to state in the first place. v4.52.8+ does write them, and the v5 source schema wasn't patched to accept either field until v5.22.0 (and even then, only for `asset_name`; v5.29.0 accepts both — see footnote 5 under [Resource Support by Provider Version](#resource-support-by-provider-version) for the exact mechanism).
 
 The [Resource Support by Provider Version](#resource-support-by-provider-version) grid below reflects testing from v4.52.8+ (the realistic default, since it's what `~> 4.52.7` style constraints and fresh installs resolve to). If you're specifically on v4.52.5–v4.52.7, read the section immediately below instead — the picture is meaningfully better.
 
@@ -49,8 +51,9 @@ The [Resource Support by Provider Version](#resource-support-by-provider-version
 | v5.21.1 | 4 | same two issues as v5.20.0 |
 | v5.22.0 | **1** | only `cloudflare_d1_database` — `api_token` and the two `load_balancer*` resources are fixed by this version |
 | v5.23.0 | 4 | `d1_database` is fixed, but 4 Zero Trust resources regress instead: `zero_trust_device_managed_networks`, `zero_trust_device_profiles`, `zero_trust_local_fallback_domain`, `zero_trust_split_tunnel` (not yet root-caused upstream) |
+| v5.29.0 | **0** | all four Zero Trust resources from v5.23.0 pass again |
 
-**Target v5.22.0.** It's the only version with just one known issue (`cloudflare_d1_database`), and tf-migrate ships a client-side workaround that makes v5.22.0 usable for `d1_database` anyway (see footnote 3 under [Resource Support by Provider Version](#resource-support-by-provider-version)). In practice, **every resource this project tests migrates cleanly from v4.52.5–v4.52.7 at v5.22.0 — including `cloudflare_ruleset`.**
+**Target v5.29.0.** It's the only validated version with no known issues, from either v4 starting point. If you can't move to v5.29.0, v5.22.0 is the next best: its one known issue (`cloudflare_d1_database`) has a tf-migrate client-side workaround (see footnote 3 under [Resource Support by Provider Version](#resource-support-by-provider-version)), so **every resource this project tests migrates cleanly from v4.52.5–v4.52.7 at v5.22.0 — including `cloudflare_ruleset`.**
 
 `cloudflare_byo_ip_prefix` is left out of the table above entirely rather than counted as a failure: it requires a real BGP-announced IP prefix, which no test environment has — it's N/A at every version, for every source version, unrelated to any of this.
 
@@ -186,106 +189,106 @@ Every resource above has been live-tested end-to-end (apply v4 config → migrat
 <details>
 <summary>Full per-version resource support grid (click to expand)</summary>
 
-| Product | Resource | v5.19.1 | v5.20.0 | v5.21.1 | v5.22.0 | v5.23.0 |
-|---|---|:---:|:---:|:---:|:---:|:---:|
-| **Accounts** | `cloudflare_account` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_account_member` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `data.cloudflare_account_roles` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `data.cloudflare_accounts` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Addressing** | `cloudflare_byo_ip_prefix` | N/A¹ | N/A¹ | N/A¹ | N/A¹ | N/A¹ |
-| | `cloudflare_regional_hostname` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_regional_tiered_cache` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **API Shield** | `cloudflare_api_shield` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_api_shield_operation` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **API Tokens** | `cloudflare_api_token` | ❌² | ❌² | ❌² | ✅ | ✅ |
-| **Argo** | `cloudflare_argo` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Bot Management** | `cloudflare_bot_management` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Cache** | `cloudflare_tiered_cache` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Certificate Packs** | `cloudflare_certificate_pack` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Custom Hostnames** | `cloudflare_custom_hostname` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_custom_hostname_fallback_origin` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Custom Pages** | `cloudflare_custom_pages` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Custom SSL** | `cloudflare_custom_ssl` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **D1** | `cloudflare_d1_database` | ❌³ | ❌³ | ❌³ | ❌³ | ✅ |
-| **DNS** | `cloudflare_record` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zone_dnssec` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Healthchecks** | `cloudflare_healthcheck` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Hyperdrive** | `cloudflare_hyperdrive_config` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **IP Access Rules** | `cloudflare_access_rule` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Leaked Credentials** | `cloudflare_leaked_credential_check` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_leaked_credential_check_rule` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Lists** | `cloudflare_list` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_list_item` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Load Balancers** | `cloudflare_load_balancer` | ✅ | ❌⁴ | ❌⁴ | ✅ | ✅ |
-| | `cloudflare_load_balancer_monitor` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_load_balancer_pool` | ✅ | ❌⁴ | ❌⁴ | ✅ | ✅ |
-| | `data.cloudflare_load_balancer_pools` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Logpush** | `cloudflare_logpull_retention` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_logpush_job` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_logpush_ownership_challenge` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Managed Transforms** | `cloudflare_managed_headers` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **mTLS** | `cloudflare_mtls_certificate` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Notifications** | `cloudflare_notification_policy` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_notification_policy_webhooks` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Observatory** | `cloudflare_observatory_scheduled_test` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Origin CA** | `cloudflare_origin_ca_certificate` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Origin Pulls** | `cloudflare_authenticated_origin_pulls` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_authenticated_origin_pulls_certificate` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Page Rules** | `cloudflare_page_rule` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Pages** | `cloudflare_pages_domain` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_pages_project` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Queues** | `cloudflare_queue` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **R2** | `cloudflare_r2_bucket` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Rulesets** | `cloudflare_ruleset` | ❌⁵ | ❌⁵ | ❌⁵ | ❌⁵ | ❌⁵ |
-| | `data.cloudflare_rulesets` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Snippets** | `cloudflare_snippet` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_snippet_rules` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Spectrum** | `cloudflare_spectrum_application` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Turnstile** | `cloudflare_turnstile_widget` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **URL Normalization** | `cloudflare_url_normalization_settings` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Workers** | `cloudflare_workers_script` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_workers_route` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_workers_custom_domain` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_workers_kv` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_workers_kv_namespace` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_workers_for_platforms_dispatch_namespace` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_workers_secret` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Zero Trust** | `cloudflare_zero_trust_access_application` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_access_group` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_access_identity_provider` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_access_mtls_certificate` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_access_mtls_hostname_settings` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_access_policy` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_access_service_token` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_organization` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_device_managed_networks` | ✅ | ✅ | ✅ | ✅ | ❌⁶ |
-| | `cloudflare_zero_trust_device_posture_integration` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_device_posture_rule` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_device_profiles` | ✅ | ✅ | ✅ | ✅ | ❌⁶ |
-| | `cloudflare_zero_trust_dex_test` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_dlp_custom_profile` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_dlp_predefined_profile` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_gateway_certificate` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_gateway_policy` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_gateway_settings` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_list` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_local_fallback_domain` | ✅ | ✅ | ✅ | ✅ | ❌⁶ |
-| | `cloudflare_zero_trust_split_tunnel` | ✅ | ✅ | ✅ | ✅ | ❌⁶ |
-| | `cloudflare_zero_trust_tunnel_cloudflared` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_tunnel_cloudflared_config` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_tunnel_cloudflared_route` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zero_trust_tunnel_cloudflared_virtual_network` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Zones** | `cloudflare_zone` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `cloudflare_zone_setting` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `data.cloudflare_zone` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| | `data.cloudflare_zones` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Product | Resource | v5.19.1 | v5.20.0 | v5.21.1 | v5.22.0 | v5.23.0 | v5.29.0 |
+|---|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Accounts** | `cloudflare_account` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_account_member` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `data.cloudflare_account_roles` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `data.cloudflare_accounts` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Addressing** | `cloudflare_byo_ip_prefix` | N/A¹ | N/A¹ | N/A¹ | N/A¹ | N/A¹ | N/A¹ |
+| | `cloudflare_regional_hostname` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_regional_tiered_cache` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **API Shield** | `cloudflare_api_shield` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_api_shield_operation` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **API Tokens** | `cloudflare_api_token` | ❌² | ❌² | ❌² | ✅ | ✅ | ✅ |
+| **Argo** | `cloudflare_argo` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Bot Management** | `cloudflare_bot_management` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Cache** | `cloudflare_tiered_cache` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Certificate Packs** | `cloudflare_certificate_pack` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Custom Hostnames** | `cloudflare_custom_hostname` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_custom_hostname_fallback_origin` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Custom Pages** | `cloudflare_custom_pages` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Custom SSL** | `cloudflare_custom_ssl` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **D1** | `cloudflare_d1_database` | ❌³ | ❌³ | ❌³ | ❌³ | ✅ | ✅ |
+| **DNS** | `cloudflare_record` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zone_dnssec` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Healthchecks** | `cloudflare_healthcheck` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Hyperdrive** | `cloudflare_hyperdrive_config` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **IP Access Rules** | `cloudflare_access_rule` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Leaked Credentials** | `cloudflare_leaked_credential_check` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_leaked_credential_check_rule` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Lists** | `cloudflare_list` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_list_item` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Load Balancers** | `cloudflare_load_balancer` | ✅ | ❌⁴ | ❌⁴ | ✅ | ✅ | ✅ |
+| | `cloudflare_load_balancer_monitor` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_load_balancer_pool` | ✅ | ❌⁴ | ❌⁴ | ✅ | ✅ | ✅ |
+| | `data.cloudflare_load_balancer_pools` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Logpush** | `cloudflare_logpull_retention` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_logpush_job` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_logpush_ownership_challenge` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Managed Transforms** | `cloudflare_managed_headers` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **mTLS** | `cloudflare_mtls_certificate` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Notifications** | `cloudflare_notification_policy` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_notification_policy_webhooks` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Observatory** | `cloudflare_observatory_scheduled_test` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Origin CA** | `cloudflare_origin_ca_certificate` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Origin Pulls** | `cloudflare_authenticated_origin_pulls` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_authenticated_origin_pulls_certificate` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Page Rules** | `cloudflare_page_rule` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Pages** | `cloudflare_pages_domain` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_pages_project` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Queues** | `cloudflare_queue` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **R2** | `cloudflare_r2_bucket` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Rulesets** | `cloudflare_ruleset` | ❌⁵ | ❌⁵ | ❌⁵ | ❌⁵ | ❌⁵ | ✅ |
+| | `data.cloudflare_rulesets` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Snippets** | `cloudflare_snippet` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_snippet_rules` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Spectrum** | `cloudflare_spectrum_application` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Turnstile** | `cloudflare_turnstile_widget` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **URL Normalization** | `cloudflare_url_normalization_settings` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Workers** | `cloudflare_workers_script` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_workers_route` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_workers_custom_domain` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_workers_kv` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_workers_kv_namespace` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_workers_for_platforms_dispatch_namespace` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_workers_secret` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Zero Trust** | `cloudflare_zero_trust_access_application` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_access_group` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_access_identity_provider` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_access_mtls_certificate` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_access_mtls_hostname_settings` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_access_policy` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_access_service_token` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_organization` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_device_managed_networks` | ✅ | ✅ | ✅ | ✅ | ❌⁶ | ✅ |
+| | `cloudflare_zero_trust_device_posture_integration` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_device_posture_rule` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_device_profiles` | ✅ | ✅ | ✅ | ✅ | ❌⁶ | ✅ |
+| | `cloudflare_zero_trust_dex_test` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_dlp_custom_profile` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_dlp_predefined_profile` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_gateway_certificate` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_gateway_policy` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_gateway_settings` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_list` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_local_fallback_domain` | ✅ | ✅ | ✅ | ✅ | ❌⁶ | ✅ |
+| | `cloudflare_zero_trust_split_tunnel` | ✅ | ✅ | ✅ | ✅ | ❌⁶ | ✅ |
+| | `cloudflare_zero_trust_tunnel_cloudflared` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_tunnel_cloudflared_config` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_tunnel_cloudflared_route` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zero_trust_tunnel_cloudflared_virtual_network` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Zones** | `cloudflare_zone` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `cloudflare_zone_setting` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `data.cloudflare_zone` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| | `data.cloudflare_zones` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 1. Requires a real BGP-announced IP prefix registered with Cloudflare; not something any test environment has access to — excluded from live testing entirely, not version-related. Unlike the other resources on this list, this isn't about missing secrets/config — it needs real infrastructure procurement.
 2. `full_example`'s `policies` values could swap on apply (`Provider produced inconsistent result after apply`); fixed v5.22.0.
 3. No v4→v5 state upgrader existed until v5.22.0 (tf-migrate ships a client-side workaround making v5.22.0 usable); provider's own fix landed v5.23.0.
 4. `flatten_cname` struct/object mismatch — regression introduced v5.20.0, fixed v5.22.0.
-5. State upgrade fails outright for **any ruleset with an `action_parameters` block** (used by common rule types like URL rewrites, cache settings, and headers) — not just rulesets that explicitly configure `asset_name`/`content_converter`. Terraform always writes optional attributes to state, null or not, and v4 started writing these two keys in its last two releases: `asset_name` in **v4.52.8** and `content_converter` in **v4.52.9** (the current latest v4 release). The v5 source schema wasn't patched to accept `asset_name` until v5.22.0, and still doesn't accept `content_converter` as of v5.23.0 — so this fails on every released v5 through v5.27.0 **if your v4 state contains either field**. **If you're on v4.52.5–v4.52.7, your state never contains these keys, so this bug cannot occur for you at all** — see [Migrating from v4.52.5 – v4.52.7 specifically](#migrating-from-v4525--v4527-specifically) above for the complete picture, empirically confirmed. No config-level workaround once it does apply. See the [Cloudflare Provider v5 Upgrade Guide](https://github.com/cloudflare/terraform-provider-cloudflare/blob/main/docs/guides/version-5-upgrade.md#cloudflare_ruleset) for details.
-6. `service_mode_v2` schema gained new fields at v5.23.0; upgrading state written by earlier providers fails. Not yet root-caused upstream.
+5. State upgrade fails outright for **any ruleset with an `action_parameters` block** (used by common rule types like URL rewrites, cache settings, and headers) — not just rulesets that explicitly configure `asset_name`/`content_converter`. Terraform always writes optional attributes to state, null or not, and v4 started writing these two keys in its last two releases: `asset_name` in **v4.52.8** and `content_converter` in **v4.52.9** (the current latest v4 release). The v5 source schema wasn't patched to accept `asset_name` until v5.22.0, and still doesn't accept `content_converter` as of v5.23.0 — so this fails on every released v5 through v5.27.0 **if your v4 state contains either field**. v5.29.0 accepts both fields and passes. **If you're on v4.52.5–v4.52.7, your state never contains these keys, so this bug cannot occur for you at all** — see [Migrating from v4.52.5 – v4.52.7 specifically](#migrating-from-v4525--v4527-specifically) above for the complete picture, empirically confirmed. No config-level workaround once it does apply. See the [Cloudflare Provider v5 Upgrade Guide](https://github.com/cloudflare/terraform-provider-cloudflare/blob/main/docs/guides/version-5-upgrade.md#cloudflare_ruleset) for details.
+6. `service_mode_v2` schema gained new fields at v5.23.0; upgrading state written by earlier providers fails. Not yet root-caused upstream. Passes at v5.29.0.
 
 </details>
 
