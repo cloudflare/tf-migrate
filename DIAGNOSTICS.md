@@ -12,6 +12,28 @@ or supported permission-group datasource lookups. List elements are wrapped as
 Unsupported object comprehensions are preserved unchanged. Review the named
 file and ensure every `id` evaluates to a permission group ID.
 
+## Manual action required: permission_groups looks up a permission group by name only
+
+**Severity:** Warning
+
+**Resource:** `cloudflare_api_token`
+
+The deprecated v4 `.permissions[...]` map matched by name alone. Seven names
+exist at both account and zone scope (`Logs Read`, `Logs Write`, `Access: Apps
+and Policies Read`/`Write`/`Revoke`, `Disable ESC Read`/`Write`), so a name-only
+`one([...])` matches two groups and fails at plan time.
+
+tf-migrate normally infers the scope from the policy's `resources` map. This
+warning means it could not: the keys mix scopes, the map comes from a variable,
+or a key is interpolated. The lookup was left name-only rather than guessed.
+Add the scope filter to the generated expression, for example
+`&& contains(pg.scopes, "com.cloudflare.api.account")` or
+`&& contains(pg.scopes, "com.cloudflare.api.account.zone")`. The warning names
+the file.
+
+See the [API token migration guide](internal/resources/api_token/README.md#permission-group-data-source-references)
+for the scope table.
+
 ## Unknown attribute reference: data.cloudflare_api_token_permission_groups_list
 
 **Severity:** Warning
