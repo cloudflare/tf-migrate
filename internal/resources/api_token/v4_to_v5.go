@@ -102,6 +102,54 @@ var permissionGroupScopes = map[string]string{
 	"r2":          "com.cloudflare.edge.r2.bucket",
 }
 
+// policyResourceScope infers the permission group scope from the v4 policy's
+// resources map. The API only accepts permission groups whose scope matches
+// the resources they are granted on, so when every key names the same kind of
+// resource, a name-only .permissions[...] lookup can be narrowed to that scope.
+// Returns "" when there is no resources map, a key is not a string literal, or
+// the keys disagree.
+func policyResourceScope(body *hclwrite.Body) string {
+	attr := body.GetAttribute("resources")
+	if attr == nil {
+		return ""
+	}
+	src := attr.Expr().BuildTokens(nil).Bytes()
+	expr, diags := hclsyntax.ParseExpression(src, "", hcl.InitialPos)
+	if diags.HasErrors() {
+		return ""
+	}
+	object, ok := expr.(*hclsyntax.ObjectConsExpr)
+	if !ok || len(object.Items) == 0 {
+		return ""
+	}
+	scope := ""
+	for _, item := range object.Items {
+		key, diags := item.KeyExpr.Value(nil)
+		if diags.HasErrors() || !key.IsKnown() || key.IsNull() || key.Type() != cty.String {
+			return ""
+		}
+		keyScope := resourceKeyScope(key.AsString())
+		if keyScope == "" || (scope != "" && keyScope != scope) {
+			return ""
+		}
+		scope = keyScope
+	}
+	return scope
+}
+
+// resourceKeyScope maps a v4 resources key (e.g. "com.cloudflare.api.account.zone.*")
+// to the permission group scope it requires. Zone is checked before account
+// because zone keys share the account prefix.
+func resourceKeyScope(key string) string {
+	for _, category := range []string{"zone", "account", "user", "r2"} {
+		scope := permissionGroupScopes[category]
+		if key == scope || strings.HasPrefix(key, scope+".") {
+			return scope
+		}
+	}
+	return ""
+}
+
 // Parse the whole expression before inspecting elements: quoted map keys are
 // not IDs, and finding one literal must never discard the remaining elements.
 func (m *V4ToV5Migrator) transformPermissionGroups(ctx *transform.Context, body *hclwrite.Body) {
@@ -115,8 +163,10 @@ func (m *V4ToV5Migrator) transformPermissionGroups(ctx *transform.Context, body 
 		ctx.Diagnostics = append(ctx.Diagnostics, diags...)
 		return
 	}
+	defaultScope := policyResourceScope(body)
 	var result string
 	needsReview := false
+	nameOnly := false
 	switch expr := expr.(type) {
 	case *hclsyntax.TupleConsExpr:
 		if len(expr.Exprs) == 0 {
@@ -125,10 +175,11 @@ func (m *V4ToV5Migrator) transformPermissionGroups(ctx *transform.Context, body 
 		parts := make([]string, 0, len(expr.Exprs))
 		allLiteral := true
 		for _, element := range expr.Exprs {
-			part, literal, review := permissionGroupObject(element, src)
+			part, literal, review, unscoped := permissionGroupObject(element, src, defaultScope)
 			parts = append(parts, part)
 			allLiteral = allLiteral && literal
 			needsReview = needsReview || review
+			nameOnly = nameOnly || unscoped
 		}
 		if allLiteral {
 			sort.Strings(parts)
@@ -155,10 +206,11 @@ func (m *V4ToV5Migrator) transformPermissionGroups(ctx *transform.Context, body 
 			needsReview = true
 			break
 		}
-		part, _, review := permissionGroupObject(expr.ValExpr, src)
+		part, _, review, unscoped := permissionGroupObject(expr.ValExpr, src, defaultScope)
 		r := expr.ValExpr.Range()
 		result = string(src[:r.Start.Byte]) + part + string(src[r.End.Byte:])
 		needsReview = review
+		nameOnly = unscoped
 	default:
 		// A variable or function may supply the entire v4 collection. Keep
 		// the collection expression intact and wrap its IDs at evaluation time.
@@ -180,45 +232,56 @@ func (m *V4ToV5Migrator) transformPermissionGroups(ctx *transform.Context, body 
 			Detail:   fmt.Sprintf("In %s: permission_groups expressions were preserved. Verify that each id evaluates to a permission group ID. Replace remaining cloudflare_api_token_permission_groups map lookups with name and scope lookups against cloudflare_api_token_permission_groups_list.result.", ctx.Filename),
 		})
 	}
+	if nameOnly {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  "Manual action required: permission_groups looks up a permission group by name only",
+			Detail:   fmt.Sprintf("In %s: a cloudflare_api_token_permission_groups .permissions[...] lookup was migrated to a name-only one([...]) lookup, because the policy's resources don't identify a single scope. Some names exist at both account and zone scope (for example \"Logs Write\"), and one() fails at plan time for those. Add && contains(pg.scopes, \"com.cloudflare.api.account\") or && contains(pg.scopes, \"com.cloudflare.api.account.zone\") to the filter.", ctx.Filename),
+		})
+	}
 }
 
-// Returns the object expression, whether it is a literal ID, and whether it
-// needs manual review. Already-object values must not be wrapped a second time.
-func permissionGroupObject(expr hclsyntax.Expression, src []byte) (string, bool, bool) {
+// Returns the object expression, whether it is a literal ID, whether it needs
+// manual review, and whether it is a name-only lookup that may match more than
+// one permission group. Already-object values must not be wrapped a second time.
+func permissionGroupObject(expr hclsyntax.Expression, src []byte, defaultScope string) (string, bool, bool, bool) {
 	if parens, ok := expr.(*hclsyntax.ParenthesesExpr); ok {
-		return permissionGroupObject(parens.Expression, src)
+		return permissionGroupObject(parens.Expression, src, defaultScope)
 	}
 	if object, ok := expr.(*hclsyntax.ObjectConsExpr); ok {
 		value, diags := object.Value(nil)
 		if !diags.HasErrors() && value.IsWhollyKnown() && value.Type().IsObjectType() && value.Type().HasAttribute("id") && len(value.Type().AttributeTypes()) == 1 {
 			id := value.GetAttr("id")
 			if !id.IsNull() && id.Type() == cty.String {
-				return "{ id = " + string(hclwrite.TokensForValue(id).Bytes()) + " }", true, false
+				return "{ id = " + string(hclwrite.TokensForValue(id).Bytes()) + " }", true, false, false
 			}
 		}
-		return string(expr.Range().SliceBytes(src)), false, true
+		return string(expr.Range().SliceBytes(src)), false, true, false
 	}
 	if value, diags := expr.Value(nil); !diags.HasErrors() && value.IsKnown() && !value.IsNull() && value.Type() == cty.String {
-		return "{ id = " + string(hclwrite.TokensForValue(value).Bytes()) + " }", true, false
+		return "{ id = " + string(hclwrite.TokensForValue(value).Bytes()) + " }", true, false, false
 	}
-	if lookup, ok := permissionGroupLookup(expr, src); ok {
-		return "{ id = " + lookup + " }", false, false
+	if lookup, unscoped, ok := permissionGroupLookup(expr, src, defaultScope); ok {
+		return "{ id = " + lookup + " }", false, false, unscoped
 	}
-	return "{ id = (" + string(expr.Range().SliceBytes(src)) + ") }", false, true
+	return "{ id = (" + string(expr.Range().SliceBytes(src)) + ") }", false, true, false
 }
 
 // Match data.<old type>.<label>[optional instance].<category>[<key>].
 // Preserve count/for_each instance selectors while changing the output shape.
-func permissionGroupLookup(expr hclsyntax.Expression, src []byte) (string, bool) {
+// The deprecated name-only .permissions map takes defaultScope (inferred from
+// the policy's resources). Returns the lookup, whether it is name-only (no
+// scope applies), and whether expr matched at all.
+func permissionGroupLookup(expr hclsyntax.Expression, src []byte, defaultScope string) (string, bool, bool) {
 	path, ok := tfhcl.TraversalPath(expr, src)
 	if !ok || (len(path) != 5 && len(path) != 6) || path[0].Name != "data" || path[1].Name != "cloudflare_api_token_permission_groups" || path[2].Name == "" {
-		return "", false
+		return "", false, false
 	}
 	instance := path[2].Name
 	category := 3
 	if len(path) == 6 {
 		if path[3].Index == "" {
-			return "", false
+			return "", false, false
 		}
 		instance += "[" + path[3].Index + "]"
 		category++
@@ -226,7 +289,12 @@ func permissionGroupLookup(expr hclsyntax.Expression, src []byte) (string, bool)
 	scope, ok := permissionGroupScopes[path[category].Name]
 	key := path[category+1].Index
 	if !ok || key == "" {
-		return "", false
+		return "", false, false
+	}
+	unscoped := false
+	if scope == "" {
+		scope = defaultScope
+		unscoped = scope == ""
 	}
 	// The key may itself refer to a for variable named pg. Choose a lookup
 	// iterator that cannot shadow any variable used by the key expression.
@@ -238,7 +306,7 @@ func permissionGroupLookup(expr hclsyntax.Expression, src []byte) (string, bool)
 	if scope != "" {
 		filter += fmt.Sprintf(" && contains(%s.scopes, %q)", iterator, scope)
 	}
-	return fmt.Sprintf("one([for %s in data.cloudflare_api_token_permission_groups_list.%s.result : %s.id if %s])", iterator, instance, iterator, filter), true
+	return fmt.Sprintf("one([for %s in data.cloudflare_api_token_permission_groups_list.%s.result : %s.id if %s])", iterator, instance, iterator, filter), unscoped, true
 }
 
 // transformResources wraps the resources map with jsonencode()
