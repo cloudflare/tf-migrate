@@ -314,6 +314,9 @@ resource "cloudflare_zone_setting" "with_ignore_changes_server_side_exclude" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "server_side_exclude"
   value      = "on"
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 
 import {

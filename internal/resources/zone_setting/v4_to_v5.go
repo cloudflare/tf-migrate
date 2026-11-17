@@ -123,6 +123,19 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	}
 	sort.Strings(attrNames)
 
+	generatedSettings := map[string]bool{}
+	for _, attrName := range attrNames {
+		if !isDeprecatedSetting(attrName) {
+			generatedSettings[attrName] = true
+		}
+	}
+	for _, nestedBlock := range settingsBlock.Body().Blocks() {
+		if !isDeprecatedSetting(nestedBlock.Type()) {
+			generatedSettings[nestedBlock.Type()] = true
+		}
+	}
+	m.resolveIgnoreChanges(ctx, baseName, metaArgs, generatedSettings)
+
 	for _, attrName := range attrNames {
 		attr := attrs[attrName]
 		// Skip deprecated settings
@@ -139,7 +152,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 		// Create new cloudflare_zone_setting resource
 		newResource := m.createZoneSettingResource(resourceName, settingID, zoneIDAttr, attr)
-		m.copyMetaArguments(newResource, metaArgs)
+		m.copyMetaArguments(newResource, metaArgs, attrName)
 		newBlocks = append(newBlocks, newResource)
 
 		// Generate import block: id = "${zone_id}/{setting_id}"
@@ -174,7 +187,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		} else {
 			newResource = m.transformNestedBlock(resourceName, settingID, zoneIDAttr, nestedBlock)
 		}
-		m.copyMetaArguments(newResource, metaArgs)
+		m.copyMetaArguments(newResource, metaArgs, settingID)
 		newBlocks = append(newBlocks, newResource)
 
 		if metaArgs == nil || metaArgs.count == nil {
@@ -461,6 +474,127 @@ type metaArguments struct {
 	dependsOn *hclwrite.Attribute
 	provider  *hclwrite.Attribute
 	timeouts  *hclwrite.Block
+
+	ignoreChanges ignoreChangesPlan
+}
+
+// ignoreChangesPlan is the v4 lifecycle.ignore_changes list translated to the
+// generated per-setting resources, where the only ignorable field is value.
+type ignoreChangesPlan struct {
+	all         bool            // ignore_changes = all
+	allSettings bool            // ignore_changes = [settings] or [settings[0]]
+	settings    map[string]bool // v4 setting names whose value is ignored
+}
+
+// resolveIgnoreChanges maps the v4 ignore_changes entries onto the generated
+// resources and reports, as warnings, entries that had to be widened to
+// [value] or could not be mapped at all.
+func (m *V4ToV5Migrator) resolveIgnoreChanges(ctx *transform.Context, baseName string, meta *metaArguments, generated map[string]bool) {
+	if meta == nil || meta.lifecycle == nil {
+		return
+	}
+	attr := meta.lifecycle.Body().GetAttribute("ignore_changes")
+	if attr == nil {
+		return
+	}
+	meta.ignoreChanges.settings = map[string]bool{}
+
+	src := strings.TrimSpace(string(attr.Expr().BuildTokens(nil).Bytes()))
+	resourceAddr := "cloudflare_zone_settings_override." + baseName
+	var widened, unmapped []string
+
+	expr, diags := hclsyntax.ParseExpression([]byte(src), "ignore_changes", hcl.InitialPos)
+	if diags.HasErrors() {
+		unmapped = append(unmapped, src)
+	} else if trav, d := hcl.AbsTraversalForExpr(expr); !d.HasErrors() && len(trav) == 1 && trav.RootName() == "all" {
+		meta.ignoreChanges.all = true
+	} else if tuple, ok := expr.(*hclsyntax.TupleConsExpr); ok {
+		for _, item := range tuple.Exprs {
+			entry := strings.TrimSpace(string(src[item.Range().Start.Byte:item.Range().End.Byte]))
+			setting, deep, ok := settingFromIgnorePath(item)
+			switch {
+			case !ok:
+				unmapped = append(unmapped, entry)
+			case setting == "":
+				meta.ignoreChanges.allSettings = true
+			case !generated[setting]:
+				unmapped = append(unmapped, entry)
+			default:
+				meta.ignoreChanges.settings[setting] = true
+				if deep {
+					widened = append(widened, fmt.Sprintf("%s -> cloudflare_zone_setting.%s_%s: [value]", entry, baseName, setting))
+				}
+			}
+		}
+	} else {
+		unmapped = append(unmapped, src)
+	}
+
+	if len(widened) > 0 {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("ignore_changes widened to [value] for %s", resourceAddr),
+			Detail: fmt.Sprintf(
+				"In v5 each setting is a separate cloudflare_zone_setting resource whose "+
+					"whole configuration is a single value attribute, so nested ignore_changes "+
+					"paths were widened to ignore the entire value:\n\n  %s\n\n"+
+					"Changes to the other fields of these settings are now ignored as well.",
+				strings.Join(widened, "\n  ")),
+		})
+	}
+	if len(unmapped) > 0 {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  fmt.Sprintf("ignore_changes entries not migrated for %s", resourceAddr),
+			Detail: fmt.Sprintf(
+				"The following ignore_changes entries do not correspond to any generated "+
+					"cloudflare_zone_setting resource and were dropped:\n\n  %s\n\n"+
+					"If you still need them, add a lifecycle { ignore_changes = [...] } block "+
+					"by hand to the relevant cloudflare_zone_setting.%s_<setting> resources.",
+				strings.Join(unmapped, "\n  "), baseName),
+		})
+	}
+}
+
+// settingFromIgnorePath extracts the v4 setting name from an ignore_changes
+// entry such as settings[0].polish, settings.0.polish or a deeper path like
+// settings[0].security_header[0].max_age (deep = true). An empty setting with
+// ok = true means the entry covers the whole settings block.
+func settingFromIgnorePath(expr hclsyntax.Expression) (setting string, deep bool, ok bool) {
+	var trav hcl.Traversal
+	if tmpl, isTmpl := expr.(*hclsyntax.TemplateExpr); isTmpl && tmpl.IsStringLiteral() {
+		// Legacy quoted form: ignore_changes = ["settings.0.polish"]
+		v, _ := tmpl.Value(nil)
+		t, d := hclsyntax.ParseTraversalAbs([]byte(v.AsString()), "", hcl.InitialPos)
+		if d.HasErrors() {
+			return "", false, false
+		}
+		trav = t
+	} else {
+		t, d := hcl.AbsTraversalForExpr(expr)
+		if d.HasErrors() {
+			return "", false, false
+		}
+		trav = t
+	}
+
+	if trav.RootName() != "settings" {
+		return "", false, false
+	}
+	rest := trav[1:]
+	if len(rest) > 0 {
+		if _, isIndex := rest[0].(hcl.TraverseIndex); isIndex {
+			rest = rest[1:]
+		}
+	}
+	if len(rest) == 0 {
+		return "", false, true
+	}
+	name, isAttr := rest[0].(hcl.TraverseAttr)
+	if !isAttr {
+		return "", false, false
+	}
+	return name.Name, len(rest) > 1, true
 }
 
 // extractMetaArguments extracts meta-arguments from the original resource block
@@ -498,7 +632,7 @@ func (m *V4ToV5Migrator) extractMetaArguments(block *hclwrite.Block) *metaArgume
 // copyMetaArguments copies meta-arguments to a new resource block
 // For zone_setting, we need special handling of lifecycle blocks because
 // ignore_changes paths need to be transformed from v4 to v5 structure
-func (m *V4ToV5Migrator) copyMetaArguments(newBlock *hclwrite.Block, meta *metaArguments) {
+func (m *V4ToV5Migrator) copyMetaArguments(newBlock *hclwrite.Block, meta *metaArguments, v4SettingName string) {
 	if meta == nil {
 		return
 	}
@@ -529,13 +663,9 @@ func (m *V4ToV5Migrator) copyMetaArguments(newBlock *hclwrite.Block, meta *metaA
 		body.SetAttributeRaw("provider", tokens)
 	}
 
-	// Copy the lifecycle block, dropping only ignore_changes.
-	//
-	// v4 ignore_changes entries point at settings[0].xxx paths that do not
-	// exist in v5, where each setting becomes its own resource with a single
-	// value attribute, so those entries cannot be carried over. Everything else
-	// in the block still applies: discarding the whole block would silently
-	// remove prevent_destroy and create_before_destroy along with it.
+	// Copy the lifecycle block. The v4 ignore_changes list is not copied
+	// verbatim: its settings[0].xxx paths do not exist in v5, so it is
+	// replaced by the per-setting mapping computed in resolveIgnoreChanges.
 	if meta.lifecycle != nil {
 		var names []string
 		for name := range meta.lifecycle.Body().Attributes() {
@@ -543,12 +673,26 @@ func (m *V4ToV5Migrator) copyMetaArguments(newBlock *hclwrite.Block, meta *metaA
 				names = append(names, name)
 			}
 		}
+		var ignoreTokens hclwrite.Tokens
+		switch {
+		case meta.ignoreChanges.all:
+			ignoreTokens = hclwrite.TokensForIdentifier("all")
+		case meta.ignoreChanges.allSettings || meta.ignoreChanges.settings[v4SettingName]:
+			ignoreTokens = hclwrite.TokensForTuple([]hclwrite.Tokens{hclwrite.TokensForIdentifier("value")})
+		}
+		if ignoreTokens != nil {
+			names = append(names, "ignore_changes")
+		}
 		// Sorted so the generated output is deterministic.
 		sort.Strings(names)
 
 		if len(names) > 0 {
 			lifecycleBlock := body.AppendNewBlock("lifecycle", nil)
 			for _, name := range names {
+				if name == "ignore_changes" {
+					lifecycleBlock.Body().SetAttributeRaw(name, ignoreTokens)
+					continue
+				}
 				attr := meta.lifecycle.Body().GetAttribute(name)
 				lifecycleBlock.Body().SetAttributeRaw(name, attr.Expr().BuildTokens(nil))
 			}

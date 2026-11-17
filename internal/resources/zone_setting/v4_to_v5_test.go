@@ -1,6 +1,7 @@
 package zone_setting
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -716,26 +717,12 @@ func TestTransformPhaseOne(t *testing.T) {
 	}
 }
 
-// v4 ignore_changes paths cannot survive the split into one resource per
-// setting, but the rest of the lifecycle block still applies. Dropping the
-// whole block would quietly remove prevent_destroy, turning a protected
-// resource into a destroyable one with no warning.
-func TestLifecyclePreservedAlongsideIgnoreChanges(t *testing.T) {
+// runTransformConfig transforms the single resource in input and returns the
+// formatted generated blocks keyed by resource name, the full output and the
+// diagnostics.
+func runTransformConfig(t *testing.T, input string) (map[string]string, string, hcl.Diagnostics) {
+	t.Helper()
 	migrator := &V4ToV5Migrator{}
-
-	input := `resource "cloudflare_zone_settings_override" "example" {
-  zone_id = "0da42c8d2132a9ddaf714f9e7c920711"
-
-  settings {
-    always_use_https = "on"
-  }
-
-  lifecycle {
-    prevent_destroy       = true
-    create_before_destroy = true
-    ignore_changes        = [settings[0].always_use_https]
-  }
-}`
 
 	file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), "parse error: %v", diags)
@@ -762,15 +749,180 @@ func TestLifecyclePreservedAlongsideIgnoreChanges(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
+	resources := map[string]string{}
 	var out string
 	for _, b := range result.Blocks {
-		out += string(hclwrite.Format(b.BuildTokens(nil).Bytes()))
+		text := string(hclwrite.Format(b.BuildTokens(nil).Bytes()))
+		out += text
+		if b.Type() == "resource" {
+			resources[b.Labels()[1]] = text
+		}
 	}
+	return resources, out, ctx.Diagnostics
+}
+
+// The rest of the lifecycle block must survive the split into one resource
+// per setting. Dropping the whole block would quietly remove prevent_destroy,
+// turning a protected resource into a destroyable one with no warning.
+func TestLifecyclePreservedAlongsideIgnoreChanges(t *testing.T) {
+	input := `resource "cloudflare_zone_settings_override" "example" {
+  zone_id = "0da42c8d2132a9ddaf714f9e7c920711"
+
+  settings {
+    always_use_https = "on"
+  }
+
+  lifecycle {
+    prevent_destroy       = true
+    create_before_destroy = true
+    ignore_changes        = [settings[0].always_use_https]
+  }
+}`
+
+	resources, out, diags := runTransformConfig(t, input)
 
 	assert.Contains(t, out, "prevent_destroy",
 		"prevent_destroy must survive the migration, got:\n%s", out)
 	assert.Contains(t, out, "create_before_destroy",
 		"create_before_destroy must survive the migration, got:\n%s", out)
-	assert.NotContains(t, out, "ignore_changes",
-		"v4 settings[0] paths do not exist in v5 and must be dropped, got:\n%s", out)
+	assert.Equal(t, `resource "cloudflare_zone_setting" "example_always_use_https" {
+  zone_id    = "0da42c8d2132a9ddaf714f9e7c920711"
+  setting_id = "always_use_https"
+  value      = "on"
+  lifecycle {
+    create_before_destroy = true
+    ignore_changes        = [value]
+    prevent_destroy       = true
+  }
+}
+`, resources["example_always_use_https"])
+	assert.Empty(t, diags)
+}
+
+// v4 ignore_changes entries point at settings[0].<setting> paths. In v5 each
+// setting is its own resource with a single value attribute, so each entry
+// maps to ignore_changes = [value] on the matching generated resource.
+func TestIgnoreChangesMapping(t *testing.T) {
+	const settings = `  zone_id = var.zone_id
+
+  settings {
+    brotli   = "on"
+    polish   = var.polish
+    zero_rtt = "on"
+    universal_ssl = "on"
+
+    security_header {
+      enabled = true
+      max_age = 86400
+    }
+  }
+`
+	tests := []struct {
+		name string
+		// lifecycle block body
+		lifecycle string
+		// generated resource name -> expected ignore_changes value ("" = none)
+		want map[string]string
+		// substrings expected in warning diagnostics (empty = no diagnostics)
+		wantWarnings []string
+	}{
+		{
+			name:      "single setting",
+			lifecycle: `ignore_changes = [settings[0].polish]`,
+			want: map[string]string{
+				"this_polish": "[value]", "this_brotli": "", "this_zero_rtt": "", "this_security_header": "",
+			},
+		},
+		{
+			name:      "legacy dotted index form",
+			lifecycle: `ignore_changes = [settings.0.polish]`,
+			want:      map[string]string{"this_polish": "[value]", "this_brotli": ""},
+		},
+		{
+			name:      "renamed setting keeps v4 resource name",
+			lifecycle: `ignore_changes = [settings[0].zero_rtt]`,
+			want:      map[string]string{"this_zero_rtt": "[value]", "this_polish": ""},
+		},
+		{
+			name:      "all",
+			lifecycle: `ignore_changes = all`,
+			want: map[string]string{
+				"this_polish": "all", "this_brotli": "all", "this_zero_rtt": "all", "this_security_header": "all",
+			},
+		},
+		{
+			name:      "whole settings block",
+			lifecycle: `ignore_changes = [settings]`,
+			want: map[string]string{
+				"this_polish": "[value]", "this_brotli": "[value]", "this_zero_rtt": "[value]", "this_security_header": "[value]",
+			},
+		},
+		{
+			name:      "deep path is widened with a warning",
+			lifecycle: `ignore_changes = [settings[0].security_header[0].max_age]`,
+			want:      map[string]string{"this_security_header": "[value]", "this_polish": ""},
+			wantWarnings: []string{
+				"widened",
+				"settings[0].security_header[0].max_age -> cloudflare_zone_setting.this_security_header: [value]",
+			},
+		},
+		{
+			name:      "unmappable entries warn and are dropped",
+			lifecycle: `ignore_changes = [zone_id, settings[0].universal_ssl, settings[0].brotli]`,
+			want:      map[string]string{"this_brotli": "[value]", "this_polish": ""},
+			wantWarnings: []string{
+				"cloudflare_zone_settings_override.this",
+				"zone_id",
+				"settings[0].universal_ssl",
+				"by hand",
+			},
+		},
+		{
+			name: "mixed with prevent_destroy",
+			lifecycle: `prevent_destroy = true
+    ignore_changes  = [settings[0].brotli]`,
+			want: map[string]string{"this_brotli": "[value]", "this_polish": ""},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := "resource \"cloudflare_zone_settings_override\" \"this\" {\n" + settings +
+				"\n  lifecycle {\n    " + tt.lifecycle + "\n  }\n}\n"
+			resources, _, diags := runTransformConfig(t, input)
+
+			_, hasUniversalSSL := resources["this_universal_ssl"]
+			assert.False(t, hasUniversalSSL)
+
+			for name, want := range tt.want {
+				res, ok := resources[name]
+				require.True(t, ok, "resource %s not generated", name)
+				if want == "" {
+					assert.NotContains(t, res, "ignore_changes", "resource %s", name)
+				} else {
+					assert.Regexp(t, `ignore_changes\s+= `+regexp.QuoteMeta(want)+`\n`, res, "resource %s", name)
+				}
+				if strings.Contains(tt.lifecycle, "prevent_destroy") {
+					assert.Contains(t, res, "prevent_destroy = true", "resource %s", name)
+					assert.Equal(t, 1, strings.Count(res, "lifecycle {"), "resource %s", name)
+				}
+			}
+
+			var ignoreDiags []string
+			for _, d := range diags {
+				if strings.Contains(d.Summary, "ignore_changes") {
+					assert.Equal(t, hcl.DiagWarning, d.Severity)
+					ignoreDiags = append(ignoreDiags, d.Summary+"\n"+d.Detail)
+				}
+			}
+			if len(tt.wantWarnings) == 0 {
+				assert.Empty(t, ignoreDiags)
+				return
+			}
+			require.Len(t, ignoreDiags, 1)
+			for _, w := range tt.wantWarnings {
+				assert.Contains(t, ignoreDiags[0], w)
+			}
+		})
+	}
 }
