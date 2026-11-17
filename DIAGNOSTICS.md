@@ -74,3 +74,20 @@ as written too, since converting them would drop this one from the list.
 Rewrite the block by hand as a `for` expression. Use a list for `rules`,
 `categories`, `status_code_ttl` and `algorithms`, and `one([for ...])` for any
 other block type. See the [ruleset migration guide](internal/resources/ruleset/README.md#example-6-dynamic-blocks-inside-a-rule).
+
+## Action required: policies not converted on cloudflare_zero_trust_access_application
+
+**Severity:** Warning
+
+**Resources:** `cloudflare_access_application`, `cloudflare_zero_trust_access_application`
+
+v5 expects `policies` to be a list of objects with `id` and `precedence`.
+tf-migrate converts a plain list literal, such as `[a.id, b.id]`, element by
+element and uses each element's position as its precedence. Any other value,
+such as a variable, `concat(...)`, or a `for` expression, is left unchanged.
+`terraform validate` does not reject the unchanged value, so convert it by hand
+before you plan:
+
+```hcl
+policies = [for i, id in <expression> : { id = id, precedence = i + 1 }]
+```

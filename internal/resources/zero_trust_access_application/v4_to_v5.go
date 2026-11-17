@@ -1,10 +1,12 @@
 package zero_trust_access_application
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
@@ -112,7 +114,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	tfhcl.ConvertBlocksToAttributeList(body, "footer_links", nil)
 	tfhcl.ConvertBlocksToAttribute(body, "landing_page_design", "landing_page_design", nil)
 
-	tfhcl.ConvertArrayAttributeToObjectArray(body, "policies", func(element hclwrite.Tokens, index int) map[string]hclwrite.Tokens {
+	policiesAttr := body.GetAttribute("policies")
+	convertedPolicies := tfhcl.ConvertArrayAttributeToObjectArray(body, "policies", func(element hclwrite.Tokens, index int) map[string]hclwrite.Tokens {
 		return map[string]hclwrite.Tokens{
 			"id": element,
 			"precedence": {
@@ -123,6 +126,25 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			},
 		}
 	})
+	if policiesAttr != nil && !convertedPolicies && !isEmptyListLiteral(policiesAttr) {
+		// Only a plain list literal can be converted element by element. Anything
+		// else (a variable, concat(), a for expression) is left as-is, and v5
+		// rejects a list of IDs, so say how to convert it by hand.
+		expr := strings.TrimSpace(string(policiesAttr.Expr().BuildTokens(nil).Bytes()))
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary: fmt.Sprintf(
+				"Action required: policies not converted on cloudflare_zero_trust_access_application.%s",
+				resourceName),
+			Detail: fmt.Sprintf(
+				"v5 expects policies to be a list of objects with id and precedence. "+
+					"The v4 value is not a plain list literal, so it was left unchanged:\n\n"+
+					"  policies = %s\n\n"+
+					"Convert it by hand, keeping the original order as the precedence:\n\n"+
+					"  policies = [for i, id in %s : { id = id, precedence = i + 1 }]",
+				expr, expr),
+		})
+	}
 
 	tfhcl.RemoveFunctionWrapper(body, "allowed_idps", "toset")
 	tfhcl.RemoveFunctionWrapper(body, "custom_pages", "toset")
@@ -464,4 +486,10 @@ func (m *V4ToV5Migrator) convertTargetAttributesToMap(body *hclwrite.Body) {
 	for _, block := range targetAttrBlocks {
 		body.RemoveBlock(block)
 	}
+}
+
+// isEmptyListLiteral reports whether attr is set to [], which needs no
+// conversion.
+func isEmptyListLiteral(attr *hclwrite.Attribute) bool {
+	return strings.Join(strings.Fields(string(attr.Expr().BuildTokens(nil).Bytes())), "") == "[]"
 }
