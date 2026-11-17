@@ -105,6 +105,9 @@ func (m *V4ToV5Migrator) ensureV4SchemaDefaults(body *hclwrite.Body) {
 		{"record_suffix", "}\n"},
 		{"timestamp_format", "unixnano"},
 		{"sample_rate", 1},
+		// v4 defaulted output_type to "ndjson"; v5 has no default, so a job
+		// that relied on it plans output_type -> null.
+		{"output_type", "ndjson"},
 	}
 
 	for _, pair := range v4Defaults {

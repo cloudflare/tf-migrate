@@ -67,6 +67,34 @@ func TestV4ToV5Transformation(t *testing.T) {
 }`,
 			},
 			{
+				// v4 defaulted output_type to "ndjson". v5 has no default, so a job
+				// that left it unset would plan output_type -> null.
+				Name: "Add v4 default output_type when unset",
+				Input: `resource "cloudflare_logpush_job" "example" {
+  dataset          = "http_requests"
+  destination_conf = "s3://mybucket/logs?region=us-west-2"
+
+  output_options {
+    field_names = ["ClientIP", "EdgeStartTimestamp"]
+  }
+}`,
+				Expected: `resource "cloudflare_logpush_job" "example" {
+  dataset          = "http_requests"
+  destination_conf = "s3://mybucket/logs?region=us-west-2"
+
+  output_options = {
+    field_names       = ["ClientIP", "EdgeStartTimestamp"]
+    cve_2021_44228    = false
+    field_delimiter   = ","
+    record_prefix     = "{"
+    record_suffix     = "}\n"
+    timestamp_format  = "unixnano"
+    sample_rate       = 1
+    output_type       = "ndjson"
+  }
+}`,
+			},
+			{
 				Name: "Rename cve20214428 to cve_2021_44228 and add v4 defaults",
 				Input: `resource "cloudflare_logpush_job" "example" {
   dataset          = "http_requests"
