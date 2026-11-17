@@ -942,12 +942,12 @@ func restorePhaseOneFile(content string) string {
 		// We identify it by the block type being "removed {".
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "removed {" {
-			// Check if the previous non-empty output line was a commented block.
-			// Look backwards in out for the last non-empty line.
+			// Check if the previous non-empty input line was a commented block.
+			// Look backwards in lines, not out: out has already been uncommented.
 			lastNonEmpty := ""
-			for j := len(out) - 1; j >= 0; j-- {
-				if strings.TrimSpace(out[j]) != "" {
-					lastNonEmpty = out[j]
+			for j := i - 1; j >= 0; j-- {
+				if strings.TrimSpace(lines[j]) != "" {
+					lastNonEmpty = lines[j]
 					break
 				}
 			}
