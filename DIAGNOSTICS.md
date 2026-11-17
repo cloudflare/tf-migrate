@@ -91,3 +91,17 @@ before you plan:
 ```hcl
 policies = [for i, id in <expression> : { id = id, precedence = i + 1 }]
 ```
+
+## Action required: could not resolve type on cloudflare_authenticated_origin_pulls_certificate
+
+**Severity:** Warning
+
+**Resource:** `cloudflare_authenticated_origin_pulls_certificate`
+
+v5 splits this resource by `type`: per-zone certificates keep the
+`cloudflare_authenticated_origin_pulls_certificate` type, and per-hostname
+certificates become `cloudflare_authenticated_origin_pulls_hostname_certificate`.
+When `type` is not a string literal, for example `type = var.cert_type`,
+tf-migrate cannot tell which one applies, so it migrates the certificate as
+per-zone. If it is per-hostname, rename the resource, add the `moved` block from
+the warning, and update every reference to the new type.

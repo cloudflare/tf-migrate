@@ -1,24 +1,12 @@
 package authenticated_origin_pulls
 
 import (
-	"fmt"
-	"strings"
-
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
-
-// certMigratorLookup is a local interface satisfied by the
-// authenticated_origin_pulls_certificate migrator. Using an interface avoids
-// an import cycle between the two sibling packages.
-type certMigratorLookup interface {
-	IsPerHostname(resourceName string) bool
-}
 
 // V4ToV5Migrator handles migration of Authenticated Origin Pulls from v4 to v5
 // The v4 resource handled three modes in one resource:
@@ -103,14 +91,11 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			configBody.SetAttributeRaw("hostname", hostname.Expr().BuildTokens(nil))
 		}
 		if cert != nil {
-			// Get the certificate reference tokens
-			certTokens := cert.Expr().BuildTokens(nil)
-
-			// Update certificate reference if it points to a per-hostname certificate
-			// that will be migrated to cloudflare_authenticated_origin_pulls_hostname_certificate
-			certTokens = updateCertificateReference(certTokens, ctx, resourceName)
-
-			configBody.SetAttributeRaw("cert_id", certTokens)
+			// References to per-hostname certificates are renamed to
+			// cloudflare_authenticated_origin_pulls_hostname_certificate in
+			// global postprocessing, once every file has been transformed (see
+			// the certificate migrator's GetInstanceRenames).
+			configBody.SetAttributeRaw("cert_id", cert.Expr().BuildTokens(nil))
 		}
 		if enabled != nil {
 			configBody.SetAttributeRaw("enabled", enabled.Expr().BuildTokens(nil))
@@ -150,93 +135,4 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			RemoveOriginal: true,
 		}, nil
 	}
-}
-
-// updateCertificateReference updates certificate references from
-// cloudflare_authenticated_origin_pulls_certificate to
-// cloudflare_authenticated_origin_pulls_hostname_certificate
-// when the referenced certificate was migrated from type="per-hostname".
-//
-// It looks up the cert migrator via the registry to check whether the referenced
-// resource name was recorded as per-hostname during its own TransformConfig call.
-// If it cannot determine the certificate type (e.g. the certificate resource lives
-// in a different file that has not been processed yet), it emits a diagnostic
-// warning so the user knows to update the reference manually.
-//
-// aopResourceName is the name label of the cloudflare_authenticated_origin_pulls
-// resource being transformed, used to produce actionable diagnostic messages.
-func updateCertificateReference(certTokens hclwrite.Tokens, ctx *transform.Context, aopResourceName string) hclwrite.Tokens {
-	// Convert tokens to string to check if it's a resource reference
-	certRefStr := strings.TrimSpace(string(certTokens.Bytes()))
-
-	// Check if this is a reference to cloudflare_authenticated_origin_pulls_certificate
-	if !strings.Contains(certRefStr, "cloudflare_authenticated_origin_pulls_certificate.") {
-		return certTokens // Not a reference to the cert resource, return unchanged
-	}
-
-	// Extract the certificate resource name from the reference
-	// Format: cloudflare_authenticated_origin_pulls_certificate.resource_name.id
-	// or with for_each: cloudflare_authenticated_origin_pulls_certificate.resource_name[each.key].id
-	after := strings.TrimPrefix(certRefStr, "cloudflare_authenticated_origin_pulls_certificate.")
-	// resource name is the next dot-separated segment (may be followed by . or [)
-	certResourceName := after
-	if idx := strings.IndexAny(after, ".["); idx >= 0 {
-		certResourceName = after[:idx]
-	}
-	if certResourceName == "" {
-		return certTokens
-	}
-
-	// Ask the cert migrator whether this resource was per-hostname.
-	// We use a local interface to avoid an import cycle between sibling packages.
-	certMigrator := internal.GetMigrator("cloudflare_authenticated_origin_pulls_certificate", "v4", "v5")
-	if certMigrator == nil {
-		return certTokens
-	}
-	lookup, ok := certMigrator.(certMigratorLookup)
-	if !ok {
-		return certTokens
-	}
-
-	if !lookup.IsPerHostname(certResourceName) {
-		// The certificate type could not be determined — it is either a per-zone cert
-		// (which would be an unusual configuration) or, more likely, it lives in a
-		// different file that has not been processed yet. Emit a warning so the user
-		// can update the reference manually.
-		newRef := strings.Replace(certRefStr,
-			"cloudflare_authenticated_origin_pulls_certificate.",
-			"cloudflare_authenticated_origin_pulls_hostname_certificate.",
-			1)
-		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
-			Severity: hcl.DiagWarning,
-			Summary: fmt.Sprintf(
-				"Manual update required: cert_id in %s",
-				ctx.Filename,
-			),
-			Detail: fmt.Sprintf(
-				"Resource cloudflare_authenticated_origin_pulls.%s in %s:\n"+
-					"  cert_id references %q but the certificate resource type could not\n"+
-					"  be determined automatically (it may be defined in another file).\n\n"+
-					"  If cloudflare_authenticated_origin_pulls_certificate.%s has type = \"per-hostname\",\n"+
-					"  update the cert_id to:\n"+
-					"    cert_id = %s",
-				aopResourceName, ctx.Filename,
-				certRefStr,
-				certResourceName,
-				newRef,
-			),
-		})
-		return certTokens
-	}
-
-	// Replace only the type prefix, preserving the rest of the reference expression
-	newRefStr := strings.Replace(certRefStr,
-		"cloudflare_authenticated_origin_pulls_certificate.",
-		"cloudflare_authenticated_origin_pulls_hostname_certificate.",
-		1)
-
-	newTokens := hclwrite.Tokens{
-		{Type: hclsyntax.TokenIdent, Bytes: []byte(newRefStr)},
-	}
-	return newTokens
 }
