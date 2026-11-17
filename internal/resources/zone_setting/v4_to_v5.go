@@ -2,6 +2,8 @@ package zone_setting
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -87,6 +89,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Settings with no v5 equivalent, collected so they can be reported.
 	var droppedSettings []string
 	var generatedNames []string
+	importCount := 0
 
 	// State cleanup is handled automatically by the phased migration flow.
 	// The stateAddr is still used for the MIGRATION NOTES comment below.
@@ -165,6 +168,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		// for_each is supported (Terraform 1.7+) and is copied to the import block.
 		if metaArgs == nil || metaArgs.count == nil {
 			importBlock := m.createImportBlock(resourceName, settingID, zoneIDAttr)
+			importCount++
 			m.copyIterationMetaArguments(importBlock, metaArgs)
 			newBlocks = append(newBlocks, importBlock)
 		}
@@ -192,6 +196,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 		if metaArgs == nil || metaArgs.count == nil {
 			importBlock := m.createImportBlock(resourceName, settingID, zoneIDAttr)
+			importCount++
 			m.copyIterationMetaArguments(importBlock, metaArgs)
 			newBlocks = append(newBlocks, importBlock)
 		}
@@ -249,6 +254,28 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 					"apply will try to create them. Import them by hand first:\n\n%s\n\n"+
 					"Adjust the index to match each instance when count is greater than 1.",
 				len(generatedNames), strings.Join(cmds, "\n")),
+		})
+	}
+
+	// Import blocks are only valid in the root module. If this file sits in a
+	// child module, Terraform rejects them at plan time. The note injected into
+	// the removed block above is easy to miss, so surface it as a warning too.
+	if importCount > 0 && looksLikeChildModule(ctx.FilePath) {
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary: fmt.Sprintf(
+				"Action required: move %d import block(s) for cloudflare_zone_settings_override.%s to the root module",
+				importCount, baseName),
+			Detail: fmt.Sprintf(
+				"%s has no .terraform.lock.hcl or .terraform directory, so it looks like "+
+					"a child module. Terraform only accepts import blocks in the root module "+
+					"and rejects these at plan time.\n\n"+
+					"Move the generated import blocks to the root module that calls this "+
+					"module, and prefix 'to' with the module address:\n\n"+
+					"  to = module.<name>.cloudflare_zone_setting.%s_<setting>\n\n"+
+					"If the module is called with for_each, use module.<name>[each.key] and a "+
+					"for_each import block (Terraform 1.7+).",
+				filepath.Dir(ctx.FilePath), baseName),
 		})
 	}
 
@@ -740,4 +767,22 @@ func (m *V4ToV5Migrator) copyBlockContents(src, dst *hclwrite.Body) {
 		newBlock := dst.AppendNewBlock(block.Type(), block.Labels())
 		m.copyBlockContents(block.Body(), newBlock.Body())
 	}
+}
+
+// looksLikeChildModule reports whether the directory holding path appears to be
+// a child module rather than a root module. Root modules have been initialised,
+// so they have a .terraform.lock.hcl or a .terraform directory; child modules
+// have neither. An uninitialised root also matches, which is why callers word
+// the result as a likelihood. An empty path (unit tests) is never a child.
+func looksLikeChildModule(path string) bool {
+	if path == "" {
+		return false
+	}
+	dir := filepath.Dir(path)
+	for _, marker := range []string{".terraform.lock.hcl", ".terraform"} {
+		if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
+			return false
+		}
+	}
+	return true
 }
