@@ -345,5 +345,7 @@ func TestPhasedMigration_ZoneSettingsOverride(t *testing.T) {
 		assert.NotContains(t, result, markerPrefix, "no phase-1 markers should remain")
 		assert.Contains(t, result, `resource "cloudflare_zone_setting"`)
 		assert.Contains(t, result, `import {`)
+		assert.Equal(t, 1, strings.Count(result, "from = cloudflare_zone_settings_override.example"),
+			"exactly one removed {} block per address after phase 2, got:\n%s", result)
 	})
 }
