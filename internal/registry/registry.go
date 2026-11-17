@@ -4,6 +4,7 @@ import (
 	accountrolesdata "github.com/cloudflare/tf-migrate/internal/datasources/account_roles"
 	accountsdata "github.com/cloudflare/tf-migrate/internal/datasources/accounts"
 	apitokenpermgroupsdata "github.com/cloudflare/tf-migrate/internal/datasources/api_token_permission_groups"
+	dcvdelegationdata "github.com/cloudflare/tf-migrate/internal/datasources/dcv_delegation"
 	iprangesdata "github.com/cloudflare/tf-migrate/internal/datasources/ip_ranges"
 	lbpoolsdata "github.com/cloudflare/tf-migrate/internal/datasources/load_balancer_pools"
 	rulesetsdata "github.com/cloudflare/tf-migrate/internal/datasources/rulesets"
@@ -103,6 +104,7 @@ func RegisterAllMigrations() {
 	accountrolesdata.NewV4ToV5Migrator()
 	accountsdata.NewV4ToV5Migrator()
 	apitokenpermgroupsdata.NewV4ToV5Migrator()
+	dcvdelegationdata.NewV4ToV5Migrator()
 	iprangesdata.NewV4ToV5Migrator()
 	lbpoolsdata.NewV4ToV5Migrator()
 	rulesetsdata.NewV4ToV5Migrator()
