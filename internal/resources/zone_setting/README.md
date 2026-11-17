@@ -14,7 +14,7 @@ This guide explains how `cloudflare_zone_settings_override` resources migrate to
 | `zero_rtt` | Setting name | `0rtt` | Renamed |
 | `universal_ssl` | Included | Removed | Deprecated |
 | State | Migrated | **NOT migrated** | ⚠️ Manual apply needed |
-| `lifecycle.ignore_changes` | Supported | **Removed** | ⚠️ Manual re-add needed |
+| `lifecycle.ignore_changes` | `settings[0].<setting>` paths | `[value]` on the matching resource | Mapped per setting (see Example 8) |
 
 
 ---
@@ -349,7 +349,7 @@ resource "cloudflare_zone_setting" "legacy_tls_1_3" {
 
 ---
 
-### Example 8: With lifecycle.ignore_changes (⚠️ Manual Action Required)
+### Example 8: With lifecycle.ignore_changes
 
 **v4 Configuration:**
 ```hcl
@@ -385,17 +385,24 @@ resource "cloudflare_zone_setting" "managed_minify" {
   value = {
     css = "on"
   }
-
-  # WARNING: lifecycle blocks with ignore_changes cannot be automatically migrated.
-  # V4 paths like settings[0].minify are invalid in V5.
-  # Please manually re-add lifecycle blocks after migration.
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 ```
 
 **What Changed:**
-- `lifecycle` blocks with `ignore_changes` **intentionally removed**
-- v4 paths don't map to v5 structure
-- Manual re-add required after migration
+- Each v4 `ignore_changes` entry is mapped onto the generated resource(s), where the only ignorable field is `value`:
+
+| v4 entry | v5 result |
+|----------|-----------|
+| `settings[0].<setting>` (or `settings.0.<setting>`) | `ignore_changes = [value]` on `<name>_<setting>` |
+| `settings[0].<setting>[0].<field>` (deeper path) | `ignore_changes = [value]` on `<name>_<setting>`, with a warning that it was widened |
+| `settings` / `settings[0]` | `ignore_changes = [value]` on every generated resource |
+| `all` | `ignore_changes = all` on every generated resource |
+| anything else (e.g. `zone_id`, a dropped setting such as `universal_ssl`) | dropped, with a warning to re-add by hand if still needed |
+
+- Other lifecycle attributes (`prevent_destroy`, `create_before_destroy`) are copied to every generated resource in the same `lifecycle` block
 
 ---
 
