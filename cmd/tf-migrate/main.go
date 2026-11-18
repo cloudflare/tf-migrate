@@ -416,7 +416,12 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 		log.Debug("Provider version fetched from GitHub API", "version", targetVersion)
 	}
 
-	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
+	// Update the migrated files: with --output-dir these are not the input files.
+	migratedDir := cfg.outputDir
+	if migratedDir == "" {
+		migratedDir = cfg.configDir
+	}
+	files, err := findTerraformFilesWithRecursion(migratedDir, cfg.recursive, cfg.exclude)
 	if err != nil {
 		return err
 	}
@@ -456,9 +461,12 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 				}
 				// Rewrite the version value using raw token replacement.
 				// We replace any existing version = "..." with the target.
-				newAttrStr := regexp.MustCompile(`version\s*=\s*"[^"]*"`).
-					ReplaceAllString(attrStr, `version = "`+targetVersion+`"`)
-				if newAttrStr == attrStr {
+				versionRe := regexp.MustCompile(`version\s*=\s*"[^"]*"`)
+				newAttrStr := versionRe.ReplaceAllString(attrStr, `version = "`+targetVersion+`"`)
+				// Only add a constraint when there is none. Comparing the result
+				// with the input instead added a second version line whenever the
+				// existing one already matched the target (re-runs, symlinks).
+				if !versionRe.MatchString(attrStr) {
 					// No version constraint existed — add one
 					newAttrStr = strings.Replace(attrStr,
 						`source  = "cloudflare/cloudflare"`,
@@ -521,7 +529,7 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 	fmt.Printf("  %d. Regenerate the lock file locally in each directory:\n", step)
 	if len(updatedDirs) <= 1 {
 		// Single directory (or none) - use the original format
-		fmt.Printf("       cd %s\n", cfg.configDir)
+		fmt.Printf("       cd %s\n", migratedDir)
 		fmt.Println("       terraform init -upgrade -backend=false")
 	} else {
 		// Multiple directories with provider updates
