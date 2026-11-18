@@ -1188,6 +1188,10 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 		log.Warn("Failed to collect removed block references for postprocessing", "error", err)
 	}
 
+	// Which resources are declared with count or for_each, so indexed and
+	// iterated references to them can be told apart from attribute access.
+	iterable := collectIterableResources(log, outputPaths)
+
 	// Track which renames were actually applied (content changed)
 	appliedRenames := make(map[string]string)
 	appliedAttrRenames := make(map[string]transform.AttributeRename)               // key: ResourceType.OldAttribute
@@ -1247,27 +1251,22 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 			}
 		}
 
-		// Apply all attribute renames, but skip content within moved blocks
-		// Pattern: data.cloudflare_zones.<instance_name>.zones → data.cloudflare_zones.<instance_name>.result
-		// We need to match: <ResourceType>.<instance_name>.<OldAttribute>
-		for _, rename := range attributeRenames {
-			// Build regex pattern: data\.cloudflare_zones\.([a-zA-Z0-9_-]+)\.zones\b
-			// Use regexp.QuoteMeta so resource types with "." are treated as literals.
-			// The trailing \b prevents clipping prefixes of longer attribute names.
-			pattern := regexp.QuoteMeta(rename.ResourceType) + `\.([a-zA-Z0-9_-]+)\.` + regexp.QuoteMeta(rename.OldAttribute) + `\b`
-			replacement := rename.ResourceType + ".$1." + rename.NewAttribute
-			newContent := regexReplaceSkippingMovedBlocks(contentStr, pattern, replacement)
-
+		// Apply all attribute renames, but skip content within moved blocks.
+		// data.cloudflare_zones.<name>.zones -> data.cloudflare_zones.<name>.result,
+		// including indexed, splat and for/for_each iteration forms.
+		if len(attributeRenames) > 0 {
+			newContent, applied := renameAttributeReferences(log, contentStr, outputPath, attributeRenames, iterable)
 			if newContent != contentStr {
 				modified = true
 				contentStr = newContent
-				key := rename.ResourceType + "." + rename.OldAttribute
-				appliedAttrRenames[key] = rename
-				log.Debug("Updated attribute references",
-					"file", filepath.Base(outputPath),
-					"resource_type", rename.ResourceType,
-					"old_attr", rename.OldAttribute,
-					"new_attr", rename.NewAttribute)
+				for _, rename := range applied {
+					appliedAttrRenames[rename.ResourceType+"."+rename.OldAttribute] = rename
+					log.Debug("Updated attribute references",
+						"file", filepath.Base(outputPath),
+						"resource_type", rename.ResourceType,
+						"old_attr", rename.OldAttribute,
+						"new_attr", rename.NewAttribute)
+				}
 			}
 		}
 
@@ -1328,6 +1327,15 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 // to known-invalid attributes and returns a DiagWarning for each match found.
 func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, refs []transform.InvalidAttributeReference) hcl.Diagnostics {
 	var diags hcl.Diagnostics
+	if len(refs) == 0 {
+		return diags
+	}
+
+	types := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		types = append(types, ref.ResourceType)
+	}
+	iterable := collectIterableResources(log, outputPaths)
 
 	for _, outputPath := range outputPaths {
 		content, err := os.ReadFile(outputPath)
@@ -1335,73 +1343,151 @@ func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, r
 			log.Warn("Failed to read file for invalid attribute scan", "file", outputPath, "error", err)
 			continue
 		}
-		parsed, parseDiags := hclsyntax.ParseConfig(content, filepath.Base(outputPath), hcl.InitialPos)
-		if parseDiags.HasErrors() {
-			log.Warn("Failed to parse file for invalid attribute scan", "file", outputPath, "error", parseDiags.Error())
+		body, ok := parseSyntaxBody(log, content, outputPath)
+		if !ok {
 			continue
 		}
-		if parsed == nil {
-			log.Warn("No parsed file for invalid attribute scan", "file", outputPath)
-			continue
-		}
-		body, ok := parsed.Body.(*hclsyntax.Body)
-		if !ok || body == nil {
-			log.Warn("Invalid parsed body for invalid attribute scan", "file", outputPath)
-			continue
-		}
-		seen := make(map[string]bool)
-		hclsyntax.VisitAll(body, func(node hclsyntax.Node) hcl.Diagnostics {
-			expr, ok := node.(hclsyntax.Expression)
-			if !ok {
-				return nil
-			}
-			path, ok := tfhcl.TraversalPath(expr, content)
-			if !ok {
-				return nil
-			}
+		found := tfhcl.FindInstanceAttributeReferences(body, content, types, iterable(outputPath))
+		for _, f := range found {
 			for _, ref := range refs {
-				types := strings.Split(ref.ResourceType, ".")
-				if len(path) < len(types)+2 {
+				if f.Type != ref.ResourceType || f.Attribute != ref.Attribute {
 					continue
 				}
-				matches := true
-				for i, name := range types {
-					matches = matches && path[i].Name == name
-				}
-				if !matches || path[len(types)].Name == "" {
-					continue
-				}
-				attribute := len(types) + 1
-				if path[attribute].Index != "" {
-					attribute++
-				}
-				if attribute >= len(path) || path[attribute].Name != ref.Attribute {
-					continue
-				}
-				r := hcl.Range{Filename: filepath.Base(outputPath), Start: expr.Range().Start, End: path[attribute].Range.End}
-				key := fmt.Sprintf("%d:%d", r.Start.Byte, r.End.Byte)
-				if seen[key] {
-					continue
-				}
-				seen[key] = true
+				r := f.Range
+				r.Filename = filepath.Base(outputPath)
 				match := string(r.SliceBytes(content))
-				summary := fmt.Sprintf("Unknown attribute reference: %s", match)
-				detail := fmt.Sprintf("In %s\n\n  %s", filepath.Base(outputPath), ref.Suggestion)
 				log.Debug("Found invalid attribute reference",
 					"file", filepath.Base(outputPath),
 					"match", match)
 				diags = append(diags, &hcl.Diagnostic{
 					Severity: hcl.DiagWarning,
-					Summary:  summary,
-					Detail:   detail,
+					Summary:  fmt.Sprintf("Unknown attribute reference: %s", match),
+					Detail:   fmt.Sprintf("In %s\n\n  %s", filepath.Base(outputPath), ref.Suggestion),
 					Subject:  &r,
 				})
 			}
-			return nil
-		})
+		}
 	}
 
 	return diags
+}
+
+// parseSyntaxBody parses content for read-only AST scans.
+func parseSyntaxBody(log hclog.Logger, content []byte, path string) (*hclsyntax.Body, bool) {
+	parsed, parseDiags := hclsyntax.ParseConfig(content, filepath.Base(path), hcl.InitialPos)
+	if parseDiags.HasErrors() || parsed == nil {
+		log.Warn("Failed to parse file for reference scan", "file", path, "error", parseDiags.Error())
+		return nil, false
+	}
+	body, ok := parsed.Body.(*hclsyntax.Body)
+	return body, ok && body != nil
+}
+
+// collectIterableResources returns, for an output file, a function reporting
+// whether <type>.<name> may be indexed or iterated: false only when the
+// resource is declared in the same directory without count or for_each.
+// Undeclared resources are assumed iterable.
+func collectIterableResources(log hclog.Logger, outputPaths []string) func(outputPath string) func(resourceType, name string) bool {
+	singles := make(map[string]map[string]bool) // dir -> "type.name" -> declared without count/for_each
+	for _, outputPath := range outputPaths {
+		content, err := os.ReadFile(outputPath)
+		if err != nil {
+			continue
+		}
+		body, ok := parseSyntaxBody(log, content, outputPath)
+		if !ok {
+			continue
+		}
+		dir := filepath.Dir(outputPath)
+		for _, block := range body.Blocks {
+			if len(block.Labels) != 2 || (block.Type != "resource" && block.Type != "data") {
+				continue
+			}
+			addr := block.Labels[0] + "." + block.Labels[1]
+			if block.Type == "data" {
+				addr = "data." + addr
+			}
+			_, hasCount := block.Body.Attributes["count"]
+			_, hasForEach := block.Body.Attributes["for_each"]
+			if singles[dir] == nil {
+				singles[dir] = make(map[string]bool)
+			}
+			singles[dir][addr] = !hasCount && !hasForEach
+		}
+	}
+	return func(outputPath string) func(string, string) bool {
+		inDir := singles[filepath.Dir(outputPath)]
+		return func(resourceType, name string) bool {
+			return !inDir[resourceType+"."+name]
+		}
+	}
+}
+
+// renameAttributeReferences rewrites references to renamed attributes in
+// content, skipping moved and removed blocks. It returns the renames that
+// changed something. If content does not parse, it falls back to a regex
+// that only handles <type>.<name>.<attribute>.
+func renameAttributeReferences(log hclog.Logger, content, outputPath string, renames []transform.AttributeRename, iterable func(string) func(string, string) bool) (string, []transform.AttributeRename) {
+	var applied []transform.AttributeRename
+
+	body, ok := parseSyntaxBody(log, []byte(content), outputPath)
+	if !ok {
+		for _, rename := range renames {
+			pattern := regexp.QuoteMeta(rename.ResourceType) + `\.([a-zA-Z0-9_-]+)\.` + regexp.QuoteMeta(rename.OldAttribute) + `\b`
+			replacement := rename.ResourceType + ".$1." + rename.NewAttribute
+			if newContent := regexReplaceSkippingMovedBlocks(content, pattern, replacement); newContent != content {
+				content = newContent
+				applied = append(applied, rename)
+			}
+		}
+		return content, applied
+	}
+
+	types := make([]string, 0, len(renames))
+	for _, rename := range renames {
+		types = append(types, rename.ResourceType)
+	}
+	found := tfhcl.FindInstanceAttributeReferences(body, []byte(content), types, iterable(outputPath))
+	protected := findProtectedBlockRanges(content)
+
+	type edit struct {
+		start, end int
+		text       string
+	}
+	var edits []edit
+	used := make(map[int]bool)
+	for _, f := range found {
+		if inRanges(protected, f.NameRange.Start.Byte) {
+			continue
+		}
+		for i, rename := range renames {
+			if f.Type == rename.ResourceType && f.Attribute == rename.OldAttribute {
+				edits = append(edits, edit{f.NameRange.Start.Byte, f.NameRange.End.Byte, rename.NewAttribute})
+				used[i] = true
+				break
+			}
+		}
+	}
+	// found is sorted by position; apply from the end so offsets stay valid.
+	for i := len(edits) - 1; i >= 0; i-- {
+		e := edits[i]
+		content = content[:e.start] + e.text + content[e.end:]
+	}
+	for i, rename := range renames {
+		if used[i] {
+			applied = append(applied, rename)
+		}
+	}
+	return content, applied
+}
+
+func inRanges(ranges [][2]int, pos int) bool {
+	for _, r := range ranges {
+		if pos >= r[0] && pos < r[1] {
+			return true
+		}
+	}
+	return false
 }
 
 // collectRemovedRefsByType scans transformed files and returns addresses found in
