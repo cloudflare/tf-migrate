@@ -23,9 +23,9 @@ import (
 type V4ToV5Migrator struct {
 	mu sync.Mutex
 	// perHostname records every resource that was type="per-hostname", keyed by
-	// directory and name, so references to it can be renamed in global
-	// postprocessing.
-	perHostname map[perHostnameKey]struct{}
+	// directory and name, with the file that declares it, so references to it
+	// can be renamed in global postprocessing.
+	perHostname map[perHostnameKey]string
 }
 
 type perHostnameKey struct {
@@ -40,7 +40,7 @@ const (
 
 func NewV4ToV5Migrator() transform.ResourceTransformer {
 	migrator := &V4ToV5Migrator{
-		perHostname: make(map[perHostnameKey]struct{}),
+		perHostname: make(map[perHostnameKey]string),
 	}
 	internal.RegisterMigrator("cloudflare_authenticated_origin_pulls_certificate", "v4", "v5", migrator)
 	return migrator
@@ -70,12 +70,13 @@ func (m *V4ToV5Migrator) GetInstanceRenames() []transform.InstanceRename {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	renames := make([]transform.InstanceRename, 0, len(m.perHostname))
-	for k := range m.perHostname {
+	for k, file := range m.perHostname {
 		renames = append(renames, transform.InstanceRename{
 			OldType: perZoneType,
 			NewType: perHostnameType,
 			Name:    k.name,
 			Dir:     k.dir,
+			File:    file,
 		})
 	}
 	sort.Slice(renames, func(a, b int) bool {
@@ -128,7 +129,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 			dir = filepath.Clean(filepath.Dir(ctx.FilePath))
 		}
 		m.mu.Lock()
-		m.perHostname[perHostnameKey{dir: dir, name: resourceName}] = struct{}{}
+		m.perHostname[perHostnameKey{dir: dir, name: resourceName}] = ctx.FilePath
 		m.mu.Unlock()
 	} else {
 		// Default to per-zone (includes "per-zone", empty, or any other value)

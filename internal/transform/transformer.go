@@ -127,6 +127,12 @@ type InstanceRename struct {
 	// can only be referenced directly from its own module, so references are
 	// rewritten only in files in this directory. Empty means every file.
 	Dir string
+	// File is the path of the file that declares the resource, as passed in
+	// transform.Context.FilePath. When that file is also reached through
+	// symlinks in other directories, each of those directories is a module
+	// that declares the resource too, and references there are rewritten as
+	// well. Optional.
+	File string
 }
 
 // InstanceRenamer is an optional interface that migrators can implement to

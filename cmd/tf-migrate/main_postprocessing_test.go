@@ -124,7 +124,7 @@ func TestScanForInvalidAttributeReferences(t *testing.T) {
 			t.Fatalf("writing fixture: %v", err)
 		}
 
-		diags := scanForInvalidAttributeReferences(newTestLogger(), []string{file}, refs)
+		diags := scanForInvalidAttributeReferences(newTestLogger(), []string{file}, refs, nil)
 		if len(diags) != 1 {
 			t.Fatalf("expected 1 diagnostic, got %d: %v", len(diags), diags)
 		}
@@ -153,7 +153,7 @@ func TestScanForInvalidAttributeReferences(t *testing.T) {
 			t.Fatalf("writing fixture: %v", err)
 		}
 
-		diags := scanForInvalidAttributeReferences(newTestLogger(), []string{file}, refs)
+		diags := scanForInvalidAttributeReferences(newTestLogger(), []string{file}, refs, nil)
 		if len(diags) != 0 {
 			t.Fatalf("expected no diagnostics for valid attribute, got %d: %v", len(diags), diags)
 		}
@@ -173,7 +173,7 @@ func TestScanForInvalidAttributeReferences(t *testing.T) {
 			t.Fatalf("writing fixture: %v", err)
 		}
 
-		diags := scanForInvalidAttributeReferences(newTestLogger(), []string{file}, refs)
+		diags := scanForInvalidAttributeReferences(newTestLogger(), []string{file}, refs, nil)
 		if len(diags) != 2 {
 			t.Fatalf("expected 2 diagnostics (one per match), got %d", len(diags))
 		}
@@ -193,7 +193,7 @@ func TestScanForInvalidAttributeReferences(t *testing.T) {
 			t.Fatalf("writing fixture: %v", err)
 		}
 
-		diags := scanForInvalidAttributeReferences(newTestLogger(), []string{file}, refs)
+		diags := scanForInvalidAttributeReferences(newTestLogger(), []string{file}, refs, nil)
 		if len(diags) != 0 {
 			t.Fatalf("expected no diagnostics for different resource type, got %d", len(diags))
 		}

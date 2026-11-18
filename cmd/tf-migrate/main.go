@@ -51,6 +51,10 @@ type config struct {
 	// Diagnostic output options
 	quiet   bool // Suppress warnings, only show errors
 	verbose bool // Show all diagnostics including informational messages
+
+	// fileAliases maps each migrated input file to the other paths (symlinks)
+	// that resolve to it. Set by processConfigFiles for global postprocessing.
+	fileAliases map[string][]string
 }
 
 var (
@@ -416,7 +420,12 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 		log.Debug("Provider version fetched from GitHub API", "version", targetVersion)
 	}
 
-	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
+	// Update the migrated files: with --output-dir these are not the input files.
+	migratedDir := cfg.outputDir
+	if migratedDir == "" {
+		migratedDir = cfg.configDir
+	}
+	files, err := findTerraformFilesWithRecursion(migratedDir, cfg.recursive, cfg.exclude)
 	if err != nil {
 		return err
 	}
@@ -456,9 +465,12 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 				}
 				// Rewrite the version value using raw token replacement.
 				// We replace any existing version = "..." with the target.
-				newAttrStr := regexp.MustCompile(`version\s*=\s*"[^"]*"`).
-					ReplaceAllString(attrStr, `version = "`+targetVersion+`"`)
-				if newAttrStr == attrStr {
+				versionRe := regexp.MustCompile(`version\s*=\s*"[^"]*"`)
+				newAttrStr := versionRe.ReplaceAllString(attrStr, `version = "`+targetVersion+`"`)
+				// Only add a constraint when there is none. Comparing the result
+				// with the input instead added a second version line whenever the
+				// existing one already matched the target (re-runs, symlinks).
+				if !versionRe.MatchString(attrStr) {
 					// No version constraint existed — add one
 					newAttrStr = strings.Replace(attrStr,
 						`source  = "cloudflare/cloudflare"`,
@@ -521,7 +533,7 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 	fmt.Printf("  %d. Regenerate the lock file locally in each directory:\n", step)
 	if len(updatedDirs) <= 1 {
 		// Single directory (or none) - use the original format
-		fmt.Printf("       cd %s\n", cfg.configDir)
+		fmt.Printf("       cd %s\n", migratedDir)
 		fmt.Println("       terraform init -upgrade -backend=false")
 	} else {
 		// Multiple directories with provider updates
@@ -980,7 +992,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		cfg.outputDir = cfg.configDir
 	}
 
-	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
+	files, aliases, err := findTerraformFilesWithAliases(cfg.configDir, cfg.recursive, cfg.exclude)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to list .tf files: %w", err)
 	}
@@ -1037,22 +1049,17 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 
 		// Collect diagnostics from this file's context
 		allDiagnostics = append(allDiagnostics, ctx.Diagnostics...)
+		if d := symlinkOutsideDirWarning(cfg, file); d != nil {
+			allDiagnostics = append(allDiagnostics, d)
+		}
 
 		if ctx.CFGFile != nil {
 			parsedConfigs[file] = ctx.CFGFile
 		}
 
-		// Calculate output path maintaining directory structure when recursive
-		var outputPath string
-		if cfg.recursive {
-			// Preserve directory structure relative to config dir
-			relPath, err := filepath.Rel(cfg.configDir, file)
-			if err != nil {
-				return nil, allDiagnostics, fmt.Errorf("failed to compute relative path: %w", err)
-			}
-			outputPath = filepath.Join(cfg.outputDir, relPath)
-		} else {
-			outputPath = filepath.Join(cfg.outputDir, filepath.Base(file))
+		outputPath, err := outputPathFor(cfg, file)
+		if err != nil {
+			return nil, allDiagnostics, err
 		}
 
 		if cfg.dryRun {
@@ -1064,14 +1071,8 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 			continue
 		}
 
-		// Create output directory (including subdirectories if needed)
-		outputDir := filepath.Dir(outputPath)
-		if err := os.MkdirAll(outputDir, 0755); err != nil {
-			return nil, allDiagnostics, fmt.Errorf("failed to create output directory: %w", err)
-		}
-
-		if err := os.WriteFile(outputPath, transformed, 0644); err != nil {
-			return nil, allDiagnostics, fmt.Errorf("failed to write %s: %w", outputPath, err)
+		if err := writeOutputFile(outputPath, transformed); err != nil {
+			return nil, allDiagnostics, err
 		}
 		if cfg.verbose {
 			fmt.Println("✓")
@@ -1079,10 +1080,30 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		log.Debug("Migrated file", "output", outputPath)
 		outputPaths = append(outputPaths, outputPath)
 
+		// Other paths to the same file (symlinks). In place, writing through
+		// one path already updated them. With a separate output directory,
+		// each path gets its own copy of the migrated file.
+		for _, alias := range aliases[file] {
+			aliasOutput, err := outputPathFor(cfg, alias)
+			if err != nil {
+				return nil, allDiagnostics, err
+			}
+			if sameFile(aliasOutput, outputPath) {
+				log.Debug("Skipped symlink to an already migrated file", "path", alias, "target", file)
+				continue
+			}
+			if err := writeOutputFile(aliasOutput, transformed); err != nil {
+				return nil, allDiagnostics, err
+			}
+			log.Debug("Migrated file", "output", aliasOutput, "same_as", outputPath)
+			outputPaths = append(outputPaths, aliasOutput)
+		}
+
 	}
 
 	// Apply global postprocessing for cross-file reference updates
 	if !cfg.dryRun && len(outputPaths) > 0 {
+		cfg.fileAliases = aliases
 		postDiags, err := applyGlobalPostprocessing(log, cfg, outputPaths)
 		allDiagnostics = append(allDiagnostics, postDiags...)
 		if err != nil {
@@ -1091,6 +1112,36 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 	}
 
 	return parsedConfigs, allDiagnostics, nil
+}
+
+// outputPathFor returns where the migrated version of file is written,
+// keeping the directory structure relative to the config dir when recursive.
+func outputPathFor(cfg config, file string) (string, error) {
+	if !cfg.recursive {
+		return filepath.Join(cfg.outputDir, filepath.Base(file)), nil
+	}
+	relPath, err := filepath.Rel(cfg.configDir, file)
+	if err != nil {
+		return "", fmt.Errorf("failed to compute relative path: %w", err)
+	}
+	return filepath.Join(cfg.outputDir, relPath), nil
+}
+
+func writeOutputFile(outputPath string, content []byte) error {
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+	if err := os.WriteFile(outputPath, content, 0644); err != nil {
+		return fmt.Errorf("failed to write %s: %w", outputPath, err)
+	}
+	return nil
+}
+
+// sameFile reports whether a and b exist and are the same file.
+func sameFile(a, b string) bool {
+	ia, errA := os.Stat(a)
+	ib, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(ia, ib)
 }
 
 func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []string) (hcl.Diagnostics, error) {
@@ -1201,7 +1252,8 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 
 	// Which resources are declared with count or for_each, so indexed and
 	// iterated references to them can be told apart from attribute access.
-	iterable := collectIterableResources(log, outputPaths)
+	iterable := collectIterableResources(log, outputPaths, cfg.fileAliases)
+	instanceRenames = expandInstanceRenamesToAliases(instanceRenames, cfg.fileAliases)
 
 	// Track which renames were actually applied (content changed)
 	appliedRenames := make(map[string]string)
@@ -1304,7 +1356,7 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 	// This runs after all rewrites so that already-fixed references (e.g. secret →
 	// tunnel_secret) don't produce false positives.
 	if len(invalidAttrRefs) > 0 {
-		invalidAttrDiags := scanForInvalidAttributeReferences(log, outputPaths, invalidAttrRefs)
+		invalidAttrDiags := scanForInvalidAttributeReferences(log, outputPaths, invalidAttrRefs, cfg.fileAliases)
 		diags = append(diags, invalidAttrDiags...)
 	}
 
@@ -1347,7 +1399,7 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 
 // scanForInvalidAttributeReferences scans output files for cross-file references
 // to known-invalid attributes and returns a DiagWarning for each match found.
-func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, refs []transform.InvalidAttributeReference) hcl.Diagnostics {
+func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, refs []transform.InvalidAttributeReference, aliases map[string][]string) hcl.Diagnostics {
 	var diags hcl.Diagnostics
 	if len(refs) == 0 {
 		return diags
@@ -1357,7 +1409,7 @@ func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, r
 	for _, ref := range refs {
 		types = append(types, ref.ResourceType)
 	}
-	iterable := collectIterableResources(log, outputPaths)
+	iterable := collectIterableResources(log, outputPaths, aliases)
 
 	for _, outputPath := range outputPaths {
 		content, err := os.ReadFile(outputPath)
@@ -1408,8 +1460,10 @@ func parseSyntaxBody(log hclog.Logger, content []byte, path string) (*hclsyntax.
 // collectIterableResources returns, for an output file, a function reporting
 // whether <type>.<name> may be indexed or iterated: false only when the
 // resource is declared in the same directory without count or for_each.
-// Undeclared resources are assumed iterable.
-func collectIterableResources(log hclog.Logger, outputPaths []string) func(outputPath string) func(resourceType, name string) bool {
+// Undeclared resources are assumed iterable. A file migrated in place and
+// reached through symlinks (aliases) declares its resources in each of
+// their directories too.
+func collectIterableResources(log hclog.Logger, outputPaths []string, aliases map[string][]string) func(outputPath string) func(resourceType, name string) bool {
 	singles := make(map[string]map[string]bool) // dir -> "type.name" -> declared without count/for_each
 	for _, outputPath := range outputPaths {
 		content, err := os.ReadFile(outputPath)
@@ -1420,7 +1474,10 @@ func collectIterableResources(log hclog.Logger, outputPaths []string) func(outpu
 		if !ok {
 			continue
 		}
-		dir := filepath.Dir(outputPath)
+		dirs := []string{filepath.Dir(outputPath)}
+		for _, alias := range aliases[outputPath] {
+			dirs = append(dirs, filepath.Dir(alias))
+		}
 		for _, block := range body.Blocks {
 			if len(block.Labels) != 2 || (block.Type != "resource" && block.Type != "data") {
 				continue
@@ -1431,10 +1488,12 @@ func collectIterableResources(log hclog.Logger, outputPaths []string) func(outpu
 			}
 			_, hasCount := block.Body.Attributes["count"]
 			_, hasForEach := block.Body.Attributes["for_each"]
-			if singles[dir] == nil {
-				singles[dir] = make(map[string]bool)
+			for _, dir := range dirs {
+				if singles[dir] == nil {
+					singles[dir] = make(map[string]bool)
+				}
+				singles[dir][addr] = !hasCount && !hasForEach
 			}
-			singles[dir][addr] = !hasCount && !hasForEach
 		}
 	}
 	return func(outputPath string) func(string, string) bool {
@@ -1657,6 +1716,30 @@ func regexReplaceSkippingMovedBlocks(content, pattern, replacement string) strin
 	return result.String()
 }
 
+// expandInstanceRenamesToAliases adds, for each rename whose declaring file is
+// also reached through symlinks, a copy scoped to each symlink's directory.
+// Each of those directories is a module that declares the resource, so its
+// references must be renamed too.
+func expandInstanceRenamesToAliases(renames []transform.InstanceRename, aliases map[string][]string) []transform.InstanceRename {
+	if len(aliases) == 0 {
+		return renames
+	}
+	expanded := renames
+	for _, r := range renames {
+		if r.File == "" || r.Dir == "" {
+			continue
+		}
+		for _, alias := range aliases[r.File] {
+			copied := r
+			copied.Dir = filepath.Clean(filepath.Dir(alias))
+			if !sameDir(copied.Dir, r.Dir) {
+				expanded = append(expanded, copied)
+			}
+		}
+	}
+	return expanded
+}
+
 // inputDirForOutput returns the directory of the input file that outputPath was
 // written from, so it can be compared with InstanceRename.Dir.
 func inputDirForOutput(cfg config, outputPath string) string {
@@ -1735,7 +1818,100 @@ func findTerraformFiles(dir string) ([]string, error) {
 	return findTerraformFilesWithRecursion(dir, false, nil)
 }
 
+// findTerraformFilesWithRecursion returns the .tf files under dir, listing
+// each file once even when it is reachable through several paths. See
+// findTerraformFilesWithAliases.
 func findTerraformFilesWithRecursion(dir string, recursive bool, exclude []string) ([]string, error) {
+	files, _, err := findTerraformFilesWithAliases(dir, recursive, exclude)
+	return files, err
+}
+
+// findTerraformFilesWithAliases returns the .tf files under dir with each
+// real file listed once, plus, for each listed path, the other paths
+// (symlinks) that resolve to the same file.
+//
+// Modules often share a file by symlinking it into each module directory.
+// Migrating every path would transform the same file several times, and the
+// transforms are not idempotent (e.g. the provider version constraint was
+// added once per path). The listed path is the real file when it is inside
+// dir, otherwise the first symlink found.
+func findTerraformFilesWithAliases(dir string, recursive bool, exclude []string) ([]string, map[string][]string, error) {
+	all, err := listTerraformFiles(dir, recursive, exclude)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	realPaths := make([]string, len(all))
+	canonical := make(map[string]string) // real path -> listed path
+	for i, path := range all {
+		realPaths[i] = resolvedPath(path)
+		first, seen := canonical[realPaths[i]]
+		if !seen || (isSymlink(first) && !isSymlink(path)) {
+			canonical[realPaths[i]] = path
+		}
+	}
+
+	var files []string
+	aliases := make(map[string][]string)
+	for i, path := range all {
+		listed := canonical[realPaths[i]]
+		if path == listed {
+			files = append(files, path)
+		} else {
+			aliases[listed] = append(aliases[listed], path)
+		}
+	}
+	return files, aliases, nil
+}
+
+// resolvedPath returns the absolute path of the file path refers to after
+// following symlinks, or path itself if it cannot be resolved (for example a
+// dangling symlink, which fails later when it is read).
+func resolvedPath(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path
+	}
+	if abs, err := filepath.Abs(resolved); err == nil {
+		return abs
+	}
+	return resolved
+}
+
+// symlinkOutsideDirWarning warns when file is a symlink to a file outside the
+// config dir and is migrated in place: the shared file is rewritten for every
+// configuration that uses it, including ones still on v4.
+func symlinkOutsideDirWarning(cfg config, file string) *hcl.Diagnostic {
+	if !isSymlink(file) || !sameDirPath(cfg.outputDir, cfg.configDir) {
+		return nil
+	}
+	target := resolvedPath(file)
+	root := resolvedPath(cfg.configDir)
+	if rel, err := filepath.Rel(root, target); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil
+	}
+	return &hcl.Diagnostic{
+		Severity: hcl.DiagWarning,
+		Summary:  fmt.Sprintf("Migrated a shared file outside the config directory: %s", target),
+		Detail: fmt.Sprintf("%s is a symlink to %s, which is outside %s. It was migrated in place, so "+
+			"every configuration that links to it now sees the v5 version. Check that none of them "+
+			"are still on the v4 provider, or copy the file into this configuration instead of linking it.",
+			file, target, root),
+	}
+}
+
+// sameDirPath reports whether a and b name the same directory. An empty a
+// means the default, the config dir.
+func sameDirPath(a, b string) bool {
+	return a == "" || resolvedPath(a) == resolvedPath(b)
+}
+
+func isSymlink(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode()&os.ModeSymlink != 0
+}
+
+func listTerraformFiles(dir string, recursive bool, exclude []string) ([]string, error) {
 	var files []string
 
 	entries, err := os.ReadDir(dir)
@@ -1751,7 +1927,7 @@ func findTerraformFilesWithRecursion(dir string, recursive bool, exclude []strin
 				continue
 			}
 			// Recursively search subdirectories
-			subFiles, err := findTerraformFilesWithRecursion(path, recursive, exclude)
+			subFiles, err := listTerraformFiles(path, recursive, exclude)
 			if err != nil {
 				// Log the error but continue processing other directories
 				continue

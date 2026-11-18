@@ -37,7 +37,7 @@ func transformCert(t *testing.T, m *V4ToV5Migrator, filePath, name, typeExpr str
 }
 
 func newMigrator() *V4ToV5Migrator {
-	return &V4ToV5Migrator{perHostname: make(map[perHostnameKey]struct{})}
+	return &V4ToV5Migrator{perHostname: make(map[perHostnameKey]string)}
 }
 
 func TestGetInstanceRenames_PerHostnameOnlyScopedByDir(t *testing.T) {
@@ -48,8 +48,8 @@ func TestGetInstanceRenames_PerHostnameOnlyScopedByDir(t *testing.T) {
 	_ = transformCert(t, m, "/cfg/modules/y/main.tf", "host", `"per-zone"`)
 
 	assert.Equal(t, []transform.InstanceRename{
-		{OldType: perZoneType, NewType: perHostnameType, Name: "host", Dir: "/cfg"},
-		{OldType: perZoneType, NewType: perHostnameType, Name: "host", Dir: "/cfg/modules/x"},
+		{OldType: perZoneType, NewType: perHostnameType, Name: "host", Dir: "/cfg", File: "/cfg/b_certs.tf"},
+		{OldType: perZoneType, NewType: perHostnameType, Name: "host", Dir: "/cfg/modules/x", File: "/cfg/modules/x/main.tf"},
 	}, m.GetInstanceRenames())
 }
 
