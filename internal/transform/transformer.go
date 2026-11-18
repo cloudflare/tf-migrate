@@ -113,6 +113,30 @@ type ComputedAttributeMapper interface {
 	GetComputedAttributeMappings() []ComputedAttributeMapping
 }
 
+// InstanceRename is a resource rename that applies to one resource address,
+// not to every resource of a type. It is needed when a single v4 type splits
+// into several v5 types depending on each resource's own configuration, for
+// example cloudflare_authenticated_origin_pulls_certificate with
+// type = "per-hostname" becoming
+// cloudflare_authenticated_origin_pulls_hostname_certificate.
+type InstanceRename struct {
+	OldType string // v4 resource type (e.g. "cloudflare_authenticated_origin_pulls_certificate")
+	NewType string // v5 resource type (e.g. "cloudflare_authenticated_origin_pulls_hostname_certificate")
+	Name    string // resource name label, shared by both addresses
+	// Dir is the directory of the file that declares the resource. A resource
+	// can only be referenced directly from its own module, so references are
+	// rewritten only in files in this directory. Empty means every file.
+	Dir string
+}
+
+// InstanceRenamer is an optional interface that migrators can implement to
+// expose per-resource renames. Like ResourceRenamer, it is read during global
+// postprocessing, after every file has been transformed, so references are
+// updated regardless of which file declares the resource.
+type InstanceRenamer interface {
+	GetInstanceRenames() []InstanceRename
+}
+
 // InvalidAttributeReference describes a reference to an attribute that does not
 // exist (or is otherwise invalid) on the v5 resource type. When detected in
 // cross-file references during postprocessing, tf-migrate emits a DiagWarning

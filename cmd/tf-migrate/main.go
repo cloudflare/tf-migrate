@@ -1109,6 +1109,8 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 	var computedAttrMappings []transform.ComputedAttributeMapping
 	// Slice to store invalid attribute references to warn about
 	var invalidAttrRefs []transform.InvalidAttributeReference
+	// Slice to store per-resource renames (one v4 type splitting into several v5 types)
+	var instanceRenames []transform.InstanceRename
 
 	for _, migrator := range migrators {
 		// Check if this migrator implements ResourceRenamer interface
@@ -1161,6 +1163,15 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 			}
 		}
 
+		// Check if this migrator implements InstanceRenamer interface
+		if instanceRenamer, ok := migrator.(transform.InstanceRenamer); ok {
+			for _, r := range instanceRenamer.GetInstanceRenames() {
+				instanceRenames = append(instanceRenames, r)
+				log.Debug("Collected instance rename",
+					"old", r.OldType+"."+r.Name, "new", r.NewType+"."+r.Name, "dir", r.Dir)
+			}
+		}
+
 		// Check if this migrator implements InvalidAttributeReferenceDetector interface
 		if detector, ok := migrator.(transform.InvalidAttributeReferenceDetector); ok {
 			refs := detector.GetInvalidAttributeReferences()
@@ -1176,7 +1187,7 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 	}
 
 	// If no renames or detectors found, skip global postprocessing
-	if len(renames) == 0 && len(attributeRenames) == 0 && len(computedAttrMappings) == 0 && len(invalidAttrRefs) == 0 {
+	if len(renames) == 0 && len(attributeRenames) == 0 && len(computedAttrMappings) == 0 && len(invalidAttrRefs) == 0 && len(instanceRenames) == 0 {
 		log.Debug("No renames found, skipping global postprocessing")
 		return diags, nil
 	}
@@ -1207,6 +1218,17 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 
 		contentStr := string(content)
 		modified := false
+
+		// Apply per-resource renames before anything else: they only touch the
+		// exact addresses a migrator reported, in files of the declaring module.
+		if len(instanceRenames) > 0 {
+			newContent := applyInstanceRenames(contentStr, instanceRenames, inputDirForOutput(cfg, outputPath))
+			if newContent != contentStr {
+				modified = true
+				contentStr = newContent
+				log.Debug("Updated per-resource references", "file", filepath.Base(outputPath))
+			}
+		}
 
 		// Apply computed attribute mappings FIRST (for when both resource type AND attribute name change)
 		// Example: cloudflare_tunnel.<name>.cname → cloudflare_zero_trust_tunnel_cloudflared.<name>.name
@@ -1547,6 +1569,61 @@ func regexReplaceSkippingMovedBlocks(content, pattern, replacement string) strin
 	}
 	result.WriteString(re.ReplaceAllString(content[lastEnd:], replacement))
 	return result.String()
+}
+
+// inputDirForOutput returns the directory of the input file that outputPath was
+// written from, so it can be compared with InstanceRename.Dir.
+func inputDirForOutput(cfg config, outputPath string) string {
+	if cfg.recursive {
+		if rel, err := filepath.Rel(cfg.outputDir, filepath.Dir(outputPath)); err == nil {
+			return filepath.Clean(filepath.Join(cfg.configDir, rel))
+		}
+	}
+	return filepath.Clean(cfg.configDir)
+}
+
+// sameDir reports whether two directory paths refer to the same directory,
+// tolerating one being relative and the other absolute.
+func sameDir(a, b string) bool {
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	return errA == nil && errB == nil && absA == absB
+}
+
+// applyInstanceRenames rewrites references to the resources in renames whose
+// Dir matches dir (or is empty), e.g. old_type.name.id -> new_type.name.id.
+// Other resources of the same old type, data sources, and moved/removed blocks
+// are left unchanged.
+func applyInstanceRenames(content string, renames []transform.InstanceRename, dir string) string {
+	byType := make(map[string]map[string]string) // old type -> name -> new type
+	for _, r := range renames {
+		if r.Dir != "" && !sameDir(r.Dir, dir) {
+			continue
+		}
+		if byType[r.OldType] == nil {
+			byType[r.OldType] = make(map[string]string)
+		}
+		byType[r.OldType][r.Name] = r.NewType
+	}
+
+	for oldType, names := range byType {
+		pattern := regexp.MustCompile(`(data\.)?\b` + regexp.QuoteMeta(oldType) + `\.([a-zA-Z0-9_-]+)`)
+		content = regexReplaceFuncSkippingMovedBlocks(content, pattern, func(match string) string {
+			sub := pattern.FindStringSubmatch(match)
+			if len(sub) != 3 || sub[1] != "" {
+				return match
+			}
+			newType, ok := names[sub[2]]
+			if !ok {
+				return match
+			}
+			return newType + "." + sub[2]
+		})
+	}
+	return content
 }
 
 // regexReplaceFuncSkippingMovedBlocks replaces regex matches in content with a

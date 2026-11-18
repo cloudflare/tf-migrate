@@ -1,8 +1,13 @@
 package authenticated_origin_pulls_certificate
 
 import (
+	"fmt"
+	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -16,13 +21,26 @@ import (
 // - cloudflare_authenticated_origin_pulls_certificate (for type="per-zone")
 // - cloudflare_authenticated_origin_pulls_hostname_certificate (for type="per-hostname")
 type V4ToV5Migrator struct {
-	mu               sync.Mutex
-	perHostnameNames map[string]bool // tracks resource names that were type="per-hostname"
+	mu sync.Mutex
+	// perHostname records every resource that was type="per-hostname", keyed by
+	// directory and name, so references to it can be renamed in global
+	// postprocessing.
+	perHostname map[perHostnameKey]struct{}
 }
+
+type perHostnameKey struct {
+	dir  string
+	name string
+}
+
+const (
+	perZoneType     = "cloudflare_authenticated_origin_pulls_certificate"
+	perHostnameType = "cloudflare_authenticated_origin_pulls_hostname_certificate"
+)
 
 func NewV4ToV5Migrator() transform.ResourceTransformer {
 	migrator := &V4ToV5Migrator{
-		perHostnameNames: make(map[string]bool),
+		perHostname: make(map[perHostnameKey]struct{}),
 	}
 	internal.RegisterMigrator("cloudflare_authenticated_origin_pulls_certificate", "v4", "v5", migrator)
 	return migrator
@@ -45,13 +63,28 @@ func (m *V4ToV5Migrator) Preprocess(content string) string {
 	return content
 }
 
-// IsPerHostname returns true if the given resource name was migrated to
-// cloudflare_authenticated_origin_pulls_hostname_certificate (i.e. had type="per-hostname").
-// Called by the authenticated_origin_pulls migrator to correctly update cert_id references.
-func (m *V4ToV5Migrator) IsPerHostname(resourceName string) bool {
+// GetInstanceRenames implements transform.InstanceRenamer. Only per-hostname
+// certificates change type, so references are renamed per resource rather than
+// per type, and only in the directory that declares the resource.
+func (m *V4ToV5Migrator) GetInstanceRenames() []transform.InstanceRename {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.perHostnameNames[resourceName]
+	renames := make([]transform.InstanceRename, 0, len(m.perHostname))
+	for k := range m.perHostname {
+		renames = append(renames, transform.InstanceRename{
+			OldType: perZoneType,
+			NewType: perHostnameType,
+			Name:    k.name,
+			Dir:     k.dir,
+		})
+	}
+	sort.Slice(renames, func(a, b int) bool {
+		if renames[a].Dir != renames[b].Dir {
+			return renames[a].Dir < renames[b].Dir
+		}
+		return renames[a].Name < renames[b].Name
+	})
+	return renames
 }
 
 func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
@@ -65,18 +98,41 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	typeAttr := body.GetAttribute("type")
 	if typeAttr != nil {
 		typeFromState = tfhcl.ExtractStringFromAttribute(typeAttr)
+		if _, ok := tfhcl.JoinQuotedLiteral(typeAttr.Expr().BuildTokens(nil)); !ok {
+			// A variable or expression can't be resolved here, so the resource
+			// is treated as per-zone. Without a warning, a per-hostname
+			// certificate configured this way would silently keep the wrong type.
+			typeFromState = ""
+			expr := strings.TrimSpace(string(typeAttr.Expr().BuildTokens(nil).Bytes()))
+			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+				Severity: hcl.DiagWarning,
+				Summary: fmt.Sprintf(
+					"Action required: could not resolve type on %s.%s", perZoneType, resourceName),
+				Detail: fmt.Sprintf(
+					"type = %s is not a string literal, so this certificate was migrated as per-zone "+
+						"(%s). If it is per-hostname, rename the resource to %s and add:\n\n"+
+						"  moved {\n    from = %s.%s\n    to   = %s.%s\n  }\n\n"+
+						"and update every reference to it.",
+					expr, perZoneType, perHostnameType,
+					perZoneType, resourceName, perHostnameType, resourceName),
+			})
+		}
 	}
 
 	// Determine target type based on type value
 	if typeFromState == "per-hostname" {
-		targetType = "cloudflare_authenticated_origin_pulls_hostname_certificate"
-		// Record this resource name so the AOP migrator can update cert_id references
+		targetType = perHostnameType
+		// Record this resource so references to it are renamed in global postprocessing.
+		dir := ""
+		if ctx.FilePath != "" {
+			dir = filepath.Clean(filepath.Dir(ctx.FilePath))
+		}
 		m.mu.Lock()
-		m.perHostnameNames[resourceName] = true
+		m.perHostname[perHostnameKey{dir: dir, name: resourceName}] = struct{}{}
 		m.mu.Unlock()
 	} else {
 		// Default to per-zone (includes "per-zone", empty, or any other value)
-		targetType = "cloudflare_authenticated_origin_pulls_certificate"
+		targetType = perZoneType
 	}
 
 	// Rename the resource type

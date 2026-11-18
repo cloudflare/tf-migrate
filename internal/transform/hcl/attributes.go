@@ -933,85 +933,98 @@ func ConvertArrayAttributeToObjectArray(body *hclwrite.Body, attrName string, tr
 	return true
 }
 
-// parseArrayAttribute parses an array attribute and extracts its elements
+// parseArrayAttribute parses an attribute whose value is a plain list literal,
+// [a, b, c], and returns the tokens of each element.
+//
+// It returns nil, leaving the caller to skip the conversion, when the value is
+// anything else: a reference such as var.ids, a function call such as
+// concat([a], [b]), a for expression [for x in xs : x.id], or an empty list.
+// Converting those element by element would lose data or produce invalid HCL.
+//
+// Elements are split on commas at nesting depth 0 only, so elements that
+// contain their own brackets, parentheses, braces, quotes or templates stay
+// whole: x[each.key].id, lookup(m, "k"), { a = 1, b = 2 }, "${ids[0]}".
+// Comments and newlines between elements are dropped; comments inside an
+// element are kept with it.
 func parseArrayAttribute(attr *hclwrite.Attribute) []hclwrite.Tokens {
 	if attr == nil {
 		return nil
 	}
 
-	tokens := attr.Expr().BuildTokens(nil)
-	var elements []hclwrite.Tokens
+	tokens := trimTriviaTokens(attr.Expr().BuildTokens(nil))
+	if len(tokens) < 2 ||
+		tokens[0].Type != hclsyntax.TokenOBrack ||
+		tokens[len(tokens)-1].Type != hclsyntax.TokenCBrack {
+		return nil
+	}
+	inner := tokens[1 : len(tokens)-1]
 
-	inArray := false
-	inQuotedString := false
-	templateDepth := 0
-	currentElement := hclwrite.Tokens{}
-
-	for i := 0; i < len(tokens); i++ {
-		token := tokens[i]
-
-		// Find the opening bracket
-		if token.Type == hclsyntax.TokenOBrack && !inArray {
-			inArray = true
-			continue
-		}
-
-		// Find the closing bracket
-		if token.Type == hclsyntax.TokenCBrack && inArray && templateDepth == 0 && !inQuotedString {
-			// Save any pending element
-			if len(currentElement) > 0 {
-				elements = append(elements, currentElement)
-			}
-			break
-		}
-
-		if !inArray {
-			continue
-		}
-
-		// Track quoted string boundaries
-		if token.Type == hclsyntax.TokenOQuote {
-			inQuotedString = true
-			currentElement = append(currentElement, token)
-			continue
-		}
-		if token.Type == hclsyntax.TokenCQuote && templateDepth == 0 {
-			inQuotedString = false
-			currentElement = append(currentElement, token)
-			continue
-		}
-
-		// Track template interpolation depth
-		if token.Type == hclsyntax.TokenTemplateInterp {
-			templateDepth++
-			currentElement = append(currentElement, token)
-			continue
-		}
-		if token.Type == hclsyntax.TokenTemplateSeqEnd {
-			templateDepth--
-			currentElement = append(currentElement, token)
-			continue
-		}
-
-		// Handle comma (element separator)
-		if token.Type == hclsyntax.TokenComma && !inQuotedString && templateDepth == 0 {
-			if len(currentElement) > 0 {
-				elements = append(elements, currentElement)
-				currentElement = hclwrite.Tokens{}
-			}
-			continue
-		}
-
-		// Skip newlines between elements
-		if token.Type == hclsyntax.TokenNewline && !inQuotedString && templateDepth == 0 {
-			continue
-		}
-
-		// Collect element tokens
-		currentElement = append(currentElement, token)
+	// A for expression is a single list literal syntactically, but it is not a
+	// list of elements.
+	if first := trimTriviaTokens(inner); len(first) > 0 &&
+		first[0].Type == hclsyntax.TokenIdent && string(first[0].Bytes) == "for" {
+		return nil
 	}
 
+	var elements []hclwrite.Tokens
+	var current hclwrite.Tokens
+	depth := 0
+
+	for _, token := range inner {
+		if depth == 0 {
+			switch token.Type {
+			case hclsyntax.TokenComma:
+				if len(current) > 0 {
+					elements = append(elements, current)
+					current = nil
+				}
+				continue
+			case hclsyntax.TokenNewline, hclsyntax.TokenComment:
+				continue
+			}
+		}
+
+		current = append(current, token)
+
+		switch token.Type {
+		case hclsyntax.TokenOBrack, hclsyntax.TokenOParen, hclsyntax.TokenOBrace,
+			hclsyntax.TokenOQuote, hclsyntax.TokenOHeredoc,
+			hclsyntax.TokenTemplateInterp, hclsyntax.TokenTemplateControl:
+			depth++
+		case hclsyntax.TokenCBrack, hclsyntax.TokenCParen, hclsyntax.TokenCBrace,
+			hclsyntax.TokenCQuote, hclsyntax.TokenCHeredoc,
+			hclsyntax.TokenTemplateSeqEnd:
+			depth--
+			if depth < 0 {
+				// The leading [ was closed before the end, as in [a][0]: the
+				// value is not a single list literal.
+				return nil
+			}
+		}
+	}
+
+	if depth != 0 {
+		return nil
+	}
+	if len(current) > 0 {
+		elements = append(elements, current)
+	}
 	return elements
+}
+
+// trimTriviaTokens strips leading and trailing newline and comment tokens.
+func trimTriviaTokens(tokens hclwrite.Tokens) hclwrite.Tokens {
+	isTrivia := func(t *hclwrite.Token) bool {
+		return t.Type == hclsyntax.TokenNewline || t.Type == hclsyntax.TokenComment
+	}
+	start, end := 0, len(tokens)
+	for start < end && isTrivia(tokens[start]) {
+		start++
+	}
+	for end > start && isTrivia(tokens[end-1]) {
+		end--
+	}
+	return tokens[start:end]
 }
 
 // AttributeInfo holds an attribute name and its corresponding Attribute object
