@@ -105,3 +105,14 @@ When `type` is not a string literal, for example `type = var.cert_type`,
 tf-migrate cannot tell which one applies, so it migrates the certificate as
 per-zone. If it is per-hostname, rename the resource, add the `moved` block from
 the warning, and update every reference to the new type.
+
+## Migrated a shared file outside the config directory
+
+**Severity:** Warning
+
+A `.tf` file in the configuration is a symlink to a file outside the config
+directory, and the migration ran in place. tf-migrate migrates each real file
+once, through whichever path reaches it, so the shared file itself now holds
+the v5 configuration. Every other configuration that links to it sees the
+change. Before you commit, check that none of them still use the v4 provider.
+If any do, copy the file into this configuration instead of linking it.

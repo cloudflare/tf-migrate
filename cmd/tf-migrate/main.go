@@ -988,7 +988,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		cfg.outputDir = cfg.configDir
 	}
 
-	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
+	files, aliases, err := findTerraformFilesWithAliases(cfg.configDir, cfg.recursive, cfg.exclude)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to list .tf files: %w", err)
 	}
@@ -1045,22 +1045,17 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 
 		// Collect diagnostics from this file's context
 		allDiagnostics = append(allDiagnostics, ctx.Diagnostics...)
+		if d := symlinkOutsideDirWarning(cfg, file); d != nil {
+			allDiagnostics = append(allDiagnostics, d)
+		}
 
 		if ctx.CFGFile != nil {
 			parsedConfigs[file] = ctx.CFGFile
 		}
 
-		// Calculate output path maintaining directory structure when recursive
-		var outputPath string
-		if cfg.recursive {
-			// Preserve directory structure relative to config dir
-			relPath, err := filepath.Rel(cfg.configDir, file)
-			if err != nil {
-				return nil, allDiagnostics, fmt.Errorf("failed to compute relative path: %w", err)
-			}
-			outputPath = filepath.Join(cfg.outputDir, relPath)
-		} else {
-			outputPath = filepath.Join(cfg.outputDir, filepath.Base(file))
+		outputPath, err := outputPathFor(cfg, file)
+		if err != nil {
+			return nil, allDiagnostics, err
 		}
 
 		if cfg.dryRun {
@@ -1072,20 +1067,33 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 			continue
 		}
 
-		// Create output directory (including subdirectories if needed)
-		outputDir := filepath.Dir(outputPath)
-		if err := os.MkdirAll(outputDir, 0755); err != nil {
-			return nil, allDiagnostics, fmt.Errorf("failed to create output directory: %w", err)
-		}
-
-		if err := os.WriteFile(outputPath, transformed, 0644); err != nil {
-			return nil, allDiagnostics, fmt.Errorf("failed to write %s: %w", outputPath, err)
+		if err := writeOutputFile(outputPath, transformed); err != nil {
+			return nil, allDiagnostics, err
 		}
 		if cfg.verbose {
 			fmt.Println("✓")
 		}
 		log.Debug("Migrated file", "output", outputPath)
 		outputPaths = append(outputPaths, outputPath)
+
+		// Other paths to the same file (symlinks). In place, writing through
+		// one path already updated them. With a separate output directory,
+		// each path gets its own copy of the migrated file.
+		for _, alias := range aliases[file] {
+			aliasOutput, err := outputPathFor(cfg, alias)
+			if err != nil {
+				return nil, allDiagnostics, err
+			}
+			if sameFile(aliasOutput, outputPath) {
+				log.Debug("Skipped symlink to an already migrated file", "path", alias, "target", file)
+				continue
+			}
+			if err := writeOutputFile(aliasOutput, transformed); err != nil {
+				return nil, allDiagnostics, err
+			}
+			log.Debug("Migrated file", "output", aliasOutput, "same_as", outputPath)
+			outputPaths = append(outputPaths, aliasOutput)
+		}
 
 	}
 
@@ -1099,6 +1107,36 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 	}
 
 	return parsedConfigs, allDiagnostics, nil
+}
+
+// outputPathFor returns where the migrated version of file is written,
+// keeping the directory structure relative to the config dir when recursive.
+func outputPathFor(cfg config, file string) (string, error) {
+	if !cfg.recursive {
+		return filepath.Join(cfg.outputDir, filepath.Base(file)), nil
+	}
+	relPath, err := filepath.Rel(cfg.configDir, file)
+	if err != nil {
+		return "", fmt.Errorf("failed to compute relative path: %w", err)
+	}
+	return filepath.Join(cfg.outputDir, relPath), nil
+}
+
+func writeOutputFile(outputPath string, content []byte) error {
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+	if err := os.WriteFile(outputPath, content, 0644); err != nil {
+		return fmt.Errorf("failed to write %s: %w", outputPath, err)
+	}
+	return nil
+}
+
+// sameFile reports whether a and b exist and are the same file.
+func sameFile(a, b string) bool {
+	ia, errA := os.Stat(a)
+	ib, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(ia, ib)
 }
 
 func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []string) (hcl.Diagnostics, error) {
@@ -1743,7 +1781,100 @@ func findTerraformFiles(dir string) ([]string, error) {
 	return findTerraformFilesWithRecursion(dir, false, nil)
 }
 
+// findTerraformFilesWithRecursion returns the .tf files under dir, listing
+// each file once even when it is reachable through several paths. See
+// findTerraformFilesWithAliases.
 func findTerraformFilesWithRecursion(dir string, recursive bool, exclude []string) ([]string, error) {
+	files, _, err := findTerraformFilesWithAliases(dir, recursive, exclude)
+	return files, err
+}
+
+// findTerraformFilesWithAliases returns the .tf files under dir with each
+// real file listed once, plus, for each listed path, the other paths
+// (symlinks) that resolve to the same file.
+//
+// Modules often share a file by symlinking it into each module directory.
+// Migrating every path would transform the same file several times, and the
+// transforms are not idempotent (e.g. the provider version constraint was
+// added once per path). The listed path is the real file when it is inside
+// dir, otherwise the first symlink found.
+func findTerraformFilesWithAliases(dir string, recursive bool, exclude []string) ([]string, map[string][]string, error) {
+	all, err := listTerraformFiles(dir, recursive, exclude)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	realPaths := make([]string, len(all))
+	canonical := make(map[string]string) // real path -> listed path
+	for i, path := range all {
+		realPaths[i] = resolvedPath(path)
+		first, seen := canonical[realPaths[i]]
+		if !seen || (isSymlink(first) && !isSymlink(path)) {
+			canonical[realPaths[i]] = path
+		}
+	}
+
+	var files []string
+	aliases := make(map[string][]string)
+	for i, path := range all {
+		listed := canonical[realPaths[i]]
+		if path == listed {
+			files = append(files, path)
+		} else {
+			aliases[listed] = append(aliases[listed], path)
+		}
+	}
+	return files, aliases, nil
+}
+
+// resolvedPath returns the absolute path of the file path refers to after
+// following symlinks, or path itself if it cannot be resolved (for example a
+// dangling symlink, which fails later when it is read).
+func resolvedPath(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path
+	}
+	if abs, err := filepath.Abs(resolved); err == nil {
+		return abs
+	}
+	return resolved
+}
+
+// symlinkOutsideDirWarning warns when file is a symlink to a file outside the
+// config dir and is migrated in place: the shared file is rewritten for every
+// configuration that uses it, including ones still on v4.
+func symlinkOutsideDirWarning(cfg config, file string) *hcl.Diagnostic {
+	if !isSymlink(file) || !sameDirPath(cfg.outputDir, cfg.configDir) {
+		return nil
+	}
+	target := resolvedPath(file)
+	root := resolvedPath(cfg.configDir)
+	if rel, err := filepath.Rel(root, target); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil
+	}
+	return &hcl.Diagnostic{
+		Severity: hcl.DiagWarning,
+		Summary:  fmt.Sprintf("Migrated a shared file outside the config directory: %s", target),
+		Detail: fmt.Sprintf("%s is a symlink to %s, which is outside %s. It was migrated in place, so "+
+			"every configuration that links to it now sees the v5 version. Check that none of them "+
+			"are still on the v4 provider, or copy the file into this configuration instead of linking it.",
+			file, target, root),
+	}
+}
+
+// sameDirPath reports whether a and b name the same directory. An empty a
+// means the default, the config dir.
+func sameDirPath(a, b string) bool {
+	return a == "" || resolvedPath(a) == resolvedPath(b)
+}
+
+func isSymlink(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode()&os.ModeSymlink != 0
+}
+
+func listTerraformFiles(dir string, recursive bool, exclude []string) ([]string, error) {
 	var files []string
 
 	entries, err := os.ReadDir(dir)
@@ -1759,7 +1890,7 @@ func findTerraformFilesWithRecursion(dir string, recursive bool, exclude []strin
 				continue
 			}
 			// Recursively search subdirectories
-			subFiles, err := findTerraformFilesWithRecursion(path, recursive, exclude)
+			subFiles, err := listTerraformFiles(path, recursive, exclude)
 			if err != nil {
 				// Log the error but continue processing other directories
 				continue
