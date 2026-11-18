@@ -211,3 +211,56 @@ func TestSymlinkOutsideDirWarning(t *testing.T) {
 		t.Errorf("a regular file must not warn: %s", d.Summary)
 	}
 }
+
+// A per-hostname certificate declared in a file shared by symlink is declared
+// in every module that links it, so references in each of those modules must
+// be renamed, not only in the module whose path was migrated.
+func TestSymlinkedPerHostnameCertificateReferences(t *testing.T) {
+	for _, mode := range []string{"in place", "output dir"} {
+		t.Run(mode, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(dir, "shared"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			cert := `resource "cloudflare_authenticated_origin_pulls_certificate" "host" {
+  zone_id     = "0da42c8d2132a9ddaf714f9e7c920711"
+  certificate = "cert"
+  private_key = "key"
+  type        = "per-hostname"
+}
+`
+			if err := os.WriteFile(filepath.Join(dir, "shared", "certs.tf"), []byte(cert), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			for _, m := range []string{"a", "b"} {
+				mod := filepath.Join(dir, "mods", m)
+				if err := os.MkdirAll(mod, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink("../../shared/certs.tf", filepath.Join(mod, "certs.tf")); err != nil {
+					t.Fatal(err)
+				}
+				out := "output \"cert_id\" {\n  value = cloudflare_authenticated_origin_pulls_certificate.host.id\n}\n"
+				if err := os.WriteFile(filepath.Join(mod, "outputs.tf"), []byte(out), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			// Run on mods/ only, so both links point outside the config dir and
+			// mods/a/certs.tf is the path that gets migrated.
+			cfg := config{configDir: filepath.Join(dir, "mods")}
+			cfg.outputDir = cfg.configDir
+			if mode == "output dir" {
+				cfg.outputDir = t.TempDir()
+			}
+			runSymlinkMigration(t, cfg)
+
+			for _, m := range []string{"a", "b"} {
+				got := readFile(t, filepath.Join(cfg.outputDir, m, "outputs.tf"))
+				if !strings.Contains(got, "cloudflare_authenticated_origin_pulls_hostname_certificate.host.id") {
+					t.Errorf("mods/%s/outputs.tf not renamed:\n%s", m, got)
+				}
+			}
+		})
+	}
+}

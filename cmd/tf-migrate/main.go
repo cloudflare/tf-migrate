@@ -51,6 +51,10 @@ type config struct {
 	// Diagnostic output options
 	quiet   bool // Suppress warnings, only show errors
 	verbose bool // Show all diagnostics including informational messages
+
+	// fileAliases maps each migrated input file to the other paths (symlinks)
+	// that resolve to it. Set by processConfigFiles for global postprocessing.
+	fileAliases map[string][]string
 }
 
 var (
@@ -1099,6 +1103,7 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 
 	// Apply global postprocessing for cross-file reference updates
 	if !cfg.dryRun && len(outputPaths) > 0 {
+		cfg.fileAliases = aliases
 		postDiags, err := applyGlobalPostprocessing(log, cfg, outputPaths)
 		allDiagnostics = append(allDiagnostics, postDiags...)
 		if err != nil {
@@ -1247,7 +1252,8 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 
 	// Which resources are declared with count or for_each, so indexed and
 	// iterated references to them can be told apart from attribute access.
-	iterable := collectIterableResources(log, outputPaths)
+	iterable := collectIterableResources(log, outputPaths, cfg.fileAliases)
+	instanceRenames = expandInstanceRenamesToAliases(instanceRenames, cfg.fileAliases)
 
 	// Track which renames were actually applied (content changed)
 	appliedRenames := make(map[string]string)
@@ -1350,7 +1356,7 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 	// This runs after all rewrites so that already-fixed references (e.g. secret →
 	// tunnel_secret) don't produce false positives.
 	if len(invalidAttrRefs) > 0 {
-		invalidAttrDiags := scanForInvalidAttributeReferences(log, outputPaths, invalidAttrRefs)
+		invalidAttrDiags := scanForInvalidAttributeReferences(log, outputPaths, invalidAttrRefs, cfg.fileAliases)
 		diags = append(diags, invalidAttrDiags...)
 	}
 
@@ -1393,7 +1399,7 @@ func applyGlobalPostprocessing(log hclog.Logger, cfg config, outputPaths []strin
 
 // scanForInvalidAttributeReferences scans output files for cross-file references
 // to known-invalid attributes and returns a DiagWarning for each match found.
-func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, refs []transform.InvalidAttributeReference) hcl.Diagnostics {
+func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, refs []transform.InvalidAttributeReference, aliases map[string][]string) hcl.Diagnostics {
 	var diags hcl.Diagnostics
 	if len(refs) == 0 {
 		return diags
@@ -1403,7 +1409,7 @@ func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, r
 	for _, ref := range refs {
 		types = append(types, ref.ResourceType)
 	}
-	iterable := collectIterableResources(log, outputPaths)
+	iterable := collectIterableResources(log, outputPaths, aliases)
 
 	for _, outputPath := range outputPaths {
 		content, err := os.ReadFile(outputPath)
@@ -1454,8 +1460,10 @@ func parseSyntaxBody(log hclog.Logger, content []byte, path string) (*hclsyntax.
 // collectIterableResources returns, for an output file, a function reporting
 // whether <type>.<name> may be indexed or iterated: false only when the
 // resource is declared in the same directory without count or for_each.
-// Undeclared resources are assumed iterable.
-func collectIterableResources(log hclog.Logger, outputPaths []string) func(outputPath string) func(resourceType, name string) bool {
+// Undeclared resources are assumed iterable. A file migrated in place and
+// reached through symlinks (aliases) declares its resources in each of
+// their directories too.
+func collectIterableResources(log hclog.Logger, outputPaths []string, aliases map[string][]string) func(outputPath string) func(resourceType, name string) bool {
 	singles := make(map[string]map[string]bool) // dir -> "type.name" -> declared without count/for_each
 	for _, outputPath := range outputPaths {
 		content, err := os.ReadFile(outputPath)
@@ -1466,7 +1474,10 @@ func collectIterableResources(log hclog.Logger, outputPaths []string) func(outpu
 		if !ok {
 			continue
 		}
-		dir := filepath.Dir(outputPath)
+		dirs := []string{filepath.Dir(outputPath)}
+		for _, alias := range aliases[outputPath] {
+			dirs = append(dirs, filepath.Dir(alias))
+		}
 		for _, block := range body.Blocks {
 			if len(block.Labels) != 2 || (block.Type != "resource" && block.Type != "data") {
 				continue
@@ -1477,10 +1488,12 @@ func collectIterableResources(log hclog.Logger, outputPaths []string) func(outpu
 			}
 			_, hasCount := block.Body.Attributes["count"]
 			_, hasForEach := block.Body.Attributes["for_each"]
-			if singles[dir] == nil {
-				singles[dir] = make(map[string]bool)
+			for _, dir := range dirs {
+				if singles[dir] == nil {
+					singles[dir] = make(map[string]bool)
+				}
+				singles[dir][addr] = !hasCount && !hasForEach
 			}
-			singles[dir][addr] = !hasCount && !hasForEach
 		}
 	}
 	return func(outputPath string) func(string, string) bool {
@@ -1701,6 +1714,30 @@ func regexReplaceSkippingMovedBlocks(content, pattern, replacement string) strin
 	}
 	result.WriteString(re.ReplaceAllString(content[lastEnd:], replacement))
 	return result.String()
+}
+
+// expandInstanceRenamesToAliases adds, for each rename whose declaring file is
+// also reached through symlinks, a copy scoped to each symlink's directory.
+// Each of those directories is a module that declares the resource, so its
+// references must be renamed too.
+func expandInstanceRenamesToAliases(renames []transform.InstanceRename, aliases map[string][]string) []transform.InstanceRename {
+	if len(aliases) == 0 {
+		return renames
+	}
+	expanded := renames
+	for _, r := range renames {
+		if r.File == "" || r.Dir == "" {
+			continue
+		}
+		for _, alias := range aliases[r.File] {
+			copied := r
+			copied.Dir = filepath.Clean(filepath.Dir(alias))
+			if !sameDir(copied.Dir, r.Dir) {
+				expanded = append(expanded, copied)
+			}
+		}
+	}
+	return expanded
 }
 
 // inputDirForOutput returns the directory of the input file that outputPath was

@@ -29,7 +29,7 @@ locals {
 		ResourceType: "data.cloudflare_api_token_permission_groups_list",
 		Attribute:    "zone", Suggestion: "Use result with a name and scope filter",
 	}}
-	diags := scanForInvalidAttributeReferences(newTestLogger(), []string{file}, refs)
+	diags := scanForInvalidAttributeReferences(newTestLogger(), []string{file}, refs, nil)
 	if len(diags) != 5 {
 		t.Fatalf("expected exactly five real references, got %d: %v", len(diags), diags)
 	}
