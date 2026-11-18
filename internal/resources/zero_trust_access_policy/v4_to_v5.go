@@ -333,6 +333,14 @@ func (m *V4ToV5Migrator) transformConditionExpression(expr hclsyntax.Expression)
 		// First, transform booleans in place
 		obj = m.transformBooleans(obj)
 
+		// An empty selector list (service_token = []) selects nothing in v4 and
+		// has no v5 equivalent, so drop it. A rule left with no selectors at
+		// all contributes nothing.
+		obj = m.dropEmptySelectorLists(obj)
+		if len(obj.Items) == 0 {
+			continue
+		}
+
 		// Then check if we need to expand arrays or github
 		expanded := m.expandObject(obj)
 		if len(expanded) > 0 {
@@ -574,24 +582,42 @@ func (m *V4ToV5Migrator) expandMappedArrayAttribute(sourceKey, targetKey, innerF
 // expandArrayAttribute expands array attributes like email, group, ip
 // email = ["a", "b"] -> [{email = {email = "a"}}, {email = {email = "b"}}]
 // Also handles single string values: common_name = "device" -> {common_name = {common_name = "device"}}
-func (m *V4ToV5Migrator) expandArrayAttribute(key string, item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
-	// Map of attribute names to their inner field names
-	arrayAttrs := map[string]string{
-		"email":          "email",
-		"group":          "id",
-		"ip":             "ip",
-		"email_domain":   "domain",
-		"geo":            "country_code",
-		"common_name":    "common_name",
-		"auth_method":    "auth_method",
-		"login_method":   "id",
-		"device_posture": "integration_uid",
-		"email_list":     "id",
-		"ip_list":        "id",
-		"service_token":  "token_id",
-	}
+// arraySelectors maps v4 list selectors to the inner field of their v5 object.
+var arraySelectors = map[string]string{
+	"email":          "email",
+	"group":          "id",
+	"ip":             "ip",
+	"email_domain":   "domain",
+	"geo":            "country_code",
+	"common_name":    "common_name",
+	"auth_method":    "auth_method",
+	"login_method":   "id",
+	"device_posture": "integration_uid",
+	"email_list":     "id",
+	"ip_list":        "id",
+	"service_token":  "token_id",
+}
 
-	innerFieldName, isArrayAttr := arrayAttrs[key]
+// dropEmptySelectorLists removes list selectors set to an empty list literal,
+// such as service_token = [] or email = [].
+func (m *V4ToV5Migrator) dropEmptySelectorLists(obj *hclsyntax.ObjectConsExpr) *hclsyntax.ObjectConsExpr {
+	var kept []hclsyntax.ObjectConsItem
+	for _, item := range obj.Items {
+		if tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr); ok && len(tup.Exprs) == 0 {
+			if _, isSelector := arraySelectors[m.getKeyString(item.KeyExpr)]; isSelector {
+				continue
+			}
+		}
+		kept = append(kept, item)
+	}
+	if len(kept) == len(obj.Items) {
+		return obj
+	}
+	return &hclsyntax.ObjectConsExpr{Items: kept, SrcRange: obj.SrcRange, OpenRange: obj.OpenRange}
+}
+
+func (m *V4ToV5Migrator) expandArrayAttribute(key string, item hclsyntax.ObjectConsItem) []hclsyntax.Expression {
+	innerFieldName, isArrayAttr := arraySelectors[key]
 	if !isArrayAttr {
 		return nil
 	}

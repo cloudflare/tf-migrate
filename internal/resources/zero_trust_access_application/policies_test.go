@@ -86,3 +86,23 @@ func TestPolicies_EmptyListIsNotWarned(t *testing.T) {
 	_, diags := transformPolicies(t, `[]`)
 	assert.Nil(t, policiesWarning(diags))
 }
+
+// A second run over migrated output must leave the v5 shape alone. It used to
+// wrap each object again: id = { id = ..., precedence = 1 }.
+func TestPolicies_AlreadyConvertedIsLeftAlone(t *testing.T) {
+	policies := `[
+    {
+      id         = cloudflare_zero_trust_access_policy.a.id
+      precedence = 1
+    },
+    {
+      id         = cloudflare_zero_trust_access_policy.b.id
+      precedence = 2
+    },
+  ]`
+	out, diags := transformPolicies(t, policies)
+	assert.NotContains(t, out, "id = {", "objects were wrapped again:\n%s", out)
+	assert.Equal(t, 2, strings.Count(out, "precedence = "), out)
+	assert.Contains(t, out, "id         = cloudflare_zero_trust_access_policy.b.id")
+	assert.Nil(t, policiesWarning(diags))
+}

@@ -1204,6 +1204,14 @@ func (m *V4ToV5Migrator) transformConditionExpression(expr hclsyntax.Expression)
 		// First, transform booleans in place
 		obj = m.transformBooleans(obj)
 
+		// An empty selector list (service_token = []) selects nothing in v4 and
+		// has no v5 equivalent, so drop it. A rule left with no selectors at
+		// all contributes nothing.
+		obj = m.dropEmptySelectorLists(obj)
+		if len(obj.Items) == 0 {
+			continue
+		}
+
 		// Then check if we need to expand arrays or handle cf-terraforming format
 		expanded := m.expandObject(obj)
 		if len(expanded) > 0 {
@@ -1264,6 +1272,23 @@ func (m *V4ToV5Migrator) transformConditionExpression(expr hclsyntax.Expression)
 		Name: "concat",
 		Args: concatArgs,
 	}
+}
+
+// dropEmptySelectorLists removes array selectors set to an empty list literal,
+// such as service_token = [] or email = [].
+func (m *V4ToV5Migrator) dropEmptySelectorLists(obj *hclsyntax.ObjectConsExpr) *hclsyntax.ObjectConsExpr {
+	var kept []hclsyntax.ObjectConsItem
+	for _, item := range obj.Items {
+		if tup, ok := item.ValueExpr.(*hclsyntax.TupleConsExpr); ok && len(tup.Exprs) == 0 &&
+			m.getSelectorInnerFieldName(m.getKeyString(item.KeyExpr)) != "" {
+			continue
+		}
+		kept = append(kept, item)
+	}
+	if len(kept) == len(obj.Items) {
+		return obj
+	}
+	return &hclsyntax.ObjectConsExpr{Items: kept, SrcRange: obj.SrcRange, OpenRange: obj.OpenRange}
 }
 
 // transformBooleans transforms boolean attributes to empty objects
@@ -1997,6 +2022,13 @@ func (m *V4ToV5Migrator) buildExprTokens(expr hclsyntax.Expression) hclwrite.Tok
 
 	switch e := expr.(type) {
 	case *hclsyntax.TupleConsExpr:
+		if len(e.Exprs) == 0 {
+			// Empty list: [] (a trailing comma alone is not valid HCL)
+			tokens = append(tokens,
+				&hclwrite.Token{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")},
+				&hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
+			break
+		}
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")})
 		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
 		for i, item := range e.Exprs {
