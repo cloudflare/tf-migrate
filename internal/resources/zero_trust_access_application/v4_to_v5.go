@@ -115,7 +115,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	tfhcl.ConvertBlocksToAttribute(body, "landing_page_design", "landing_page_design", nil)
 
 	policiesAttr := body.GetAttribute("policies")
-	convertedPolicies := tfhcl.ConvertArrayAttributeToObjectArray(body, "policies", func(element hclwrite.Tokens, index int) map[string]hclwrite.Tokens {
+	if policiesAttr != nil && isObjectListLiteral(policiesAttr) {
+		// Already in the v5 shape ([{ id = ..., precedence = ... }]), e.g. a
+		// second run over migrated output. Converting again would nest each
+		// object inside a new id.
+		policiesAttr = nil
+	}
+	convertedPolicies := policiesAttr != nil && tfhcl.ConvertArrayAttributeToObjectArray(body, "policies", func(element hclwrite.Tokens, index int) map[string]hclwrite.Tokens {
 		return map[string]hclwrite.Tokens{
 			"id": element,
 			"precedence": {
@@ -490,6 +496,25 @@ func (m *V4ToV5Migrator) convertTargetAttributesToMap(body *hclwrite.Body) {
 
 // isEmptyListLiteral reports whether attr is set to [], which needs no
 // conversion.
+// isObjectListLiteral reports whether attr is a non-empty list literal whose
+// elements are all object literals.
+func isObjectListLiteral(attr *hclwrite.Attribute) bool {
+	expr, diags := hclsyntax.ParseExpression(attr.Expr().BuildTokens(nil).Bytes(), "policies", hcl.InitialPos)
+	if diags.HasErrors() {
+		return false
+	}
+	tup, ok := expr.(*hclsyntax.TupleConsExpr)
+	if !ok || len(tup.Exprs) == 0 {
+		return false
+	}
+	for _, e := range tup.Exprs {
+		if _, ok := e.(*hclsyntax.ObjectConsExpr); !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func isEmptyListLiteral(attr *hclwrite.Attribute) bool {
 	return strings.Join(strings.Fields(string(attr.Expr().BuildTokens(nil).Bytes())), "") == "[]"
 }
