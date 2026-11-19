@@ -941,6 +941,16 @@ func runPhaseTwo(log hclog.Logger, cfg config, commentedFiles []string) error {
 		fmt.Println("===========================================")
 	}
 	fmt.Println()
+	if cfg.dryRun {
+		// Phase 2 has to restore the commented-out blocks on disk before it
+		// can migrate them, so a dry run stops here.
+		fmt.Println("(dry run) would restore the commented-out resource blocks in:")
+		for _, file := range commentedFiles {
+			fmt.Printf("  • %s\n", file)
+		}
+		fmt.Println("and run the full v5 migration. No files were changed.")
+		return nil
+	}
 	fmt.Println("Restoring commented-out resource blocks and running full v5 migration...")
 	fmt.Println()
 
