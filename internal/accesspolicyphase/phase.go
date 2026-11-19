@@ -253,6 +253,46 @@ func Scan(dir string) ([]Policy, []string, error) {
 	return policies, skipped, nil
 }
 
+// References returns "file:line" for each line in dir's .tf files that
+// refers to one of policies outside its own block, ignoring comments and
+// the record. Step 2 removes the policies from config, so these references
+// would fail the plan with "Reference to undeclared resource".
+func References(dir string, policies []Policy) []string {
+	paths, _ := filepath.Glob(filepath.Join(dir, "*.tf"))
+	sort.Strings(paths)
+	var out []string
+	for _, path := range paths {
+		if filepath.Base(path) == RecordFile {
+			continue
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		for i, line := range strings.Split(string(content), "\n") {
+			t := strings.TrimSpace(line)
+			if strings.HasPrefix(t, "#") || strings.HasPrefix(t, "//") {
+				continue
+			}
+			for _, p := range policies {
+				ref := p.Type + "." + p.Name
+				if idx := strings.Index(line, ref); idx >= 0 && !isIdentChar(line, idx+len(ref)) && (idx == 0 || !isIdentChar(line, idx-1)) {
+					out = append(out, fmt.Sprintf("%s:%d (%s)", filepath.Base(path), i+1, ref))
+				}
+			}
+		}
+	}
+	return out
+}
+
+func isIdentChar(s string, i int) bool {
+	if i < 0 || i >= len(s) {
+		return false
+	}
+	c := s[i]
+	return c == '_' || c == '-' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+}
+
 var (
 	cacheMu sync.Mutex
 	cache   = map[string][]Policy{}

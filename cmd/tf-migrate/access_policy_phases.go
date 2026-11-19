@@ -135,9 +135,13 @@ func runAccessPolicyRecordStep(log hclog.Logger, cfg config) (done bool, toFreez
 	}
 	var record []accessPolicyDir
 	var recorded []string
+	var refs []string
 	for _, d := range dirs {
 		for _, s := range d.skipped {
 			fmt.Printf("⚠ %s: %s. It stays on the manual migration path.\n", relDir(cfg, d.dir), s)
+		}
+		for _, r := range accesspolicyphase.References(d.dir, d.policies) {
+			refs = append(refs, filepath.Join(relDir(cfg, d.dir), r))
 		}
 		switch {
 		case len(d.policies) == 0:
@@ -177,6 +181,7 @@ func runAccessPolicyRecordStep(log hclog.Logger, cfg config) (done bool, toFreez
 				fmt.Printf("✓ wrote %s (re-exports module.%s's record)\n", accesspolicyphase.CallerFile(c), c.Name)
 			}
 		}
+		printPolicyReferences(refs)
 		fmt.Println()
 		fmt.Println("Next steps:")
 		fmt.Println("  1. Commit, plan and apply with the current (v4) provider.")
@@ -192,6 +197,12 @@ func runAccessPolicyRecordStep(log hclog.Logger, cfg config) (done bool, toFreez
 	}
 	if cfg.skipPhaseCheck {
 		return false, recorded, nil
+	}
+	if len(refs) > 0 {
+		// Step 2 removes the policies from config; these would fail the plan.
+		printPolicyReferences(refs)
+		fmt.Println("Remove these references, then re-run tf-migrate for step 2.")
+		return true, nil, nil
 	}
 	fmt.Println()
 	fmt.Println("The Access policy record (step 1) is written in:")
@@ -346,4 +357,17 @@ func looksLikeRoot(dir string) bool {
 		}
 	}
 	return false
+}
+
+func printPolicyReferences(refs []string) {
+	if len(refs) == 0 {
+		return
+	}
+	fmt.Println()
+	fmt.Println("⚠ These lines refer to app-scoped policies that step 2 removes from the")
+	fmt.Println("  configuration. Step 2's plan would fail with \"Reference to undeclared")
+	fmt.Println("  resource\". Remove them before step 2 (step 2 waits until they are gone):")
+	for _, r := range refs {
+		fmt.Printf("  • %s\n", r)
+	}
 }
