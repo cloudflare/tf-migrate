@@ -169,6 +169,13 @@ type PhaseOneTransformer interface {
     TransformPhaseOne(ctx *Context, block *hclwrite.Block) (*TransformResult, error)
 }
 
+// PhaseOneFilter — optional for a PhaseOneTransformer whose resources only
+// sometimes need phase 1 (e.g. app-scoped Access policies whose directory has
+// an applied record). Without it, every resource of the type does.
+type PhaseOneFilter interface {
+    NeedsPhaseOne(filePath string, block *hclwrite.Block) bool
+}
+
 // ResourceRenamer — enables cross-file resource type reference rewriting.
 // Return all v4 names that map to the v5 name, even if only one exists.
 type ResourceRenamer interface {
