@@ -200,3 +200,160 @@ func TestMakeReusable(t *testing.T) {
 	_, err = ParseRecord([]byte(`{"a": {"id": "p1"}}`))
 	assert.Error(t, err)
 }
+
+func TestMakeReusableErrors(t *testing.T) {
+	// per policy ID: what the PUT does, and whether GET reports it reusable after
+	mode := map[string]string{}
+	reusable := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if r.Method == http.MethodGet {
+			id := parts[4]
+			switch {
+			case mode[id] == "get500":
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{"success":false,"errors":[{"message":"boom"},{"message":"again"}]}`))
+			case reusable[id]:
+				_, _ = w.Write([]byte(`{"success":true,"result":{"id":"` + id + `","reusable":true}}`))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+			return
+		}
+		id := parts[len(parts)-2]
+		switch mode[id] {
+		case "conflict": // converted by someone else meanwhile
+			reusable[id] = true
+			w.WriteHeader(http.StatusConflict)
+		case "noop": // 200, but the policy stays app-scoped
+		case "otherid":
+			_, _ = w.Write([]byte(`{"success":true,"result":{"id":"other","reusable":true}}`))
+		case "forbidden":
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`not json`))
+		}
+	}))
+	defer srv.Close()
+	mode = map[string]string{"p1": "conflict", "p2": "noop", "p3": "otherid", "p4": "forbidden", "p5": "get500"}
+	rec := map[string]RecordedPolicy{}
+	for i, id := range []string{"p1", "p2", "p3", "p4", "p5"} {
+		rec[string(rune('a'+i))] = RecordedPolicy{ID: id, ApplicationID: "app", AccountID: "A"}
+	}
+	out := (&Client{BaseURL: srv.URL}).MakeReusable(rec, false)
+	require.Len(t, out, 5)
+	assert.Equal(t, "already reusable", out[0].Result, "409 then verified")
+	assert.NoError(t, out[0].Err)
+	assert.EqualError(t, out[1].Err, "verify: policy is still not reusable")
+	assert.EqualError(t, out[2].Err, "API returned a different policy ID other")
+	assert.EqualError(t, out[3].Err, "HTTP 403")
+	assert.EqualError(t, out[4].Err, "HTTP 500: boom; again")
+	for _, o := range out[1:] {
+		assert.Equal(t, "failed", o.Result)
+	}
+}
+
+func TestMakeReusableEscapesPath(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.EscapedPath()
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	_ = (&Client{BaseURL: srv.URL}).MakeReusable(map[string]RecordedPolicy{"a": {ID: "p/../x", ApplicationID: "app", AccountID: "A"}}, true)
+	assert.Equal(t, "/accounts/A/access/policies/p%2F..%2Fx", got)
+}
+
+func writeTF(t *testing.T, dir, src string) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(src), 0600))
+}
+
+func policySrc(typ, name, app, extra string, prec string) string {
+	return `resource "` + typ + `" "` + name + `" {
+  application_id = ` + app + `
+  account_id     = "a"
+  precedence     = ` + prec + `
+` + extra + `}
+`
+}
+
+func TestScanAllOrNothingPerApp(t *testing.T) {
+	const apps = `resource "cloudflare_access_application" "one" {}
+resource "cloudflare_access_application" "two" {}
+resource "cloudflare_access_application" "three" {
+  policies = ["x"]
+}
+`
+	names := func(ps []Policy) []string {
+		var out []string
+		for _, p := range ps {
+			out = append(out, p.Name)
+		}
+		return out
+	}
+	t.Run("mixed app goes manual, other app phased", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTF(t, dir, apps+
+			policySrc("cloudflare_access_policy", "ok1", "cloudflare_access_application.one.id", "", "1")+
+			policySrc("cloudflare_access_policy", "counted", "cloudflare_access_application.one.id", "  count = 1\n", "2")+
+			policySrc("cloudflare_access_policy", "ok2", "cloudflare_access_application.two.id", "", "1"))
+		ps, skipped, err := Scan(dir)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"ok2"}, names(ps))
+		assert.Len(t, skipped, 2)
+		assert.Contains(t, strings.Join(skipped, "\n"), "cloudflare_access_policy.ok1: its application (one) also has cloudflare_access_policy.counted")
+	})
+	t.Run("app that already sets policies", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTF(t, dir, apps+policySrc("cloudflare_access_policy", "p", "cloudflare_access_application.three.id", "", "1"))
+		ps, skipped, _ := Scan(dir)
+		assert.Empty(t, ps)
+		assert.Equal(t, []string{"cloudflare_access_policy.p: its application (three) already sets policies"}, skipped)
+	})
+	t.Run("same name under both v4 types", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTF(t, dir, apps+
+			policySrc("cloudflare_access_policy", "dup", "cloudflare_access_application.one.id", "", "1")+
+			policySrc("cloudflare_zero_trust_access_policy", "dup", "cloudflare_access_application.two.id", "", "1"))
+		ps, skipped, _ := Scan(dir)
+		assert.Empty(t, ps)
+		assert.Len(t, skipped, 2)
+		_, found := Find(dir, "cloudflare_access_policy", "dup")
+		assert.False(t, found)
+	})
+	t.Run("unresolvable application_id blocks the module", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTF(t, dir, apps+
+			policySrc("cloudflare_access_policy", "ok", "cloudflare_access_application.one.id", "", "1")+
+			policySrc("cloudflare_access_policy", "lit", `"0000-literal"`, "", "1"))
+		ps, skipped, _ := Scan(dir)
+		assert.Empty(t, ps)
+		assert.Contains(t, strings.Join(skipped, "\n"), "cloudflare_access_policy.ok: cloudflare_access_policy.lit has an application_id tf-migrate can't resolve")
+	})
+	t.Run("Find matches the type", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTF(t, dir, apps+policySrc("cloudflare_access_policy", "p", "cloudflare_access_application.one.id", "", "1"))
+		ResetCache()
+		_, ok := Find(dir, "cloudflare_access_policy", "p")
+		assert.True(t, ok)
+		_, ok = Find(dir, "cloudflare_zero_trust_access_policy", "p")
+		assert.False(t, ok)
+	})
+}
+
+func TestReferences(t *testing.T) {
+	dir := t.TempDir()
+	writeTF(t, dir, `resource "cloudflare_access_application" "one" {}
+`+policySrc("cloudflare_access_policy", "p", "cloudflare_access_application.one.id", "", "1")+`
+output "pid" {
+  value = cloudflare_access_policy.p.id
+}
+# value = cloudflare_access_policy.p.id
+output "other" {
+  value = cloudflare_access_policy.p2.id
+}
+`)
+	ps, _, err := Scan(dir)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"main.tf:9 (cloudflare_access_policy.p)"}, References(dir, ps))
+}

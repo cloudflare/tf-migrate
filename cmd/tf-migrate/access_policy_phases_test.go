@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -224,4 +226,165 @@ module "c" { source = "./c" }
 	assert.Contains(t, unsupported[filepath.Join(root, "b")], "count or for_each")
 	assert.Contains(t, unsupported[filepath.Join(root, "c", "inner")], "nested module")
 	assert.Equal(t, "c", calls[filepath.Join(root, "c")].Name)
+}
+
+func phasedCfg(dir string) config {
+	return config{configDir: dir, sourceVersion: "v4", targetVersion: "v5", targetProviderVersion: "5.29.0", skipVersionCheck: true}
+}
+
+const twoPolicies = `provider "cloudflare" {}
+
+resource "cloudflare_access_application" "app" {
+  account_id = var.account_id
+  name       = "App"
+  domain     = "app.example.com"
+  type       = "self_hosted"
+}
+
+resource "cloudflare_access_policy" "first" {
+  application_id = cloudflare_access_application.app.id
+  account_id     = var.account_id
+  name           = "First"
+  decision       = "allow"
+  precedence     = var.prec_first
+
+  include {
+    everyone = true
+  }
+}
+
+resource "cloudflare_access_policy" "second" {
+  application_id = cloudflare_access_application.app.id
+  account_id     = var.account_id
+  name           = "Second"
+  decision       = "deny"
+  precedence     = 1
+
+  include {
+    everyone = true
+  }
+}
+`
+
+func TestAccessPolicyPhased_NonLiteralPrecedenceSorts(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(main, []byte(twoPolicies), 0600))
+	cfg := phasedCfg(dir)
+	runWithAnswers(t, cfg)
+	runWithAnswers(t, cfg)
+	runWithAnswers(t, cfg)
+	b, err := os.ReadFile(main)
+	require.NoError(t, err)
+	m := string(b)
+	assert.Contains(t, m, `= [for s in sort([for k, v in local.tf_migrate_app_policies : format("%09d|%s", v.precedence, k)]) : local.tf_migrate_app_policies[substr(s, 10, -1)]]`)
+	assert.Contains(t, m, "first  = { id = cloudflare_zero_trust_access_policy.first.id, precedence = terraform_data.tf_migrate_access_policies.output.first.precedence }")
+
+	// A re-run over the migrated output leaves the sorted list alone and
+	// doesn't warn about it.
+	out := runWithAnswers(t, cfg)
+	b2, _ := os.ReadFile(main)
+	assert.Equal(t, m, string(b2))
+	assert.NotContains(t, out, "policies not converted")
+}
+
+func TestAccessPolicyPhased_ReferencesBlockStepTwo(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.tf")
+	src := strings.Replace(twoPolicies, "var.prec_first", "2", 1) + `
+output "first_id" {
+  value = cloudflare_access_policy.first.id
+}
+`
+	require.NoError(t, os.WriteFile(main, []byte(src), 0600))
+	cfg := phasedCfg(dir)
+	out := runWithAnswers(t, cfg)
+	assert.Contains(t, out, "main.tf:35 (cloudflare_access_policy.first)")
+	assert.Equal(t, accesspolicyphase.Recorded, accesspolicyphase.StateOf(dir))
+
+	out = runWithAnswers(t, cfg)
+	assert.Contains(t, out, "Remove these references, then re-run tf-migrate for step 2.")
+	assert.Equal(t, accesspolicyphase.Recorded, accesspolicyphase.StateOf(dir), "step 2 waits")
+	b, _ := os.ReadFile(main)
+	assert.Equal(t, src, string(b))
+
+	require.NoError(t, os.WriteFile(main, []byte(strings.Replace(twoPolicies, "var.prec_first", "2", 1)), 0600))
+	runWithAnswers(t, cfg)
+	assert.Equal(t, accesspolicyphase.Frozen, accesspolicyphase.StateOf(dir))
+}
+
+func TestAccessPolicyPhased_ModuleAloneTakesManualPath(t *testing.T) {
+	dir := t.TempDir()
+	src := strings.Replace(twoPolicies, "provider \"cloudflare\" {}\n", "", 1)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(src), 0600))
+	cfg := phasedCfg(dir)
+	cfg.skipPhaseCheck = false
+	out := runWithAnswers(t, cfg)
+	assert.Contains(t, out, "looks like a module called from outside --config-dir")
+	assert.NoFileExists(t, filepath.Join(dir, accesspolicyphase.RecordFile))
+	assert.Contains(t, out, "ACTION REQUIRED")
+
+	// A lock file is enough to count as a root.
+	dir2 := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir2, "main.tf"), []byte(src), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir2, ".terraform.lock.hcl"), nil, 0600))
+	out = runWithAnswers(t, phasedCfg(dir2))
+	assert.Contains(t, out, "step 1 of 4")
+}
+
+func TestAccessPolicyPhased_DryRunAtStepFour(t *testing.T) {
+	dir := t.TempDir()
+	main := filepath.Join(dir, "main.tf")
+	require.NoError(t, os.WriteFile(main, []byte(strings.Replace(twoPolicies, "var.prec_first", "2", 1)), 0600))
+	cfg := phasedCfg(dir)
+	runWithAnswers(t, cfg)
+	runWithAnswers(t, cfg)
+	before, _ := os.ReadFile(main)
+	cfg.dryRun = true
+	out := runWithAnswers(t, cfg)
+	assert.Contains(t, out, "(dry run) would restore")
+	after, _ := os.ReadFile(main)
+	assert.Equal(t, string(before), string(after))
+	assert.Equal(t, accesspolicyphase.Frozen, accesspolicyphase.StateOf(dir))
+}
+
+func TestMakeAccessPoliciesReusableCommand(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer tok", r.Header.Get("Authorization"))
+		if strings.HasSuffix(r.URL.Path, "/bad") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_, _ = w.Write([]byte(`{"success":true,"result":{"id":"ok","reusable":true}}`))
+	}))
+	defer srv.Close()
+	run := func(ids string) (string, error) {
+		f := filepath.Join(t.TempDir(), "ids.json")
+		require.NoError(t, os.WriteFile(f, []byte(ids), 0600))
+		cmd := newMakeAccessPoliciesReusableCommand(&config{})
+		var buf strings.Builder
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+		cmd.SetArgs([]string{"--ids", f, "--api-url", srv.URL})
+		err := cmd.Execute()
+		return buf.String(), err
+	}
+
+	t.Setenv("CLOUDFLARE_API_TOKEN", "")
+	t.Setenv("CLOUDFLARE_EMAIL", "")
+	t.Setenv("CLOUDFLARE_API_KEY", "")
+	_, err := run(`{"a": {"id": "ok", "application_id": "app", "account_id": "A"}}`)
+	assert.ErrorContains(t, err, "set CLOUDFLARE_API_TOKEN")
+
+	t.Setenv("CLOUDFLARE_API_TOKEN", "tok")
+	_, err = run(`{}`)
+	assert.ErrorContains(t, err, "has no policies")
+
+	out, err := run(`{"a": {"id": "ok", "application_id": "app", "account_id": "A"}}`)
+	require.NoError(t, err)
+	assert.Contains(t, out, "already reusable")
+
+	out, err = run(`{"a": {"id": "ok", "application_id": "app", "account_id": "A"}, "b": {"id": "bad", "application_id": "app", "account_id": "A"}}`)
+	assert.ErrorContains(t, err, "1 of 2 policies failed")
+	assert.Contains(t, out, "HTTP 403")
 }
