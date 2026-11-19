@@ -97,3 +97,10 @@ func tokensOf(name, expr string) hclwrite.Tokens {
 	}
 	return f.Body().GetAttribute(name).Expr().BuildTokens(nil)
 }
+
+// isPhasedPoliciesList reports whether attr is the sorted list written by
+// attachImportedPolicies, which is already in the v5 shape.
+func isPhasedPoliciesList(attr *hclwrite.Attribute) bool {
+	src := string(attr.Expr().BuildTokens(nil).Bytes())
+	return strings.Contains(src, "local.tf_migrate_") && strings.Contains(src, "_policies") && strings.Contains(src, "sort(")
+}

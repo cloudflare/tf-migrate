@@ -115,7 +115,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	tfhcl.ConvertBlocksToAttribute(body, "landing_page_design", "landing_page_design", nil)
 
 	policiesAttr := body.GetAttribute("policies")
-	if policiesAttr != nil && isObjectListLiteral(policiesAttr) {
+	if policiesAttr != nil && (isObjectListLiteral(policiesAttr) || isPhasedPoliciesList(policiesAttr)) {
 		// Already in the v5 shape ([{ id = ..., precedence = ... }]), e.g. a
 		// second run over migrated output. Converting again would nest each
 		// object inside a new id.
