@@ -316,7 +316,7 @@ func References(dir string, policies []Policy) []string {
 		}
 		// Top-level block type of each line (1-based).
 		blockOf := map[int]string{}
-		if f, diags := hclsyntax.ParseConfig(content, filepath.Base(path), hcl.InitialPos); !diags.HasErrors() {
+		if f, diags := hclsyntax.ParseConfig(content, filepath.Base(path), hcl.InitialPos); !diags.HasErrors() && f != nil {
 			if body, ok := f.Body.(*hclsyntax.Body); ok {
 				for _, b := range body.Blocks {
 					for l := b.Range().Start.Line; l <= b.Range().End.Line; l++ {
