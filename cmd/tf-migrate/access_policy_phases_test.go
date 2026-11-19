@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -98,6 +99,32 @@ resource "cloudflare_access_policy" "counted" {
 }
 `
 
+// checkAll writes the result of a passing make-access-policies-reusable
+// --check for every policy Scan finds in dir.
+func checkAll(t *testing.T, dir string) {
+	t.Helper()
+	ps, _, err := accesspolicyphase.Scan(dir)
+	require.NoError(t, err)
+	r := accesspolicyphase.CheckResult{Checked: map[string]string{}}
+	for _, p := range ps {
+		r.Checked[p.Name] = "id-" + p.Name
+	}
+	require.NoError(t, accesspolicyphase.WriteCheck(dir, r))
+}
+
+// convertAll marks every checked policy converted, as the convert run does.
+func convertAll(t *testing.T, dir string) {
+	t.Helper()
+	r, ok, err := accesspolicyphase.ReadCheck(dir)
+	require.NoError(t, err)
+	require.True(t, ok)
+	r.Converted = map[string]string{}
+	for k, v := range r.Checked {
+		r.Converted[k] = v
+	}
+	require.NoError(t, accesspolicyphase.WriteCheck(dir, r))
+}
+
 // runWithAnswers runs one tf-migrate migrate with stdin answering every prompt "y".
 func runWithAnswers(t *testing.T, cfg config) string {
 	t.Helper()
@@ -135,10 +162,19 @@ func TestAccessPolicyPhasedSteps(t *testing.T) {
 	assert.Contains(t, rec, "looped = { for k, i in cloudflare_access_policy.looped : k => {")
 	assert.NotContains(t, rec, "counted")
 
-	// Re-running step 1 before apply asks and, on "y", moves to step 2: the
-	// two supported policies are removed without destroy and the record frozen.
+	assert.Contains(t, out, "make-access-policies-reusable --check --ids")
+
+	// Step 2 waits for the API check.
 	out = runWithAnswers(t, cfg)
-	assert.Contains(t, out, "make-access-policies-reusable")
+	assert.Contains(t, out, "step 2 of 4 needs the check first")
+	assert.Equal(t, accesspolicyphase.Recorded, accesspolicyphase.StateOf(dir))
+	assert.Equal(t, phasedFixture, read(main))
+
+	// With the check: the supported policies are removed without destroy
+	// and the record frozen.
+	checkAll(t, dir)
+	out = runWithAnswers(t, cfg)
+	assert.Contains(t, out, "make-access-policies-reusable --ids")
 	assert.Equal(t, accesspolicyphase.Frozen, accesspolicyphase.StateOf(dir))
 	m := read(main)
 	assert.Contains(t, m, "# tf-migrate: resource \"cloudflare_access_policy\" \"allow\"")
@@ -146,8 +182,14 @@ func TestAccessPolicyPhasedSteps(t *testing.T) {
 	assert.Equal(t, 4, strings.Count(m, "destroy = false"))
 	assert.Contains(t, m, "resource \"cloudflare_access_policy\" \"counted\"", "unsupported policy is left for the manual path")
 
-	// Step 3: v5 policies imported by recorded ID, listed on the app in
+	// Step 4 waits for the convert run's marks.
+	out = runWithAnswers(t, cfg)
+	assert.Contains(t, out, "not converted to reusable yet: allow, by_zone, deny, looped")
+	assert.Contains(t, read(main), "# tf-migrate:")
+
+	// Step 4: v5 policies imported by recorded ID, listed on the app in
 	// precedence order, no moved block for them.
+	convertAll(t, dir)
 	runWithAnswers(t, cfg)
 	m = read(main)
 	assert.NotContains(t, m, "# tf-migrate:")
@@ -189,11 +231,14 @@ func TestAccessPolicyPhasedSteps_LocalModule(t *testing.T) {
 	assert.Contains(t, read(caller), "value = module.access.tf_migrate_access_policies")
 	assert.NotContains(t, read(caller), "import {")
 
+	checkAll(t, mod)
 	out := runWithAnswers(t, cfg)
 	assert.Equal(t, accesspolicyphase.Frozen, accesspolicyphase.StateOf(mod))
 	assert.Contains(t, read(filepath.Join(mod, "main.tf")), "# tf-migrate: resource \"cloudflare_access_policy\" \"allow\"")
 	assert.Contains(t, out, "output -json tf_migrate_access_policies_access")
+	assert.Contains(t, out, "--config-dir "+mod)
 
+	convertAll(t, mod)
 	runWithAnswers(t, cfg)
 	m := read(filepath.Join(mod, "main.tf"))
 	assert.NotContains(t, m, "import {", "imports are only allowed in the root module")
@@ -272,7 +317,9 @@ func TestAccessPolicyPhased_NonLiteralPrecedenceSorts(t *testing.T) {
 	require.NoError(t, os.WriteFile(main, []byte(twoPolicies), 0600))
 	cfg := phasedCfg(dir)
 	runWithAnswers(t, cfg)
+	checkAll(t, dir)
 	runWithAnswers(t, cfg)
+	convertAll(t, dir)
 	runWithAnswers(t, cfg)
 	b, err := os.ReadFile(main)
 	require.NoError(t, err)
@@ -302,6 +349,7 @@ output "first_id" {
 	assert.Contains(t, out, "main.tf:35 (cloudflare_access_policy.first)")
 	assert.Equal(t, accesspolicyphase.Recorded, accesspolicyphase.StateOf(dir))
 
+	checkAll(t, dir)
 	out = runWithAnswers(t, cfg)
 	assert.Contains(t, out, "Remove these references, then re-run tf-migrate for step 2.")
 	assert.Equal(t, accesspolicyphase.Recorded, accesspolicyphase.StateOf(dir), "step 2 waits")
@@ -345,7 +393,9 @@ func TestAccessPolicyPhased_DryRunAtStepFour(t *testing.T) {
 	require.NoError(t, os.WriteFile(main, []byte(strings.Replace(twoPolicies, "var.prec_first", "2", 1)), 0600))
 	cfg := phasedCfg(dir)
 	runWithAnswers(t, cfg)
+	checkAll(t, dir)
 	runWithAnswers(t, cfg)
+	convertAll(t, dir)
 	before, _ := os.ReadFile(main)
 	cfg.dryRun = true
 	out := runWithAnswers(t, cfg)
@@ -355,43 +405,133 @@ func TestAccessPolicyPhased_DryRunAtStepFour(t *testing.T) {
 	assert.Equal(t, accesspolicyphase.Frozen, accesspolicyphase.StateOf(dir))
 }
 
-func TestMakeAccessPoliciesReusableCommand(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "Bearer tok", r.Header.Get("Authorization"))
-		if strings.HasSuffix(r.URL.Path, "/bad") {
-			w.WriteHeader(http.StatusForbidden)
+// fakeAccessAPI serves the Access endpoints make-access-policies-reusable
+// calls. apps maps application ID -> attached policy IDs.
+type fakeAccessAPI struct {
+	apps     map[string][]string
+	reusable map[string]bool
+	puts     int
+}
+
+func (f *fakeAccessAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/") // accounts A access ...
+	switch {
+	case r.Header.Get("Authorization") != "Bearer tok":
+		w.WriteHeader(http.StatusForbidden)
+	case r.Method == http.MethodGet && len(parts) == 6 && parts[3] == "apps" && parts[5] == "policies":
+		var res []map[string]any
+		for i, id := range f.apps[parts[4]] {
+			res = append(res, map[string]any{"id": id, "name": "Policy " + id, "decision": "allow", "precedence": i + 1})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "result": res, "result_info": map[string]any{"page": 1, "total_pages": 1, "total_count": len(res)}})
+	case r.Method == http.MethodGet && len(parts) == 5 && parts[3] == "apps":
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "result": map[string]any{"name": "app " + parts[4]}})
+	case r.Method == http.MethodGet && len(parts) == 5 && parts[3] == "policies":
+		if !f.reusable[parts[4]] {
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		_, _ = w.Write([]byte(`{"success":true,"result":{"id":"ok","reusable":true}}`))
-	}))
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "result": map[string]any{"id": parts[4], "reusable": true}})
+	case r.Method == http.MethodPut && parts[len(parts)-1] == "make_reusable":
+		f.puts++
+		f.reusable[parts[len(parts)-2]] = true
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "result": map[string]any{"id": parts[len(parts)-2], "reusable": true}})
+	default:
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+func TestMakeAccessPoliciesReusableCommand(t *testing.T) {
+	api := &fakeAccessAPI{apps: map[string][]string{"app1": {"p1", "p2"}, "app2": {"p3", "p4"}}, reusable: map[string]bool{}}
+	srv := httptest.NewServer(api)
 	defer srv.Close()
-	run := func(ids string) (string, error) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, accesspolicyphase.RecordFile), []byte(accesspolicyphase.RenderFrozen()), 0600))
+	const ids = `{"a": {"id": "p1", "application_id": "app1", "account_id": "A"},
+ "b": {"id": "p2", "application_id": "app1", "account_id": "A"},
+ "c": {"id": "p3", "application_id": "app2", "account_id": "A"}}`
+	run := func(ids string, args ...string) (string, error) {
+		t.Helper()
 		f := filepath.Join(t.TempDir(), "ids.json")
 		require.NoError(t, os.WriteFile(f, []byte(ids), 0600))
-		cmd := newMakeAccessPoliciesReusableCommand(&config{})
+		cmd := newMakeAccessPoliciesReusableCommand(&config{configDir: dir})
 		var buf strings.Builder
 		cmd.SetOut(&buf)
 		cmd.SetErr(&buf)
-		cmd.SetArgs([]string{"--ids", f, "--api-url", srv.URL})
+		cmd.SetArgs(append([]string{"--ids", f, "--api-url", srv.URL}, args...))
 		err := cmd.Execute()
 		return buf.String(), err
+	}
+	check := func() accesspolicyphase.CheckResult {
+		t.Helper()
+		r, ok, err := accesspolicyphase.ReadCheck(dir)
+		require.NoError(t, err)
+		require.True(t, ok)
+		return r
 	}
 
 	t.Setenv("CLOUDFLARE_API_TOKEN", "")
 	t.Setenv("CLOUDFLARE_EMAIL", "")
 	t.Setenv("CLOUDFLARE_API_KEY", "")
-	_, err := run(`{"a": {"id": "ok", "application_id": "app", "account_id": "A"}}`)
+	_, err := run(ids, "--check")
 	assert.ErrorContains(t, err, "set CLOUDFLARE_API_TOKEN")
 
 	t.Setenv("CLOUDFLARE_API_TOKEN", "tok")
-	_, err = run(`{}`)
+	_, err = run(`{}`, "--check")
 	assert.ErrorContains(t, err, "has no policies")
 
-	out, err := run(`{"a": {"id": "ok", "application_id": "app", "account_id": "A"}}`)
-	require.NoError(t, err)
-	assert.Contains(t, out, "already reusable")
+	_, err = run(ids)
+	assert.ErrorContains(t, err, "Run with --check after the step 1 apply")
 
-	out, err = run(`{"a": {"id": "ok", "application_id": "app", "account_id": "A"}, "b": {"id": "bad", "application_id": "app", "account_id": "A"}}`)
+	// app2 has p4 in Cloudflare, not in the record: incomplete, named.
+	out, err := run(ids, "--check")
+	assert.ErrorContains(t, err, "1 application(s) incomplete")
+	assert.Contains(t, out, `app app2 (app2): 2 policies in Cloudflare, 1 in your Terraform record`)
+	assert.Contains(t, out, `not in Terraform: "Policy p4" (allow, precedence 2, id p4)`)
+	assert.Contains(t, out, "--skip-app <id>")
+	assert.Equal(t, map[string]string{"a": "p1", "b": "p2"}, check().Checked)
+	assert.Equal(t, 0, api.puts)
+
+	// Deliberately skipped: the check passes, app2 stays manual.
+	out, err = run(ids, "--check", "--skip-app", "app2")
+	require.NoError(t, err, out)
+	r := check()
+	assert.Equal(t, []string{"app2"}, r.SkippedApps)
+	assert.Equal(t, map[string]string{"c": "p3"}, r.Skipped)
+
+	// A new skip after step 2 is refused.
+	_, err = run(ids, "--skip-app", "app1")
+	assert.ErrorContains(t, err, "can only be skipped with --check")
+
+	// Convert: only the complete application, and the marks for step 4.
+	out, err = run(ids)
+	require.NoError(t, err, out)
+	assert.Equal(t, 2, api.puts)
+	assert.False(t, api.reusable["p3"], "skipped application is not converted")
+	assert.Equal(t, map[string]string{"a": "p1", "b": "p2"}, check().Converted)
+
+	// A policy attached between the check and the convert run blocks its
+	// application again.
+	api.apps["app1"] = append(api.apps["app1"], "p9")
+	out, err = run(ids)
+	assert.ErrorContains(t, err, "1 application(s) incomplete")
+	assert.Contains(t, out, "id p9")
+	r = check()
+	assert.Empty(t, r.Converted, "marks are dropped for an incomplete application")
+	assert.Equal(t, map[string]string{"a": "p1", "b": "p2"}, r.Checked, "step 2's decision is kept, so step 4 waits")
+
+	// Partial failure exits non-zero.
+	api.apps["app1"] = []string{"p1", "p2"}
+	api.reusable = map[string]bool{}
+	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/p2/") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		api.ServeHTTP(w, r)
+	})
+	out, err = run(ids)
 	assert.ErrorContains(t, err, "1 of 2 policies failed")
 	assert.Contains(t, out, "HTTP 403")
+	assert.Equal(t, map[string]string{"a": "p1"}, check().Converted)
 }

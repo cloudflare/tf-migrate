@@ -64,6 +64,7 @@ type Client struct {
 	BaseURL string // e.g. https://api.cloudflare.com/client/v4
 	HTTP    *http.Client
 	Auth    func(*http.Request)
+	PerPage int // page size when listing an application's policies (default 50)
 }
 
 // Outcome is what MakeReusable did for one policy.

@@ -188,7 +188,12 @@ func runAccessPolicyRecordStep(log hclog.Logger, cfg config) (done bool, toFreez
 		fmt.Println("  1. Commit, plan and apply with the current (v4) provider.")
 		fmt.Println("     Expect only terraform_data." + accesspolicyphase.Name + " to be added; the plan")
 		fmt.Println("     output shows each recorded policy ID.")
-		fmt.Println("  2. Re-run tf-migrate for step 2.")
+		fmt.Println("  2. Check that each application's policies are all in the record (read-only):")
+		for _, d := range record {
+			printReusableCommand(d.dir, "--check ")
+		}
+		fmt.Println("     Commit the " + accesspolicyphase.CheckFile + " it writes.")
+		fmt.Println("  3. Re-run tf-migrate for step 2.")
 		log.Debug("Access policy record step written", "dirs", len(record))
 		return true, nil, nil
 	}
@@ -205,15 +210,35 @@ func runAccessPolicyRecordStep(log hclog.Logger, cfg config) (done bool, toFreez
 		fmt.Println("Remove these references, then re-run tf-migrate for step 2.")
 		return true, nil, nil
 	}
-	fmt.Println()
-	fmt.Println("The Access policy record (step 1) is written in:")
-	for _, d := range recorded {
-		fmt.Printf("  • %s\n", relDir(cfg, d))
+	// Step 2 runs only once the API check says every recorded application
+	// is complete. A check result also means step 1 was applied.
+	var unchecked []string
+	for _, d := range dirs {
+		if len(d.policies) == 0 || d.state != accesspolicyphase.Recorded {
+			continue
+		}
+		r, _, err := accesspolicyphase.ReadCheck(d.dir)
+		if err != nil {
+			return false, nil, err
+		}
+		var missing []string
+		for _, p := range d.policies {
+			if !accesspolicyphase.HasName(r.Checked, p.Name) {
+				missing = append(missing, p.Type+"."+p.Name)
+			}
+		}
+		if len(missing) > 0 {
+			unchecked = append(unchecked, d.dir)
+			fmt.Printf("%s: not checked, or on an incomplete application: %s\n", relDir(cfg, d.dir), strings.Join(missing, ", "))
+		}
 	}
-	fmt.Print("Did you apply it with the v4 provider? [y/N]: ")
-	if !readYes() {
+	if len(unchecked) > 0 {
 		fmt.Println()
-		fmt.Println("Apply step 1 first, then re-run tf-migrate.")
+		fmt.Println("Access policy migration — step 2 of 4 needs the check first. After the step 1 apply, run:")
+		for _, d := range unchecked {
+			printReusableCommand(d, "--check ")
+		}
+		fmt.Println("then re-run tf-migrate.")
 		return true, nil, nil
 	}
 	return false, recorded, nil
@@ -236,15 +261,21 @@ func freezeAccessPolicyRecords(cfg config, dirs []string) error {
 	fmt.Println("Step 3 of 4, after this apply and before re-running tf-migrate:")
 	fmt.Println("  Convert the recorded policies to reusable ones (same IDs, still attached):")
 	for _, d := range dirs {
-		root, output := d, accesspolicyphase.Name
-		if c, ok := accesspolicyphase.ModuleOf(d); ok {
-			root, output = c.CallerDir, accesspolicyphase.CallerOutput(c)
-		}
-		ids := filepath.Join(root, output+".json")
-		fmt.Printf("    terraform -chdir=%s output -json %s > %s\n", root, output, ids)
-		fmt.Printf("    tf-migrate make-access-policies-reusable --ids %s\n", ids)
+		printReusableCommand(d, "")
 	}
 	return nil
+}
+
+// printReusableCommand prints the commands that export dir's record and run
+// make-access-policies-reusable on it.
+func printReusableCommand(dir, flags string) {
+	root, output := dir, accesspolicyphase.Name
+	if c, ok := accesspolicyphase.ModuleOf(dir); ok {
+		root, output = c.CallerDir, accesspolicyphase.CallerOutput(c)
+	}
+	ids := filepath.Join(root, output+".json")
+	fmt.Printf("    terraform -chdir=%s output -json %s > %s\n", root, output, ids)
+	fmt.Printf("    tf-migrate make-access-policies-reusable %s--ids %s --config-dir %s\n", flags, ids, dir)
 }
 
 // confirmAccessPoliciesReusable asks before step 3 when a frozen record exists.
@@ -253,27 +284,39 @@ func confirmAccessPoliciesReusable(cfg config) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	var frozen []string
-	for _, d := range dirs {
-		if d.state == accesspolicyphase.Frozen {
-			frozen = append(frozen, relDir(cfg, d.dir))
-		}
-	}
-	if len(frozen) == 0 || cfg.skipPhaseCheck {
+	if cfg.skipPhaseCheck {
 		return true, nil
 	}
-	fmt.Println("Access policy migration — step 4 of 4: migrate to v5")
-	fmt.Printf("Did you run make-access-policies-reusable (step 3) for %s? [y/N]: ", strings.Join(frozen, ", "))
-	return readYes(), nil
-}
-
-func readYes() bool {
-	var answer string
-	if _, err := fmt.Scanln(&answer); err != nil {
-		return false
+	ok := true
+	for _, d := range dirs {
+		if d.state != accesspolicyphase.Frozen {
+			continue
+		}
+		// The convert run marks each policy it made (or found) reusable.
+		r, found, err := accesspolicyphase.ReadCheck(d.dir)
+		if err != nil {
+			return false, err
+		}
+		var pending []string
+		for k := range r.Checked {
+			if _, done := r.Converted[k]; !done {
+				pending = append(pending, k)
+			}
+		}
+		sort.Strings(pending)
+		switch {
+		case !found || len(r.Checked) == 0:
+			ok = false
+			fmt.Printf("%s: no %s with checked policies.\n", relDir(cfg, d.dir), accesspolicyphase.CheckFile)
+		case len(pending) > 0:
+			ok = false
+			fmt.Printf("%s: not converted to reusable yet: %s\n", relDir(cfg, d.dir), strings.Join(pending, ", "))
+		}
 	}
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	return answer == "y" || answer == "yes"
+	if ok {
+		fmt.Println("Access policy migration — step 4 of 4: migrate to v5")
+	}
+	return ok, nil
 }
 
 func relDir(cfg config, dir string) string {

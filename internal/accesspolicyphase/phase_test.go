@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -321,14 +322,45 @@ resource "cloudflare_access_application" "three" {
 		_, found := Find(dir, "cloudflare_access_policy", "dup")
 		assert.False(t, found)
 	})
-	t.Run("unresolvable application_id blocks the module", func(t *testing.T) {
+	t.Run("unresolvable application_id only affects itself", func(t *testing.T) {
+		// The API check (CheckApps) catches it if it is on a phased app.
 		dir := t.TempDir()
 		writeTF(t, dir, apps+
 			policySrc("cloudflare_access_policy", "ok", "cloudflare_access_application.one.id", "", "1")+
 			policySrc("cloudflare_access_policy", "lit", `"0000-literal"`, "", "1"))
 		ps, skipped, _ := Scan(dir)
-		assert.Empty(t, ps)
-		assert.Contains(t, strings.Join(skipped, "\n"), "cloudflare_access_policy.ok: cloudflare_access_policy.lit has an application_id tf-migrate can't resolve")
+		assert.Equal(t, []string{"ok"}, names(ps))
+		assert.Equal(t, []string{"cloudflare_access_policy.lit: application_id is not a reference to an application resource in the same module"}, skipped)
+	})
+	t.Run("indexed application blocks only that application", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTF(t, dir, apps+
+			policySrc("cloudflare_access_policy", "ok", "cloudflare_access_application.one.id", "", "1")+
+			policySrc("cloudflare_access_policy", "idx", "cloudflare_access_application.two[each.key].id", "  for_each = toset([\"a\"])\n", "1")+
+			policySrc("cloudflare_access_policy", "two_ok", "cloudflare_access_application.two.id", "", "2")+
+			`resource "cloudflare_access_policy" "fe" {
+  for_each       = cloudflare_access_application.three
+  application_id = each.value.id
+  account_id     = "a"
+  precedence     = 1
+}
+`)
+		ps, skipped, _ := Scan(dir)
+		assert.Equal(t, []string{"ok"}, names(ps))
+		j := strings.Join(skipped, "\n")
+		assert.Contains(t, j, "cloudflare_access_policy.idx: application_id refers to an instance of an application with count or for_each")
+		assert.Contains(t, j, "cloudflare_access_policy.two_ok: its application (two) also has cloudflare_access_policy.idx")
+		assert.Contains(t, j, "cloudflare_access_policy.fe: ")
+	})
+	t.Run("skipped with --skip-app", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTF(t, dir, apps+
+			policySrc("cloudflare_access_policy", "ok", "cloudflare_access_application.one.id", "", "1")+
+			policySrc("cloudflare_access_policy", "s", "cloudflare_access_application.two.id", "", "1"))
+		require.NoError(t, WriteCheck(dir, CheckResult{Checked: map[string]string{"ok": "p1"}, SkippedApps: []string{"app2"}, Skipped: map[string]string{"s": "p2"}}))
+		ps, skipped, _ := Scan(dir)
+		assert.Equal(t, []string{"ok"}, names(ps))
+		assert.Equal(t, []string{"cloudflare_access_policy.s: its application was skipped with --skip-app"}, skipped)
 	})
 	t.Run("Find matches the type", func(t *testing.T) {
 		dir := t.TempDir()
@@ -364,4 +396,53 @@ import {
 	ps, _, err := Scan(dir)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"main.tf:9 (cloudflare_access_policy.p)", "main.tf:20 (cloudflare_access_policy.p, import block)"}, References(dir, ps), "moved blocks are ignored")
+}
+
+func TestCheckApps(t *testing.T) {
+	attached := map[string][]string{"app1": {"p1", "p2", "p3", "p4", "p5"}, "zapp": {"z1", "zx"}}
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(parts) == 5 { // the app, for its name
+			_, _ = w.Write([]byte(`{"success":true,"result":{"name":"App ` + parts[4] + `"}}`))
+			return
+		}
+		ids := attached[parts[4]]
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		per, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+		var res []map[string]any
+		for i := (page - 1) * per; i < len(ids) && i < page*per; i++ {
+			res = append(res, map[string]any{"id": ids[i], "name": "N" + ids[i], "decision": "deny", "precedence": i + 1})
+		}
+		pages := (len(ids) + per - 1) / per
+		_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "result": res, "result_info": map[string]any{"page": page, "per_page": per, "total_pages": pages, "total_count": len(ids)}})
+	}))
+	defer srv.Close()
+	rec := map[string]RecordedPolicy{}
+	for _, id := range []string{"p1", "p2", "p3", "p4", "p5"} {
+		rec[id] = RecordedPolicy{ID: id, ApplicationID: "app1", AccountID: "A"}
+	}
+	rec["z"] = RecordedPolicy{ID: "z1", ApplicationID: "zapp", AccountID: "A", ZoneID: "Z"}
+	rec["gone"] = RecordedPolicy{ID: "z2", ApplicationID: "zapp", AccountID: "A", ZoneID: "Z"}
+	rec["s"] = RecordedPolicy{ID: "s1", ApplicationID: "skipme", AccountID: "A"}
+
+	out := (&Client{BaseURL: srv.URL, PerPage: 2}).CheckApps(rec, map[string]bool{"skipme": true})
+	require.Len(t, out, 3)
+	assert.True(t, out[0].Complete(), "5 policies over 3 pages: %+v", out[0])
+	assert.True(t, out[1].Skipped)
+	z := out[2]
+	assert.False(t, z.Complete())
+	assert.Equal(t, "App zapp", z.AppName)
+	assert.Equal(t, []string{"gone"}, z.Missing)
+	require.Len(t, z.Extra, 1)
+	assert.Equal(t, "zx", z.Extra[0].ID)
+	d := z.Describe()
+	assert.Contains(t, d, `App zapp (zapp): 2 policies in Cloudflare, 2 in your Terraform record`)
+	assert.Contains(t, d, `not in Terraform: "Nzx" (deny, precedence 2, id zx)`)
+	assert.Contains(t, d, "gone is in the record but not attached in Cloudflare")
+	assert.Contains(t, paths, "/zones/Z/access/apps/zapp/policies", "zone apps list through the zone endpoint")
+	for _, p := range paths {
+		assert.NotContains(t, p, "skipme")
+	}
 }

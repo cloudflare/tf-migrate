@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -95,12 +96,15 @@ func Inspect(block *hclwrite.Block) (p Policy, ok bool, reason string) {
 		return p, false, ""
 	}
 	p.Type, p.Name = block.Labels()[0], block.Labels()[1]
-	app, isRef := appReference(appAttr)
-	if isRef {
-		p.App = app
+	app, isRef, indexed := appReference(appAttr)
+	if !isRef {
+		app, indexed = forEachApp(body, appAttr)
 	}
+	p.App = app
 	switch {
-	case !isRef:
+	case indexed:
+		return p, false, "application_id refers to an instance of an application with count or for_each"
+	case app == "":
 		return p, false, "application_id is not a reference to an application resource in the same module"
 	case body.GetAttribute("count") != nil:
 		return p, false, "uses count"
@@ -129,21 +133,62 @@ func Inspect(block *hclwrite.Block) (p Policy, ok bool, reason string) {
 }
 
 // appReference returns NAME when attr is <application type>.NAME.id.
-func appReference(attr *hclwrite.Attribute) (string, bool) {
-	expr, diags := hclsyntax.ParseExpression([]byte(exprSource(attr)), "application_id", hcl.InitialPos)
-	if diags.HasErrors() {
+// appReference resolves application_id = <app type>.<name>.id, or
+// <app type>.<name>[...].id (indexed).
+func appReference(attr *hclwrite.Attribute) (name string, ok, indexed bool) {
+	src := exprSource(attr)
+	if m := indexedAppRef.FindStringSubmatch(src); m != nil && appTypes[m[1]] {
+		// e.g. cloudflare_access_application.x[each.key].id
+		return m[2], true, true
+	}
+	st := traversal(src)
+	if st == nil || (len(st) != 3 && len(st) != 4) || !appTypes[st.RootName()] {
+		return "", false, false
+	}
+	n, ok1 := st[1].(hcl.TraverseAttr)
+	id, ok2 := st[len(st)-1].(hcl.TraverseAttr)
+	if !ok1 || !ok2 || id.Name != "id" {
+		return "", false, false
+	}
+	if len(st) == 4 {
+		if _, isIndex := st[2].(hcl.TraverseIndex); !isIndex {
+			return "", false, false
+		}
+		return n.Name, true, true
+	}
+	return n.Name, true, false
+}
+
+// forEachApp resolves for_each = <app type>.<name> with application_id =
+// each.value.id. It is always an instance of an application with for_each.
+func forEachApp(body *hclwrite.Body, appAttr *hclwrite.Attribute) (string, bool) {
+	fe := body.GetAttribute("for_each")
+	if fe == nil || exprSource(appAttr) != "each.value.id" {
 		return "", false
+	}
+	st := traversal(exprSource(fe))
+	if len(st) != 2 || !appTypes[st.RootName()] {
+		return "", false
+	}
+	n, ok := st[1].(hcl.TraverseAttr)
+	if !ok {
+		return "", false
+	}
+	return n.Name, true
+}
+
+var indexedAppRef = regexp.MustCompile(`^([a-z_]+)\.([A-Za-z_][A-Za-z0-9_-]*)\[[^\]]+\]\.id$`)
+
+func traversal(src string) hcl.Traversal {
+	expr, diags := hclsyntax.ParseExpression([]byte(src), "expr", hcl.InitialPos)
+	if diags.HasErrors() {
+		return nil
 	}
 	st, ok := expr.(*hclsyntax.ScopeTraversalExpr)
-	if !ok || len(st.Traversal) != 3 || !appTypes[st.Traversal.RootName()] {
-		return "", false
+	if !ok {
+		return nil
 	}
-	name, ok1 := st.Traversal[1].(hcl.TraverseAttr)
-	id, ok2 := st.Traversal[2].(hcl.TraverseAttr)
-	if !ok1 || !ok2 || id.Name != "id" {
-		return "", false
-	}
-	return name.Name, true
+	return st.Traversal
 }
 
 func exprSource(attr *hclwrite.Attribute) string {
@@ -177,9 +222,11 @@ func StateOf(dir string) State {
 // It decides per application, all or nothing: the v5 step writes the
 // application's complete policies list, and a policy missing from that list
 // would be detached on apply. So an application keeps the manual path when
-// any of its policies is unsupported, when it already sets policies, or when
-// some app-scoped policy in the module has an application_id that can't be
-// resolved (it could belong to any application).
+// any of its policies is unsupported, or when it already sets policies.
+// Policies on the application from outside this directory (another module,
+// a literal application_id, the dashboard) can't be seen here; the API check
+// (CheckApps) catches those before step 2. Policies whose application the
+// check skipped (--skip-app) take the manual path.
 func Scan(dir string) ([]Policy, []string, error) {
 	paths, err := filepath.Glob(filepath.Join(dir, "*.tf"))
 	if err != nil {
@@ -213,13 +260,10 @@ func Scan(dir string) ([]Policy, []string, error) {
 	}
 
 	names := map[string]int{}
-	unresolved := ""
 	for _, c := range cands {
 		names[c.p.Name]++
-		if c.p.App == "" && unresolved == "" {
-			unresolved = c.p.Type + "." + c.p.Name
-		}
 	}
+	skipped := skippedNames(dir)
 	for _, c := range cands {
 		switch {
 		case c.reason != "":
@@ -227,8 +271,8 @@ func Scan(dir string) ([]Policy, []string, error) {
 			c.reason = "another app-scoped policy has the same name"
 		case appsWithPolicies[c.p.App]:
 			c.reason = fmt.Sprintf("its application (%s) already sets policies", c.p.App)
-		case unresolved != "":
-			c.reason = fmt.Sprintf("%s has an application_id tf-migrate can't resolve, so it can't tell which application's policies list would be complete", unresolved)
+		case skipped[c.p.Name]:
+			c.reason = "its application was skipped with --skip-app"
 		}
 	}
 	// All or nothing per application.
@@ -239,7 +283,7 @@ func Scan(dir string) ([]Policy, []string, error) {
 		}
 	}
 	var policies []Policy
-	var skipped []string
+	var manual []string
 	for _, c := range cands {
 		if c.reason == "" && blocked[c.p.App] != "" {
 			c.reason = fmt.Sprintf("its application (%s) also has %s, which is not supported, and the application's policies list must be complete", c.p.App, blocked[c.p.App])
@@ -247,16 +291,17 @@ func Scan(dir string) ([]Policy, []string, error) {
 		if c.reason == "" {
 			policies = append(policies, c.p)
 		} else {
-			skipped = append(skipped, fmt.Sprintf("%s.%s: %s", c.p.Type, c.p.Name, c.reason))
+			manual = append(manual, fmt.Sprintf("%s.%s: %s", c.p.Type, c.p.Name, c.reason))
 		}
 	}
-	return policies, skipped, nil
+	return policies, manual, nil
 }
 
-// References returns "file:line" for each line in dir's .tf files that
-// refers to one of policies outside its own block, ignoring comments and
-// the record. Step 2 removes the policies from config, so these references
-// would fail the plan with "Reference to undeclared resource".
+// References returns "file:line (ref)" for each line in dir's .tf files that
+// refers to one of policies outside its own block, ignoring comments, the
+// record and moved blocks (a moved block whose target is gone plans fine).
+// Step 2 removes the policies from config, so these references would fail
+// the plan. A reference from an import block is labeled as such.
 func References(dir string, policies []Policy) []string {
 	paths, _ := filepath.Glob(filepath.Join(dir, "*.tf"))
 	sort.Strings(paths)
