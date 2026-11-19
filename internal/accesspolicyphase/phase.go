@@ -269,15 +269,30 @@ func References(dir string, policies []Policy) []string {
 		if err != nil {
 			continue
 		}
+		// Top-level block type of each line (1-based).
+		blockOf := map[int]string{}
+		if f, diags := hclsyntax.ParseConfig(content, filepath.Base(path), hcl.InitialPos); !diags.HasErrors() {
+			if body, ok := f.Body.(*hclsyntax.Body); ok {
+				for _, b := range body.Blocks {
+					for l := b.Range().Start.Line; l <= b.Range().End.Line; l++ {
+						blockOf[l] = b.Type
+					}
+				}
+			}
+		}
 		for i, line := range strings.Split(string(content), "\n") {
 			t := strings.TrimSpace(line)
-			if strings.HasPrefix(t, "#") || strings.HasPrefix(t, "//") {
+			if strings.HasPrefix(t, "#") || strings.HasPrefix(t, "//") || blockOf[i+1] == "moved" {
 				continue
 			}
 			for _, p := range policies {
 				ref := p.Type + "." + p.Name
 				if idx := strings.Index(line, ref); idx >= 0 && !isIdentChar(line, idx+len(ref)) && (idx == 0 || !isIdentChar(line, idx-1)) {
-					out = append(out, fmt.Sprintf("%s:%d (%s)", filepath.Base(path), i+1, ref))
+					label := ref
+					if blockOf[i+1] == "import" {
+						label += ", import block"
+					}
+					out = append(out, fmt.Sprintf("%s:%d (%s)", filepath.Base(path), i+1, label))
 				}
 			}
 		}

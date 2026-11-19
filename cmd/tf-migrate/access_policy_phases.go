@@ -367,8 +367,9 @@ func printPolicyReferences(refs []string) {
 	}
 	fmt.Println()
 	fmt.Println("⚠ These lines refer to app-scoped policies that step 2 removes from the")
-	fmt.Println("  configuration. Step 2's plan would fail with \"Reference to undeclared")
-	fmt.Println("  resource\". Remove them before step 2 (step 2 waits until they are gone):")
+	fmt.Println("  configuration, so step 2's plan would fail (\"Reference to undeclared")
+	fmt.Println("  resource\"; for an import block, its target no longer exists in config).")
+	fmt.Println("  Remove them before step 2 (step 2 waits until they are gone):")
 	for _, r := range refs {
 		fmt.Printf("  • %s\n", r)
 	}

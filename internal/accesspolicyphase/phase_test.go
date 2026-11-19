@@ -352,8 +352,16 @@ output "pid" {
 output "other" {
   value = cloudflare_access_policy.p2.id
 }
+moved {
+  from = cloudflare_access_policy.old
+  to   = cloudflare_access_policy.p
+}
+import {
+  to = cloudflare_access_policy.p
+  id = "x"
+}
 `)
 	ps, _, err := Scan(dir)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"main.tf:9 (cloudflare_access_policy.p)"}, References(dir, ps))
+	assert.Equal(t, []string{"main.tf:9 (cloudflare_access_policy.p)", "main.tf:20 (cloudflare_access_policy.p, import block)"}, References(dir, ps), "moved blocks are ignored")
 }
