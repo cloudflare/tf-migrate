@@ -5,9 +5,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
+	"time"
 )
+
+// DefaultTimeout bounds each API request when Client.HTTP is nil.
+const DefaultTimeout = 30 * time.Second
 
 // RecordedPolicy is one entry of `terraform output -json tf_migrate_access_policies`.
 type RecordedPolicy struct {
@@ -111,7 +116,7 @@ func (c *Client) MakeReusable(rec map[string]RecordedPolicy, dryRun bool) []Outc
 // isReusable reads the policy through the account-level endpoint, which
 // only serves reusable policies (404 for an app-scoped one).
 func (c *Client) isReusable(p RecordedPolicy) (bool, error) {
-	status, body, err := c.do(http.MethodGet, fmt.Sprintf("/accounts/%s/access/policies/%s", p.AccountID, p.ID))
+	status, body, err := c.do(http.MethodGet, fmt.Sprintf("/accounts/%s/access/policies/%s", url.PathEscape(p.AccountID), url.PathEscape(p.ID)))
 	if err != nil {
 		return false, err
 	}
@@ -129,11 +134,11 @@ func (c *Client) isReusable(p RecordedPolicy) (bool, error) {
 }
 
 func (c *Client) convert(p RecordedPolicy) (string, error) {
-	scope := "/accounts/" + p.AccountID
+	scope := "/accounts/" + url.PathEscape(p.AccountID)
 	if p.ZoneID != "" {
-		scope = "/zones/" + p.ZoneID
+		scope = "/zones/" + url.PathEscape(p.ZoneID)
 	}
-	status, body, err := c.do(http.MethodPut, fmt.Sprintf("%s/access/apps/%s/policies/%s/make_reusable", scope, p.ApplicationID, p.ID))
+	status, body, err := c.do(http.MethodPut, fmt.Sprintf("%s/access/apps/%s/policies/%s/make_reusable", scope, url.PathEscape(p.ApplicationID), url.PathEscape(p.ID)))
 	if err != nil {
 		return "failed", err
 	}
@@ -169,7 +174,7 @@ func (c *Client) do(method, path string) (int, []byte, error) {
 	}
 	hc := c.HTTP
 	if hc == nil {
-		hc = http.DefaultClient
+		hc = &http.Client{Timeout: DefaultTimeout}
 	}
 	resp, err := hc.Do(req)
 	if err != nil {

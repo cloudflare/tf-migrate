@@ -37,6 +37,12 @@ CLOUDFLARE_EMAIL and CLOUDFLARE_API_KEY.`,
 			if err != nil {
 				return err
 			}
+			if len(rec) == 0 {
+				// {} is what the output returns when step 2 was applied
+				// without step 1: the policies may be out of state with no
+				// IDs recorded.
+				return fmt.Errorf("%s has no policies. Check that step 1 (the record) was applied: terraform state show terraform_data.%s", idsPath, accesspolicyphase.Name)
+			}
 			auth, err := cloudflareAuth()
 			if err != nil {
 				return err
@@ -57,7 +63,7 @@ CLOUDFLARE_EMAIL and CLOUDFLARE_API_KEY.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&idsPath, "ids", "", "JSON from `terraform output -json "+accesspolicyphase.Name+"`")
+	cmd.Flags().StringVar(&idsPath, "ids", "", "file with the JSON from terraform output -json "+accesspolicyphase.Name+" (for a module, "+accesspolicyphase.Name+"_<module>)")
 	cmd.Flags().StringVar(&baseURL, "api-url", "https://api.cloudflare.com/client/v4", "Cloudflare API base URL")
 	_ = cmd.MarkFlagRequired("ids")
 	return cmd
