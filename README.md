@@ -452,7 +452,7 @@ tf-migrate keeps every policy ID instead. Run `tf-migrate migrate` once per step
 - **Step 1** writes `tf-migrate-access-policies.tf`. It records each policy's `id`, `application_id`, `account_id` and `precedence` in a `terraform_data` resource and an `output`.
 - **Step 2** comments the policies out with `# tf-migrate: `, adds `removed { lifecycle { destroy = false } }` for each, and freezes the record with `ignore_changes`. The values stay in state.
 - **Step 3** calls `make_reusable` for each recorded policy, one at a time, and verifies each. The policy keeps its ID, stays attached to its application at the same precedence, and its rules don't change. Policies that are already reusable are skipped, so it is safe to re-run. `--dry-run` only checks. Credentials: `CLOUDFLARE_API_TOKEN`, or `CLOUDFLARE_EMAIL` and `CLOUDFLARE_API_KEY`.
-- **Step 4** restores each policy as `cloudflare_zero_trust_access_policy`, with an `import` block whose ID is read from the record. It lists the policies on the application's `policies` in precedence order. In step 4's plan, the application shows `policies` entries changing to `null` for `name`, `decision`, `include` and other fields. That's expected: v5 keeps only `id` and `precedence` for referenced policies in state, and nothing changes in Cloudflare.
+- **Step 4** restores each policy as `cloudflare_zero_trust_access_policy`, with an `import` block whose ID is read from the record. It lists the policies on the application's `policies` in precedence order. When a precedence isn't an integer literal (`for_each`, a variable or a local), the list sorts by the recorded precedence. In step 4's plan, the application shows `policies` entries changing to `null` for `name`, `decision`, `include` and other fields. That's expected: v5 keeps only `id` and `precedence` for referenced policies in state, and nothing changes in Cloudflare.
 
 Keep `tf-migrate-access-policies.tf` after the migration. The `import` blocks read from it, and so do the `account_id` of policies migrated from `zone_id`.
 
@@ -467,6 +467,17 @@ Other app-scoped policies keep the manual path: a `removed {}` block with the or
 - a literal or module-output `application_id`
 - a `for_each` zone policy with a per-instance `zone_id`
 - modules that are called more than once, called with `count` or `for_each`, or nested
+- a directory that looks like a module run on its own: no caller inside `--config-dir`, and no `provider` block, backend, `.terraform.lock.hcl` or `terraform.tfstate`
+- two app-scoped policies with the same name under the two v4 type names
+
+The decision is per application, all or nothing. Step 4 writes the application's complete `policies` list, and a policy missing from it would be detached on apply. So every policy of an application takes the manual path when:
+- any of its policies is unsupported
+- the application already sets `policies`
+- any app-scoped policy in the same module has an `application_id` tf-migrate can't resolve
+
+Before step 2, remove anything else that refers to a phased policy (an `output`, `depends_on`, a local). Step 2 removes the policies from config, so those references would fail the plan. Step 1 lists them, and step 2 waits until they are gone.
+
+`--dry-run` at step 4 only lists the files it would restore, because step 4 has to restore the commented-out blocks on disk before it can migrate them.
 
 `--skip-phase-check` skips phasing, so app-scoped policies take the manual path too.
 
