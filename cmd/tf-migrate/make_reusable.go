@@ -15,7 +15,7 @@ func newMakeAccessPoliciesReusableCommand(cfg *config) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "make-access-policies-reusable",
 		Short: "Convert recorded application-scoped Access policies to reusable policies (same IDs)",
-		Long: `Run between step 2 and step 3 of the Access policy migration, after the step 2 apply.
+		Long: `Step 3 of 4 of the Access policy migration. Run it after the step 2 apply.
 
 Reads the record written by tf-migrate:
   terraform output -json ` + accesspolicyphase.Name + ` > ids.json

@@ -121,7 +121,7 @@ func TestAccessPolicyPhasedSteps(t *testing.T) {
 
 	// Step 1: only the record is written; main.tf is untouched.
 	out := runWithAnswers(t, cfg)
-	assert.Contains(t, out, "step 1 of 3")
+	assert.Contains(t, out, "step 1 of 4")
 	assert.Contains(t, out, "cloudflare_access_policy.counted: uses count")
 	assert.Equal(t, phasedFixture, read(main))
 	assert.Equal(t, accesspolicyphase.Recorded, accesspolicyphase.StateOf(dir))

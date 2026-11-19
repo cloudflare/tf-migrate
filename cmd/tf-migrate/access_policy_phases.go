@@ -161,7 +161,7 @@ func runAccessPolicyRecordStep(log hclog.Logger, cfg config) (done bool, toFreez
 	}
 
 	if len(record) > 0 {
-		fmt.Println("Access policy migration — step 1 of 3: record policy IDs")
+		fmt.Println("Access policy migration — step 1 of 4: record policy IDs")
 		fmt.Println("=========================================================")
 		fmt.Println()
 		for _, d := range record {
@@ -231,7 +231,8 @@ func freezeAccessPolicyRecords(cfg config, dirs []string) error {
 		fmt.Printf("✓ %s — record frozen\n", path)
 	}
 	fmt.Println()
-	fmt.Println("Access policies — after this apply, before re-running tf-migrate:")
+	fmt.Println("Access policy migration — this is step 2 of 4 (remove from state).")
+	fmt.Println("Step 3 of 4, after this apply and before re-running tf-migrate:")
 	fmt.Println("  Convert the recorded policies to reusable ones (same IDs, still attached):")
 	for _, d := range dirs {
 		root, output := d, accesspolicyphase.Name
@@ -260,7 +261,8 @@ func confirmAccessPoliciesReusable(cfg config) (bool, error) {
 	if len(frozen) == 0 || cfg.skipPhaseCheck {
 		return true, nil
 	}
-	fmt.Printf("Did you run make-access-policies-reusable for %s? [y/N]: ", strings.Join(frozen, ", "))
+	fmt.Println("Access policy migration — step 4 of 4: migrate to v5")
+	fmt.Printf("Did you run make-access-policies-reusable (step 3) for %s? [y/N]: ", strings.Join(frozen, ", "))
 	return readYes(), nil
 }
 
