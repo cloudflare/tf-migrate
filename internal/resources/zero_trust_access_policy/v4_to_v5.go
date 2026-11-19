@@ -70,7 +70,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	if IsApplicationScopedPolicy(block) {
 		dir := filepath.Dir(ctx.FilePath)
 		if p, ok := accesspolicyphase.Find(dir, resourceName); ok && accesspolicyphase.StateOf(dir) == accesspolicyphase.Frozen {
-			importBlock = newImportBlock("cloudflare_zero_trust_access_policy."+resourceName, accesspolicyphase.ImportID(p))
+			importBlock = newImportBlock(p, "cloudflare_zero_trust_access_policy."+resourceName)
 			if p.ZoneID != "" {
 				// v5 is account-level; the record holds the zone's account.
 				body.SetAttributeRaw("account_id", tokensOf(p.AccountID))

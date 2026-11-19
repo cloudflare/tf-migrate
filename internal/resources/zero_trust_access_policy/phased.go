@@ -26,11 +26,16 @@ func (m *V4ToV5Migrator) TransformPhaseOne(_ *transform.Context, block *hclwrite
 	return &transform.TransformResult{Blocks: []*hclwrite.Block{tfhcl.CreateRemovedBlock(addr)}}, nil
 }
 
-// newImportBlock returns import { to = <to>, id = <idExpr> }.
-func newImportBlock(to, idExpr string) *hclwrite.Block {
+// newImportBlock returns the import block for p at address to. A for_each
+// policy gets one import block iterating over its record entries.
+func newImportBlock(p accesspolicyphase.Policy, to string) *hclwrite.Block {
 	b := hclwrite.NewBlock("import", nil)
+	if p.ForEach {
+		b.Body().SetAttributeRaw("for_each", tokensOf(p.RecordRef()))
+		to += "[each.key]"
+	}
 	b.Body().SetAttributeRaw("to", tokensOf(to))
-	b.Body().SetAttributeRaw("id", tokensOf(idExpr))
+	b.Body().SetAttributeRaw("id", tokensOf(accesspolicyphase.ImportID(p)))
 	return b
 }
 

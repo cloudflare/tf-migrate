@@ -33,7 +33,7 @@ func TestInspect(t *testing.T) {
 	assert.Equal(t, Policy{Type: "cloudflare_access_policy", Name: "p", App: "app", AccountID: "var.account_id", Precedence: "2"}, p)
 
 	for name, src := range map[string]string{
-		"for_each": `resource "cloudflare_access_policy" "p" {` + "\n" + `for_each = {}` + "\n" + `application_id = cloudflare_access_application.app.id` + "\n" + `account_id = "a"` + "\n" + `precedence = 1
+		"count": `resource "cloudflare_access_policy" "p" {` + "\n" + `count = 1` + "\n" + `application_id = cloudflare_access_application.app.id` + "\n" + `account_id = "a"` + "\n" + `precedence = 1
 }`,
 		"no scope": `resource "cloudflare_access_policy" "p" {` + "\n" + `application_id = cloudflare_access_application.app.id` + "\n" + `precedence = 1
 }`,
@@ -55,6 +55,29 @@ func TestInspect(t *testing.T) {
 	require.True(t, supported, reason)
 	assert.Equal(t, "var.zone_id", zp.ZoneID)
 	assert.Equal(t, "terraform_data.tf_migrate_access_policies.output.z.account_id", zp.AccountID)
+
+	fp, supported, reason := Inspect(block(t, `resource "cloudflare_access_policy" "fe" {
+  for_each       = var.policies
+  application_id = cloudflare_access_application.app.id
+  zone_id        = var.zone_id
+  precedence     = each.value
+}`))
+	require.True(t, supported, reason)
+	assert.True(t, fp.ForEach)
+	assert.Equal(t, "terraform_data.tf_migrate_access_policies.output.fe[each.key].account_id", fp.AccountID)
+	assert.Equal(t, `"${each.value.account_id}/${each.value.id}"`, ImportID(fp))
+	rec := string(RenderRecord([]Policy{fp}))
+	assert.Contains(t, rec, "fe = { for k, i in cloudflare_access_policy.fe : k => {")
+	assert.Contains(t, rec, "zone_id        = i.zone_id")
+	assert.Contains(t, rec, "account_id     = data.cloudflare_zone.tf_migrate_access_policies_0.account_id")
+
+	_, supported, _ = Inspect(block(t, `resource "cloudflare_access_policy" "fe" {
+  for_each       = var.policies
+  application_id = cloudflare_access_application.app.id
+  zone_id        = each.value.zone
+  precedence     = 1
+}`))
+	assert.False(t, supported, "per-instance zone_id can't be looked up once")
 
 	_, supported, reason = Inspect(block(t, `resource "cloudflare_access_policy" "p" { account_id = "a" }`))
 	assert.False(t, supported)
@@ -169,6 +192,10 @@ func TestMakeReusable(t *testing.T) {
 	again := c.MakeReusable(rec, false)
 	assert.Equal(t, "already reusable", again[0].Result)
 	assert.Equal(t, 2, puts, "re-run converts nothing")
+
+	nested, err := ParseRecord([]byte(`{"fe": {"x": {"id": "p9", "application_id": "app1", "account_id": "A"}}}`))
+	require.NoError(t, err)
+	assert.Equal(t, "p9", nested[`fe["x"]`].ID)
 
 	_, err = ParseRecord([]byte(`{"a": {"id": "p1"}}`))
 	assert.Error(t, err)

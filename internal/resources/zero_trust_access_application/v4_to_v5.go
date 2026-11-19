@@ -152,7 +152,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		})
 	}
 
-	m.attachImportedPolicies(ctx, body, resourceName)
+	policiesLocals := m.attachImportedPolicies(ctx, body, resourceName)
 
 	tfhcl.RemoveFunctionWrapper(body, "allowed_idps", "toset")
 	tfhcl.RemoveFunctionWrapper(body, "custom_pages", "toset")
@@ -170,10 +170,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	if movedBlock != nil {
 		blocks = append(blocks, movedBlock)
 	}
+	if policiesLocals != nil {
+		blocks = append(blocks, policiesLocals)
+	}
 
 	return &transform.TransformResult{
 		Blocks:         blocks,
-		RemoveOriginal: movedBlock != nil, // Remove original if we generated a moved block
+		RemoveOriginal: len(blocks) > 1, // Remove original if we generated extra blocks
 	}, nil
 }
 

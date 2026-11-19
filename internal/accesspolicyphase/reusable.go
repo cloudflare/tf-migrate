@@ -18,10 +18,33 @@ type RecordedPolicy struct {
 }
 
 // ParseRecord parses `terraform output -json tf_migrate_access_policies`.
+// A for_each policy's entry is a map of instances, returned as name["key"].
 func ParseRecord(data []byte) (map[string]RecordedPolicy, error) {
-	var rec map[string]RecordedPolicy
-	if err := json.Unmarshal(data, &rec); err != nil {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parse record: %w", err)
+	}
+	rec := map[string]RecordedPolicy{}
+	for name, msg := range raw {
+		var probe map[string]json.RawMessage
+		if err := json.Unmarshal(msg, &probe); err != nil {
+			return nil, fmt.Errorf("parse record entry %q: %w", name, err)
+		}
+		if _, single := probe["id"]; single {
+			var p RecordedPolicy
+			if err := json.Unmarshal(msg, &p); err != nil {
+				return nil, fmt.Errorf("parse record entry %q: %w", name, err)
+			}
+			rec[name] = p
+			continue
+		}
+		var instances map[string]RecordedPolicy
+		if err := json.Unmarshal(msg, &instances); err != nil {
+			return nil, fmt.Errorf("parse record entry %q: %w", name, err)
+		}
+		for k, p := range instances {
+			rec[fmt.Sprintf("%s[%q]", name, k)] = p
+		}
 	}
 	for k, p := range rec {
 		if p.ID == "" || p.ApplicationID == "" || p.AccountID == "" {

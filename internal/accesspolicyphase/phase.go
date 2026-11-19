@@ -75,6 +75,12 @@ type Policy struct {
 	AccountID  string // account_id expression source; for a zone policy, read from the record
 	ZoneID     string // zone_id expression source, zone policies only
 	Precedence string // precedence expression source
+	ForEach    bool   // the policy uses for_each; the record holds one entry per key
+}
+
+// RecordRef is the record expression for p (a map of instances when ForEach).
+func (p Policy) RecordRef() string {
+	return fmt.Sprintf("terraform_data.%s.output.%s", Name, p.Name)
 }
 
 // Inspect reports whether block is an application-scoped policy the phased
@@ -90,8 +96,8 @@ func Inspect(block *hclwrite.Block) (p Policy, ok bool, reason string) {
 	}
 	p.Type, p.Name = block.Labels()[0], block.Labels()[1]
 	switch {
-	case body.GetAttribute("count") != nil || body.GetAttribute("for_each") != nil:
-		return p, false, "uses count or for_each"
+	case body.GetAttribute("count") != nil:
+		return p, false, "uses count"
 	case body.GetAttribute("account_id") == nil && body.GetAttribute("zone_id") == nil:
 		return p, false, "has neither account_id nor zone_id"
 	case body.GetAttribute("precedence") == nil:
@@ -102,13 +108,20 @@ func Inspect(block *hclwrite.Block) (p Policy, ok bool, reason string) {
 		return p, false, "application_id is not a reference to an application resource in the same module"
 	}
 	p.App = app
+	p.ForEach = body.GetAttribute("for_each") != nil
 	if a := body.GetAttribute("account_id"); a != nil {
 		p.AccountID = exprSource(a)
 	} else {
 		// v5 policies are account-level. v4 can't set account_id next to
 		// zone_id, so the record looks the zone's account up.
 		p.ZoneID = exprSource(body.GetAttribute("zone_id"))
-		p.AccountID = fmt.Sprintf("terraform_data.%s.output.%s.account_id", Name, p.Name)
+		if p.ForEach && strings.Contains(p.ZoneID, "each.") {
+			return p, false, "uses for_each with a per-instance zone_id"
+		}
+		p.AccountID = p.RecordRef() + ".account_id"
+		if p.ForEach {
+			p.AccountID = p.RecordRef() + "[each.key].account_id"
+		}
 	}
 	p.Precedence = exprSource(body.GetAttribute("precedence"))
 	return p, true, ""
@@ -270,6 +283,12 @@ func RenderRecord(policies []Policy) []byte {
 			account = "data.cloudflare_zone." + zones[p.ZoneID] + ".account_id"
 			zone = "      zone_id        = " + r + ".zone_id\n"
 		}
+		if p.ForEach {
+			account = strings.Replace(account, r+".", "i.", 1)
+			zone = strings.Replace(zone, r+".", "i.", 1)
+			fmt.Fprintf(&b, "    %s = { for k, i in %s : k => {\n      id             = i.id\n      application_id = i.application_id\n      account_id     = %s\n%s      precedence     = i.precedence\n    } }\n", p.Name, r, account, zone)
+			continue
+		}
 		fmt.Fprintf(&b, "    %s = {\n      id             = %s.id\n      application_id = %s.application_id\n      account_id     = %s\n%s      precedence     = %s.precedence\n    }\n", p.Name, r, r, account, zone, r)
 	}
 	b.WriteString("  }\n}\n\n")
@@ -300,8 +319,12 @@ output %q {
 `, Name, Name, Name)))
 }
 
-// ImportID returns the v5 import ID expression source for p.
+// ImportID returns the v5 import ID expression source for p. For a for_each
+// policy it is evaluated in an import block iterating over p.RecordRef().
 func ImportID(p Policy) string {
+	if p.ForEach {
+		return `"${each.value.account_id}/${each.value.id}"`
+	}
 	acct := "${" + p.AccountID + "}"
 	if s, err := strconv.Unquote(p.AccountID); err == nil && !strings.Contains(s, "${") {
 		acct = s
