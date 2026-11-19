@@ -84,7 +84,7 @@ func scanAccessPolicyDirs(cfg config) ([]accessPolicyDir, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, unsupportedModules, err := findLocalModuleCalls(cfg)
+	calls, unsupportedModules, err := findLocalModuleCalls(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,14 @@ func scanAccessPolicyDirs(cfg config) ([]accessPolicyDir, error) {
 			return nil, err
 		}
 		state := accesspolicyphase.StateOf(d)
-		if reason, ok := unsupportedModules[filepath.Clean(d)]; ok {
+		reason, ok := unsupportedModules[filepath.Clean(d)]
+		if _, called := calls[filepath.Clean(d)]; !ok && !called && len(policies) > 0 && !looksLikeRoot(d) {
+			// A module run on its own (e.g. a shared-module repo): step 4's
+			// import blocks would land in the module, and Terraform only
+			// allows them in the root module.
+			reason, ok = "is in a directory with no provider block, backend, lock file or state, so it looks like a module called from outside --config-dir (run tf-migrate from the root module, with --recursive)", true
+		}
+		if ok {
 			for _, p := range policies {
 				skipped = append(skipped, fmt.Sprintf("%s.%s: %s", p.Type, p.Name, reason))
 			}
@@ -304,4 +311,39 @@ func setAccessPolicyModules(cfg config) error {
 	}
 	accesspolicyphase.SetModules(calls)
 	return nil
+}
+
+// looksLikeRoot reports whether dir has something only a root module usually
+// has: a provider block, a backend or cloud block, a lock file or a local
+// state file.
+func looksLikeRoot(dir string) bool {
+	for _, f := range []string{".terraform.lock.hcl", "terraform.tfstate"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err == nil {
+			return true
+		}
+	}
+	paths, _ := filepath.Glob(filepath.Join(dir, "*.tf"))
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		f, diags := hclwrite.ParseConfig(content, filepath.Base(path), hcl.InitialPos)
+		if diags.HasErrors() {
+			continue
+		}
+		for _, b := range f.Body().Blocks() {
+			if b.Type() == "provider" {
+				return true
+			}
+			if b.Type() == "terraform" {
+				for _, inner := range b.Body().Blocks() {
+					if inner.Type() == "backend" || inner.Type() == "cloud" {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }

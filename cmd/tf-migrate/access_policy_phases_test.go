@@ -115,6 +115,7 @@ func TestAccessPolicyPhasedSteps(t *testing.T) {
 	main := filepath.Join(dir, "main.tf")
 	record := filepath.Join(dir, accesspolicyphase.RecordFile)
 	require.NoError(t, os.WriteFile(main, []byte(phasedFixture), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "providers.tf"), []byte("provider \"cloudflare\" {}\n"), 0600))
 	cfg := config{configDir: dir, sourceVersion: "v4", targetVersion: "v5", targetProviderVersion: "5.29.0", skipVersionCheck: true}
 	read := func(p string) string { b, err := os.ReadFile(p); require.NoError(t, err); return string(b) }
 
