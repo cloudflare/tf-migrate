@@ -147,7 +147,7 @@ func classifyResource(block *hclwrite.Block, file string, providers transform.Mi
 	// Both v4 Access policy names with application_id are a special manual
 	// path in v4->v5: they become removed {} blocks and must be rewritten inline
 	// on cloudflare_zero_trust_access_application.policies.
-	// The phased flow only runs interactively; --yes runs the full migration.
+	// The phased flow only runs interactively; --skip-phase-check runs the full migration.
 	if cfg.sourceVersion == "v4" && cfg.targetVersion == "v5" && !cfg.skipPhaseCheck {
 		if _, ok, _ := accesspolicyphase.Inspect(block); ok {
 			return &scannedResource{

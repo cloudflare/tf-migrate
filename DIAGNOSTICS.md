@@ -92,6 +92,18 @@ before you plan:
 policies = [for i, id in <expression> : { id = id, precedence = i + 1 }]
 ```
 
+## Action required: add imported policies to cloudflare_zero_trust_access_application
+
+**Severity:** Warning
+
+**Resource:** `cloudflare_zero_trust_access_application`
+
+In the v5 step of the [phased migration of app-scoped Access policies](README.md#phased-migration-app-scoped-access-policies),
+tf-migrate lists the imported policies on their application's `policies`. This
+application already sets `policies`, so tf-migrate left it unchanged. The
+warning shows the entries to add, in precedence order. v5 expects `policies` in
+precedence order; otherwise every plan shows a diff.
+
 ## Action required: could not resolve type on cloudflare_authenticated_origin_pulls_certificate
 
 **Severity:** Warning

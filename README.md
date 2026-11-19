@@ -377,6 +377,7 @@ After a successful migration, tf-migrate:
    terraform init -upgrade -backend=false
    ```
 4. **Handles `zone_settings_override` automatically** via phased migration — see [Phased Migration](#phased-migration-zone_settings_override) below
+5. **Migrates app-scoped Access policies without recreating them** via phased migration — see [Phased Migration (app-scoped Access policies)](#phased-migration-app-scoped-access-policies) below
 
 ## Phased Migration (`zone_settings_override`)
 
@@ -429,6 +430,45 @@ On confirmation:
 ### No `zone_settings_override`?
 
 If your workspace doesn't use `cloudflare_zone_settings_override`, nothing changes — single-pass migration as normal.
+
+## Phased Migration (app-scoped Access policies)
+
+A v4 `cloudflare_access_policy` (or `cloudflare_zero_trust_access_policy`) with `application_id` is an app-scoped policy. v5 has no app-scoped policy. The v5 `cloudflare_zero_trust_access_policy` only manages reusable policies, attached to an application through its `policies` attribute.
+
+Two shortcuts both plan as `0 to destroy` but don't work:
+- **Inlining the policy in the application:** gives every policy a new ID and deletes the old one.
+- **Importing the app-scoped policy directly:** works, but its first update fails with 404.
+
+tf-migrate keeps every policy ID instead. Run `tf-migrate migrate` once per step and apply in between. tf-migrate detects which step a directory is at.
+
+| Step | Run | Apply with | Expected plan |
+|------|-----|------------|---------------|
+| 1. Record | `tf-migrate migrate` | v4 provider | `1 to add` (`terraform_data.tf_migrate_access_policies`); the output lists each policy ID |
+| 2. Remove from state | `tf-migrate migrate` (confirm step 1 was applied) | v4 provider | `0 to add, 0 to change, 0 to destroy`; each policy "will no longer be managed" |
+| 3. Make reusable | `terraform output -json tf_migrate_access_policies > ids.json`<br>`tf-migrate make-access-policies-reusable --ids ids.json` | — | — |
+| 4. Migrate to v5 | `tf-migrate migrate` (confirm steps 2 and 3) | v5 provider | `N to import, 0 to add, 0 to destroy`; the next plan shows `No changes` |
+
+**What each step writes:**
+- **Step 1** writes `tf-migrate-access-policies.tf`. It records each policy's `id`, `application_id`, `account_id` and `precedence` in a `terraform_data` resource and an `output`.
+- **Step 2** comments the policies out with `# tf-migrate: `, adds `removed { lifecycle { destroy = false } }` for each, and freezes the record with `ignore_changes`. The values stay in state.
+- **Step 3** calls `make_reusable` for each recorded policy, one at a time, and verifies each. The policy keeps its ID, stays attached to its application at the same precedence, and its rules don't change. Policies that are already reusable are skipped, so it is safe to re-run. `--dry-run` only checks. Credentials: `CLOUDFLARE_API_TOKEN`, or `CLOUDFLARE_EMAIL` and `CLOUDFLARE_API_KEY`.
+- **Step 4** restores each policy as `cloudflare_zero_trust_access_policy`, with an `import` block whose ID is read from the record. It lists the policies on the application's `policies` in precedence order. In step 4's plan, the application shows `policies` entries changing to `null` for `name`, `decision`, `include` and other fields. That's expected: v5 keeps only `id` and `precedence` for referenced policies in state, and nothing changes in Cloudflare.
+
+Keep `tf-migrate-access-policies.tf` after the migration. The `import` blocks read from it, and so do the `account_id` of policies migrated from `zone_id`.
+
+**Supported:**
+- policies with `account_id` or `zone_id`. For `zone_id`, step 1 looks up the zone's account with `data "cloudflare_zone"`.
+- single policies and `for_each` policies
+- policies in the root module, and in a local module (`source = "./..."`) called once, without `count` or `for_each`, from the root. For a module, run with `--recursive` from the root. The root gets `tf-migrate-access-policies-<module>.tf`, which re-exports the record as `output "tf_migrate_access_policies_<module>"` and, in step 4, holds the `import` blocks. Import blocks are only allowed in the root module.
+- `application_id` must reference an application resource in the same module, for example `cloudflare_access_application.app.id`.
+
+Other app-scoped policies keep the manual path: a `removed {}` block with the original policy as comments, and an `ACTION REQUIRED` message. tf-migrate prints the reason for each. That covers:
+- `count` policies
+- a literal or module-output `application_id`
+- a `for_each` zone policy with a per-instance `zone_id`
+- modules that are called more than once, called with `count` or `for_each`, or nested
+
+`--skip-phase-check` skips phasing, so app-scoped policies take the manual path too.
 
 ---
 
@@ -594,6 +634,8 @@ If your workspace uses `cloudflare_zone_settings_override`, tf-migrate automatic
 
 No `terraform state rm` required.
 
+If the workspace has app-scoped Access policies (`cloudflare_access_policy` with `application_id`), the first run instead writes the policy record. Apply it, then continue with the steps in [Phased Migration (app-scoped Access policies)](#phased-migration-app-scoped-access-policies). Any `zone_settings_override` phase 1 happens in the same run as the policies' step 2.
+
 #### 3. Regenerate `.terraform.lock.hcl` locally with `-backend=false`
 
 tf-migrate prints this instruction at the end of every migration. Because the remote backend is not reachable locally, use `-backend=false` to skip it:
@@ -643,6 +685,7 @@ This is the most common mistake when migrating an Atlantis workspace. Always reg
 | 1. Run tf-migrate | Local | Transform `.tf` files, update provider version |
 | 2. Phase 1 (if `zone_settings_override`) | Local → Git → Atlantis | Commit commented blocks, Atlantis drops state entries |
 | 3. Run tf-migrate again (if phase 1 ran) | Local | Confirm apply succeeded, complete full v5 migration |
+| (if app-scoped Access policies) | Local → Git → Atlantis | Record MR, then remove-from-state MR, then `make-access-policies-reusable`, then v5 MR. See [Phased Migration (app-scoped Access policies)](#phased-migration-app-scoped-access-policies) |
 | 4. `terraform init -upgrade -backend=false` | Local | Regenerate lock file with v5 hashes |
 | 5. Commit all changes | Local | `.tf` files + `main.tf` + `.terraform.lock.hcl` |
 | 6. Push | Git | Atlantis picks up the v5 lock file and plans |
@@ -675,6 +718,14 @@ This is the most common mistake when migrating an Atlantis workspace. Always reg
 | `--target-provider-version` | _(auto-detected)_ | Explicit provider version to write into `required_providers` (e.g. `5.19.0-beta.3`). Bypasses the GitHub API lookup — useful in CI or air-gapped environments where the API is unreachable. |
 | `-v` / `--verbose` | `false` | Show verbose output: per-file progress, rename tables, and all diagnostics |
 | `-q` / `--quiet` | `false` | Suppress warnings, only show errors |
+
+### `make-access-policies-reusable` Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--ids` | Required | JSON from `terraform output -json tf_migrate_access_policies` (for a module, `tf_migrate_access_policies_<module>`) |
+| `--api-url` | `https://api.cloudflare.com/client/v4` | Cloudflare API base URL |
+| `--dry-run` | `false` | Only check which policies would be converted |
 
 ### `verify-drift` Flags
 
