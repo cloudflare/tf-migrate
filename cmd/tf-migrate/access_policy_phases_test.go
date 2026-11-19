@@ -75,9 +75,16 @@ resource "cloudflare_access_policy" "looped" {
   }
 }
 
+resource "cloudflare_access_application" "other" {
+  account_id = var.account_id
+  name       = "Other"
+  domain     = "other.example.com"
+  type       = "self_hosted"
+}
+
 resource "cloudflare_access_policy" "counted" {
   count          = 1
-  application_id = cloudflare_access_application.app.id
+  application_id = cloudflare_access_application.other.id
   account_id     = var.account_id
   name           = "counted"
   decision       = "allow"
@@ -156,6 +163,7 @@ func TestAccessPolicyPhasedSteps(t *testing.T) {
 	assert.Contains(t, m, "allow = { id = cloudflare_zero_trust_access_policy.allow.id, precedence = terraform_data.tf_migrate_access_policies.output.allow.precedence }")
 	assert.Contains(t, m, `= [for s in sort([for k, v in local.tf_migrate_app_policies : format("%09d|%s", v.precedence, k)]) : local.tf_migrate_app_policies[substr(s, 10, -1)]]`)
 	assert.NotContains(t, m, "cloudflare_zero_trust_access_policy.counted", "unsupported policy is not attached")
+	assert.NotContains(t, m, "tf_migrate_other_policies", "its application is left alone")
 	assert.Contains(t, m, "from = cloudflare_access_policy.counted", "unsupported policy keeps the manual removed {}")
 }
 

@@ -95,7 +95,13 @@ func Inspect(block *hclwrite.Block) (p Policy, ok bool, reason string) {
 		return p, false, ""
 	}
 	p.Type, p.Name = block.Labels()[0], block.Labels()[1]
+	app, isRef := appReference(appAttr)
+	if isRef {
+		p.App = app
+	}
 	switch {
+	case !isRef:
+		return p, false, "application_id is not a reference to an application resource in the same module"
 	case body.GetAttribute("count") != nil:
 		return p, false, "uses count"
 	case body.GetAttribute("account_id") == nil && body.GetAttribute("zone_id") == nil:
@@ -103,11 +109,6 @@ func Inspect(block *hclwrite.Block) (p Policy, ok bool, reason string) {
 	case body.GetAttribute("precedence") == nil:
 		return p, false, "has no precedence"
 	}
-	app, isRef := appReference(appAttr)
-	if !isRef {
-		return p, false, "application_id is not a reference to an application resource in the same module"
-	}
-	p.App = app
 	p.ForEach = body.GetAttribute("for_each") != nil
 	if a := body.GetAttribute("account_id"); a != nil {
 		p.AccountID = exprSource(a)
@@ -170,17 +171,27 @@ func StateOf(dir string) State {
 	return NoRecord
 }
 
-// Scan returns the supported app-scoped policies declared in dir's .tf files,
-// and a message for each app-scoped policy it can't handle.
+// Scan returns the app-scoped policies in dir's .tf files that the phased
+// flow migrates, and a message for each one it leaves on the manual path.
+//
+// It decides per application, all or nothing: the v5 step writes the
+// application's complete policies list, and a policy missing from that list
+// would be detached on apply. So an application keeps the manual path when
+// any of its policies is unsupported, when it already sets policies, or when
+// some app-scoped policy in the module has an application_id that can't be
+// resolved (it could belong to any application).
 func Scan(dir string) ([]Policy, []string, error) {
 	paths, err := filepath.Glob(filepath.Join(dir, "*.tf"))
 	if err != nil {
 		return nil, nil, err
 	}
 	sort.Strings(paths)
-	var policies []Policy
-	var skipped []string
-	seen := map[string]bool{}
+	type candidate struct {
+		p      Policy
+		reason string // empty when supported
+	}
+	var cands []*candidate
+	appsWithPolicies := map[string]bool{}
 	for _, path := range paths {
 		content, err := os.ReadFile(path)
 		if err != nil {
@@ -191,16 +202,52 @@ func Scan(dir string) ([]Policy, []string, error) {
 			continue
 		}
 		for _, b := range f.Body().Blocks() {
-			p, ok, reason := Inspect(b)
-			switch {
-			case ok && seen[p.Name]:
-				skipped = append(skipped, fmt.Sprintf("%s.%s: another policy has the same name", p.Type, p.Name))
-			case ok:
-				seen[p.Name] = true
-				policies = append(policies, p)
-			case reason != "":
-				skipped = append(skipped, fmt.Sprintf("%s.%s: %s", p.Type, p.Name, reason))
+			if b.Type() == "resource" && len(b.Labels()) == 2 && appTypes[b.Labels()[0]] && b.Body().GetAttribute("policies") != nil {
+				appsWithPolicies[b.Labels()[1]] = true
 			}
+			p, ok, reason := Inspect(b)
+			if ok || reason != "" {
+				cands = append(cands, &candidate{p: p, reason: reason})
+			}
+		}
+	}
+
+	names := map[string]int{}
+	unresolved := ""
+	for _, c := range cands {
+		names[c.p.Name]++
+		if c.p.App == "" && unresolved == "" {
+			unresolved = c.p.Type + "." + c.p.Name
+		}
+	}
+	for _, c := range cands {
+		switch {
+		case c.reason != "":
+		case names[c.p.Name] > 1:
+			c.reason = "another app-scoped policy has the same name"
+		case appsWithPolicies[c.p.App]:
+			c.reason = fmt.Sprintf("its application (%s) already sets policies", c.p.App)
+		case unresolved != "":
+			c.reason = fmt.Sprintf("%s has an application_id tf-migrate can't resolve, so it can't tell which application's policies list would be complete", unresolved)
+		}
+	}
+	// All or nothing per application.
+	blocked := map[string]string{}
+	for _, c := range cands {
+		if c.reason != "" && c.p.App != "" && blocked[c.p.App] == "" {
+			blocked[c.p.App] = c.p.Type + "." + c.p.Name
+		}
+	}
+	var policies []Policy
+	var skipped []string
+	for _, c := range cands {
+		if c.reason == "" && blocked[c.p.App] != "" {
+			c.reason = fmt.Sprintf("its application (%s) also has %s, which is not supported, and the application's policies list must be complete", c.p.App, blocked[c.p.App])
+		}
+		if c.reason == "" {
+			policies = append(policies, c.p)
+		} else {
+			skipped = append(skipped, fmt.Sprintf("%s.%s: %s", c.p.Type, c.p.Name, c.reason))
 		}
 	}
 	return policies, skipped, nil
@@ -232,10 +279,10 @@ func ResetCache() {
 	cache = map[string][]Policy{}
 }
 
-// Find returns the supported policy called name in dir.
-func Find(dir, name string) (Policy, bool) {
+// Find returns the supported policy typ.name in dir.
+func Find(dir, typ, name string) (Policy, bool) {
 	for _, p := range PoliciesIn(dir) {
-		if p.Name == name {
+		if p.Type == typ && p.Name == name {
 			return p, true
 		}
 	}

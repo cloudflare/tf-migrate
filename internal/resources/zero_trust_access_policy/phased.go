@@ -11,12 +11,18 @@ import (
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
 
-// NeedsPhaseOne implements transform.PhaseOneFilter. Only app-scoped policies
-// whose directory has an applied record (step 1) take part in step 2.
+// NeedsPhaseOne implements transform.PhaseOneFilter. Only the app-scoped
+// policies step 1 recorded (accesspolicyphase.Scan) take part in step 2.
 func (m *V4ToV5Migrator) NeedsPhaseOne(filePath string, block *hclwrite.Block) bool {
+	if block.Type() != "resource" || len(block.Labels()) != 2 {
+		return false
+	}
 	dir := filepath.Dir(filePath)
-	_, ok, _ := accesspolicyphase.Inspect(block)
-	return ok && accesspolicyphase.StateOf(dir) == accesspolicyphase.Recorded
+	if accesspolicyphase.StateOf(dir) != accesspolicyphase.Recorded {
+		return false
+	}
+	_, ok := accesspolicyphase.Find(dir, block.Labels()[0], block.Labels()[1])
+	return ok
 }
 
 // TransformPhaseOne implements transform.PhaseOneTransformer: v4 drops the

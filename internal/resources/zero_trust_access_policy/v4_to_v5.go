@@ -70,7 +70,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	imported := false
 	if IsApplicationScopedPolicy(block) {
 		dir := filepath.Dir(ctx.FilePath)
-		if p, ok := accesspolicyphase.Find(dir, resourceName); ok && accesspolicyphase.StateOf(dir) == accesspolicyphase.Frozen {
+		if p, ok := accesspolicyphase.Find(dir, originalResourceType, resourceName); ok && accesspolicyphase.StateOf(dir) == accesspolicyphase.Frozen {
 			imported = true
 			// Imports must be in the root module. For a local module the
 			// caller's directory gets them (accesspolicyphase.RenderCaller).

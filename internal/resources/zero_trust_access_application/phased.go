@@ -3,6 +3,7 @@ package zero_trust_access_application
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -16,34 +17,29 @@ import (
 // the phased migration (see internal/accesspolicyphase) on the application.
 // v4 attached them from the policy side.
 //
-// v5 expects policies in precedence order, or every plan shows a diff. With
-// only single policies the precedences are in config and the list is written
-// sorted. A for_each policy's precedences are only in the record, so the
-// entries go into a locals map (returned, to be written next to the
-// application) and policies sorts them by precedence.
+// v5 expects policies in precedence order, or every plan shows a diff. When
+// every precedence is an integer literal, the list is written sorted. Otherwise
+// (a for_each policy, or a precedence from a variable or local) the values are
+// only known to Terraform, so the entries go into a locals map (returned, to be
+// written next to the application) and policies sorts them by the recorded
+// precedence.
+//
+// accesspolicyphase.Scan leaves applications that already set policies on the
+// manual path, so there is nothing to merge with here.
 func (m *V4ToV5Migrator) attachImportedPolicies(ctx *transform.Context, body *hclwrite.Body, appName string) *hclwrite.Block {
 	dir := filepath.Dir(ctx.FilePath)
 	policies := accesspolicyphase.ForApp(dir, appName)
 	if len(policies) == 0 || accesspolicyphase.StateOf(dir) != accesspolicyphase.Frozen {
 		return nil
 	}
+	if body.GetAttribute("policies") != nil {
+		return nil
+	}
 	local := "tf_migrate_" + appName + "_policies"
 	value, locals := staticPolicies(policies), ""
-	if hasForEach(policies) {
+	if !allLiteralPrecedence(policies) {
 		locals = policiesMap(policies)
 		value = fmt.Sprintf("[for s in sort([for k, v in local.%s : format(\"%%09d|%%s\", v.precedence, k)]) : local.%s[substr(s, 10, -1)]]", local, local)
-	}
-	if body.GetAttribute("policies") != nil {
-		detail := "This application already sets policies, so tf-migrate did not add the policies it imports. Add them to policies, in precedence order:\n\n" + value
-		if locals != "" {
-			detail += "\n\nwith\n\nlocals {\n  " + local + " = " + locals + "\n}"
-		}
-		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
-			Severity: hcl.DiagWarning,
-			Summary:  fmt.Sprintf("Action required: add imported policies to cloudflare_zero_trust_access_application.%s", appName),
-			Detail:   detail,
-		})
-		return nil
 	}
 	body.SetAttributeRaw("policies", tokensOf("policies", value))
 	if locals == "" {
@@ -54,13 +50,15 @@ func (m *V4ToV5Migrator) attachImportedPolicies(ctx *transform.Context, body *hc
 	return b
 }
 
-func hasForEach(policies []accesspolicyphase.Policy) bool {
+// allLiteralPrecedence reports whether every policy is single and has an
+// integer literal precedence, so the list order is known now.
+func allLiteralPrecedence(policies []accesspolicyphase.Policy) bool {
 	for _, p := range policies {
-		if p.ForEach {
-			return true
+		if _, err := strconv.Atoi(p.Precedence); p.ForEach || err != nil {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // staticPolicies renders single policies, already in precedence order.
