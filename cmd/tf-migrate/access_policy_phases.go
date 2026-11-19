@@ -105,11 +105,12 @@ func scanAccessPolicyDirs(cfg config) ([]accessPolicyDir, error) {
 		}
 		state := accesspolicyphase.StateOf(d)
 		reason, ok := unsupportedModules[filepath.Clean(d)]
-		if _, called := calls[filepath.Clean(d)]; !ok && !called && len(policies) > 0 && !looksLikeRoot(d) {
+		declaredRoot := cfg.rootModule && filepath.Clean(d) == filepath.Clean(cfg.configDir)
+		if _, called := calls[filepath.Clean(d)]; !ok && !called && !declaredRoot && len(policies) > 0 && !looksLikeRoot(d) {
 			// A module run on its own (e.g. a shared-module repo): step 4's
 			// import blocks would land in the module, and Terraform only
 			// allows them in the root module.
-			reason, ok = "is in a directory with no provider block, backend, lock file or state, so it looks like a module called from outside --config-dir (run tf-migrate from the root module, with --recursive)", true
+			reason, ok = "is in a directory with no provider block, backend, lock file or state, so it looks like a module called from outside --config-dir (run tf-migrate from the root module, with --recursive; if this is the root module, pass --root-module)", true
 		}
 		if ok {
 			for _, p := range policies {

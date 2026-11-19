@@ -47,6 +47,7 @@ type config struct {
 	exclude               []string // directories to exclude from migration (relative to configDir)
 	logLevel              string
 	skipPhaseCheck        bool // skip phased migration prompt and run full migration directly (for CI/e2e)
+	rootModule            bool // treat --config-dir as a root module for app-scoped Access policies
 	skipVersionCheck      bool // skip minimum provider version check (for testing/CI only)
 
 	// Diagnostic output options
@@ -187,6 +188,7 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 	// --no-backup is a convenience alias for --backup=false
 	var noBackup bool
 	cmd.Flags().BoolVar(&noBackup, "no-backup", false, "Skip creating backup files before migration (alias for --backup=false)")
+	cmd.Flags().BoolVar(&cfg.rootModule, "root-module", false, "Treat --config-dir as a root module for the app-scoped Access policy migration, even without a provider block, backend, lock file or state file")
 	cmd.Flags().BoolVar(&cfg.skipPhaseCheck, "skip-phase-check", false, "Skip the phased migration confirmation prompt and run the full migration directly (for CI/non-interactive use)")
 	cmd.Flags().BoolVar(&cfg.skipVersionCheck, "skip-version-check", false, "Skip the minimum provider version check (for testing/CI only)")
 	cmd.PreRun = func(cmd *cobra.Command, args []string) {

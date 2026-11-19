@@ -324,6 +324,13 @@ func TestAccessPolicyPhased_ModuleAloneTakesManualPath(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(dir, accesspolicyphase.RecordFile))
 	assert.Contains(t, out, "ACTION REQUIRED")
 
+	// --root-module overrides the heuristic for --config-dir.
+	dirR := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dirR, "main.tf"), []byte(src), 0600))
+	cfgR := phasedCfg(dirR)
+	cfgR.rootModule = true
+	assert.Contains(t, runWithAnswers(t, cfgR), "step 1 of 4")
+
 	// A lock file is enough to count as a root.
 	dir2 := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir2, "main.tf"), []byte(src), 0600))
