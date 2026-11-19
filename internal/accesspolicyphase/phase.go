@@ -72,7 +72,8 @@ type Policy struct {
 	Type       string // v4 resource type
 	Name       string // resource name, also the record key
 	App        string // name of the application resource it is attached to
-	AccountID  string // account_id expression source
+	AccountID  string // account_id expression source; for a zone policy, read from the record
+	ZoneID     string // zone_id expression source, zone policies only
 	Precedence string // precedence expression source
 }
 
@@ -91,8 +92,8 @@ func Inspect(block *hclwrite.Block) (p Policy, ok bool, reason string) {
 	switch {
 	case body.GetAttribute("count") != nil || body.GetAttribute("for_each") != nil:
 		return p, false, "uses count or for_each"
-	case body.GetAttribute("account_id") == nil:
-		return p, false, "has no account_id (zone_id policies are not supported yet)"
+	case body.GetAttribute("account_id") == nil && body.GetAttribute("zone_id") == nil:
+		return p, false, "has neither account_id nor zone_id"
 	case body.GetAttribute("precedence") == nil:
 		return p, false, "has no precedence"
 	}
@@ -101,7 +102,14 @@ func Inspect(block *hclwrite.Block) (p Policy, ok bool, reason string) {
 		return p, false, "application_id is not a reference to an application resource in the same module"
 	}
 	p.App = app
-	p.AccountID = exprSource(body.GetAttribute("account_id"))
+	if a := body.GetAttribute("account_id"); a != nil {
+		p.AccountID = exprSource(a)
+	} else {
+		// v5 policies are account-level. v4 can't set account_id next to
+		// zone_id, so the record looks the zone's account up.
+		p.ZoneID = exprSource(body.GetAttribute("zone_id"))
+		p.AccountID = fmt.Sprintf("terraform_data.%s.output.%s.account_id", Name, p.Name)
+	}
 	p.Precedence = exprSource(body.GetAttribute("precedence"))
 	return p, true, ""
 }
@@ -244,12 +252,30 @@ func RenderRecord(policies []Policy) []byte {
 	b.WriteString("# Written by tf-migrate (step 1 of the Access policy migration).\n")
 	b.WriteString("# Records each application-scoped policy's ID so the v5 migration can import\n")
 	b.WriteString("# it instead of recreating it. Don't edit; tf-migrate rewrites this file.\n")
+	// One zone lookup per distinct zone_id expression, for zone policies.
+	zones := map[string]string{}
+	var zoneOrder []string
+	for _, p := range policies {
+		if p.ZoneID != "" && zones[p.ZoneID] == "" {
+			zones[p.ZoneID] = fmt.Sprintf("%s_%d", Name, len(zoneOrder))
+			zoneOrder = append(zoneOrder, p.ZoneID)
+		}
+	}
 	b.WriteString("locals {\n  " + Name + " = {\n")
 	for _, p := range policies {
 		r := p.Type + "." + p.Name
-		fmt.Fprintf(&b, "    %s = {\n      id             = %s.id\n      application_id = %s.application_id\n      account_id     = %s.account_id\n      precedence     = %s.precedence\n    }\n", p.Name, r, r, r, r)
+		account := r + ".account_id"
+		zone := ""
+		if p.ZoneID != "" {
+			account = "data.cloudflare_zone." + zones[p.ZoneID] + ".account_id"
+			zone = "      zone_id        = " + r + ".zone_id\n"
+		}
+		fmt.Fprintf(&b, "    %s = {\n      id             = %s.id\n      application_id = %s.application_id\n      account_id     = %s\n%s      precedence     = %s.precedence\n    }\n", p.Name, r, r, account, zone, r)
 	}
 	b.WriteString("  }\n}\n\n")
+	for _, z := range zoneOrder {
+		fmt.Fprintf(&b, "data \"cloudflare_zone\" %q {\n  zone_id = %s\n}\n\n", zones[z], z)
+	}
 	fmt.Fprintf(&b, "resource \"terraform_data\" %q {\n  input = local.%s\n}\n\n", Name, Name)
 	fmt.Fprintf(&b, "output %q {\n  value = local.%s\n}\n", Name, Name)
 	return hclwrite.Format([]byte(b.String()))
@@ -259,8 +285,8 @@ func RenderRecord(policies []Policy) []byte {
 func RenderFrozen() []byte {
 	return hclwrite.Format([]byte(fmt.Sprintf(`# Written by tf-migrate (step 2 of the Access policy migration).
 # The policies are no longer in config. ignore_changes keeps the recorded IDs in
-# state; the v5 migration imports the policies by these IDs. Keep this file
-# until the v5 apply has imported them.
+# state; the v5 migration imports the policies by these IDs. Keep this file:
+# v5 policies migrated from zone_id read their account_id from it.
 resource "terraform_data" %q {
   input = {}
   lifecycle {

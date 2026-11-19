@@ -35,7 +35,7 @@ func TestInspect(t *testing.T) {
 	for name, src := range map[string]string{
 		"for_each": `resource "cloudflare_access_policy" "p" {` + "\n" + `for_each = {}` + "\n" + `application_id = cloudflare_access_application.app.id` + "\n" + `account_id = "a"` + "\n" + `precedence = 1
 }`,
-		"zone_id": `resource "cloudflare_access_policy" "p" {` + "\n" + `application_id = cloudflare_access_application.app.id` + "\n" + `zone_id = "z"` + "\n" + `precedence = 1
+		"no scope": `resource "cloudflare_access_policy" "p" {` + "\n" + `application_id = cloudflare_access_application.app.id` + "\n" + `precedence = 1
 }`,
 		"literal id": `resource "cloudflare_access_policy" "p" {` + "\n" + `application_id = "abc"` + "\n" + `account_id = "a"` + "\n" + `precedence = 1
 }`,
@@ -46,6 +46,15 @@ func TestInspect(t *testing.T) {
 		assert.False(t, supported, name)
 		assert.NotEmpty(t, reason, name)
 	}
+
+	zp, supported, reason := Inspect(block(t, `resource "cloudflare_access_policy" "z" {
+  application_id = cloudflare_access_application.app.id
+  zone_id        = var.zone_id
+  precedence     = 1
+}`))
+	require.True(t, supported, reason)
+	assert.Equal(t, "var.zone_id", zp.ZoneID)
+	assert.Equal(t, "terraform_data.tf_migrate_access_policies.output.z.account_id", zp.AccountID)
 
 	_, supported, reason = Inspect(block(t, `resource "cloudflare_access_policy" "p" { account_id = "a" }`))
 	assert.False(t, supported)
@@ -62,6 +71,14 @@ func TestStateOfAndRender(t *testing.T) {
 	assert.Equal(t, Recorded, StateOf(dir))
 	assert.Contains(t, string(rec), "id             = cloudflare_access_policy.a.id")
 	assert.Contains(t, string(rec), "value = local."+Name)
+
+	zoned := RenderRecord(append(ps,
+		Policy{Type: "cloudflare_access_policy", Name: "z1", ZoneID: "var.zone_id", Precedence: "1"},
+		Policy{Type: "cloudflare_access_policy", Name: "z2", ZoneID: "var.zone_id", Precedence: "2"}))
+	assert.Equal(t, 1, strings.Count(string(zoned), `data "cloudflare_zone"`), "one lookup per zone:\n%s", zoned)
+	assert.Contains(t, string(zoned), "account_id     = data.cloudflare_zone.tf_migrate_access_policies_0.account_id")
+	assert.Contains(t, string(zoned), "zone_id        = cloudflare_access_policy.z2.zone_id")
+	assert.Contains(t, string(zoned), "account_id     = cloudflare_access_policy.a.account_id")
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, RecordFile), RenderFrozen(), 0600))
 	assert.Equal(t, Frozen, StateOf(dir))
@@ -115,6 +132,11 @@ func TestMakeReusable(t *testing.T) {
 		case r.Method == http.MethodPut && parts[len(parts)-1] == "make_reusable":
 			puts++
 			id := parts[len(parts)-2]
+			if parts[0] == "zones" {
+				assert.Equal(t, "Z", parts[1])
+			} else {
+				assert.Equal(t, "A", parts[1])
+			}
 			assert.Equal(t, "app1", parts[4])
 			reusable[id] = true
 			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "result": map[string]any{"id": id, "reusable": true}})
@@ -126,7 +148,8 @@ func TestMakeReusable(t *testing.T) {
 
 	rec, err := ParseRecord([]byte(`{
   "a": {"id": "p1", "application_id": "app1", "account_id": "A", "precedence": 1},
-  "b": {"id": "p2", "application_id": "app1", "account_id": "A", "precedence": 2}
+  "b": {"id": "p2", "application_id": "app1", "account_id": "A", "precedence": 2},
+  "c": {"id": "p3", "application_id": "app1", "account_id": "A", "zone_id": "Z", "precedence": 3}
 }`))
 	require.NoError(t, err)
 	c := &Client{BaseURL: srv.URL, Auth: func(r *http.Request) { r.Header.Set("Authorization", "Bearer t") }}
@@ -140,11 +163,12 @@ func TestMakeReusable(t *testing.T) {
 	assert.Equal(t, "converted", out[0].Result)
 	assert.NoError(t, out[0].Err)
 	assert.Equal(t, "already reusable", out[1].Result)
-	assert.Equal(t, 1, puts)
+	assert.Equal(t, "converted", out[2].Result, "zone app policy, through the zone endpoint")
+	assert.Equal(t, 2, puts)
 
 	again := c.MakeReusable(rec, false)
 	assert.Equal(t, "already reusable", again[0].Result)
-	assert.Equal(t, 1, puts, "re-run converts nothing")
+	assert.Equal(t, 2, puts, "re-run converts nothing")
 
 	_, err = ParseRecord([]byte(`{"a": {"id": "p1"}}`))
 	assert.Error(t, err)

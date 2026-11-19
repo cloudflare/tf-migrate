@@ -14,6 +14,7 @@ type RecordedPolicy struct {
 	ID            string `json:"id"`
 	ApplicationID string `json:"application_id"`
 	AccountID     string `json:"account_id"`
+	ZoneID        string `json:"zone_id,omitempty"` // zone apps convert through the zone endpoint
 }
 
 // ParseRecord parses `terraform output -json tf_migrate_access_policies`.
@@ -105,7 +106,11 @@ func (c *Client) isReusable(p RecordedPolicy) (bool, error) {
 }
 
 func (c *Client) convert(p RecordedPolicy) (string, error) {
-	status, body, err := c.do(http.MethodPut, fmt.Sprintf("/accounts/%s/access/apps/%s/policies/%s/make_reusable", p.AccountID, p.ApplicationID, p.ID))
+	scope := "/accounts/" + p.AccountID
+	if p.ZoneID != "" {
+		scope = "/zones/" + p.ZoneID
+	}
+	status, body, err := c.do(http.MethodPut, fmt.Sprintf("%s/access/apps/%s/policies/%s/make_reusable", scope, p.ApplicationID, p.ID))
 	if err != nil {
 		return "failed", err
 	}

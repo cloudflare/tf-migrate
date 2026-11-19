@@ -43,10 +43,30 @@ resource "cloudflare_access_policy" "allow" {
   }
 }
 
+resource "cloudflare_access_application" "zone_app" {
+  zone_id = var.zone_id
+  name    = "Zone app"
+  domain  = "zone.example.com"
+  type    = "self_hosted"
+}
+
 resource "cloudflare_access_policy" "by_zone" {
-  application_id = cloudflare_access_application.app.id
-  zone_id        = "zone"
+  application_id = cloudflare_access_application.zone_app.id
+  zone_id        = var.zone_id
   name           = "Zone"
+  decision       = "allow"
+  precedence     = 1
+
+  include {
+    everyone = true
+  }
+}
+
+resource "cloudflare_access_policy" "looped" {
+  for_each       = toset(["x"])
+  application_id = cloudflare_access_application.app.id
+  account_id     = var.account_id
+  name           = each.key
   decision       = "allow"
   precedence     = 3
 
@@ -81,13 +101,15 @@ func TestAccessPolicyPhasedSteps(t *testing.T) {
 	// Step 1: only the record is written; main.tf is untouched.
 	out := runWithAnswers(t, cfg)
 	assert.Contains(t, out, "step 1 of 3")
-	assert.Contains(t, out, "cloudflare_access_policy.by_zone: has no account_id")
+	assert.Contains(t, out, "cloudflare_access_policy.looped: uses count or for_each")
 	assert.Equal(t, phasedFixture, read(main))
 	assert.Equal(t, accesspolicyphase.Recorded, accesspolicyphase.StateOf(dir))
 	rec := read(record)
 	assert.Contains(t, rec, "cloudflare_access_policy.allow.id")
 	assert.Contains(t, rec, "cloudflare_access_policy.deny.id")
-	assert.NotContains(t, rec, "by_zone")
+	assert.Contains(t, rec, "account_id     = data.cloudflare_zone.tf_migrate_access_policies_0.account_id")
+	assert.Contains(t, rec, "zone_id = var.zone_id")
+	assert.NotContains(t, rec, "looped")
 
 	// Re-running step 1 before apply asks and, on "y", moves to step 2: the
 	// two supported policies are removed without destroy and the record frozen.
@@ -97,8 +119,8 @@ func TestAccessPolicyPhasedSteps(t *testing.T) {
 	m := read(main)
 	assert.Contains(t, m, "# tf-migrate: resource \"cloudflare_access_policy\" \"allow\"")
 	assert.Contains(t, m, "# tf-migrate: resource \"cloudflare_access_policy\" \"deny\"")
-	assert.Equal(t, 2, strings.Count(m, "destroy = false"))
-	assert.Contains(t, m, "resource \"cloudflare_access_policy\" \"by_zone\"", "unsupported policy is left for the manual path")
+	assert.Equal(t, 3, strings.Count(m, "destroy = false"))
+	assert.Contains(t, m, "resource \"cloudflare_access_policy\" \"looped\"", "unsupported policy is left for the manual path")
 
 	// Step 3: v5 policies imported by recorded ID, listed on the app in
 	// precedence order, no moved block for them.
@@ -112,6 +134,10 @@ func TestAccessPolicyPhasedSteps(t *testing.T) {
 	allow := strings.Index(m, "id         = cloudflare_zero_trust_access_policy.allow.id")
 	deny := strings.Index(m, "id         = cloudflare_zero_trust_access_policy.deny.id")
 	require.True(t, allow > 0 && deny > allow, "policies on the app, in precedence order:\n%s", m)
-	assert.NotContains(t, m, "cloudflare_zero_trust_access_policy.by_zone.id", "unsupported policy is not attached")
-	assert.Contains(t, m, "from = cloudflare_access_policy.by_zone", "unsupported policy keeps the manual removed {}")
+	// zone policy: account-level in v5, account read from the record
+	assert.Contains(t, m, "account_id = terraform_data.tf_migrate_access_policies.output.by_zone.account_id")
+	assert.Contains(t, m, `id = "${terraform_data.tf_migrate_access_policies.output.by_zone.account_id}/${terraform_data.tf_migrate_access_policies.output.by_zone.id}"`)
+	assert.Contains(t, m, "id         = cloudflare_zero_trust_access_policy.by_zone.id")
+	assert.NotContains(t, m, "cloudflare_zero_trust_access_policy.looped", "unsupported policy is not attached")
+	assert.Contains(t, m, "from = cloudflare_access_policy.looped", "unsupported policy keeps the manual removed {}")
 }
