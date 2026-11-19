@@ -535,3 +535,19 @@ func TestMakeAccessPoliciesReusableCommand(t *testing.T) {
 	assert.Contains(t, out, "HTTP 403")
 	assert.Equal(t, map[string]string{"a": "p1"}, check().Converted)
 }
+
+func TestPreflightClassifiesPhasedPolicies(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.tf"), []byte(phasedFixture), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "providers.tf"), []byte("provider \"cloudflare\" {}\n"), 0600))
+	accesspolicyphase.ResetCache()
+	report, err := runPreMigrationScan(newTestLogger(), phasedCfg(dir))
+	require.NoError(t, err)
+	class := map[string]resourceClassification{}
+	for _, r := range report.Resources {
+		class[r.ResourceName] = r.Class
+	}
+	assert.Equal(t, classAutoMigrated, class["allow"], "phased")
+	assert.Equal(t, classAutoMigrated, class["looped"], "phased")
+	assert.Equal(t, classManualIntervention, class["counted"], "manual: count")
+}

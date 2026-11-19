@@ -10,7 +10,6 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
-	"github.com/cloudflare/tf-migrate/internal/accesspolicyphase"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_policy"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
@@ -82,6 +81,21 @@ func runPreMigrationScan(log hclog.Logger, cfg config) (*preflightReport, error)
 		}
 	}
 
+	// Scan once: which app-scoped policies the phased flow takes, keyed by
+	// directory and type.name.
+	phased := map[string]bool{}
+	if cfg.sourceVersion == "v4" && cfg.targetVersion == "v5" && !cfg.skipPhaseCheck {
+		dirs, err := scanAccessPolicyDirs(cfg)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range dirs {
+			for _, p := range d.policies {
+				phased[phasedKey(d.dir, p.Type, p.Name)] = true
+			}
+		}
+	}
+
 	for _, file := range files {
 		content, err := os.ReadFile(file)
 		if err != nil {
@@ -103,7 +117,7 @@ func runPreMigrationScan(log hclog.Logger, cfg config) (*preflightReport, error)
 				if len(block.Labels()) < 2 {
 					continue
 				}
-				sr := classifyResource(block, relFile, providers, renames, cfg)
+				sr := classifyResource(block, relFile, providers, renames, cfg, phased[phasedKey(filepath.Dir(file), block.Labels()[0], block.Labels()[1])])
 				if sr != nil {
 					report.Resources = append(report.Resources, *sr)
 				}
@@ -124,7 +138,7 @@ func runPreMigrationScan(log hclog.Logger, cfg config) (*preflightReport, error)
 }
 
 // classifyResource determines how a resource will be handled during migration.
-func classifyResource(block *hclwrite.Block, file string, providers transform.MigrationProvider, renames map[string]string, cfg config) *scannedResource {
+func classifyResource(block *hclwrite.Block, file string, providers transform.MigrationProvider, renames map[string]string, cfg config, phased bool) *scannedResource {
 	resourceType := block.Labels()[0]
 	resourceName := block.Labels()[1]
 
@@ -149,7 +163,7 @@ func classifyResource(block *hclwrite.Block, file string, providers transform.Mi
 	// on cloudflare_zero_trust_access_application.policies.
 	// The phased flow only runs interactively; --skip-phase-check runs the full migration.
 	if cfg.sourceVersion == "v4" && cfg.targetVersion == "v5" && !cfg.skipPhaseCheck {
-		if _, ok, _ := accesspolicyphase.Inspect(block); ok && phasedPolicy(cfg, file, resourceType, resourceName) {
+		if phased {
 			return &scannedResource{
 				File:         file,
 				ResourceType: resourceType,
@@ -459,23 +473,6 @@ func printPreflightReport(report *preflightReport, cfg config) {
 	}
 }
 
-// phasedPolicy reports whether the phased flow migrates typ.name in file's
-// directory. Unlike Inspect alone, it applies the per-application and
-// module rules (scanAccessPolicyDirs).
-func phasedPolicy(cfg config, file, typ, name string) bool {
-	dirs, err := scanAccessPolicyDirs(cfg)
-	if err != nil {
-		return false
-	}
-	for _, d := range dirs {
-		if filepath.Clean(d.dir) != filepath.Clean(filepath.Dir(file)) {
-			continue
-		}
-		for _, p := range d.policies {
-			if p.Type == typ && p.Name == name {
-				return true
-			}
-		}
-	}
-	return false
+func phasedKey(dir, typ, name string) string {
+	return filepath.Clean(dir) + "|" + typ + "." + name
 }
