@@ -292,6 +292,12 @@ func runMigration(log hclog.Logger, cfg config) error {
 		}
 	}
 
+	if cfg.configDir != "" {
+		if err := setAccessPolicyModules(cfg); err != nil {
+			return fmt.Errorf("scan local modules: %w", err)
+		}
+	}
+
 	// --yes skips straight to full migration (used by e2e runner and CI).
 	if cfg.skipPhaseCheck {
 		return runFullMigration(log, cfg)
@@ -951,7 +957,14 @@ func runPhaseTwo(log hclog.Logger, cfg config, commentedFiles []string) error {
 	}
 
 	accesspolicyphase.ResetCache()
-	return runFullMigration(log, cfg)
+	imports, err := moduleImports(cfg)
+	if err != nil {
+		return err
+	}
+	if err := runFullMigration(log, cfg); err != nil {
+		return err
+	}
+	return writeModuleImports(cfg, imports)
 }
 
 // restorePhaseOneFile removes the phaseOneCommentPrefix from commented-out

@@ -331,3 +331,61 @@ func ImportID(p Policy) string {
 	}
 	return fmt.Sprintf(`"%s/${terraform_data.%s.output.%s.id}"`, acct, Name, p.Name)
 }
+
+// ModuleCall is a call of a local module whose directory has app-scoped
+// policies. Import blocks are only allowed in the root module, so the
+// caller's directory gets the imports and re-exports the module's record.
+type ModuleCall struct {
+	CallerDir string // directory of the file with the module block
+	Name      string // module block label
+}
+
+var (
+	modulesMu sync.Mutex
+	modules   = map[string]ModuleCall{}
+)
+
+// SetModules records which policy directories are local modules, keyed by
+// module directory.
+func SetModules(m map[string]ModuleCall) {
+	modulesMu.Lock()
+	defer modulesMu.Unlock()
+	modules = m
+}
+
+// ModuleOf returns the call of the module in dir, if dir is a local module.
+func ModuleOf(dir string) (ModuleCall, bool) {
+	modulesMu.Lock()
+	defer modulesMu.Unlock()
+	c, ok := modules[filepath.Clean(dir)]
+	return c, ok
+}
+
+// CallerFile is the file in the caller's directory for module call c.
+func CallerFile(c ModuleCall) string {
+	return filepath.Join(c.CallerDir, "tf-migrate-access-policies-"+c.Name+".tf")
+}
+
+// CallerOutput is the root output re-exporting module call c's record.
+func CallerOutput(c ModuleCall) string { return Name + "_" + c.Name }
+
+// RenderCaller returns the caller's file for module call c: the re-exported
+// record and, in step 3, an import block per policy.
+func RenderCaller(c ModuleCall, policies []Policy, imports bool) []byte {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Written by tf-migrate (Access policy migration) for module.%s.\n", c.Name)
+	b.WriteString("# Re-exports the module's policy record; in the v5 step, imports the policies\n# (import blocks are only allowed in the root module).\n")
+	fmt.Fprintf(&b, "output %q {\n  value = module.%s.%s\n}\n", CallerOutput(c), c.Name, Name)
+	if imports {
+		for _, p := range policies {
+			rec := fmt.Sprintf("module.%s.%s.%s", c.Name, Name, p.Name)
+			to := fmt.Sprintf("module.%s.cloudflare_zero_trust_access_policy.%s", c.Name, p.Name)
+			if p.ForEach {
+				fmt.Fprintf(&b, "\nimport {\n  for_each = %s\n  to       = %s[each.key]\n  id       = \"${each.value.account_id}/${each.value.id}\"\n}\n", rec, to)
+				continue
+			}
+			fmt.Fprintf(&b, "\nimport {\n  to = %s\n  id = \"${%s.account_id}/${%s.id}\"\n}\n", to, rec, rec)
+		}
+	}
+	return hclwrite.Format([]byte(b.String()))
+}

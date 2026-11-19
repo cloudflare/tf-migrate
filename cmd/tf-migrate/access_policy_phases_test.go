@@ -158,3 +158,61 @@ func TestAccessPolicyPhasedSteps(t *testing.T) {
 	assert.NotContains(t, m, "cloudflare_zero_trust_access_policy.counted", "unsupported policy is not attached")
 	assert.Contains(t, m, "from = cloudflare_access_policy.counted", "unsupported policy keeps the manual removed {}")
 }
+
+func TestAccessPolicyPhasedSteps_LocalModule(t *testing.T) {
+	root := t.TempDir()
+	mod := filepath.Join(root, "modules", "access")
+	require.NoError(t, os.MkdirAll(mod, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`module "access" {
+  source     = "./modules/access"
+  account_id = var.account_id
+}
+`), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(mod, "main.tf"), []byte(phasedFixture), 0600))
+	cfg := config{configDir: root, recursive: true, sourceVersion: "v4", targetVersion: "v5", targetProviderVersion: "5.29.0", skipVersionCheck: true}
+	read := func(p string) string { b, err := os.ReadFile(p); require.NoError(t, err); return string(b) }
+	caller := filepath.Join(root, "tf-migrate-access-policies-access.tf")
+
+	runWithAnswers(t, cfg)
+	assert.Equal(t, accesspolicyphase.Recorded, accesspolicyphase.StateOf(mod))
+	assert.Contains(t, read(caller), "value = module.access.tf_migrate_access_policies")
+	assert.NotContains(t, read(caller), "import {")
+
+	out := runWithAnswers(t, cfg)
+	assert.Equal(t, accesspolicyphase.Frozen, accesspolicyphase.StateOf(mod))
+	assert.Contains(t, read(filepath.Join(mod, "main.tf")), "# tf-migrate: resource \"cloudflare_access_policy\" \"allow\"")
+	assert.Contains(t, out, "output -json tf_migrate_access_policies_access")
+
+	runWithAnswers(t, cfg)
+	m := read(filepath.Join(mod, "main.tf"))
+	assert.NotContains(t, m, "import {", "imports are only allowed in the root module")
+	assert.Contains(t, m, `resource "cloudflare_zero_trust_access_policy" "allow"`)
+	assert.NotContains(t, m, "from = cloudflare_access_policy.allow", "no moved block for an imported policy")
+	c := read(caller)
+	assert.Contains(t, c, "to = module.access.cloudflare_zero_trust_access_policy.allow")
+	assert.Contains(t, c, `id = "${module.access.tf_migrate_access_policies.allow.account_id}/${module.access.tf_migrate_access_policies.allow.id}"`)
+	assert.Contains(t, c, "for_each = module.access.tf_migrate_access_policies.looped")
+	assert.Contains(t, c, "to       = module.access.cloudflare_zero_trust_access_policy.looped[each.key]")
+}
+
+func TestFindLocalModuleCalls_Unsupported(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{"a", "b", "c", "c/inner"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(root, d), 0o755))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.tf"), []byte(`module "a1" { source = "./a" }
+module "a2" { source = "./a" }
+module "b" {
+  source   = "./b"
+  for_each = toset(["x"])
+}
+module "c" { source = "./c" }
+`), 0600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "c", "main.tf"), []byte(`module "inner" { source = "./inner" }`+"\n"), 0600))
+	calls, unsupported, err := findLocalModuleCalls(config{configDir: root, recursive: true})
+	require.NoError(t, err)
+	assert.Contains(t, unsupported[filepath.Join(root, "a")], "more than once")
+	assert.Contains(t, unsupported[filepath.Join(root, "b")], "count or for_each")
+	assert.Contains(t, unsupported[filepath.Join(root, "c", "inner")], "nested module")
+	assert.Equal(t, "c", calls[filepath.Join(root, "c")].Name)
+}

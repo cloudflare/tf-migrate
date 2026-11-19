@@ -67,17 +67,23 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// policy is out of state and reusable, so restore it as a v5 policy and
 	// import it by the recorded ID.
 	var importBlock *hclwrite.Block
+	imported := false
 	if IsApplicationScopedPolicy(block) {
 		dir := filepath.Dir(ctx.FilePath)
 		if p, ok := accesspolicyphase.Find(dir, resourceName); ok && accesspolicyphase.StateOf(dir) == accesspolicyphase.Frozen {
-			importBlock = newImportBlock(p, "cloudflare_zero_trust_access_policy."+resourceName)
+			imported = true
+			// Imports must be in the root module. For a local module the
+			// caller's directory gets them (accesspolicyphase.RenderCaller).
+			if _, inModule := accesspolicyphase.ModuleOf(dir); !inModule {
+				importBlock = newImportBlock(p, "cloudflare_zero_trust_access_policy."+resourceName)
+			}
 			if p.ZoneID != "" {
 				// v5 is account-level; the record holds the zone's account.
 				body.SetAttributeRaw("account_id", tokensOf(p.AccountID))
 			}
 		}
 	}
-	if importBlock == nil && IsApplicationScopedPolicy(block) {
+	if !imported && IsApplicationScopedPolicy(block) {
 		address := originalResourceType + "." + resourceName
 		// Generate a removed block for Atlantis-friendly state cleanup
 		removedBlock := tfhcl.CreateRemovedBlock(address)
@@ -140,7 +146,7 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 		// Generate moved block for state migration. Not for an imported
 		// policy: its v4 state entry was already removed.
-		if importBlock == nil {
+		if !imported {
 			_, newType := m.GetResourceRename()
 			from := originalResourceType + "." + resourceName
 			to := newType + "." + resourceName

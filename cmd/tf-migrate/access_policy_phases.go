@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal/accesspolicyphase"
 )
@@ -21,8 +23,68 @@ type accessPolicyDir struct {
 	state    accesspolicyphase.State
 }
 
+// findLocalModuleCalls maps each local module directory to its call. Only a
+// module called once, without count or for_each, from a directory that is not
+// itself a module, is supported: its policies' imports can then be written
+// in the caller as module.<name>.<address>. Other module directories are
+// returned in unsupported with the reason.
+func findLocalModuleCalls(cfg config) (calls map[string]accesspolicyphase.ModuleCall, unsupported map[string]string, err error) {
+	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
+	if err != nil {
+		return nil, nil, err
+	}
+	type call struct {
+		accesspolicyphase.ModuleCall
+		repeated bool
+	}
+	var found = map[string][]call{}
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+		f, diags := hclwrite.ParseConfig(content, filepath.Base(file), hcl.InitialPos)
+		if diags.HasErrors() {
+			continue
+		}
+		for _, b := range f.Body().Blocks() {
+			if b.Type() != "module" || len(b.Labels()) != 1 || b.Body().GetAttribute("source") == nil {
+				continue
+			}
+			src := strings.Trim(strings.TrimSpace(string(b.Body().GetAttribute("source").Expr().BuildTokens(nil).Bytes())), `"`)
+			if !strings.HasPrefix(src, "./") && !strings.HasPrefix(src, "../") {
+				continue
+			}
+			dir := filepath.Clean(filepath.Join(filepath.Dir(file), src))
+			found[dir] = append(found[dir], call{
+				ModuleCall: accesspolicyphase.ModuleCall{CallerDir: filepath.Clean(filepath.Dir(file)), Name: b.Labels()[0]},
+				repeated:   b.Body().GetAttribute("count") != nil || b.Body().GetAttribute("for_each") != nil,
+			})
+		}
+	}
+	calls = map[string]accesspolicyphase.ModuleCall{}
+	unsupported = map[string]string{}
+	for dir, cs := range found {
+		switch {
+		case len(cs) > 1:
+			unsupported[dir] = "is in a module called more than once"
+		case cs[0].repeated:
+			unsupported[dir] = "is in a module called with count or for_each"
+		case len(found[cs[0].CallerDir]) > 0:
+			unsupported[dir] = "is in a nested module (imports must be in the root module)"
+		default:
+			calls[dir] = cs[0].ModuleCall
+		}
+	}
+	return calls, unsupported, nil
+}
+
 func scanAccessPolicyDirs(cfg config) ([]accessPolicyDir, error) {
 	files, err := findTerraformFilesWithRecursion(cfg.configDir, cfg.recursive, cfg.exclude)
+	if err != nil {
+		return nil, err
+	}
+	_, unsupportedModules, err := findLocalModuleCalls(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -42,6 +104,12 @@ func scanAccessPolicyDirs(cfg config) ([]accessPolicyDir, error) {
 			return nil, err
 		}
 		state := accesspolicyphase.StateOf(d)
+		if reason, ok := unsupportedModules[filepath.Clean(d)]; ok {
+			for _, p := range policies {
+				skipped = append(skipped, fmt.Sprintf("%s.%s: %s", p.Type, p.Name, reason))
+			}
+			policies = nil
+		}
 		if len(policies) == 0 && len(skipped) == 0 && state == accesspolicyphase.NoRecord {
 			continue
 		}
@@ -95,6 +163,12 @@ func runAccessPolicyRecordStep(log hclog.Logger, cfg config) (done bool, toFreez
 				return false, nil, fmt.Errorf("write %s: %w", path, err)
 			}
 			fmt.Printf("✓ wrote %s (%d policies)\n", path, len(d.policies))
+			if c, ok := accesspolicyphase.ModuleOf(d.dir); ok {
+				if err := os.WriteFile(accesspolicyphase.CallerFile(c), accesspolicyphase.RenderCaller(c, d.policies, false), 0644); err != nil {
+					return false, nil, err
+				}
+				fmt.Printf("✓ wrote %s (re-exports module.%s's record)\n", accesspolicyphase.CallerFile(c), c.Name)
+			}
 		}
 		fmt.Println()
 		fmt.Println("Next steps:")
@@ -142,8 +216,13 @@ func freezeAccessPolicyRecords(cfg config, dirs []string) error {
 	fmt.Println("Access policies — after this apply, before re-running tf-migrate:")
 	fmt.Println("  Convert the recorded policies to reusable ones (same IDs, still attached):")
 	for _, d := range dirs {
-		fmt.Printf("    terraform -chdir=%s output -json %s > %s.json\n", d, accesspolicyphase.Name, filepath.Join(d, "access-policy-ids"))
-		fmt.Printf("    tf-migrate make-access-policies-reusable --ids %s.json\n", filepath.Join(d, "access-policy-ids"))
+		root, output := d, accesspolicyphase.Name
+		if c, ok := accesspolicyphase.ModuleOf(d); ok {
+			root, output = c.CallerDir, accesspolicyphase.CallerOutput(c)
+		}
+		ids := filepath.Join(root, output+".json")
+		fmt.Printf("    terraform -chdir=%s output -json %s > %s\n", root, output, ids)
+		fmt.Printf("    tf-migrate make-access-policies-reusable --ids %s\n", ids)
 	}
 	return nil
 }
@@ -181,4 +260,48 @@ func relDir(cfg config, dir string) string {
 		return r
 	}
 	return dir
+}
+
+// moduleImports returns, for each frozen local-module directory, the
+// policies whose imports its caller needs. Call it after the phase-1 blocks
+// are restored and before the v5 migration rewrites them.
+func moduleImports(cfg config) (map[string][]accesspolicyphase.Policy, error) {
+	dirs, err := scanAccessPolicyDirs(cfg)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]accesspolicyphase.Policy{}
+	for _, d := range dirs {
+		if _, ok := accesspolicyphase.ModuleOf(d.dir); ok && d.state == accesspolicyphase.Frozen && len(d.policies) > 0 {
+			out[d.dir] = d.policies
+		}
+	}
+	return out, nil
+}
+
+// writeModuleImports writes the import blocks for local-module policies into
+// their callers.
+func writeModuleImports(cfg config, imports map[string][]accesspolicyphase.Policy) error {
+	if cfg.dryRun {
+		return nil
+	}
+	for dir, policies := range imports {
+		c, _ := accesspolicyphase.ModuleOf(dir)
+		if err := os.WriteFile(accesspolicyphase.CallerFile(c), accesspolicyphase.RenderCaller(c, policies, true), 0644); err != nil {
+			return err
+		}
+		fmt.Printf("✓ %s — imports for module.%s's policies\n", accesspolicyphase.CallerFile(c), c.Name)
+	}
+	return nil
+}
+
+// setAccessPolicyModules tells the migrators which directories are local
+// modules.
+func setAccessPolicyModules(cfg config) error {
+	calls, _, err := findLocalModuleCalls(cfg)
+	if err != nil {
+		return err
+	}
+	accesspolicyphase.SetModules(calls)
+	return nil
 }
