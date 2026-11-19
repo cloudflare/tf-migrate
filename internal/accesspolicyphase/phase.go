@@ -1,0 +1,284 @@
+// Package accesspolicyphase drives the phased, non-destructive migration of
+// v4 application-scoped Access policies (cloudflare_access_policy with
+// application_id) to v5 reusable policies.
+//
+// v5 has no application-scoped policy, and only the v4 provider can drop the
+// old state entry. Recreating the policy changes its ID and briefly detaches
+// it, so the migration keeps every policy ID instead:
+//
+//  1. Record (v4 apply): tf-migrate writes RecordFile into each directory with
+//     app-scoped policies. It stores each policy's id, application_id,
+//     account_id and precedence in terraform_data state and an output.
+//  2. Removed (v4 apply): tf-migrate comments the policies out, adds
+//     removed { lifecycle { destroy = false } } for each and freezes the
+//     record so its values survive in state.
+//  3. Between: `tf-migrate make-access-policies-reusable` converts each
+//     recorded policy to a reusable one through the API (same ID).
+//  4. v5: tf-migrate restores the policies as cloudflare_zero_trust_access_policy
+//     with an import block whose ID is read from the record, and lists them
+//     on the application's policies attribute.
+//
+// tf-migrate cannot read state, so the step is read from RecordFile.
+package accesspolicyphase
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+)
+
+// Name is the local, terraform_data resource and output name of the record.
+const Name = "tf_migrate_access_policies"
+
+// RecordFile is the file tf-migrate writes the record into.
+const RecordFile = "tf-migrate-access-policies.tf"
+
+// State is the step a directory is at.
+type State int
+
+const (
+	// NoRecord: the record has not been written.
+	NoRecord State = iota
+	// Recorded: the record is written and reads the live policies.
+	Recorded
+	// Frozen: the policies were removed from state; the record keeps the values.
+	Frozen
+)
+
+func (s State) String() string {
+	return [...]string{"no record", "recorded", "frozen"}[s]
+}
+
+var policyTypes = map[string]bool{
+	"cloudflare_access_policy":            true,
+	"cloudflare_zero_trust_access_policy": true,
+}
+
+var appTypes = map[string]bool{
+	"cloudflare_access_application":            true,
+	"cloudflare_zero_trust_access_application": true,
+}
+
+// Policy is an application-scoped policy the phased flow can migrate.
+type Policy struct {
+	Type       string // v4 resource type
+	Name       string // resource name, also the record key
+	App        string // name of the application resource it is attached to
+	AccountID  string // account_id expression source
+	Precedence string // precedence expression source
+}
+
+// Inspect reports whether block is an application-scoped policy the phased
+// flow supports. When it is app-scoped but unsupported, reason says why.
+func Inspect(block *hclwrite.Block) (p Policy, ok bool, reason string) {
+	if block.Type() != "resource" || len(block.Labels()) != 2 || !policyTypes[block.Labels()[0]] {
+		return p, false, ""
+	}
+	body := block.Body()
+	appAttr := body.GetAttribute("application_id")
+	if appAttr == nil {
+		return p, false, ""
+	}
+	p.Type, p.Name = block.Labels()[0], block.Labels()[1]
+	switch {
+	case body.GetAttribute("count") != nil || body.GetAttribute("for_each") != nil:
+		return p, false, "uses count or for_each"
+	case body.GetAttribute("account_id") == nil:
+		return p, false, "has no account_id (zone_id policies are not supported yet)"
+	case body.GetAttribute("precedence") == nil:
+		return p, false, "has no precedence"
+	}
+	app, isRef := appReference(appAttr)
+	if !isRef {
+		return p, false, "application_id is not a reference to an application resource in the same module"
+	}
+	p.App = app
+	p.AccountID = exprSource(body.GetAttribute("account_id"))
+	p.Precedence = exprSource(body.GetAttribute("precedence"))
+	return p, true, ""
+}
+
+// appReference returns NAME when attr is <application type>.NAME.id.
+func appReference(attr *hclwrite.Attribute) (string, bool) {
+	expr, diags := hclsyntax.ParseExpression([]byte(exprSource(attr)), "application_id", hcl.InitialPos)
+	if diags.HasErrors() {
+		return "", false
+	}
+	st, ok := expr.(*hclsyntax.ScopeTraversalExpr)
+	if !ok || len(st.Traversal) != 3 || !appTypes[st.Traversal.RootName()] {
+		return "", false
+	}
+	name, ok1 := st.Traversal[1].(hcl.TraverseAttr)
+	id, ok2 := st.Traversal[2].(hcl.TraverseAttr)
+	if !ok1 || !ok2 || id.Name != "id" {
+		return "", false
+	}
+	return name.Name, true
+}
+
+func exprSource(attr *hclwrite.Attribute) string {
+	return strings.TrimSpace(string(attr.Expr().BuildTokens(nil).Bytes()))
+}
+
+// StateOf reads the step a directory is at from its RecordFile.
+func StateOf(dir string) State {
+	content, err := os.ReadFile(filepath.Join(dir, RecordFile))
+	if err != nil {
+		return NoRecord
+	}
+	f, diags := hclwrite.ParseConfig(content, RecordFile, hcl.InitialPos)
+	if diags.HasErrors() {
+		return NoRecord
+	}
+	for _, b := range f.Body().Blocks() {
+		if b.Type() == "resource" && len(b.Labels()) == 2 && b.Labels()[1] == Name {
+			if b.Body().FirstMatchingBlock("lifecycle", nil) != nil {
+				return Frozen
+			}
+			return Recorded
+		}
+	}
+	return NoRecord
+}
+
+// Scan returns the supported app-scoped policies declared in dir's .tf files,
+// and a message for each app-scoped policy it can't handle.
+func Scan(dir string) ([]Policy, []string, error) {
+	paths, err := filepath.Glob(filepath.Join(dir, "*.tf"))
+	if err != nil {
+		return nil, nil, err
+	}
+	sort.Strings(paths)
+	var policies []Policy
+	var skipped []string
+	seen := map[string]bool{}
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil, nil, err
+		}
+		f, diags := hclwrite.ParseConfig(content, filepath.Base(path), hcl.InitialPos)
+		if diags.HasErrors() {
+			continue
+		}
+		for _, b := range f.Body().Blocks() {
+			p, ok, reason := Inspect(b)
+			switch {
+			case ok && seen[p.Name]:
+				skipped = append(skipped, fmt.Sprintf("%s.%s: another policy has the same name", p.Type, p.Name))
+			case ok:
+				seen[p.Name] = true
+				policies = append(policies, p)
+			case reason != "":
+				skipped = append(skipped, fmt.Sprintf("%s.%s: %s", p.Type, p.Name, reason))
+			}
+		}
+	}
+	return policies, skipped, nil
+}
+
+var (
+	cacheMu sync.Mutex
+	cache   = map[string][]Policy{}
+)
+
+// PoliciesIn returns Scan(dir)'s policies, scanned once per directory per run.
+// The first call must happen before any file in dir is rewritten; migrators
+// call it when they see the first policy or application in the directory.
+func PoliciesIn(dir string) []Policy {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	if p, ok := cache[dir]; ok {
+		return p
+	}
+	p, _, _ := Scan(dir)
+	cache[dir] = p
+	return p
+}
+
+// ResetCache clears PoliciesIn's cache (tests, or between phases).
+func ResetCache() {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	cache = map[string][]Policy{}
+}
+
+// Find returns the supported policy called name in dir.
+func Find(dir, name string) (Policy, bool) {
+	for _, p := range PoliciesIn(dir) {
+		if p.Name == name {
+			return p, true
+		}
+	}
+	return Policy{}, false
+}
+
+// ForApp returns dir's supported policies attached to application appName,
+// ordered by precedence when every precedence is a number, else source order.
+func ForApp(dir, appName string) []Policy {
+	var out []Policy
+	for _, p := range PoliciesIn(dir) {
+		if p.App == appName {
+			out = append(out, p)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, errA := strconv.Atoi(out[i].Precedence)
+		b, errB := strconv.Atoi(out[j].Precedence)
+		return errA == nil && errB == nil && a < b
+	})
+	return out
+}
+
+// RenderRecord returns the step 1 record for policies.
+func RenderRecord(policies []Policy) []byte {
+	var b strings.Builder
+	b.WriteString("# Written by tf-migrate (step 1 of the Access policy migration).\n")
+	b.WriteString("# Records each application-scoped policy's ID so the v5 migration can import\n")
+	b.WriteString("# it instead of recreating it. Don't edit; tf-migrate rewrites this file.\n")
+	b.WriteString("locals {\n  " + Name + " = {\n")
+	for _, p := range policies {
+		r := p.Type + "." + p.Name
+		fmt.Fprintf(&b, "    %s = {\n      id             = %s.id\n      application_id = %s.application_id\n      account_id     = %s.account_id\n      precedence     = %s.precedence\n    }\n", p.Name, r, r, r, r)
+	}
+	b.WriteString("  }\n}\n\n")
+	fmt.Fprintf(&b, "resource \"terraform_data\" %q {\n  input = local.%s\n}\n\n", Name, Name)
+	fmt.Fprintf(&b, "output %q {\n  value = local.%s\n}\n", Name, Name)
+	return hclwrite.Format([]byte(b.String()))
+}
+
+// RenderFrozen returns the step 2 record: state keeps the recorded values.
+func RenderFrozen() []byte {
+	return hclwrite.Format([]byte(fmt.Sprintf(`# Written by tf-migrate (step 2 of the Access policy migration).
+# The policies are no longer in config. ignore_changes keeps the recorded IDs in
+# state; the v5 migration imports the policies by these IDs. Keep this file
+# until the v5 apply has imported them.
+resource "terraform_data" %q {
+  input = {}
+  lifecycle {
+    ignore_changes = [input]
+  }
+}
+
+output %q {
+  value = terraform_data.%s.output
+}
+`, Name, Name, Name)))
+}
+
+// ImportID returns the v5 import ID expression source for p.
+func ImportID(p Policy) string {
+	acct := "${" + p.AccountID + "}"
+	if s, err := strconv.Unquote(p.AccountID); err == nil && !strings.Contains(s, "${") {
+		acct = s
+	}
+	return fmt.Sprintf(`"%s/${terraform_data.%s.output.%s.id}"`, acct, Name, p.Name)
+}

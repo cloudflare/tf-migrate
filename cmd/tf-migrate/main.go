@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cloudflare/tf-migrate/internal"
+	"github.com/cloudflare/tf-migrate/internal/accesspolicyphase"
 	"github.com/cloudflare/tf-migrate/internal/logger"
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
 	"github.com/cloudflare/tf-migrate/internal/registry"
@@ -110,6 +111,7 @@ func main() {
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(newVerifyDriftCommand())
 	rootCmd.AddCommand(newPreserveZeroTrustSettingsCommand(cfg))
+	rootCmd.AddCommand(newMakeAccessPoliciesReusableCommand(cfg))
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -305,6 +307,15 @@ func runMigration(log hclog.Logger, cfg config) error {
 			return promptErr
 		}
 		if confirmed {
+			reusable, err := confirmAccessPoliciesReusable(cfg)
+			if err != nil {
+				return err
+			}
+			if !reusable {
+				fmt.Println()
+				fmt.Println("Run make-access-policies-reusable first (see the step 2 output), then re-run tf-migrate.")
+				return nil
+			}
 			// User confirms state is clean — uncomment resource blocks,
 			// remove the removed {} blocks, then run the full v5 migration.
 			return runPhaseTwo(log, cfg, commentedFiles)
@@ -316,6 +327,16 @@ func runMigration(log hclog.Logger, cfg config) error {
 		return nil
 	}
 
+	// App-scoped Access policies record their IDs (an extra v4 apply) before
+	// anything is removed from state.
+	done, toFreeze, err := runAccessPolicyRecordStep(log, cfg)
+	if err != nil {
+		return fmt.Errorf("access policy record step: %w", err)
+	}
+	if done {
+		return nil
+	}
+
 	// Scan for resources that require phased migration.
 	phaseOneResources, err := detectPhaseOneResources(log, cfg)
 	if err != nil {
@@ -323,7 +344,10 @@ func runMigration(log hclog.Logger, cfg config) error {
 	}
 
 	if len(phaseOneResources) > 0 {
-		return runPhaseOne(log, cfg, phaseOneResources)
+		if err := runPhaseOne(log, cfg, phaseOneResources); err != nil {
+			return err
+		}
+		return freezeAccessPolicyRecords(cfg, toFreeze)
 	}
 
 	// No phase-1 resources — run the standard full migration.
@@ -703,7 +727,7 @@ func detectPhaseOneResources(log hclog.Logger, cfg config) (map[string][]string,
 			if migrator == nil {
 				continue
 			}
-			if _, ok := migrator.(transform.PhaseOneTransformer); ok {
+			if _, ok := transform.NeedsPhaseOne(migrator, file, block); ok {
 				addr := resourceType + "." + resourceName
 				found[file] = append(found[file], addr)
 			}
@@ -796,7 +820,7 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 			if migrator == nil {
 				continue
 			}
-			p1, ok := migrator.(transform.PhaseOneTransformer)
+			p1, ok := transform.NeedsPhaseOne(migrator, file, block)
 			if !ok {
 				continue
 			}
@@ -926,6 +950,7 @@ func runPhaseTwo(log hclog.Logger, cfg config, commentedFiles []string) error {
 		}
 	}
 
+	accesspolicyphase.ResetCache()
 	return runFullMigration(log, cfg)
 }
 

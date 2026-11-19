@@ -152,6 +152,8 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		})
 	}
 
+	m.attachImportedPolicies(ctx, body, resourceName)
+
 	tfhcl.RemoveFunctionWrapper(body, "allowed_idps", "toset")
 	tfhcl.RemoveFunctionWrapper(body, "custom_pages", "toset")
 	tfhcl.RemoveFunctionWrapper(body, "self_hosted_domains", "toset")

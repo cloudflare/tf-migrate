@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
+	"github.com/cloudflare/tf-migrate/internal/accesspolicyphase"
 	"github.com/cloudflare/tf-migrate/internal/resources/zero_trust_access_policy"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
@@ -146,6 +147,18 @@ func classifyResource(block *hclwrite.Block, file string, providers transform.Mi
 	// Both v4 Access policy names with application_id are a special manual
 	// path in v4->v5: they become removed {} blocks and must be rewritten inline
 	// on cloudflare_zero_trust_access_application.policies.
+	// The phased flow only runs interactively; --yes runs the full migration.
+	if cfg.sourceVersion == "v4" && cfg.targetVersion == "v5" && !cfg.skipPhaseCheck {
+		if _, ok, _ := accesspolicyphase.Inspect(block); ok {
+			return &scannedResource{
+				File:         file,
+				ResourceType: resourceType,
+				ResourceName: resourceName,
+				Class:        classAutoMigrated,
+				Detail:       "application_id detected -- phased migration: record IDs, removed {}, make-access-policies-reusable, then import as cloudflare_zero_trust_access_policy",
+			}
+		}
+	}
 	if cfg.sourceVersion == "v4" && cfg.targetVersion == "v5" &&
 		zero_trust_access_policy.IsApplicationScopedPolicy(block) {
 		return &scannedResource{
