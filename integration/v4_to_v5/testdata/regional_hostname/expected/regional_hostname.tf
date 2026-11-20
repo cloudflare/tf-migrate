@@ -22,9 +22,6 @@ locals {
 }
 
 
-
-
-
 # Regional hostname with no timeouts
 resource "cloudflare_regional_hostname" "minimal" {
   zone_id    = var.cloudflare_zone_id

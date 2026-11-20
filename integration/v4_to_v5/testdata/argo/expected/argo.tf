@@ -22,17 +22,6 @@ variable "enable_smart_routing" {
   default     = "on"
 }
 
-
-
-
-
-
-
-
-
-
-
-
 resource "cloudflare_argo_smart_routing" "smart_routing_only" {
   zone_id = var.cloudflare_zone_id
   value   = "on"

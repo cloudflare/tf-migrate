@@ -16,12 +16,6 @@ variable "cloudflare_domain" {
   type        = string
 }
 
-
-
-
-
-
-
 # ============================================================================
 # Pattern Group 9: Cross-File References (Resource Rename Test)
 # ============================================================================
@@ -35,12 +29,8 @@ variable "cloudflare_domain" {
 # We create dependent resources (device profiles) that reference these fallback domains via depends_on.
 # After migration, the references must be updated to use the new resource names.
 
-
-
 # Dependent resources that reference the above fallback domains
 # Using realistic resources that would depend on fallback domains
-
-
 
 # Default profile - no policy_id
 resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "default_single" {

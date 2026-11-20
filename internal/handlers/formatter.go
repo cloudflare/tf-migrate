@@ -27,6 +27,9 @@ func (h *FormatterHandler) Handle(ctx *transform.Context) (*transform.Context, e
 
 	bytes := ctx.CFGFile.Bytes()
 	formatted := hclwrite.Format(bytes)
+	if l, ok := ctx.Metadata[blankLineLimitsKey].(blankLineLimits); ok {
+		formatted = collapseBlankLines(formatted, l)
+	}
 
 	ctx.Content = formatted
 

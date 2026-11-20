@@ -18,30 +18,6 @@ locals {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # Pattern 23: Already-renamed v4 resource (exercises UpgradeState path, not MoveState)
 # When the v4 config already uses cloudflare_zero_trust_access_group (the newer v4 name),
 # tf-migrate does NOT generate a moved {} block. During v5 apply, Terraform triggers

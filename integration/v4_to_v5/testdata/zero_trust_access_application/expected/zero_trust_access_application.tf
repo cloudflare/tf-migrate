@@ -430,7 +430,6 @@ resource "cloudflare_zero_trust_access_application" "special_chars" {
 # v4 name option 2: cloudflare_zero_trust_access_application
 # v5 name: cloudflare_zero_trust_access_application
 
-
 # Resource using v4 name option 2
 resource "cloudflare_zero_trust_access_application" "resourcename_opt2" {
   account_id                 = var.cloudflare_account_id
@@ -468,4 +467,3 @@ moved {
   from = cloudflare_access_application.resourcename_opt1
   to   = cloudflare_zero_trust_access_application.resourcename_opt1
 }
-

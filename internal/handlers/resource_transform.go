@@ -80,6 +80,11 @@ func (h *ResourceTransformHandler) Handle(ctx *transform.Context) (*transform.Co
 		}
 	}
 
+	if len(blocksToRemove) > 0 && ctx.Metadata != nil {
+		if _, ok := ctx.Metadata[blankLineLimitsKey]; !ok {
+			ctx.Metadata[blankLineLimitsKey] = measureBlankLines(ctx.CFGFile.Bytes())
+		}
+	}
 	for _, block := range blocksToRemove {
 		body.RemoveBlock(block)
 	}

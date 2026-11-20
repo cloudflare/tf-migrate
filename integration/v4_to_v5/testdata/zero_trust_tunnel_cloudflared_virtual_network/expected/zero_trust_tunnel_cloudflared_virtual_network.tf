@@ -19,21 +19,10 @@ locals {
   prefix     = "cftftest-vnet"
 }
 
-
-
-
-
-
-
-
-
 # Pattern 9: Cross-resource reference using both v4 names
 # This validates that GetResourceRename() returns ALL v4 names for cross-file reference updates
 # v4 resource name option 1: cloudflare_zero_trust_tunnel_virtual_network
 # v4 resource name option 2: cloudflare_tunnel_virtual_network
-
-
-
 
 # Pattern 1: OLD v4 name - minimal
 resource "cloudflare_zero_trust_tunnel_cloudflared_virtual_network" "minimal" {

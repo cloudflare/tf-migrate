@@ -41,23 +41,13 @@ locals {
 # 1. BASIC RESOURCES
 ##########################
 
-
-
-
-
-
-
 ##########################
 # 2. FOR_EACH PATTERNS
 ##########################
 
-
-
-
 ##########################
 # 3. COUNT PATTERN
 ##########################
-
 
 ##########################
 # 4. CONDITIONAL RESOURCES
@@ -68,41 +58,29 @@ variable "enable_backup_cert" {
   default = true
 }
 
-
 ##########################
 # 5. VARIABLE REFERENCES
 ##########################
-
 
 ##########################
 # 6. TERRAFORM FUNCTIONS
 ##########################
 
-
-
 ##########################
 # 7. CROSS-RESOURCE REFERENCES
 ##########################
-
-
 
 ##########################
 # 8. EDGE CASES
 ##########################
 
-
-
-
 ##########################
 # 9. LIFECYCLE META-ARGUMENTS
 ##########################
 
-
-
 ##########################
 # 10. DEPENDS_ON
 ##########################
-
 
 ##########################
 # 11. PATTERN 9: CROSS-RESOURCE REFERENCES WITH BOTH V4 NAMES
@@ -111,10 +89,6 @@ variable "enable_backup_cert" {
 # v4 name option 1: cloudflare_access_mutual_tls_certificate
 # v4 name option 2: cloudflare_zero_trust_access_mtls_certificate
 # v5 name: cloudflare_zero_trust_access_mtls_certificate
-
-
-
-
 
 # Summary: This file contains 30+ resource instances covering:
 # - Basic configurations (6 resources)

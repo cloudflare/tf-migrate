@@ -17,9 +17,6 @@ variable "cloudflare_domain" {
 # Basic Tunnel Resources
 # ========================================
 
-
-
-
 # ========================================
 # Advanced Terraform Patterns for Testing
 # ========================================
@@ -44,7 +41,6 @@ locals {
   full_tunnel_name   = "${local.name_prefix}-${var.tunnel_prefix}-${local.tunnel_suffix}"
 }
 
-
 # Pattern 3: for_each with map
 variable "application_tunnels" {
   type = map(object({
@@ -66,7 +62,6 @@ variable "application_tunnels" {
     }
   }
 }
-
 
 # Pattern 4: for_each with list converted to set
 variable "environment_tunnels" {
@@ -94,13 +89,11 @@ variable "environment_tunnels" {
   ]
 }
 
-
 # Pattern 5: Count-based resources
 variable "replica_count" {
   type    = number
   default = 3
 }
-
 
 # Pattern 6: Conditional resource creation
 variable "enable_backup_tunnel" {
@@ -108,25 +101,17 @@ variable "enable_backup_tunnel" {
   default = true
 }
 
-
-
-
-
 # Pattern 9: Using terraform expressions
 variable "use_cloudflare_config" {
   type    = bool
   default = false
 }
 
-
-
-
 # Pattern 12: Complex expression for config_src
 variable "is_production" {
   type    = bool
   default = true
 }
-
 
 # Basic tunnel with minimal configuration
 resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {

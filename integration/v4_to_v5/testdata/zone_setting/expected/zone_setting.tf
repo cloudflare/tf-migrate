@@ -21,9 +21,6 @@ locals {
   cache_ttls      = [14400, 28800, 43200]
 }
 
-
-
-
 # Test Cases 4-6: Removed - Invalid Pattern
 # Multiple zone_settings_override resources for the same zone will conflict
 # In v4, cloudflare_zone_settings_override manages ALL settings for a zone
@@ -35,14 +32,6 @@ locals {
   enable_advanced_settings = true
   enable_test_settings     = false
 }
-
-
-
-
-
-
-
-
 
 resource "cloudflare_zone_setting" "minimal_always_online" {
   zone_id    = var.cloudflare_zone_id

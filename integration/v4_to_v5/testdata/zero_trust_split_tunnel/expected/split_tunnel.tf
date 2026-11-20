@@ -16,11 +16,6 @@ locals {
 
 
 
-
-
-
-
-
 /** MIGRATION_WARNING: Split tunnel "unparseable_var" has unparseable policy_id reference - manual migration required
 *  # Unparseable policy_id - variable reference
 *  resource "cloudflare_split_tunnel" "unparseable_var" {

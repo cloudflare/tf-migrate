@@ -6,9 +6,6 @@ variable "cloudflare_account_id" {
   type        = string
 }
 
-
-
-
 # Pattern 1: dynamic "domains" block with toset([...]) - default profile
 # The most common real-world pattern: avoids repeating individual domains blocks
 resource "cloudflare_zero_trust_device_default_profile_local_domain_fallback" "dynamic_default" {

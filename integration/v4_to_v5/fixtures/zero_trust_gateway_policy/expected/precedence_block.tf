@@ -2,7 +2,6 @@ locals {
   cftftest_gateway_block_precedence = 20000
 }
 
-
 resource "cloudflare_zero_trust_gateway_policy" "cftftest_catch_all_block" {
   account_id  = var.cloudflare_account_id
   name        = "cftftest Block documentation network"

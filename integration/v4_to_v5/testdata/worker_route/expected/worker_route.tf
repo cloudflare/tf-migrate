@@ -210,7 +210,6 @@ resource "cloudflare_workers_script" "segment_proxy" {
   script_name = "${local.name_prefix}-segment-proxy"
 }
 
-
 resource "cloudflare_workers_script" "segment_proxy_indexed" {
   count       = 1
   account_id  = var.cloudflare_account_id

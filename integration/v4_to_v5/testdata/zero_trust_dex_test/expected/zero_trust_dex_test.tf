@@ -291,7 +291,6 @@ resource "cloudflare_zero_trust_dex_test" "api_with_path" {
 #   cloudflare_device_dex_test -> cloudflare_zero_trust_dex_test
 #   cloudflare_zero_trust_dex_test -> cloudflare_zero_trust_dex_test (no-op)
 
-
 # Using new v4 name (cloudflare_zero_trust_dex_test) -> stays cloudflare_zero_trust_dex_test
 resource "cloudflare_zero_trust_dex_test" "ref_source_new_name" {
   account_id  = var.cloudflare_account_id

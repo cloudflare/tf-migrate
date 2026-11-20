@@ -16,9 +16,6 @@ variable "cloudflare_domain" {
 
 
 
-
-
-
 # Pattern 1: Basic predefined profile with entries
 resource "cloudflare_zero_trust_dlp_predefined_profile" "aws_keys" {
   account_id          = var.cloudflare_account_id

@@ -18,7 +18,6 @@ locals {
   workers_hostname     = "api.${var.cloudflare_domain}"
 }
 
-
 resource "cloudflare_workers_custom_domain" "example" {
   account_id  = var.cloudflare_account_id
   hostname    = local.workers_hostname

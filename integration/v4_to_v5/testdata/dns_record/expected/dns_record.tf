@@ -13,15 +13,6 @@ variable "cloudflare_domain" {
   type        = string
 }
 
-
-
-
-
-
-
-
-
-
 # ========================================
 # Advanced Terraform Patterns for Testing
 # ========================================
@@ -71,7 +62,6 @@ variable "subdomains" {
   }
 }
 
-
 # Pattern 4: for_each with list converted to set
 variable "txt_records" {
   type = list(object({
@@ -90,20 +80,17 @@ variable "txt_records" {
   ]
 }
 
-
 # Pattern 5: Count-based resources
 variable "backup_mx_count" {
   type    = number
   default = 3
 }
 
-
 # Pattern 6: Conditional resource creation
 variable "enable_ipv6" {
   type    = bool
   default = true
 }
-
 
 # Pattern 7: Dynamic blocks (if supported)
 variable "caa_records" {
@@ -125,11 +112,6 @@ variable "caa_records" {
     }
   ]
 }
-
-
-
-
-
 
 # Standard DNS records
 resource "cloudflare_dns_record" "example_a" {
