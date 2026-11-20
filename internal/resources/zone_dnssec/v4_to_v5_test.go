@@ -3,7 +3,13 @@ package zone_dnssec
 import (
 	"testing"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
+	"github.com/cloudflare/tf-migrate/internal/transform"
 )
 
 func TestV4ToV5Transformation(t *testing.T) {
@@ -70,5 +76,29 @@ resource "cloudflare_zone_dnssec" "example" {
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
+	})
+
+	t.Run("StatusAddedWarns", func(t *testing.T) {
+		for _, tc := range []struct {
+			input string
+			warns bool
+		}{
+			{"resource \"cloudflare_zone_dnssec\" \"example\" {\n  zone_id = \"abc123\"\n}\n", true},
+			{"resource \"cloudflare_zone_dnssec\" \"example\" {\n  zone_id = \"abc123\"\n  status  = \"disabled\"\n}\n", false},
+		} {
+			file, diags := hclwrite.ParseConfig([]byte(tc.input), "test.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors())
+			ctx := &transform.Context{Filename: "test.tf", CFGFile: file}
+			_, err := migrator.TransformConfig(ctx, file.Body().Blocks()[0])
+			require.NoError(t, err)
+			if !tc.warns {
+				assert.Empty(t, ctx.Diagnostics)
+				continue
+			}
+			require.Len(t, ctx.Diagnostics, 1)
+			assert.Equal(t, hcl.DiagWarning, ctx.Diagnostics[0].Severity)
+			assert.Contains(t, ctx.Diagnostics[0].Summary, "cloudflare_zone_dnssec.example")
+			assert.Contains(t, ctx.Diagnostics[0].Detail, `status = "disabled"`)
+		}
 	})
 }

@@ -1,8 +1,12 @@
 package zone_dnssec
 
 import (
+	"fmt"
+
 	"github.com/cloudflare/tf-migrate/internal"
 	"github.com/cloudflare/tf-migrate/internal/transform"
+	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -55,6 +59,16 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	if body.GetAttribute("status") == nil {
 		body.SetAttributeValue("status", cty.StringVal("active"))
+		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary: fmt.Sprintf(
+				"status = \"active\" added to cloudflare_zone_dnssec.%s", tfhcl.GetResourceName(block)),
+			Detail: "v4 always enabled DNSSEC and status was computed-only. In v5 status is " +
+				"set in config, so tf-migrate wrote \"active\" to match v4.\n\n" +
+				"If DNSSEC was turned off outside Terraform, the first plan shows " +
+				"status = \"disabled\" -> \"active\" and applying turns DNSSEC back on. " +
+				"Set status = \"disabled\" to keep it off.",
+		})
 	}
 
 	// Remove modified_on attribute if present (changed from optional+computed to computed-only)
