@@ -105,9 +105,6 @@ EOT
 # MINIMAL E2E TEST RESOURCES
 ##########################
 
-
-
-
 # 1. Basic account-scoped certificate
 resource "cloudflare_zero_trust_access_mtls_certificate" "e2e_basic" {
   account_id  = var.cloudflare_account_id

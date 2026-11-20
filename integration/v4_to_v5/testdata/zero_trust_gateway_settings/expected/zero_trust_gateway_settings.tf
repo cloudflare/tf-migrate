@@ -68,11 +68,6 @@ locals {
 
 
 
-
-
-
-
-
 # 11. Using v5 name in v4 (cloudflare_zero_trust_gateway_settings alias)
 resource "cloudflare_zero_trust_gateway_settings" "v5_name_in_v4" {
   account_id = var.cloudflare_account_id

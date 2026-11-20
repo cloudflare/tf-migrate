@@ -240,7 +240,6 @@ resource "cloudflare_workers_for_platforms_dispatch_namespace" "depends_derived"
 # These resources use the deprecated v4 name and should be renamed during migration
 # ==============================================================================
 
-
 # Test 36-38: Deprecated resource with for_each (3 instances)
 locals {
   deprecated_map = {
@@ -249,9 +248,6 @@ locals {
     gamma = "${local.name_prefix}-deprecated-gamma"
   }
 }
-
-
-
 
 # ==============================================================================
 # Summary: 42 total resource instances

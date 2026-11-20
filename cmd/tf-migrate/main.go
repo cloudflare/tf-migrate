@@ -565,10 +565,9 @@ func updateProviderVersionConstraint(log hclog.Logger, cfg config, diags hcl.Dia
 		step++
 	}
 
-	fmt.Printf("  %d. Commit and push all changed files:\n", step)
-	fmt.Println("       git add .")
-	fmt.Printf("       git commit -m \"chore: migrate Cloudflare provider to v%s\"\n", targetVersion)
-	fmt.Println("       git push")
+	fmt.Printf("  %d. Commit the changed files and open a pull/merge request. Read the\n", step)
+	fmt.Println("     whole terraform plan before you apply: check that nothing is replaced")
+	fmt.Println("     or destroyed, and that every change is one you expect.")
 
 	return nil
 }
@@ -621,10 +620,9 @@ func printVersionFetchFailure(cfg config, diags hcl.Diagnostics) {
 	fmt.Println()
 	step++
 
-	fmt.Printf("  %d. Commit and push all changed files:\n", step)
-	fmt.Println("       git add .")
-	fmt.Println("       git commit -m \"chore: migrate Cloudflare provider to v<latest>\"")
-	fmt.Println("       git push")
+	fmt.Printf("  %d. Commit the changed files and open a pull/merge request. Read the\n", step)
+	fmt.Println("     whole terraform plan before you apply: check that nothing is replaced")
+	fmt.Println("     or destroyed, and that every change is one you expect.")
 }
 
 // findFilesWithPhaseOneComments returns a list of .tf files that contain

@@ -39,19 +39,10 @@ locals {
 }
 
 
-
-
-
 locals {
   enable_test_network = true
   enable_dev_network  = false
 }
-
-
-
-
-
-
 
 
 variable "custom_network_name" {
@@ -80,7 +71,6 @@ resource "cloudflare_zero_trust_device_managed_networks" "resourcename_opt2" {
     sha256       = "bb22222222222222222222222222222222222222222222222222222222222222"
   }
 }
-
 
 
 resource "cloudflare_zero_trust_device_managed_networks" "basic" {

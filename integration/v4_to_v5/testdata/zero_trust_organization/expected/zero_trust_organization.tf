@@ -23,36 +23,6 @@ locals {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ============================================================================
 # Pattern 9: Cross-resource reference using both v4 names
 # ============================================================================
@@ -60,9 +30,6 @@ locals {
 # v4 name option 1: cloudflare_access_organization
 # v4 name option 2: cloudflare_zero_trust_access_organization
 # v5 name: cloudflare_zero_trust_organization
-
-
-
 
 
 # ===== Basic Scenarios (8) =====

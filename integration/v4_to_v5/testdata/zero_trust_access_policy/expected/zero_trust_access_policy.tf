@@ -33,21 +33,7 @@ locals {
 
 
 
-
-
-
-
-
-
-
 # Pattern Group 8: Edge Cases
-
-
-
-
-
-
-
 
 
 
@@ -55,12 +41,6 @@ locals {
 # ============================================================
 # Research team issue reproductions (TKT-002 through TKT-006)
 # ============================================================
-
-
-
-
-
-
 
 
 
@@ -117,9 +97,6 @@ resource "cloudflare_zero_trust_access_policy" "bugs2006_everyone" {
 
   include = [{ everyone = {} }]
 }
-
-
-
 
 
 

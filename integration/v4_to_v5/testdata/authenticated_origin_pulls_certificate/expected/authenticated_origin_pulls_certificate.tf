@@ -4,8 +4,6 @@ variable "cloudflare_zone_id" {
   type = string
 }
 
-
-
 # Output references to test that they are preserved
 output "per_zone_1_status" {
   value = cloudflare_authenticated_origin_pulls_certificate.per_zone_1.status

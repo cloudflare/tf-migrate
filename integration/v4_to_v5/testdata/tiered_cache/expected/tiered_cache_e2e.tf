@@ -13,7 +13,6 @@ variable "cloudflare_domain" {
   type        = string
 }
 
-
 resource "cloudflare_tiered_cache" "generic_with_lifecycle" {
   zone_id = var.cloudflare_zone_id
   value   = "off"

@@ -19,9 +19,6 @@ variable "cloudflare_domain" {
 # These tunnel resources are included to support cross-resource
 # references in the tunnel_route resources below
 
-
-
-
 # ========================================
 # Tunnel Resources - Advanced Patterns
 # ========================================
@@ -46,7 +43,6 @@ locals {
   full_tunnel_name   = "${var.tunnel_prefix}-${local.tunnel_suffix}"
 }
 
-
 # for_each tunnels with map
 variable "application_tunnels" {
   type = map(object({
@@ -68,7 +64,6 @@ variable "application_tunnels" {
     }
   }
 }
-
 
 # for_each tunnels with list converted to set
 variable "environment_tunnels" {
@@ -96,13 +91,11 @@ variable "environment_tunnels" {
   ]
 }
 
-
 # Count-based tunnel resources
 variable "replica_count" {
   type    = number
   default = 3
 }
-
 
 # Conditional tunnel creation
 variable "enable_backup_tunnel" {
@@ -110,25 +103,17 @@ variable "enable_backup_tunnel" {
   default = true
 }
 
-
-
-
-
 # Tunnel using terraform expressions
 variable "use_cloudflare_config" {
   type    = bool
   default = false
 }
 
-
-
-
 # Complex expression for config_src
 variable "is_production" {
   type    = bool
   default = true
 }
-
 
 # ========================================
 # Tunnel Route Resources
@@ -138,11 +123,6 @@ variable "is_production" {
 # ========================================
 # Basic Resource Configurations
 # ========================================
-
-
-
-
-
 
 # ========================================
 # Variable-Driven Configurations
@@ -187,7 +167,6 @@ locals {
 # Production-Like Patterns
 # ========================================
 
-
 # Pattern 2: for_each with set conversion referencing environment tunnels
 variable "additional_networks" {
   type = list(object({
@@ -209,13 +188,11 @@ variable "additional_networks" {
   ]
 }
 
-
 # Pattern 3: Count-based resources referencing replicas
 variable "subnet_count" {
   type    = number
   default = 3
 }
-
 
 # Pattern 4: Conditional resources using locals and backup tunnel
 locals {
@@ -226,17 +203,9 @@ locals {
   ] : []
 }
 
-
 # ========================================
 # Edge Cases and Complex Scenarios
 # ========================================
-
-
-
-
-
-
-
 
 # Basic tunnel with minimal configuration
 resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {

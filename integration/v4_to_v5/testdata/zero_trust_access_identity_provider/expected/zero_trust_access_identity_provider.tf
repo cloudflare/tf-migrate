@@ -52,18 +52,6 @@ locals {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 # Test 1: onetimepin (no config block in v4, but will be required in v5)
 resource "cloudflare_zero_trust_access_identity_provider" "otp" {
   account_id = var.cloudflare_account_id

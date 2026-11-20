@@ -1,8 +1,6 @@
 # Cross-file references to cloudflare_zone.*.zone
 # These should be rewritten to .name after migration
 
-
-
 # Pattern: .zone reference in a local
 locals {
   cftftest_zone_domain = cloudflare_zone.minimal.name

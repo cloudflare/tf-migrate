@@ -190,7 +190,6 @@ resource "cloudflare_zero_trust_access_service_token" "zero_values" {
   duration   = "8760h"
 }
 
-
 # Resource without min_days_for_renewal (deprecated field)
 resource "cloudflare_zero_trust_access_service_token" "without_deprecated" {
   account_id = var.cloudflare_account_id
@@ -235,7 +234,6 @@ resource "cloudflare_zero_trust_access_service_token" "max_duration" {
 # v4 name option 1: cloudflare_access_service_token
 # v4 name option 2: cloudflare_zero_trust_access_service_token
 # v5 name: cloudflare_zero_trust_access_service_token
-
 
 # Resource using v4 name option 2
 resource "cloudflare_zero_trust_access_service_token" "resourcename_opt2" {

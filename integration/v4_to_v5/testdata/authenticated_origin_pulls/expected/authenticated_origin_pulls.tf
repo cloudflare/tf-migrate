@@ -6,15 +6,10 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
-
-
-
 # TKT-001: for_each variant — cert_id referencing per-hostname cert
 locals {
   hostnames = { "api" = "api.example.com", "web" = "web.example.com" }
 }
-
-
 
 # Basic zone-wide AOP
 resource "cloudflare_authenticated_origin_pulls_settings" "zone_wide" {

@@ -18,11 +18,6 @@ variable "cache_type" {
   default = "off"
 }
 
-
-
-
-
-
 resource "cloudflare_tiered_cache" "smart" {
   zone_id = var.cloudflare_zone_id
   value   = "on"

@@ -21,21 +21,6 @@ locals {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ============================================================================
 # Pattern Group 9: Cross-File References (Resource Rename Test)
 # ============================================================================
@@ -51,9 +36,6 @@ locals {
 
 # Dependent resources that reference the above profiles
 # Using realistic resources that would depend on device profiles
-
-
-
 
 
 

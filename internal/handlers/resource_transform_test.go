@@ -417,3 +417,35 @@ func contains(slice []string, item string) bool {
 	}
 	return false
 }
+
+// Replacing every block (RemoveOriginal: true) used to leave one blank line per
+// removed block at the top of the file.
+func TestResourceTransformHandlerNoLeftoverBlankLines(t *testing.T) {
+	input := "# records\n\nresource \"old\" \"a\" {\n  name = \"a\"\n}\n\nresource \"old\" \"b\" {\n  name = \"b\"\n}\n\nresource \"old\" \"c\" {\n  name = \"c\"\n}\n"
+	provider := NewMockMigratorProvider([]*MockResourceTransformer{{
+		resourceType: "old",
+		transformFunc: func(ctx *transform.Context, block *hclwrite.Block) (*transform.TransformResult, error) {
+			nb := hclwrite.NewBlock("resource", []string{"new", block.Labels()[1]})
+			nb.Body().SetAttributeValue("name", cty.StringVal(block.Labels()[1]))
+			return &transform.TransformResult{Blocks: []*hclwrite.Block{nb}, RemoveOriginal: true}, nil
+		},
+	}})
+	ctx := &transform.Context{Content: []byte(input), Filename: "test.tf", Metadata: make(map[string]interface{})}
+	ctx, err := handlers.NewParseHandler(log).Handle(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx, err = handlers.NewResourceTransformHandler(log, provider).Handle(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if ctx, err = handlers.NewFormatterHandler(log).Handle(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := string(ctx.Content)
+	if strings.Contains(got, "\n\n\n") {
+		t.Errorf("leftover blank lines:\n%q", got)
+	}
+	if !strings.HasPrefix(got, "# records\n\nresource \"new\" \"a\"") {
+		t.Errorf("unexpected start:\n%q", got)
+	}
+}

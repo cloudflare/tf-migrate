@@ -38,6 +38,7 @@ resource "cloudflare_zone_dnssec" "example" {
 
 **What Changed:**
 - `status = "active"` added when the config has no `status`. In v4 the resource always enabled DNSSEC and `status` was computed-only. In v5 `status` is optional and not computed, so without it every plan shows `status = "active" -> null`.
+- tf-migrate prints a warning for each block it adds `status` to, so a zone with DNSSEC turned off outside Terraform isn't turned back on unnoticed (Example 2).
 
 ---
 

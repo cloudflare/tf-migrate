@@ -11,7 +11,6 @@ variable "cloudflare_account_id" {
 
 
 
-
 # Pattern 1: Multiple dynamic "domains" blocks — custom profile (issue #288 exact scenario)
 resource "cloudflare_zero_trust_device_custom_profile_local_domain_fallback" "cftftest_multi_dynamic_custom" {
   account_id = var.cloudflare_account_id

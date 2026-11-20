@@ -20,9 +20,6 @@ locals {
 # Parent Tunnel Resources
 # ========================================
 
-
-
-
 # ========================================
 # Tunnel Config Resources
 # ========================================
@@ -41,8 +38,6 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "minimal" {
   }
 }
 
-
-
 # ============================================================================
 # Pattern 9: Cross-resource reference using both v4 names
 # ============================================================================
@@ -50,9 +45,6 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "minimal" {
 # v4 name option 1: cloudflare_tunnel_config
 # v4 name option 2: cloudflare_zero_trust_tunnel_cloudflared_config
 # v5 name: cloudflare_zero_trust_tunnel_cloudflared_config
-
-
-
 
 # Resource using v4 name option 2
 resource "cloudflare_zero_trust_tunnel_cloudflared_config" "resourcename_opt2" {
@@ -67,10 +59,6 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "resourcename_opt2" {
     ]
   }
 }
-
-
-
-
 
 # Tunnel for minimal config test
 resource "cloudflare_zero_trust_tunnel_cloudflared" "minimal" {
