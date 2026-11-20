@@ -2,6 +2,7 @@ package zero_trust_access_policy
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/cloudflare/tf-migrate/internal"
+	"github.com/cloudflare/tf-migrate/internal/accesspolicyphase"
 	"github.com/cloudflare/tf-migrate/internal/transform"
 	tfhcl "github.com/cloudflare/tf-migrate/internal/transform/hcl"
 )
@@ -61,7 +63,27 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	// Check if this is an application-scoped policy (has application_id)
 	// These cannot be automatically migrated - they use a different API endpoint
 	// and must be converted to inline policies in cloudflare_zero_trust_access_application
+	// Step 4 of the phased migration (see internal/accesspolicyphase): the
+	// policy is out of state and reusable, so restore it as a v5 policy and
+	// import it by the recorded ID.
+	var importBlock *hclwrite.Block
+	imported := false
 	if IsApplicationScopedPolicy(block) {
+		dir := filepath.Dir(ctx.FilePath)
+		if p, ok := accesspolicyphase.Find(dir, originalResourceType, resourceName); ok && accesspolicyphase.StateOf(dir) == accesspolicyphase.Frozen {
+			imported = true
+			// Imports must be in the root module. For a local module the
+			// caller's directory gets them (accesspolicyphase.RenderCaller).
+			if _, inModule := accesspolicyphase.ModuleOf(dir); !inModule {
+				importBlock = newImportBlock(p, "cloudflare_zero_trust_access_policy."+resourceName)
+			}
+			if p.ZoneID != "" {
+				// v5 is account-level; the record holds the zone's account.
+				body.SetAttributeRaw("account_id", tokensOf(p.AccountID))
+			}
+		}
+	}
+	if !imported && IsApplicationScopedPolicy(block) {
 		address := originalResourceType + "." + resourceName
 		// Generate a removed block for Atlantis-friendly state cleanup
 		removedBlock := tfhcl.CreateRemovedBlock(address)
@@ -122,11 +144,14 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	if originalResourceType == "cloudflare_access_policy" {
 		tfhcl.RenameResourceType(block, "cloudflare_access_policy", "cloudflare_zero_trust_access_policy")
 
-		// Generate moved block for state migration
-		_, newType := m.GetResourceRename()
-		from := originalResourceType + "." + resourceName
-		to := newType + "." + resourceName
-		movedBlock = tfhcl.CreateMovedBlock(from, to)
+		// Generate moved block for state migration. Not for an imported
+		// policy: its v4 state entry was already removed.
+		if !imported {
+			_, newType := m.GetResourceRename()
+			from := originalResourceType + "." + resourceName
+			to := newType + "." + resourceName
+			movedBlock = tfhcl.CreateMovedBlock(from, to)
+		}
 	}
 	// If already v5-named: no rename, no moved block — just apply attribute conversions below.
 
@@ -197,10 +222,13 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	if movedBlock != nil {
 		blocks = append(blocks, movedBlock)
 	}
+	if importBlock != nil {
+		blocks = append(blocks, importBlock)
+	}
 
 	return &transform.TransformResult{
 		Blocks:         blocks,
-		RemoveOriginal: movedBlock != nil, // Remove original if we generated a moved block
+		RemoveOriginal: len(blocks) > 1, // Remove original if we generated a moved or import block
 	}, nil
 }
 

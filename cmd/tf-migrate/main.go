@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cloudflare/tf-migrate/internal"
+	"github.com/cloudflare/tf-migrate/internal/accesspolicyphase"
 	"github.com/cloudflare/tf-migrate/internal/logger"
 	"github.com/cloudflare/tf-migrate/internal/pipeline"
 	"github.com/cloudflare/tf-migrate/internal/registry"
@@ -46,6 +47,7 @@ type config struct {
 	exclude               []string // directories to exclude from migration (relative to configDir)
 	logLevel              string
 	skipPhaseCheck        bool // skip phased migration prompt and run full migration directly (for CI/e2e)
+	rootModule            bool // treat --config-dir as a root module for app-scoped Access policies
 	skipVersionCheck      bool // skip minimum provider version check (for testing/CI only)
 
 	// Diagnostic output options
@@ -110,6 +112,7 @@ func main() {
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(newVerifyDriftCommand())
 	rootCmd.AddCommand(newPreserveZeroTrustSettingsCommand(cfg))
+	rootCmd.AddCommand(newMakeAccessPoliciesReusableCommand(cfg))
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -185,6 +188,7 @@ Uses the global flags --config-dir and --resources to determine what to migrate.
 	// --no-backup is a convenience alias for --backup=false
 	var noBackup bool
 	cmd.Flags().BoolVar(&noBackup, "no-backup", false, "Skip creating backup files before migration (alias for --backup=false)")
+	cmd.Flags().BoolVar(&cfg.rootModule, "root-module", false, "Treat --config-dir as a root module for the app-scoped Access policy migration, even without a provider block, backend, lock file or state file")
 	cmd.Flags().BoolVar(&cfg.skipPhaseCheck, "skip-phase-check", false, "Skip the phased migration confirmation prompt and run the full migration directly (for CI/non-interactive use)")
 	cmd.Flags().BoolVar(&cfg.skipVersionCheck, "skip-version-check", false, "Skip the minimum provider version check (for testing/CI only)")
 	cmd.PreRun = func(cmd *cobra.Command, args []string) {
@@ -290,6 +294,12 @@ func runMigration(log hclog.Logger, cfg config) error {
 		}
 	}
 
+	if cfg.configDir != "" {
+		if err := setAccessPolicyModules(cfg); err != nil {
+			return fmt.Errorf("scan local modules: %w", err)
+		}
+	}
+
 	// --yes skips straight to full migration (used by e2e runner and CI).
 	if cfg.skipPhaseCheck {
 		return runFullMigration(log, cfg)
@@ -305,6 +315,15 @@ func runMigration(log hclog.Logger, cfg config) error {
 			return promptErr
 		}
 		if confirmed {
+			reusable, err := confirmAccessPoliciesReusable(cfg)
+			if err != nil {
+				return err
+			}
+			if !reusable {
+				fmt.Println()
+				fmt.Println("Run make-access-policies-reusable first (see the step 2 output), then re-run tf-migrate.")
+				return nil
+			}
 			// User confirms state is clean — uncomment resource blocks,
 			// remove the removed {} blocks, then run the full v5 migration.
 			return runPhaseTwo(log, cfg, commentedFiles)
@@ -316,6 +335,16 @@ func runMigration(log hclog.Logger, cfg config) error {
 		return nil
 	}
 
+	// App-scoped Access policies record their IDs (an extra v4 apply) before
+	// anything is removed from state.
+	done, toFreeze, err := runAccessPolicyRecordStep(log, cfg)
+	if err != nil {
+		return fmt.Errorf("access policy record step: %w", err)
+	}
+	if done {
+		return nil
+	}
+
 	// Scan for resources that require phased migration.
 	phaseOneResources, err := detectPhaseOneResources(log, cfg)
 	if err != nil {
@@ -323,7 +352,10 @@ func runMigration(log hclog.Logger, cfg config) error {
 	}
 
 	if len(phaseOneResources) > 0 {
-		return runPhaseOne(log, cfg, phaseOneResources)
+		if err := runPhaseOne(log, cfg, phaseOneResources); err != nil {
+			return err
+		}
+		return freezeAccessPolicyRecords(cfg, toFreeze)
 	}
 
 	// No phase-1 resources — run the standard full migration.
@@ -701,7 +733,7 @@ func detectPhaseOneResources(log hclog.Logger, cfg config) (map[string][]string,
 			if migrator == nil {
 				continue
 			}
-			if _, ok := migrator.(transform.PhaseOneTransformer); ok {
+			if _, ok := transform.NeedsPhaseOne(migrator, file, block); ok {
 				addr := resourceType + "." + resourceName
 				found[file] = append(found[file], addr)
 			}
@@ -794,7 +826,7 @@ func runPhaseOne(log hclog.Logger, cfg config, phaseOneResources map[string][]st
 			if migrator == nil {
 				continue
 			}
-			p1, ok := migrator.(transform.PhaseOneTransformer)
+			p1, ok := transform.NeedsPhaseOne(migrator, file, block)
 			if !ok {
 				continue
 			}
@@ -909,6 +941,16 @@ func runPhaseTwo(log hclog.Logger, cfg config, commentedFiles []string) error {
 		fmt.Println("===========================================")
 	}
 	fmt.Println()
+	if cfg.dryRun {
+		// Phase 2 has to restore the commented-out blocks on disk before it
+		// can migrate them, so a dry run stops here.
+		fmt.Println("(dry run) would restore the commented-out resource blocks in:")
+		for _, file := range commentedFiles {
+			fmt.Printf("  • %s\n", file)
+		}
+		fmt.Println("and run the full v5 migration. No files were changed.")
+		return nil
+	}
 	fmt.Println("Restoring commented-out resource blocks and running full v5 migration...")
 	fmt.Println()
 
@@ -924,7 +966,15 @@ func runPhaseTwo(log hclog.Logger, cfg config, commentedFiles []string) error {
 		}
 	}
 
-	return runFullMigration(log, cfg)
+	accesspolicyphase.ResetCache()
+	imports, err := moduleImports(cfg)
+	if err != nil {
+		return err
+	}
+	if err := runFullMigration(log, cfg); err != nil {
+		return err
+	}
+	return writeModuleImports(cfg, imports)
 }
 
 // restorePhaseOneFile removes the phaseOneCommentPrefix from commented-out
