@@ -184,12 +184,31 @@ func TestAccessPolicyPhasedSteps(t *testing.T) {
 
 	// Step 4 waits for the convert run's marks.
 	out = runWithAnswers(t, cfg)
-	assert.Contains(t, out, "not converted to reusable yet: allow, by_zone, deny, looped")
+	assert.Contains(t, out, "not converted to reusable yet: allow, by_zone, deny, looped\n")
+	// for_each instances are listed once, not again under the resource name.
+	require.NoError(t, accesspolicyphase.WriteCheck(dir, accesspolicyphase.CheckResult{Checked: map[string]string{
+		"allow": "1", "by_zone": "2", "deny": "3", `looped["x"]`: "4", `looped["y"]`: "5"}}))
+	out = runWithAnswers(t, cfg)
+	assert.Contains(t, out, `not converted to reusable yet: allow, by_zone, deny, looped["x"], looped["y"]`+"\n")
+	assert.Contains(t, read(main), "# tf-migrate:")
+
+	// A check file that lost a policy still can't let step 4 through: it
+	// would restore and import it.
+	convertAll(t, dir)
+	r, _, err := accesspolicyphase.ReadCheck(dir)
+	require.NoError(t, err)
+	delete(r.Checked, "deny")
+	delete(r.Converted, "deny")
+	require.NoError(t, accesspolicyphase.WriteCheck(dir, r))
+	out = runWithAnswers(t, cfg)
+	assert.Contains(t, out, "not converted to reusable yet: deny")
 	assert.Contains(t, read(main), "# tf-migrate:")
 
 	// Step 4: v5 policies imported by recorded ID, listed on the app in
 	// precedence order, no moved block for them.
 	convertAll(t, dir)
+	r.Converted["deny"], r.Checked["deny"] = "id-deny", "id-deny"
+	require.NoError(t, accesspolicyphase.WriteCheck(dir, r))
 	runWithAnswers(t, cfg)
 	m = read(main)
 	assert.NotContains(t, m, "# tf-migrate:")

@@ -297,11 +297,22 @@ func confirmAccessPoliciesReusable(cfg config) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		var pending []string
+		pendingSet := map[string]bool{}
 		for k := range r.Checked {
 			if _, done := r.Converted[k]; !done {
-				pending = append(pending, k)
+				pendingSet[k] = true
 			}
+		}
+		// Step 4 restores and imports every commented-out app-scoped
+		// policy, so each one needs a mark, whatever Checked says.
+		for _, name := range restoredPolicyNames(d.dir) {
+			if !accesspolicyphase.HasName(r.Converted, name) && !accesspolicyphase.HasName(boolKeys(pendingSet), name) {
+				pendingSet[name] = true
+			}
+		}
+		var pending []string
+		for k := range pendingSet {
+			pending = append(pending, k)
 		}
 		sort.Strings(pending)
 		switch {
@@ -417,4 +428,46 @@ func printPolicyReferences(refs []string) {
 	for _, r := range refs {
 		fmt.Printf("  • %s\n", r)
 	}
+}
+
+// restoredPolicyNames returns the app-scoped policies step 4 would restore
+// in dir: present once the phase-1 comments are removed, absent now.
+func restoredPolicyNames(dir string) []string {
+	paths, _ := filepath.Glob(filepath.Join(dir, "*.tf"))
+	names := func(src string) map[string]bool {
+		out := map[string]bool{}
+		f, diags := hclwrite.ParseConfig([]byte(src), "x.tf", hcl.InitialPos)
+		if diags.HasErrors() {
+			return out
+		}
+		for _, b := range f.Body().Blocks() {
+			if b.Type() == "resource" && len(b.Labels()) == 2 && strings.HasSuffix(b.Labels()[0], "access_policy") && b.Body().GetAttribute("application_id") != nil {
+				out[b.Labels()[1]] = true
+			}
+		}
+		return out
+	}
+	var out []string
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		now := names(string(content))
+		for n := range names(restorePhaseOneFile(string(content))) {
+			if !now[n] {
+				out = append(out, n)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func boolKeys(m map[string]bool) map[string]string {
+	out := make(map[string]string, len(m))
+	for k := range m {
+		out[k] = ""
+	}
+	return out
 }
