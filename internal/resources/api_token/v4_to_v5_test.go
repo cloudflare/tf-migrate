@@ -566,6 +566,10 @@ resource "cloudflare_api_token" "example_api_token" {
 				// migrator only handles cloudflare_api_token resources; the data source
 				// block is renamed by the api_token_permission_groups datasource migrator
 				// (tested separately).
+				//
+				// The name-only .permissions lookups take their scope from the policy's
+				// resources map (account only), so each filter is narrowed to the
+				// account scope rather than matching every scope with that name.
 				Expected: `
 data "cloudflare_api_token_permission_groups" "all" {}
 
@@ -573,7 +577,7 @@ resource "cloudflare_api_token" "example_api_token" {
   name = "example_api_token"
 
   policies = [{
-    permission_groups = [{ id = one([for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == ("Zone Read")]) }, { id = one([for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == ("DNS Read")]) }, { id = one([for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == ("DNS Write")]) }]
+    permission_groups = [{ id = one([for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == ("Zone Read") && contains(pg.scopes, "com.cloudflare.api.account")]) }, { id = one([for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == ("DNS Read") && contains(pg.scopes, "com.cloudflare.api.account")]) }, { id = one([for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id if pg.name == ("DNS Write") && contains(pg.scopes, "com.cloudflare.api.account")]) }]
     resources = jsonencode({
       "com.cloudflare.api.account.*" = "*"
     })

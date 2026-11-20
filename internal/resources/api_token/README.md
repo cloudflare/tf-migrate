@@ -60,6 +60,33 @@ Deprecated `permissions` lookups match only by name. `one()` rejects multiple
 matches; no matches return `null`, so verify the requested name and scope if
 Terraform reports a missing permission ID.
 
+Seven permission names exist at both account and zone scope (`Logs Read`,
+`Logs Write`, `Access: Apps and Policies Read`/`Write`/`Revoke`, `Disable ESC
+Read`/`Write`). A name-only lookup for one of those matches two groups, and
+`one()` fails the plan. To avoid that, tf-migrate infers the scope from the
+policy's own `resources` map, which the API requires to agree with the
+permission group's scope:
+
+```hcl
+# v4 — name-only lookup, but resources names an account
+permission_groups = [data.cloudflare_api_token_permission_groups.all.permissions["Logs Write"]]
+resources         = { "com.cloudflare.api.account.abc123" = "*" }
+
+# v5 — scope taken from the resources key
+permission_groups = [{
+  id = one([
+    for pg in data.cloudflare_api_token_permission_groups_list.all.result : pg.id
+    if pg.name == "Logs Write" && contains(pg.scopes, "com.cloudflare.api.account")
+  ])
+}]
+```
+
+The scope is only inferred when every `resources` key is a string literal and
+all keys agree. It is **not** inferred when the keys mix scopes, the map comes
+from a variable, or a key is interpolated (`"com.cloudflare.api.account.${var.account_id}"`).
+tf-migrate does not guess in those cases: the lookup stays name-only and a
+warning names the file and the `contains()` filter to add by hand.
+
 Mixed lists retain every element. List comprehensions are converted to yield
 objects, including dynamic lookup keys, key/value iterators, and filters.
 Literal-only lists retain their sorted ordering.

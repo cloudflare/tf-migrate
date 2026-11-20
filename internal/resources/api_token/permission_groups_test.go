@@ -17,7 +17,18 @@ import (
 
 func migratePermissionGroups(t *testing.T, input string) (hclsyntax.Expression, *transform.Context) {
 	t.Helper()
-	file, diags := hclwrite.ParseConfig([]byte("permission_groups = "+input+"\n"), "permissions.tf", hcl.InitialPos)
+	return migratePolicy(t, input, "")
+}
+
+// migratePolicy runs transformPermissionGroups on a policy body that may also
+// carry a v4 resources map, which drives scope inference.
+func migratePolicy(t *testing.T, input, resources string) (hclsyntax.Expression, *transform.Context) {
+	t.Helper()
+	src := "permission_groups = " + input + "\n"
+	if resources != "" {
+		src += "resources = " + resources + "\n"
+	}
+	file, diags := hclwrite.ParseConfig([]byte(src), "permissions.tf", hcl.InitialPos)
 	require.False(t, diags.HasErrors(), "%s", diags.Error())
 	ctx := &transform.Context{Filename: "permissions.tf"}
 	(&V4ToV5Migrator{}).transformPermissionGroups(ctx, file.Body())
@@ -30,7 +41,7 @@ func migratePermissionGroups(t *testing.T, input string) (hclsyntax.Expression, 
 
 // Evaluate generated expressions against overlapping permission names. A
 // name-only lookup or wrong scope must fail these tests, even if it parses.
-func TestPermissionGroupsEvaluation(t *testing.T) {
+func permissionGroupsEvalContext() *hcl.EvalContext {
 	var groups []cty.Value
 	for _, scope := range []string{"zone", "account", "user", "r2"} {
 		groups = append(groups, cty.ObjectVal(map[string]cty.Value{
@@ -42,7 +53,7 @@ func TestPermissionGroupsEvaluation(t *testing.T) {
 		"id": cty.StringVal("unique-id"), "name": cty.StringVal("Unique $ % \" Name"),
 		"scopes": cty.ListVal([]cty.Value{cty.StringVal(permissionGroupScopes["zone"])}),
 	}))
-	eval := &hcl.EvalContext{
+	return &hcl.EvalContext{
 		Variables: map[string]cty.Value{
 			"data": cty.ObjectVal(map[string]cty.Value{
 				"cloudflare_api_token_permission_groups_list": cty.ObjectVal(map[string]cty.Value{
@@ -78,6 +89,10 @@ func TestPermissionGroupsEvaluation(t *testing.T) {
 			}),
 		},
 	}
+}
+
+func TestPermissionGroupsEvaluation(t *testing.T) {
+	eval := permissionGroupsEvalContext()
 	tests := []struct {
 		name, input string
 		ids         []string
@@ -87,7 +102,7 @@ func TestPermissionGroupsEvaluation(t *testing.T) {
 		{"account", `[data.cloudflare_api_token_permission_groups.all.account["Shared Name"]]`, []string{"account-id"}, false},
 		{"user", `[data.cloudflare_api_token_permission_groups.all.user["Shared Name"]]`, []string{"user-id"}, false},
 		{"r2", `[data.cloudflare_api_token_permission_groups.all.r2["Shared Name"]]`, []string{"r2-id"}, false},
-		{"deprecated map and escaped name", `[data.cloudflare_api_token_permission_groups.all.permissions["Unique $ % \" Name"]]`, []string{"unique-id"}, false},
+		{"deprecated map and escaped name", `[data.cloudflare_api_token_permission_groups.all.permissions["Unique $ % \" Name"]]`, []string{"unique-id"}, true},
 		{"literal first", `["literal-id", data.cloudflare_api_token_permission_groups.all.zone["Shared Name"]]`, []string{"literal-id", "zone-id"}, false},
 		{"reference first", `[data.cloudflare_api_token_permission_groups.all.zone["Shared Name"], "literal-id"]`, []string{"zone-id", "literal-id"}, false},
 		{"generic expression mixed with lookup", `[local.id, data.cloudflare_api_token_permission_groups.all.zone["Shared Name"]]`, []string{"local-id", "zone-id"}, true},
@@ -99,7 +114,7 @@ func TestPermissionGroupsEvaluation(t *testing.T) {
 		{"constant numeric instance", `[data.cloudflare_api_token_permission_groups.by_count[0].r2["Shared Name"]]`, []string{"r2-id"}, false},
 		{"dynamic instance and key", `[data.cloudflare_api_token_permission_groups.by_key[each.key].zone[local.names[0]]]`, []string{"zone-id"}, false},
 		{"indexed comprehension and iterator collision", `[for i, pg in local.names : data.cloudflare_api_token_permission_groups.by_key[each.key].zone[pg] if i == 0]`, []string{"zone-id"}, false},
-		{"indexed deprecated map", `[data.cloudflare_api_token_permission_groups.by_key[each.key].permissions["Unique $ % \" Name"]]`, []string{"unique-id"}, false},
+		{"indexed deprecated map", `[data.cloudflare_api_token_permission_groups.by_key[each.key].permissions["Unique $ % \" Name"]]`, []string{"unique-id"}, true},
 		{"generic comprehension", `[for p in local.ids : p]`, []string{"a", "b"}, true},
 		{"collection reference", `local.ids`, []string{"a", "b"}, true},
 		{"literal sorting", `["z", "a"]`, []string{"a", "z"}, false},
@@ -137,6 +152,59 @@ func TestPermissionGroupsUnsupportedExpressions(t *testing.T) {
 			require.Len(t, ctx.Diagnostics, 1)
 			assert.Equal(t, hcl.DiagWarning, ctx.Diagnostics[0].Severity)
 			assert.Contains(t, ctx.Diagnostics[0].Detail, "permissions.tf")
+		})
+	}
+}
+
+// A name-only .permissions[...] lookup takes its scope from the policy's
+// resources when every key requires the same scope. Otherwise it stays
+// name-only and must warn, because names like "Logs Write" exist at both
+// account and zone scope.
+func TestPermissionGroupsScopeFromResources(t *testing.T) {
+	eval := permissionGroupsEvalContext()
+	shared := `[data.cloudflare_api_token_permission_groups.all.permissions["Shared Name"]]`
+	tests := []struct {
+		name, input, resources string
+		ids                    []string // nil: evaluation must fail (ambiguous)
+		warning                bool
+	}{
+		{"account wildcard", shared, `{ "com.cloudflare.api.account.*" = "*" }`, []string{"account-id"}, false},
+		{"specific account", shared, `{ "com.cloudflare.api.account.abc123" = "*" }`, []string{"account-id"}, false},
+		{"zone wildcard", shared, `{ "com.cloudflare.api.account.zone.*" = "*" }`, []string{"zone-id"}, false},
+		{"several zones", shared, `{ "com.cloudflare.api.account.zone.a" = "*", "com.cloudflare.api.account.zone.b" = "*" }`, []string{"zone-id"}, false},
+		{"user", shared, `{ "com.cloudflare.api.user.u1" = "*" }`, []string{"user-id"}, false},
+		{"r2 bucket", shared, `{ "com.cloudflare.edge.r2.bucket.abc_default_b" = "*" }`, []string{"r2-id"}, false},
+		{"comprehension takes scope", `[for p in local.names : data.cloudflare_api_token_permission_groups.all.permissions[p] if p != "skip"]`, `{ "com.cloudflare.api.account.zone.*" = "*" }`, []string{"zone-id"}, false},
+		{"explicit category wins", `[data.cloudflare_api_token_permission_groups.all.zone["Shared Name"]]`, `{ "com.cloudflare.api.account.*" = "*" }`, []string{"zone-id"}, false},
+		{"mixed account and zone", shared, `{ "com.cloudflare.api.account.*" = "*", "com.cloudflare.api.account.zone.*" = "*" }`, nil, true},
+		{"resources from variable", shared, `var.resources`, nil, true},
+		{"interpolated key", shared, `{ "com.cloudflare.api.account.${var.account_id}" = "*" }`, nil, true},
+		{"unknown resource prefix", shared, `{ "com.example.other" = "*" }`, nil, true},
+		{"no resources", shared, ``, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			expr, ctx := migratePolicy(t, tt.input, tt.resources)
+			if tt.warning {
+				require.Len(t, ctx.Diagnostics, 1, "%s", ctx.Diagnostics.Error())
+				assert.Equal(t, hcl.DiagWarning, ctx.Diagnostics[0].Severity)
+				assert.Contains(t, ctx.Diagnostics[0].Summary, "by name only")
+				assert.Contains(t, ctx.Diagnostics[0].Detail, "permissions.tf")
+			} else {
+				assert.Empty(t, ctx.Diagnostics, "%s", ctx.Diagnostics.Error())
+			}
+			value, diags := expr.Value(eval)
+			if tt.ids == nil {
+				assert.True(t, diags.HasErrors(), "ambiguous name must not select an ID")
+				return
+			}
+			require.False(t, diags.HasErrors(), "%s", diags.Error())
+			ids := []string{}
+			for it := value.ElementIterator(); it.Next(); {
+				_, object := it.Element()
+				ids = append(ids, object.GetAttr("id").AsString())
+			}
+			assert.Equal(t, tt.ids, ids)
 		})
 	}
 }
