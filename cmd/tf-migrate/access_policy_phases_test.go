@@ -410,6 +410,7 @@ func TestAccessPolicyPhased_DryRunAtStepFour(t *testing.T) {
 type fakeAccessAPI struct {
 	apps     map[string][]string
 	reusable map[string]bool
+	fail     map[string]int // application ID -> status for its list call
 	puts     int
 }
 
@@ -418,6 +419,8 @@ func (f *fakeAccessAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Header.Get("Authorization") != "Bearer tok":
 		w.WriteHeader(http.StatusForbidden)
+	case r.Method == http.MethodGet && len(parts) == 6 && parts[3] == "apps" && parts[5] == "policies" && f.fail[parts[4]] != 0:
+		w.WriteHeader(f.fail[parts[4]])
 	case r.Method == http.MethodGet && len(parts) == 6 && parts[3] == "apps" && parts[5] == "policies":
 		var res []map[string]any
 		for i, id := range f.apps[parts[4]] {
@@ -442,14 +445,18 @@ func (f *fakeAccessAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestMakeAccessPoliciesReusableCommand(t *testing.T) {
-	api := &fakeAccessAPI{apps: map[string][]string{"app1": {"p1", "p2"}, "app2": {"p3", "p4"}}, reusable: map[string]bool{}}
+	api := &fakeAccessAPI{apps: map[string][]string{"app1": {"p1", "p2"}, "app2": {"p3", "p4"}}, reusable: map[string]bool{}, fail: map[string]int{}}
 	srv := httptest.NewServer(api)
 	defer srv.Close()
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, accesspolicyphase.RecordFile), []byte(accesspolicyphase.RenderFrozen()), 0600))
+	record := filepath.Join(dir, accesspolicyphase.RecordFile)
+	recorded := "resource \"terraform_data\" \"" + accesspolicyphase.Name + "\" {\n  input = {}\n}\n"
+	require.NoError(t, os.WriteFile(record, []byte(recorded), 0600))
 	const ids = `{"a": {"id": "p1", "application_id": "app1", "account_id": "A"},
  "b": {"id": "p2", "application_id": "app1", "account_id": "A"},
  "c": {"id": "p3", "application_id": "app2", "account_id": "A"}}`
+	const idsWithoutApp2 = `{"a": {"id": "p1", "application_id": "app1", "account_id": "A"},
+ "b": {"id": "p2", "application_id": "app1", "account_id": "A"}}`
 	run := func(ids string, args ...string) (string, error) {
 		t.Helper()
 		f := filepath.Join(t.TempDir(), "ids.json")
@@ -469,6 +476,7 @@ func TestMakeAccessPoliciesReusableCommand(t *testing.T) {
 		require.True(t, ok)
 		return r
 	}
+	freeze := func() { require.NoError(t, os.WriteFile(record, accesspolicyphase.RenderFrozen(), 0600)) }
 
 	t.Setenv("CLOUDFLARE_API_TOKEN", "")
 	t.Setenv("CLOUDFLARE_EMAIL", "")
@@ -483,8 +491,19 @@ func TestMakeAccessPoliciesReusableCommand(t *testing.T) {
 	_, err = run(ids)
 	assert.ErrorContains(t, err, "Run with --check after the step 1 apply")
 
-	// app2 has p4 in Cloudflare, not in the record: incomplete, named.
+	// An API error is "could not check", not "incomplete", and leaves no file.
+	api.fail["app2"] = http.StatusForbidden
 	out, err := run(ids, "--check")
+	assert.ErrorContains(t, err, "1 application(s) could not be checked")
+	assert.NotContains(t, err.Error(), "incomplete")
+	assert.Contains(t, out, "app2: could not check: HTTP 403")
+	assert.NotContains(t, out, "--skip-app <id>")
+	assert.NotContains(t, out, "Usage:", "no cobra usage dump")
+	assert.NoFileExists(t, filepath.Join(dir, accesspolicyphase.CheckFile))
+	delete(api.fail, "app2")
+
+	// app2 has p4 in Cloudflare, not in the record: incomplete, named.
+	out, err = run(ids, "--check")
 	assert.ErrorContains(t, err, "1 application(s) incomplete")
 	assert.Contains(t, out, `app app2 (app2): 2 policies in Cloudflare, 1 in your Terraform record`)
 	assert.Contains(t, out, `not in Terraform: "Policy p4" (allow, precedence 2, id p4)`)
@@ -499,26 +518,62 @@ func TestMakeAccessPoliciesReusableCommand(t *testing.T) {
 	assert.Equal(t, []string{"app2"}, r.SkippedApps)
 	assert.Equal(t, map[string]string{"c": "p3"}, r.Skipped)
 
-	// A new skip after step 2 is refused.
-	_, err = run(ids, "--skip-app", "app1")
-	assert.ErrorContains(t, err, "can only be skipped with --check")
+	// Step 2 rewrites the record without app2; the next check (with or
+	// without --skip-app again) keeps the skip.
+	out, err = run(idsWithoutApp2, "--check")
+	require.NoError(t, err, out)
+	r = check()
+	assert.Equal(t, []string{"app2"}, r.SkippedApps, "skip carried forward")
+	assert.Equal(t, map[string]string{"c": "p3"}, r.Skipped)
+	assert.Equal(t, map[string]string{"a": "p1", "b": "p2"}, r.Checked)
 
-	// Convert: only the complete application, and the marks for step 4.
-	out, err = run(ids)
+	// After step 2 (record frozen), no new skips, with or without --check.
+	freeze()
+	_, err = run(idsWithoutApp2, "--skip-app", "app1")
+	assert.ErrorContains(t, err, "can only be skipped with --check, before step 2")
+	_, err = run(idsWithoutApp2, "--check", "--skip-app", "app1")
+	assert.ErrorContains(t, err, "can only be skipped with --check, before step 2")
+
+	// Convert: the complete application, and the marks for step 4.
+	out, err = run(idsWithoutApp2)
 	require.NoError(t, err, out)
 	assert.Equal(t, 2, api.puts)
 	assert.False(t, api.reusable["p3"], "skipped application is not converted")
 	assert.Equal(t, map[string]string{"a": "p1", "b": "p2"}, check().Converted)
 
-	// A policy attached between the check and the convert run blocks its
-	// application again.
+	// A transient error on a later --check keeps Checked and the marks.
+	api.fail["app1"] = http.StatusInternalServerError
+	_, err = run(idsWithoutApp2, "--check")
+	assert.ErrorContains(t, err, "could not be checked")
+	r = check()
+	assert.Equal(t, map[string]string{"a": "p1", "b": "p2"}, r.Checked)
+	assert.Equal(t, map[string]string{"a": "p1", "b": "p2"}, r.Converted)
+	delete(api.fail, "app1")
+
+	// A policy attached after step 2: --check and convert keep Checked and
+	// drop the marks, so step 4 waits.
 	api.apps["app1"] = append(api.apps["app1"], "p9")
-	out, err = run(ids)
+	out, err = run(idsWithoutApp2, "--check")
 	assert.ErrorContains(t, err, "1 application(s) incomplete")
 	assert.Contains(t, out, "id p9")
+	assert.Contains(t, out, "can't be skipped any more")
+	assert.Contains(t, out, "0 of 2 checked policies on complete applications")
 	r = check()
-	assert.Empty(t, r.Converted, "marks are dropped for an incomplete application")
-	assert.Equal(t, map[string]string{"a": "p1", "b": "p2"}, r.Checked, "step 2's decision is kept, so step 4 waits")
+	assert.Equal(t, map[string]string{"a": "p1", "b": "p2"}, r.Checked, "step 2's decision is kept")
+	assert.Empty(t, r.Converted)
+	_, err = run(idsWithoutApp2)
+	assert.ErrorContains(t, err, "1 application(s) incomplete")
+	assert.Empty(t, check().Converted)
+
+	// A check file lost after step 2 can't be recreated.
+	saved, err := os.ReadFile(filepath.Join(dir, accesspolicyphase.CheckFile))
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(filepath.Join(dir, accesspolicyphase.CheckFile)))
+	for _, args := range [][]string{{"--check"}, nil} {
+		_, err = run(idsWithoutApp2, args...)
+		assert.ErrorContains(t, err, "restore it from git")
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, accesspolicyphase.CheckFile), saved, 0600))
 
 	// Partial failure exits non-zero.
 	api.apps["app1"] = []string{"p1", "p2"}
@@ -530,7 +585,7 @@ func TestMakeAccessPoliciesReusableCommand(t *testing.T) {
 		}
 		api.ServeHTTP(w, r)
 	})
-	out, err = run(ids)
+	out, err = run(idsWithoutApp2)
 	assert.ErrorContains(t, err, "1 of 2 policies failed")
 	assert.Contains(t, out, "HTTP 403")
 	assert.Equal(t, map[string]string{"a": "p1"}, check().Converted)
