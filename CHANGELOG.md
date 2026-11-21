@@ -6,6 +6,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [v1.3.0] - 2026-11-20
+
+### Added
+
+- **dcv_delegation** data source: references to `id` are rewritten to `uuid`. References to the removed `hostname` attribute produce a warning with the expression that rebuilds the v4 value, `"${data.cloudflare_dcv_delegation.<name>.uuid}.dcv.cloudflare.com"` ([#356](https://github.com/cloudflare/tf-migrate/pull/356))
+- Provider `5.29.0` is part of the end-to-end supportability matrix ([#353](https://github.com/cloudflare/tf-migrate/pull/353))
+
+### Changed
+
+- The final next steps no longer say to `git push`, which often triggers a plan or an apply in Atlantis or CI. They say to open a pull or merge request and read the whole plan before applying ([#365](https://github.com/cloudflare/tf-migrate/pull/365))
+
+### Fixed
+
+- **zone_setting**: `lifecycle.ignore_changes` on `cloudflare_zone_settings_override` is carried over as `ignore_changes = [value]` on the matching `cloudflare_zone_setting` resources, instead of being dropped, which made the first v5 apply revert settings managed outside Terraform. `all`, `[settings]` and `[settings[0]]` apply to every generated resource. Deeper paths are widened to `[value]`, and entries that match no generated resource are dropped, each with a warning ([#357](https://github.com/cloudflare/tf-migrate/pull/357))
+- **zone_setting**: warns when `import {}` blocks are generated into a child module, where Terraform rejects them, and gives the module-prefixed address to use from the root module ([#358](https://github.com/cloudflare/tf-migrate/pull/358))
+- **zone_settings_override**: phase 2 now removes the `removed {}` blocks that phase 1 added. They were kept next to the ones the `zone_setting` migrator writes, and Terraform rejected the duplicates ([#355](https://github.com/cloudflare/tf-migrate/pull/355), [#359](https://github.com/cloudflare/tf-migrate/pull/359))
+- **logpush_job**: adds the v4 default `output_type = "ndjson"` to `output_options`, so jobs that left it unset no longer plan `output_type -> null` ([#358](https://github.com/cloudflare/tf-migrate/pull/358))
+- **zero_trust_access_application**: `policies` lists are split correctly when elements contain indexes, function calls or comments. Values that aren't a plain list, such as `concat(...)` or a `for` expression, are left unchanged with a warning that shows the hand conversion; `concat([a], [b])` used to be cut down to `[a]` ([#360](https://github.com/cloudflare/tf-migrate/pull/360))
+- **zero_trust_access_application**: running tf-migrate again over migrated output no longer nests each `policies` entry inside a new `id` ([#363](https://github.com/cloudflare/tf-migrate/pull/363))
+- **zero_trust_access_group**, **zero_trust_access_policy**: empty selector lists such as `service_token = []` are dropped. They produced invalid HCL (`[ , ]`) in access groups, and a value v5 rejects at validate in access policies ([#363](https://github.com/cloudflare/tf-migrate/pull/363))
+- **authenticated_origin_pulls_certificate**: every reference to a per-hostname certificate (outputs, `depends_on`, locals, other files) is renamed to `cloudflare_authenticated_origin_pulls_hostname_certificate`, not only the `cert_id` of an `authenticated_origin_pulls` in the same file. Also in every module that links the declaring file by symlink. Warns when `type` is not a string literal; such certificates were silently migrated as per-zone ([#360](https://github.com/cloudflare/tf-migrate/pull/360), [#362](https://github.com/cloudflare/tf-migrate/pull/362))
+- Attribute renames and invalid-attribute warnings now reach references through indexes, splats and loops (`fe["a"].id`, `cnt[*].id`, `[for d in ... : d.id]`, `each.value.id`, `dynamic` iterators). This applies to every renamed attribute: the `zones`, `ip_ranges`, `load_balancer_pools`, `accounts`, `account_roles` and `dcv_delegation` data sources, and `logpush_ownership_challenge`. References inside comments are no longer rewritten ([#361](https://github.com/cloudflare/tf-migrate/pull/361))
+- A `.tf` file shared by symlink between several directories is migrated once instead of once per link, which added a `version` line to `required_providers` for each link and wrote a `.backup` next to every symlink. With `--output-dir`, each link path gets a copy of the migrated file. Warns when an in-place run rewrites a symlink target outside the config dir ([#362](https://github.com/cloudflare/tf-migrate/pull/362))
+- With `--output-dir`, the provider version is updated in the output files instead of the input files, and the lock file hint points there. A second run no longer adds a duplicate `version` argument ([#362](https://github.com/cloudflare/tf-migrate/pull/362))
+- Migrated files no longer gain a blank line for every replaced block; a file of 133 `cloudflare_record` blocks started with 134 blank lines. Blank lines you wrote, including in heredocs, are kept ([#365](https://github.com/cloudflare/tf-migrate/pull/365))
+- **zone_dnssec**: warns when `status = "active"` is added. A zone with DNSSEC turned off outside Terraform would otherwise be turned back on, and the warning says how to keep it off ([#365](https://github.com/cloudflare/tf-migrate/pull/365))
+
+---
+
 ## [v1.2.0] - 2026-11-10
 
 ### Added
