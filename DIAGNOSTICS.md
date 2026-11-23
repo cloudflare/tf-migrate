@@ -34,6 +34,14 @@ names may require choosing a scope explicitly.
 See the [API token migration guide](internal/resources/api_token/README.md#permission-group-data-source-references)
 for the scope table, examples, and supported expression forms.
 
+## Review changed attribute reference: cloudflare_address_map
+
+The referenced attribute still exists in v5, but the type of its entries has
+changed. Update expressions that project `.ip` from `ips` to consume the
+strings directly. Review any membership consumer that uses `can_delete`;
+v5 membership objects contain only `identifier` and `kind`. Consumers that
+only count entries or use the unchanged membership fields can stay as they are.
+
 ## Action required: review Gateway policy precedence
 
 **Severity:** Warning

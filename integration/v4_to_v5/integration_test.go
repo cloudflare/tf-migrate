@@ -97,6 +97,25 @@ func TestGatewayPolicyPrecedenceReview(t *testing.T) {
 	})
 }
 
+func TestAddressMapReferenceReview(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration tests in short mode")
+	}
+	runner, err := integration.NewTestRunner("v4", "v5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.TestDataPath = filepath.Join(runner.BaseDir, "fixtures")
+	runner.RunTest(t, integration.TestCase{
+		Resource: "address_map",
+		ExpectedOutput: []string{
+			`Review changed attribute reference: cloudflare_address_map.cftftest_empty[0].ips`,
+			`Review changed attribute reference: cloudflare_address_map.cftftest_empty[0].memberships`,
+			"In outputs.tf",
+		},
+	})
+}
+
 func TestAPITokenPermissionGroups(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration tests in short mode")
