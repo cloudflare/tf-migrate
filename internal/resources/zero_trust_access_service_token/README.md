@@ -63,7 +63,7 @@ resource "cloudflare_zero_trust_access_service_token" "expiring" {
 
 **What Changed:**
 - Resource type renamed
-- `min_days_for_renewal` field removed
+- `min_days_for_renewal` field removed. v5 doesn't renew the token, so a token with a finite `duration` expires at `expires_at`. tf-migrate warns unless the value is `0` or `duration = "forever"`.
 
 ---
 

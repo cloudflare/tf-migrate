@@ -3,6 +3,13 @@ package zero_trust_access_service_token
 import (
 	"testing"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cloudflare/tf-migrate/internal/transform"
+
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
 )
 
@@ -114,5 +121,33 @@ resource "cloudflare_zero_trust_access_service_token" "no_renewal" {
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
+	})
+
+	t.Run("RenewalRemovedWarns", func(t *testing.T) {
+		for _, tc := range []struct {
+			body  string
+			warns bool
+		}{
+			{"  duration             = \"8760h\"\n  min_days_for_renewal = 30\n", true},
+			{"  min_days_for_renewal = var.days\n", true},
+			{"  duration             = \"forever\"\n  min_days_for_renewal = 30\n", false},
+			{"  duration             = \"8760h\"\n  min_days_for_renewal = 0\n", false},
+			{"  duration = \"8760h\"\n", false},
+		} {
+			input := "resource \"cloudflare_access_service_token\" \"t\" {\n  account_id = \"a\"\n  name = \"t\"\n" + tc.body + "}\n"
+			file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+			require.False(t, diags.HasErrors())
+			ctx := &transform.Context{Filename: "test.tf", CFGFile: file}
+			_, err := migrator.TransformConfig(ctx, file.Body().Blocks()[0])
+			require.NoError(t, err)
+			if !tc.warns {
+				assert.Empty(t, ctx.Diagnostics, tc.body)
+				continue
+			}
+			require.Len(t, ctx.Diagnostics, 1, tc.body)
+			assert.Equal(t, hcl.DiagWarning, ctx.Diagnostics[0].Severity)
+			assert.Contains(t, ctx.Diagnostics[0].Summary, "cloudflare_zero_trust_access_service_token.t")
+			assert.Contains(t, ctx.Diagnostics[0].Detail, `duration = "forever"`)
+		}
 	})
 }
