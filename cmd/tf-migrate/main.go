@@ -1107,6 +1107,9 @@ func processConfigFiles(log hclog.Logger, p *pipeline.Pipeline, cfg config) (map
 		if err != nil {
 			return nil, allDiagnostics, fmt.Errorf("failed to apply global postprocessing: %w", err)
 		}
+		if cfg.recursive {
+			allDiagnostics = hoistModuleImports(log, cfg, outputPaths, allDiagnostics)
+		}
 	}
 
 	return parsedConfigs, allDiagnostics, nil

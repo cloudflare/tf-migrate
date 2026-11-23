@@ -263,6 +263,9 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	if importCount > 0 && looksLikeChildModule(ctx.FilePath) {
 		ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
 			Severity: hcl.DiagWarning,
+			// With --recursive, tf-migrate moves the blocks into the module
+			// call when it can, and drops this warning by Subject.Filename.
+			Subject: &hcl.Range{Filename: ctx.FilePath},
 			Summary: fmt.Sprintf(
 				"Action required: move %d import block(s) for cloudflare_zone_settings_override.%s to the root module",
 				importCount, baseName),
