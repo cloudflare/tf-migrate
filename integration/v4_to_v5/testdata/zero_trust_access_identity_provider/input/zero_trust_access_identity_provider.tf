@@ -245,3 +245,10 @@ resource "cloudflare_access_identity_provider" "azure_full" {
     group_member_deprovision = false
   }
 }
+
+# Data source lookup by name. v5 looks the provider up by ID, so tf-migrate
+# adds a plural data source to find it.
+data "cloudflare_access_identity_provider" "azure_by_name" {
+  account_id = var.cloudflare_account_id
+  name       = cloudflare_access_identity_provider.azure.name
+}

@@ -8,6 +8,7 @@ import (
 	iprangesdata "github.com/cloudflare/tf-migrate/internal/datasources/ip_ranges"
 	lbpoolsdata "github.com/cloudflare/tf-migrate/internal/datasources/load_balancer_pools"
 	rulesetsdata "github.com/cloudflare/tf-migrate/internal/datasources/rulesets"
+	identityproviderdata "github.com/cloudflare/tf-migrate/internal/datasources/zero_trust_access_identity_provider"
 	zonedata "github.com/cloudflare/tf-migrate/internal/datasources/zone"
 	zonesdata "github.com/cloudflare/tf-migrate/internal/datasources/zones"
 	"github.com/cloudflare/tf-migrate/internal/resources/access_rule"
@@ -109,6 +110,7 @@ func RegisterAllMigrations() {
 	lbpoolsdata.NewV4ToV5Migrator()
 	rulesetsdata.NewV4ToV5Migrator()
 	zonedata.NewV4ToV5Migrator()
+	identityproviderdata.NewV4ToV5Migrator()
 	zonesdata.NewV4ToV5Migrator()
 
 	// Resources
