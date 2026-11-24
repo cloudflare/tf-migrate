@@ -3,6 +3,13 @@ package load_balancer
 import (
 	"testing"
 
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cloudflare/tf-migrate/internal/transform"
+
 	"github.com/cloudflare/tf-migrate/internal/testhelpers"
 )
 
@@ -11,21 +18,6 @@ func TestV4ToV5Transformation(t *testing.T) {
 
 	t.Run("ConfigTransformation", func(t *testing.T) {
 		tests := []testhelpers.ConfigTestCase{
-			{
-				Name: "Basic load balancer",
-				Input: `resource "cloudflare_load_balancer" "example" {
-  zone_id          = "example-zone-id"
-  name             = "example-lb.example.com"
-  default_pool_ids = ["example-pool-id"]
-  fallback_pool_id = "example-fallback-pool-id"
-}`,
-				Expected: `resource "cloudflare_load_balancer" "example" {
-  zone_id       = "example-zone-id"
-  name          = "example-lb.example.com"
-  default_pools = ["example-pool-id"]
-  fallback_pool = "example-fallback-pool-id"
-}`,
-			},
 			{
 				Name: "Load balancer with TTL",
 				Input: `resource "cloudflare_load_balancer" "example" {
@@ -544,5 +536,171 @@ func TestV4ToV5Transformation(t *testing.T) {
 		}
 
 		testhelpers.RunConfigTransformTests(t, tests, migrator)
+	})
+
+	// BuildDynamicForListTokens emits spacing inside its tokens, which the
+	// semantic comparison of RunConfigTransformTests doesn't normalise, so
+	// these compare the formatted output.
+	t.Run("DynamicRules", func(t *testing.T) {
+		for _, tt := range []testhelpers.ConfigTestCase{
+			{
+				Name: "dynamic rules with nested overrides",
+				Input: `resource "cloudflare_load_balancer" "lb" {
+  zone_id          = "0123456789abcdef0123456789abcdef"
+  name             = "lb.example.com"
+  fallback_pool_id = "p"
+  default_pool_ids = ["p"]
+  dynamic "rules" {
+    for_each = var.pools
+    content {
+      name      = rules.key
+      condition = "http.request.uri.path eq \"/${rules.key}\""
+      overrides {
+        steering_policy = "off"
+      }
+    }
+  }
+}
+`,
+				Expected: `resource "cloudflare_load_balancer" "lb" {
+  zone_id       = "0123456789abcdef0123456789abcdef"
+  name          = "lb.example.com"
+  default_pools = ["p"]
+  fallback_pool = "p"
+  rules = [for k, v in var.pools : {
+    name      = k
+    condition = "http.request.uri.path eq \"/${k}\""
+    overrides = {
+      steering_policy = "off"
+    }
+  }]
+}
+`,
+			},
+			{
+				Name: "static and dynamic rules keep source order",
+				Input: `resource "cloudflare_load_balancer" "mixed" {
+  zone_id          = "0123456789abcdef0123456789abcdef"
+  name             = "lb2.example.com"
+  fallback_pool_id = "p"
+  default_pool_ids = ["p"]
+  rules {
+    name      = "first"
+    condition = "true"
+    fixed_response {
+      status_code = 200
+    }
+  }
+  dynamic "rules" {
+    for_each = var.pools
+    iterator = r
+    content {
+      name     = r.key
+      priority = r.value
+      overrides {
+        region_pools {
+          region   = "WNAM"
+          pool_ids = ["p"]
+        }
+      }
+    }
+  }
+  rules {
+    name      = "last"
+    condition = "true"
+    disabled  = true
+  }
+}
+`,
+				Expected: `resource "cloudflare_load_balancer" "mixed" {
+  zone_id       = "0123456789abcdef0123456789abcdef"
+  name          = "lb2.example.com"
+  default_pools = ["p"]
+  fallback_pool = "p"
+  rules = concat(
+    [{
+      name      = "first"
+      condition = "true"
+      fixed_response = {
+        status_code = 200
+      }
+    }],
+    [for k, v in var.pools : {
+      name     = k
+      priority = v
+      overrides = {
+        region_pools = {
+          "WNAM" = ["p"]
+        }
+      }
+    }],
+    [{
+      name      = "last"
+      condition = "true"
+      disabled  = true
+    }],
+  )
+}
+`,
+			},
+			{
+				Name: "Basic load balancer",
+				Input: `resource "cloudflare_load_balancer" "example" {
+  zone_id          = "example-zone-id"
+  name             = "example-lb.example.com"
+  default_pool_ids = ["example-pool-id"]
+  fallback_pool_id = "example-fallback-pool-id"
+}`,
+				Expected: `resource "cloudflare_load_balancer" "example" {
+  zone_id       = "example-zone-id"
+  name          = "example-lb.example.com"
+  default_pools = ["example-pool-id"]
+  fallback_pool = "example-fallback-pool-id"
+}`,
+			},
+		} {
+			t.Run(tt.Name, func(t *testing.T) {
+				file, diags := hclwrite.ParseConfig([]byte(tt.Input), "test.tf", hcl.InitialPos)
+				require.False(t, diags.HasErrors())
+				ctx := &transform.Context{Filename: "test.tf", CFGFile: file}
+				_, err := migrator.TransformConfig(ctx, file.Body().Blocks()[0])
+				require.NoError(t, err)
+				assert.Empty(t, ctx.Diagnostics)
+				assert.Equal(t, string(hclwrite.Format([]byte(tt.Expected))), string(hclwrite.Format(file.Bytes())))
+			})
+		}
+	})
+
+	t.Run("NestedDynamicInRuleWarns", func(t *testing.T) {
+		input := `resource "cloudflare_load_balancer" "lb" {
+  zone_id          = "z"
+  name             = "lb.example.com"
+  fallback_pool_id = "p"
+  default_pool_ids = ["p"]
+  dynamic "rules" {
+    for_each = var.rules
+    content {
+      name = rules.key
+      dynamic "overrides" {
+        for_each = [1]
+        content {
+          steering_policy = "off"
+        }
+      }
+    }
+  }
+}
+`
+		file, diags := hclwrite.ParseConfig([]byte(input), "test.tf", hcl.InitialPos)
+		require.False(t, diags.HasErrors())
+		ctx := &transform.Context{Filename: "test.tf", CFGFile: file}
+		_, err := migrator.TransformConfig(ctx, file.Body().Blocks()[0])
+		require.NoError(t, err)
+		require.Len(t, ctx.Diagnostics, 1)
+		assert.Contains(t, ctx.Diagnostics[0].Summary, "cloudflare_load_balancer.lb")
+		assert.Contains(t, ctx.Diagnostics[0].Detail, "nested dynamic block")
+		// Left in place, unchanged.
+		assert.Contains(t, string(file.Bytes()), `dynamic "rules" {`)
+		assert.Contains(t, string(file.Bytes()), `dynamic "overrides" {`)
 	})
 }

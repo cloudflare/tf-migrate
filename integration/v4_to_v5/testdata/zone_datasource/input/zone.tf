@@ -92,3 +92,9 @@ locals {
 output "cftftest_zone_identifier" {
   value = data.cloudflare_zone.by_id.zone_id
 }
+
+# Scenario 9: zone_id with account_id (v5 accepts exactly one of zone_id and filter)
+data "cloudflare_zone" "by_id_with_account" {
+  zone_id    = var.cloudflare_zone_id
+  account_id = var.cloudflare_account_id
+}

@@ -310,3 +310,14 @@ moved {
   from = cloudflare_access_identity_provider.azure_full
   to   = cloudflare_zero_trust_access_identity_provider.azure_full
 }
+
+data "cloudflare_zero_trust_access_identity_providers" "azure_by_name_lookup" {
+  account_id = var.cloudflare_account_id
+}
+
+# Data source lookup by name. v5 looks the provider up by ID, so tf-migrate
+# adds a plural data source to find it.
+data "cloudflare_zero_trust_access_identity_provider" "azure_by_name" {
+  account_id           = var.cloudflare_account_id
+  identity_provider_id = [for p in data.cloudflare_zero_trust_access_identity_providers.azure_by_name_lookup.result : p.id if p.name == cloudflare_zero_trust_access_identity_provider.azure.name][0]
+}

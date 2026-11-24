@@ -1,7 +1,11 @@
 package zero_trust_access_service_token
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/cloudflare/tf-migrate/internal"
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal/transform"
@@ -51,8 +55,26 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 
 	body := block.Body()
 
-	// Remove deprecated field: min_days_for_renewal
-	tfhcl.RemoveAttributes(body, "min_days_for_renewal")
+	// Remove deprecated field: min_days_for_renewal. v4 refreshed the token
+	// during refresh when it expired within that many days; v5 has no
+	// equivalent, so a token with a finite duration now just expires.
+	if attr := body.GetAttribute("min_days_for_renewal"); attr != nil {
+		value := strings.TrimSpace(string(attr.Expr().BuildTokens(nil).Bytes()))
+		duration := tfhcl.ExtractStringFromAttribute(body.GetAttribute("duration"))
+		if value != "0" && duration != "forever" {
+			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+				Severity: hcl.DiagWarning,
+				Summary: fmt.Sprintf(
+					"min_days_for_renewal removed from cloudflare_zero_trust_access_service_token.%s: the token is no longer renewed", resourceName),
+				Detail: fmt.Sprintf("In v4, min_days_for_renewal = %s made Terraform refresh the token "+
+					"when it was within that many days of expires_at. v5 has no such setting, "+
+					"so the token expires at expires_at and clients using it stop working.\n\n"+
+					"To keep it valid, set duration = \"forever\", or renew it outside Terraform "+
+					"(POST .../access/service_tokens/<id>/refresh) before it expires.", value),
+			})
+		}
+		body.RemoveAttribute("min_days_for_renewal")
+	}
 
 	// Generate moved block only if resource type was renamed
 	_, newType := m.GetResourceRename()
@@ -72,4 +94,3 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 		RemoveOriginal: false,
 	}, nil
 }
-

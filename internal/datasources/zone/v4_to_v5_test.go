@@ -22,6 +22,19 @@ data "cloudflare_zone" "example" {
 }`,
 		},
 		{
+			Name: "zone_id with account_id and name - no filter",
+			Input: `
+data "cloudflare_zone" "example" {
+  zone_id    = "abc123"
+  account_id = var.account_id
+  name       = "example.com"
+}`,
+			Expected: `
+data "cloudflare_zone" "example" {
+  zone_id = "abc123"
+}`,
+		},
+		{
 			Name: "name only - wrap in filter",
 			Input: `
 data "cloudflare_zone" "example" {

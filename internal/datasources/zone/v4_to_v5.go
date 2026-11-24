@@ -63,7 +63,7 @@ func (m *V4ToV5Migrator) GetComputedAttributeMappings() []transform.ComputedAttr
 
 // TransformConfig handles configuration file transformations.
 // Scenarios:
-// 1. zone_id only → No changes
+// 1. zone_id set → No filter; name and account_id are dropped
 // 2. name only → filter = { name = "..." }
 // 3. account_id only → filter = { account = { id = "..." } }
 // 4. name + account_id → filter = { name = "...", account = { id = "..." } }
@@ -74,7 +74,17 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	nameAttr := body.GetAttribute("name")
 	accountIdAttr := body.GetAttribute("account_id")
 
-	// Scenario 1: zone_id lookup - no changes needed
+	// Scenario 1: zone_id lookup. v5 accepts exactly one of zone_id and
+	// filter, and the zone ID alone identifies the zone, so name and
+	// account_id are dropped.
+	if body.GetAttribute("zone_id") != nil {
+		body.RemoveAttribute("name")
+		body.RemoveAttribute("account_id")
+		return &transform.TransformResult{
+			Blocks:         []*hclwrite.Block{block},
+			RemoveOriginal: false,
+		}, nil
+	}
 	if nameAttr == nil && accountIdAttr == nil {
 		return &transform.TransformResult{
 			Blocks:         []*hclwrite.Block{block},

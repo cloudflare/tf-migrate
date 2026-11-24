@@ -1,6 +1,9 @@
 package load_balancer
 
 import (
+	"fmt"
+
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 
 	"github.com/cloudflare/tf-migrate/internal"
@@ -88,12 +91,109 @@ func (m *V4ToV5Migrator) TransformConfig(ctx *transform.Context, block *hclwrite
 	//
 	// Each rule's overrides sub-block contains the same block→attribute patterns
 	// as the top-level LB resource, so we apply the same transformations recursively.
-	tfhcl.ConvertBlocksToAttributeList(body, "rules", m.transformRuleBlock)
+	//
+	// dynamic "rules" blocks become for expressions. Rules are evaluated in
+	// order, so when there are several rules blocks, static or dynamic, the
+	// list is a concat() of them in source order.
+	if tfhcl.HasDynamicBlockFor(body, "rules") {
+		if reason := m.convertRulesWithDynamic(body); reason != "" {
+			ctx.Diagnostics = append(ctx.Diagnostics, &hcl.Diagnostic{
+				Severity: hcl.DiagWarning,
+				Summary: fmt.Sprintf(
+					"dynamic \"rules\" not migrated on cloudflare_load_balancer.%s", tfhcl.GetResourceName(block)),
+				Detail: fmt.Sprintf("The rules blocks could not be converted automatically: %s.\n\n"+
+					"They have been left in place, but v5 expects a list attribute, so the "+
+					"configuration will not validate until they are rewritten by hand, for example:\n\n"+
+					"  rules = [for k, v in <for_each> : {\n"+
+					"    name      = k\n"+
+					"    condition = \"...\"\n"+
+					"    overrides = { steering_policy = \"off\" }\n"+
+					"  }]", reason),
+			})
+		}
+	} else {
+		tfhcl.ConvertBlocksToAttributeList(body, "rules", m.transformRuleBlock)
+	}
 
 	return &transform.TransformResult{
 		Blocks:         []*hclwrite.Block{block},
 		RemoveOriginal: false,
 	}, nil
+}
+
+// convertRulesWithDynamic converts rules blocks when at least one of them is
+// a dynamic block. It returns a reason, and leaves the blocks in place, when
+// a block can't be converted.
+func (m *V4ToV5Migrator) convertRulesWithDynamic(body *hclwrite.Body) string {
+	type segment struct {
+		static  []*hclwrite.Block
+		dynamic *hclwrite.Block
+	}
+	var segments []*segment
+	var all []*hclwrite.Block
+	for _, b := range body.Blocks() {
+		switch {
+		case b.Type() == "rules":
+			if len(segments) == 0 || segments[len(segments)-1].dynamic != nil {
+				segments = append(segments, &segment{})
+			}
+			segments[len(segments)-1].static = append(segments[len(segments)-1].static, b)
+		case b.Type() == "dynamic" && len(b.Labels()) > 0 && b.Labels()[0] == "rules":
+			segments = append(segments, &segment{dynamic: b})
+		default:
+			continue
+		}
+		all = append(all, b)
+	}
+
+	// Check every dynamic block before changing anything.
+	for _, seg := range segments {
+		if seg.dynamic == nil {
+			continue
+		}
+		dynBody := seg.dynamic.Body()
+		if dynBody.GetAttribute("for_each") == nil {
+			return "a dynamic block has no for_each"
+		}
+		content := tfhcl.FindBlockByType(dynBody, "content")
+		if content == nil {
+			return "a dynamic block has no content block"
+		}
+		for _, nested := range content.Body().Blocks() {
+			if nested.Type() == "dynamic" {
+				return "a rule's content has a nested dynamic block"
+			}
+		}
+	}
+
+	var lists []hclwrite.Tokens
+	for _, seg := range segments {
+		if seg.dynamic == nil {
+			var elems []hclwrite.Tokens
+			for _, rb := range seg.static {
+				m.transformRuleBlock(rb)
+				elems = append(elems, tfhcl.BuildObjectFromBlock(rb))
+			}
+			lists = append(lists, hclwrite.TokensForTuple(elems))
+			continue
+		}
+		m.transformRuleBlock(tfhcl.FindBlockByType(seg.dynamic.Body(), "content"))
+		tokens, ok, reason := tfhcl.BuildDynamicForListTokens(seg.dynamic, "rules")
+		if !ok {
+			return reason
+		}
+		lists = append(lists, tokens)
+	}
+
+	value := lists[0]
+	if len(lists) > 1 {
+		value = tfhcl.BuildConcatExpression(lists)
+	}
+	for _, b := range all {
+		body.RemoveBlock(b)
+	}
+	body.SetAttributeRaw("rules", value)
+	return ""
 }
 
 // transformRuleBlock applies all necessary transformations to a single rules block
@@ -189,4 +289,3 @@ func (m *V4ToV5Migrator) transformPoolsBlocks(body *hclwrite.Body, blockName, ke
 		body.SetAttributeRaw(blockName, tokens)
 	}
 }
-
