@@ -42,7 +42,7 @@ This document provides accurate, code-verified context about the tf-migrate proj
 - **HCL Parsing**: `github.com/hashicorp/hcl/v2`
 - **JSON manipulation**: `github.com/tidwall/gjson` + `github.com/tidwall/sjson` (used in state value transforms)
 - **CLI Framework**: `github.com/spf13/cobra`
-- **No Cloudflare API client** — tf-migrate does not call the Cloudflare API. The only outbound call is to the GitHub API to fetch the latest provider version.
+- **Cloudflare API only in `make-access-policies-reusable`** — `migrate` and the other commands don't call the Cloudflare API; their only outbound call is to the GitHub API to fetch the latest provider version. `make-access-policies-reusable` (`internal/accesspolicyphase/reusable.go`) is the one command that changes anything in Cloudflare.
 
 ---
 
@@ -167,6 +167,13 @@ Implement these on your migrator struct to opt into additional framework feature
 // Full TransformConfig is called in the second pass after state is cleaned up.
 type PhaseOneTransformer interface {
     TransformPhaseOne(ctx *Context, block *hclwrite.Block) (*TransformResult, error)
+}
+
+// PhaseOneFilter — optional for a PhaseOneTransformer whose resources only
+// sometimes need phase 1 (e.g. app-scoped Access policies whose directory has
+// an applied record). Without it, every resource of the type does.
+type PhaseOneFilter interface {
+    NeedsPhaseOne(filePath string, block *hclwrite.Block) bool
 }
 
 // ResourceRenamer — enables cross-file resource type reference rewriting.

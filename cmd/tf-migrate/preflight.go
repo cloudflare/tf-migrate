@@ -81,6 +81,21 @@ func runPreMigrationScan(log hclog.Logger, cfg config) (*preflightReport, error)
 		}
 	}
 
+	// Scan once: which app-scoped policies the phased flow takes, keyed by
+	// directory and type.name.
+	phased := map[string]bool{}
+	if cfg.sourceVersion == "v4" && cfg.targetVersion == "v5" && !cfg.skipPhaseCheck {
+		dirs, err := scanAccessPolicyDirs(cfg)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range dirs {
+			for _, p := range d.policies {
+				phased[phasedKey(d.dir, p.Type, p.Name)] = true
+			}
+		}
+	}
+
 	for _, file := range files {
 		content, err := os.ReadFile(file)
 		if err != nil {
@@ -102,7 +117,7 @@ func runPreMigrationScan(log hclog.Logger, cfg config) (*preflightReport, error)
 				if len(block.Labels()) < 2 {
 					continue
 				}
-				sr := classifyResource(block, relFile, providers, renames, cfg)
+				sr := classifyResource(block, relFile, providers, renames, cfg, phased[phasedKey(filepath.Dir(file), block.Labels()[0], block.Labels()[1])])
 				if sr != nil {
 					report.Resources = append(report.Resources, *sr)
 				}
@@ -123,7 +138,7 @@ func runPreMigrationScan(log hclog.Logger, cfg config) (*preflightReport, error)
 }
 
 // classifyResource determines how a resource will be handled during migration.
-func classifyResource(block *hclwrite.Block, file string, providers transform.MigrationProvider, renames map[string]string, cfg config) *scannedResource {
+func classifyResource(block *hclwrite.Block, file string, providers transform.MigrationProvider, renames map[string]string, cfg config, phased bool) *scannedResource {
 	resourceType := block.Labels()[0]
 	resourceName := block.Labels()[1]
 
@@ -146,6 +161,18 @@ func classifyResource(block *hclwrite.Block, file string, providers transform.Mi
 	// Both v4 Access policy names with application_id are a special manual
 	// path in v4->v5: they become removed {} blocks and must be rewritten inline
 	// on cloudflare_zero_trust_access_application.policies.
+	// The phased flow only runs interactively; --skip-phase-check runs the full migration.
+	if cfg.sourceVersion == "v4" && cfg.targetVersion == "v5" && !cfg.skipPhaseCheck {
+		if phased {
+			return &scannedResource{
+				File:         file,
+				ResourceType: resourceType,
+				ResourceName: resourceName,
+				Class:        classAutoMigrated,
+				Detail:       "application_id detected -- phased migration: record IDs, removed {}, make-access-policies-reusable, then import as cloudflare_zero_trust_access_policy",
+			}
+		}
+	}
 	if cfg.sourceVersion == "v4" && cfg.targetVersion == "v5" &&
 		zero_trust_access_policy.IsApplicationScopedPolicy(block) {
 		return &scannedResource{
@@ -444,4 +471,8 @@ func printPreflightReport(report *preflightReport, cfg config) {
 		fmt.Printf("  Migrated %d resources (%d renamed, %d config-only)\n",
 			len(report.Resources), len(renamed), len(autoMigrated))
 	}
+}
+
+func phasedKey(dir, typ, name string) string {
+	return filepath.Clean(dir) + "|" + typ + "." + name
 }

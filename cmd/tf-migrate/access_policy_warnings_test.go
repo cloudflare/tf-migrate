@@ -65,7 +65,8 @@ func TestAccessPolicyManualWarnings(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "access.tf")
 			require.NoError(t, os.WriteFile(path, []byte(appScopedPolicyFixture), 0600))
-			cfg := config{configDir: dir, sourceVersion: "v4", targetVersion: "v5", targetProviderVersion: "5.27.0",
+			// --skip-phase-check: the phased flow doesn't run, so these stay manual.
+			cfg := config{configDir: dir, sourceVersion: "v4", targetVersion: "v5", targetProviderVersion: "5.27.0", skipPhaseCheck: true,
 				verbose: mode == "verbose", quiet: mode == "quiet", dryRun: mode == "dry-run"}
 			report, err := runPreMigrationScan(newTestLogger(), cfg)
 			require.NoError(t, err)

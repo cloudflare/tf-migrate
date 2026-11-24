@@ -63,6 +63,25 @@ type PhaseOneTransformer interface {
 	TransformPhaseOne(ctx *Context, block *hclwrite.Block) (*TransformResult, error)
 }
 
+// PhaseOneFilter is optional for a PhaseOneTransformer whose resources only
+// sometimes need phase 1. Without it, every resource of the type does.
+type PhaseOneFilter interface {
+	NeedsPhaseOne(filePath string, block *hclwrite.Block) bool
+}
+
+// NeedsPhaseOne reports whether block, declared in filePath, goes through
+// phase 1 with migrator.
+func NeedsPhaseOne(migrator ResourceTransformer, filePath string, block *hclwrite.Block) (PhaseOneTransformer, bool) {
+	p1, ok := migrator.(PhaseOneTransformer)
+	if !ok {
+		return nil, false
+	}
+	if f, ok := migrator.(PhaseOneFilter); ok && !f.NeedsPhaseOne(filePath, block) {
+		return nil, false
+	}
+	return p1, true
+}
+
 // ResourceRenamer is an optional interface that migrators can implement
 // to expose resource type renames. This enables global cross-file reference updates.
 //
