@@ -14,6 +14,7 @@ import (
 	"github.com/cloudflare/tf-migrate/internal/resources/access_rule"
 	"github.com/cloudflare/tf-migrate/internal/resources/account"
 	"github.com/cloudflare/tf-migrate/internal/resources/account_member"
+	"github.com/cloudflare/tf-migrate/internal/resources/address_map"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_shield"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_shield_operation"
 	"github.com/cloudflare/tf-migrate/internal/resources/api_token"
@@ -117,6 +118,7 @@ func RegisterAllMigrations() {
 	access_rule.NewV4ToV5Migrator()
 	account.NewV4ToV5Migrator()
 	account_member.NewV4ToV5Migrator()
+	address_map.NewV4ToV5Migrator()
 	api_shield.NewV4ToV5Migrator()
 	api_shield_operation.NewV4ToV5Migrator()
 	api_token.NewV4ToV5Migrator()

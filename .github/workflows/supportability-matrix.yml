@@ -56,6 +56,8 @@ name: Supportability Matrix
 # real CLOUDFLARE_HYPERDRIVE_* secrets configured (see env: below) and may
 # have Leaked Credential Check enabled on its zone, so let CI attempt them
 # for real rather than assuming they need the same exclusion as local testing.
+# address_map is excluded for the listed targets through 5.29.0 because they
+# predate the provider's state-upgrade and in-place update fix.
 
 concurrency:
   group: supportability-matrix
@@ -107,19 +109,19 @@ jobs:
       matrix:
         include:
           - version: "5.19.0"
-            exclude: "byo_ip_prefix,d1_database,ruleset,api_token,zero_trust_access_group"
+            exclude: "byo_ip_prefix,d1_database,ruleset,api_token,zero_trust_access_group,address_map"
           - version: "5.19.1"
-            exclude: "byo_ip_prefix,d1_database,ruleset,api_token"
+            exclude: "byo_ip_prefix,d1_database,ruleset,api_token,address_map"
           - version: "5.20.0"
-            exclude: "byo_ip_prefix,d1_database,ruleset,api_token,load_balancer,load_balancer_pool"
+            exclude: "byo_ip_prefix,d1_database,ruleset,api_token,load_balancer,load_balancer_pool,address_map"
           - version: "5.21.1"
-            exclude: "byo_ip_prefix,d1_database,ruleset,api_token,load_balancer,load_balancer_pool"
+            exclude: "byo_ip_prefix,d1_database,ruleset,api_token,load_balancer,load_balancer_pool,address_map"
           - version: "5.22.0"
-            exclude: "byo_ip_prefix,ruleset"
+            exclude: "byo_ip_prefix,ruleset,address_map"
           - version: "5.23.0"
-            exclude: "byo_ip_prefix,ruleset,zero_trust_device_profiles,zero_trust_split_tunnel,zero_trust_device_managed_networks,zero_trust_local_fallback_domain"
+            exclude: "byo_ip_prefix,ruleset,zero_trust_device_profiles,zero_trust_split_tunnel,zero_trust_device_managed_networks,zero_trust_local_fallback_domain,address_map"
           - version: "5.29.0"
-            exclude: "byo_ip_prefix"
+            exclude: "byo_ip_prefix,address_map"
     steps:
       - name: Checkout tf-migrate
         uses: actions/checkout@v4

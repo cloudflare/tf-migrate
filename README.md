@@ -89,6 +89,7 @@ tf-migrate migrate --source-version v4 --target-version v5 --skip-version-check
 | | `data.cloudflare_account_roles` | `data.cloudflare_account_roles` | data source |
 | | `data.cloudflare_accounts` | `data.cloudflare_accounts` | data source |
 | **Addressing** | `cloudflare_byo_ip_prefix` | `cloudflare_byo_ip_prefix` | resource ⚠ |
+| | `cloudflare_address_map` | `cloudflare_address_map` | resource |
 | | `cloudflare_regional_hostname` | `cloudflare_regional_hostname` | resource |
 | | `cloudflare_regional_tiered_cache` | `cloudflare_regional_tiered_cache` | resource |
 | **API Shield** | `cloudflare_api_shield` | `cloudflare_api_shield` | resource |

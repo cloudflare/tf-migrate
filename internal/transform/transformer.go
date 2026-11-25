@@ -143,8 +143,8 @@ type InstanceRenamer interface {
 	GetInstanceRenames() []InstanceRename
 }
 
-// InvalidAttributeReference describes a reference to an attribute that does not
-// exist (or is otherwise invalid) on the v5 resource type. When detected in
+// InvalidAttributeReference describes a reference to a removed or changed
+// attribute on the v5 resource type. When detected in
 // cross-file references during postprocessing, tf-migrate emits a DiagWarning
 // with the Suggestion text so the user knows how to fix it manually.
 type InvalidAttributeReference struct {
@@ -154,6 +154,9 @@ type InvalidAttributeReference struct {
 	Attribute string
 	// Suggestion is the human-readable guidance shown in the warning.
 	Suggestion string
+	// ReviewOnly reports a changed attribute shape that may require a rewrite,
+	// even though the attribute name itself is still valid.
+	ReviewOnly bool
 }
 
 // InvalidAttributeReferenceDetector is an optional interface that migrators can

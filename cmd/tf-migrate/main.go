@@ -1431,12 +1431,16 @@ func scanForInvalidAttributeReferences(log hclog.Logger, outputPaths []string, r
 				r := f.Range
 				r.Filename = filepath.Base(outputPath)
 				match := string(r.SliceBytes(content))
+				summary := "Unknown attribute reference: " + match
+				if ref.ReviewOnly {
+					summary = "Review changed attribute reference: " + match
+				}
 				log.Debug("Found invalid attribute reference",
 					"file", filepath.Base(outputPath),
 					"match", match)
 				diags = append(diags, &hcl.Diagnostic{
 					Severity: hcl.DiagWarning,
-					Summary:  fmt.Sprintf("Unknown attribute reference: %s", match),
+					Summary:  summary,
 					Detail:   fmt.Sprintf("In %s\n\n  %s", filepath.Base(outputPath), ref.Suggestion),
 					Subject:  &r,
 				})
