@@ -14,8 +14,14 @@ with `cloudflare_address_map.example.ips`. The per-membership `can_delete` field
 has no v5 equivalent; the map-level field describes the map itself. When
 membership order matters, explicitly choose how to sort the list.
 
-The provider upgrades Terraform state. The converted configuration matches the
-v5.29.0 schema, but **v5.29.0 cannot upgrade populated v4 IP state**. It also
-forces replacement when either collection changes. Before applying, use a
-provider release that includes the [address map migration and update fix](https://github.com/cloudflare/terraform-provider-cloudflare/issues/7299)
-and confirm the plan does not replace the map.
+Use a provider release that includes the [address map migration and update fix](https://github.com/cloudflare/terraform-provider-cloudflare/issues/7299).
+**Do not use v5.29.0 as a migration target.** The converted configuration
+passes `terraform validate` on that version, but the provider cannot upgrade
+v4 state with populated IPs and forces replacement on collection changes.
+
+v4 stored both collections as sets, so their order in state can differ from
+their order in the converted v5 configuration. With the fixed provider, this
+can produce a one-time in-place update. If only the order differs, the provider
+records the configured order in state without changing the map or its entries
+in Cloudflare. Check that the plan does not replace the map and run a follow-up
+plan after applying to confirm there are no further changes.
